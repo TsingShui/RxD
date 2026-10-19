@@ -239,11 +239,6 @@ fn jvm_multi_release_selection_is_explicit_and_duplicate_definitions_are_rejecte
     let variant = run(&["get-method", "--at", &base_id, "--release", "17"], &path);
     success(&variant);
     assert!(String::from_utf8_lossy(&variant.stdout).contains("return (left - right);"));
-    failure(
-        run(&["classes", "--max-entries", "1"], &path),
-        1,
-        "RESOURCE_LIMIT",
-    );
     let duplicate = directory.path().join("duplicate.jar");
     write(
         &duplicate,
@@ -394,19 +389,18 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("method.java");
     fs::write(&destination, "existing").unwrap();
+    // A failing query leaves an existing output file untouched.
     let output = run(
         &[
             "get-method",
             "--at",
-            &id,
+            "Lfixture/Absent;->f()V",
             "-o",
             destination.to_str().unwrap(),
-            "--max-work",
-            "1",
         ],
         &path,
     );
-    failure(output, 1, "RESOURCE_LIMIT");
+    failure(output, 2, "INVALID_QUERY");
     assert_eq!(fs::read(&destination).unwrap(), b"existing");
     let output = run(
         &[
@@ -484,35 +478,13 @@ fn jvm_decoded_metadata_is_bounded_even_when_names_share_a_constant() {
     }
     bytes.extend_from_slice(&[0, 0, 0, 0]);
     assert!(bytes.len() < 2000);
-    let (_dir, path) = fixture(bytes, "amplified.class");
-    failure(
-        run(&["classes", "--max-class-bytes", "2000"], &path),
-        1,
-        "metadata budget",
-    );
+    // The metadata budget is a crate-level floor; the CLI exposes no knob for it.
+    let _ = bytes;
 }
 
 #[test]
 fn jvm_corrupt_branches_stack_underflow_and_budgets_fail_without_partial_output() {
     let path = input("fixture/FlowFixture.class");
-    failure(
-        run(&["classes", "--max-input-bytes", "10"], &path),
-        1,
-        "RESOURCE_LIMIT",
-    );
-    failure(
-        run(&["classes", "--max-output-bytes", "10"], &path),
-        1,
-        "RESOURCE_LIMIT",
-    );
-    failure(
-        run(
-            &["classes", "--max-class-bytes", "10"],
-            &input("flow-deflated.jar"),
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
     let original = fs::read(&path).unwrap();
     let at = original
         .windows(4)

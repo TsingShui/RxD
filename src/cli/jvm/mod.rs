@@ -135,31 +135,19 @@ pub struct Options {
     release: u16,
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = super::input_bytes)]
-    max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 16 * 1024 * 1024, value_parser = super::positive)]
-    max_class_bytes: usize,
-    #[arg(long, default_value_t = 128 * 1024 * 1024, value_parser = super::positive)]
-    max_expanded_bytes: usize,
-    #[arg(long, default_value_t = 10_000, value_parser = super::positive)]
-    max_entries: usize,
-    #[arg(long, default_value_t = 1_000_000, value_parser = super::positive)]
-    max_work: usize,
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = super::positive)]
-    max_output_bytes: usize,
+}
+
+/// The budgets every JVM analysis runs under.
+///
+/// They are safety floors, not tuning knobs: an agent should not have to reason about six
+/// limits per backend, and DEX enforces the same class of budget without exposing any.
+fn limits() -> Limits {
+    Limits::default()
 }
 
 impl Options {
     fn limits(&self) -> Limits {
-        Limits {
-            input_bytes: super::input_limit(self.max_input_bytes),
-            class_bytes: self.max_class_bytes,
-            expanded_bytes: self.max_expanded_bytes,
-            entries: self.max_entries,
-            work: self.max_work,
-            output_bytes: self.max_output_bytes,
-        }
+        limits()
     }
 }
 
