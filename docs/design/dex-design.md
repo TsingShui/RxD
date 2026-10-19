@@ -114,8 +114,9 @@ Fixed detail fields:
 
 | Record | Command | Detail |
 | --- | --- | --- |
-| class | classes | `descriptor` |
-| field | fields | `descriptor`; `access_flags` with `--with-flags` |
+| class | classes | `at` = the class descriptor |
+| field | fields | `at` = `Lclass;->name:type`; `access_flags` with `--with-flags` |
+| method | methods | `at` = `Lclass;->name(proto)`; `access_flags` with `--with-flags` |
 | string | strings | `entry, index, value, class` |
 Ordering: records follow the archive central-directory order, and inside one entry the
 `class_defs` (classes) or code-item (xref) order. No backend sorts by identity, so a class

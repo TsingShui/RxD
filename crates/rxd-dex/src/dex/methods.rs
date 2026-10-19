@@ -128,10 +128,11 @@ fn render_class(
             descriptor_row.push_str("->");
             descriptor_row.push_str(name);
             descriptor_row.push_str(protos[proto_idx].as_deref().unwrap_or_default());
-            out.push_str("{\"record\":\"method\",\"detail\":{\"descriptor\":");
+            out.push_str("{\"record\":\"method\",\"at\":");
             push_json_string(out, &descriptor_row);
+            out.push_str(",\"detail\":{");
             if selector.with_flags {
-                out.push_str(",\"access_flags\":");
+                out.push_str("\"access_flags\":");
                 out.push_str(&access_flags.to_string());
             }
             out.push_str("}}\n");
@@ -244,10 +245,11 @@ fn render_fields_of(
             rendered.push_str(&name);
             rendered.push(':');
             rendered.push_str(&ty);
-            out.push_str("{\"record\":\"field\",\"detail\":{\"descriptor\":");
+            out.push_str("{\"record\":\"field\",\"at\":");
             push_json_string(out, &rendered);
+            out.push_str(",\"detail\":{");
             if selector.with_flags {
-                out.push_str(",\"access_flags\":");
+                out.push_str("\"access_flags\":");
                 out.push_str(&access_flags.to_string());
             }
             out.push_str("}}\n");

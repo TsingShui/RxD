@@ -10,7 +10,7 @@ use output::{emit, emit_rows};
 use rxd_core::envelope::{header, summary};
 use serde_json::{Map, Value, json};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 pub(crate) use args::Command;
 use rayon::prelude::*;
 use rxd_dex::{apk, manifest, query};
@@ -213,11 +213,7 @@ fn run_command(
                                 continue;
                             }
                         }
-                        push_record(
-                            &mut payload,
-                            "class",
-                            &[("descriptor", Field::Text(&class.descriptor))],
-                        )?;
+                        push_record_at(&mut payload, "class", Some(&class.descriptor), &[])?;
                         records += 1;
                     }
                     Ok((payload, records))
@@ -380,7 +376,12 @@ fn run_command(
             emit(&xml, args.output.as_deref())?;
         }
         Command::Getclass(args) => {
-            let class_name = query::format_class_name(&args.dalvik_class)?;
+            let coordinate = args
+                .at
+                .as_deref()
+                .or(args.dalvik_class.as_deref())
+                .context("a class coordinate is required: pass it positionally or with --at")?;
+            let class_name = query::format_class_name(coordinate)?;
             if status == 0 {
                 let hit = apk::decompile_class_with_policy(
                     &args.apk_path,
@@ -442,8 +443,25 @@ fn push_json_string(out: &mut String, value: &str) {
 /// hundreds of thousands of rows, so building a `Value` per row only to serialize it is
 /// pure allocation; this writes the same bytes in place.
 fn push_record(payload: &mut String, kind: &str, fields: &[(&str, Field<'_>)]) -> Result<()> {
+    push_record_at(payload, kind, None, fields)
+}
+
+/// Append one row whose identity is its `at` coordinate.
+///
+/// `at` is what `--at` takes back, so a record that names a selectable object carries it
+/// there instead of repeating it inside `detail`.
+fn push_record_at(
+    payload: &mut String,
+    kind: &str,
+    at: Option<&str>,
+    fields: &[(&str, Field<'_>)],
+) -> Result<()> {
     payload.push_str("{\"record\":");
     push_json_string(payload, kind);
+    if let Some(at) = at {
+        payload.push_str(",\"at\":");
+        push_json_string(payload, at);
+    }
     payload.push_str(",\"detail\":{");
     for (index, (key, value)) in fields.iter().enumerate() {
         if index > 0 {

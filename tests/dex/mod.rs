@@ -42,10 +42,15 @@ fn assert_keys(row: &Value, keys: &[&str]) {
 fn assert_record(row: &Value) {
     // DEX units have no copy-only coordinate, so a data record is `record` + `detail`
     // only; the stream header carries identity once instead of every row repeating it.
-    let keys = vec!["record", "detail"];
+    // `at` is present only on records that name a selectable object (class/method/field).
+    let keys = if row["at"].is_null() {
+        vec!["record", "detail"]
+    } else {
+        vec!["record", "detail", "at"]
+    };
     assert_keys(row, &keys);
     let fields: &[&str] = match row["record"].as_str().unwrap() {
-        "class" => &["descriptor"],
+        "class" => &[],
         "string" => &["entry", "index", "value"],
         "reference" => &["entry", "member", "matched"],
         "entry" => &[
@@ -54,12 +59,14 @@ fn assert_record(row: &Value) {
             "compressed_size",
             "uncompressed_size",
         ],
-        "field" if row["detail"].get("access_flags").is_some() => &["access_flags", "descriptor"],
-        "field" => &["descriptor"],
+        "field" if row["detail"].get("access_flags").is_some() => &["access_flags"],
+        "field" => &[],
+        "field" => &[],
         // `methods` prints one descriptor row per definition; `get-class --members` prints
         // its member table as text, so this is the only `method` record shape.
-        "method" if row["detail"].get("access_flags").is_some() => &["access_flags", "descriptor"],
-        "method" => &["descriptor"],
+        "method" if row["detail"].get("access_flags").is_some() => &["access_flags"],
+        "method" => &[],
+        "method" => &[],
 
         other => panic!("unexpected dex record {other}"),
     };
@@ -107,9 +114,7 @@ fn dex_records(output: &Output) -> Vec<Value> {
 fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     let dex = const_string_dex(3);
     let (dir, bare) = fixture(&dex, "input.dex");
-    let expected_classes: Vec<_> = (0..3)
-        .map(|i| json!({"descriptor":format!("LFixture{i};")}))
-        .collect();
+    let expected_classes: Vec<_> = (0..3).map(|i| json!({})).collect();
     let expected_refs: Vec<_> = (0..3).map(|i| json!({"entry":"classes.dex", "member":format!("LFixture{i};->m{i}"), "matched":"Authorization"})).collect();
     for (name, bytes) in [
         ("stored.apk", stored_zip(&[("classes.dex", &dex)])),
@@ -205,7 +210,7 @@ fn dex_get_method_renders_one_method_from_its_methods_coordinate() {
     let (_dir, path) = fixture(stored_zip(&[("classes.dex", &dex)]), "getmethod.apk");
     let listed = query("methods", &path, &["--class", "Fixture0"]);
     success(&listed);
-    let coordinate = dex_records(&listed)[0]["detail"]["descriptor"]
+    let coordinate = dex_records(&listed)[0]["at"]
         .as_str()
         .expect("a methods row names its descriptor")
         .to_owned();
@@ -234,7 +239,7 @@ fn dex_fields_list_declarations_and_honour_class_and_name_filters() {
     // A field descriptor is `Lclass;->name:type`, so both separators have to be there.
     assert!(
         rows.iter().all(|row| {
-            row["detail"]["descriptor"]
+            row["at"]
                 .as_str()
                 .is_some_and(|value| value.contains("->") && value.contains(':'))
         }),
@@ -266,7 +271,7 @@ fn dex_methods_lists_definitions_and_honours_class_and_name_filters() {
     assert!(rows.iter().all(|row| row["record"] == "method"));
     assert!(
         rows.iter().any(|row| {
-            row["detail"]["descriptor"]
+            row["at"]
                 .as_str()
                 .is_some_and(|value| value.starts_with("LFixture0;->"))
         }),
@@ -280,7 +285,7 @@ fn dex_methods_lists_definitions_and_honours_class_and_name_filters() {
     assert!(!rows.is_empty(), "{}", text(&one));
     assert!(
         rows.iter().all(|row| {
-            row["detail"]["descriptor"]
+            row["at"]
                 .as_str()
                 .is_some_and(|value| value.starts_with("LFixture0;->"))
         }),
@@ -336,9 +341,7 @@ fn dex_entries_preserve_directory_order_duplicates_and_root_selection() {
     assert!(
         dex_records(&output)
             .iter()
-            .all(|r| r["detail"]["descriptor"]
-                .as_str()
-                .is_some_and(|d| d.starts_with('L'))),
+            .all(|r| r["at"].as_str().is_some_and(|d| d.starts_with('L'))),
         "{:?}",
         dex_records(&output)
     );

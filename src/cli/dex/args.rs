@@ -181,6 +181,9 @@ pub struct ManifestArgs {
 
 #[derive(Debug, Args)]
 pub struct GetClassArgs {
+    /// `Lx/y;` or `x.y`: the `at` a `classes` row prints.
+    #[arg(long, conflicts_with = "dalvik_class")]
+    pub at: Option<String>,
     #[arg(long)]
     pub debug: bool,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -188,7 +191,7 @@ pub struct GetClassArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     pub apk_path: PathBuf,
-    pub dalvik_class: String,
+    pub dalvik_class: Option<String>,
 }
 
 #[derive(Debug, Args)]
