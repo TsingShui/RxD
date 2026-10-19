@@ -62,16 +62,13 @@
     <div class="wrap">
       <div class="section-head">
         <p class="kicker">FEATURES</p>
-        <h2>A workspace, not a wrapper.</h2>
+        <h2>An Agent, a workspace, an analysis core.</h2>
         <p class="section-lede">A general Agent with RxD at its core. Write code, manage files, run tools and analyze targets without leaving the device.</p>
       </div>
       <ol class="why-list">
-        <li><h3>On-device models</h3><p>Download the pinned Qwen3.5-2B Q4_K_M (1.28 GB) or import a GGUF. llama.rn runs text inference on CPU, up to 8k context and a 1,024-token reply. Thinking is opt-in. Models are not embedded in the APK; imports are SHA-256 bound and must pass a real-engine probe.</p></li>
-        <li><h3>Model connections</h3><p>OpenAI Completions/Responses, Anthropic Messages and Google Generative AI through Pi AI. Named connections, model settings and device credentials; credentials use Android Keystore/SecureStore. Local HTTP endpoints are supported with an explicit unencrypted warning.</p></li>
-        <li><h3>Real analysis</h3><p>The embedded ARM64 rxd covers JS, ASAR, HTML, APK/DEX, JVM, .NET, WASM, EVM, PYC and Kuna. <code>rxd_file_outline</code> is a bounded JS fast path; other formats use <code>$ARXD_RXD</code> in the shell.</p></li>
-        <li><h3>Durable workspace</h3><p>Pi-durable handles conversations, tool rounds and persistence. SQLite keeps history, archives, attachments and reports. Deleting a conversation does not delete files from the library.</p></li>
-        <li><h3>Files and skills</h3><p>Browse, edit, copy, share and attach files. Import <code>SKILL.md</code>, a directory or a workspace skill; imports are disabled by default. The Agent loads admitted skills on demand.</p></li>
-        <li><h3>MCP and processes</h3><p>Save stdio launch definitions or HTTP(S) endpoints, connect and discover tools. Long-running process instances are visible and stopped explicitly. Plain HTTP is loopback-only on Android.</p></li>
+        <li><h3>Run an Agent</h3><p>Use an on-device model or connect a hosted one. CodeMode, Skills, MCP and a Termux environment are built in.</p></li>
+        <li><h3>Work on the device</h3><p>Write code, manage files and keep a durable workspace. Long-running processes stay visible and controllable.</p></li>
+        <li><h3>Analyze with RxD</h3><p>The Android analysis core covers APK/DEX, JavaScript, .NET IL, WebAssembly, CPython bytecode and EVM bytecode.</p></li>
       </ol>
       <div class="arxd-stack">
         <span>Built on</span>
