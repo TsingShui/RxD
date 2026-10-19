@@ -8,15 +8,39 @@ use serde_json::json;
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Enumerate selected class, field and method metadata as JSONL.
-    Outline {
+    /// List the class metadata an archive defines as JSONL.
+    Classes {
         input: PathBuf,
         /// Exact internal, dotted or descriptor class name.
         #[arg(long)]
         class: Option<String>,
-        /// Exact method name; preserves overloads and their descriptors.
+        /// Case-insensitive substring over the internal class name; dots are accepted.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// List the fields an archive declares as JSONL.
+    Fields {
+        input: PathBuf,
+        /// Only list fields of this class: internal, dotted or descriptor name.
         #[arg(long)]
-        method: Option<String>,
+        class: Option<String>,
+        /// Case-insensitive substring over the field name.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// List the methods an archive defines as JSONL.
+    Methods {
+        input: PathBuf,
+        /// Only list methods of this class: internal, dotted or descriptor name.
+        #[arg(long)]
+        class: Option<String>,
+        /// Case-insensitive substring over the method name.
+        #[arg(short, long)]
+        filter: Option<String>,
         #[command(flatten)]
         options: Options,
     },
@@ -24,7 +48,9 @@ pub enum Command {
     #[command(name = "get-method")]
     Get {
         input: PathBuf,
-        id: String,
+        /// `Lclass;->name(proto)`: the `at` a `methods` row prints.
+        #[arg(long)]
+        at: String,
         #[arg(long)]
         bytecode: bool,
         #[command(flatten)]
@@ -34,7 +60,10 @@ pub enum Command {
     #[command(name = "get-class")]
     GetClass {
         input: PathBuf,
-        class: String,
+        /// `Lx/y;` or `x.y`: the `at` a `classes` row prints.
+        #[arg(long, conflicts_with = "class")]
+        at: Option<String>,
+        class: Option<String>,
         #[command(flatten)]
         options: Options,
     },
@@ -128,10 +157,30 @@ impl Options {
     }
 }
 
+/// Which enumeration a listing command performs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Listing {
+    Classes,
+    Fields,
+    Methods,
+}
+
+impl Listing {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Classes => "classes",
+            Self::Fields => "fields",
+            Self::Methods => "methods",
+        }
+    }
+}
+
 impl Command {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Outline { .. } => "outline",
+            Self::Classes { .. } => "classes",
+            Self::Fields { .. } => "fields",
+            Self::Methods { .. } => "methods",
             Self::Get { .. } => "get-method",
             Self::GetClass { .. } => "get-class",
             Self::Strings { .. } => "strings",
@@ -163,12 +212,16 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     if let Command::GetClass {
         input,
         class,
+        at,
         options,
     } = command
     {
+        let coordinate = at.or(class).ok_or_else(|| {
+            anyhow::anyhow!("a class coordinate is required: pass it positionally or with --at")
+        })?;
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
-        let source = rxd_jvm::render_class(&input, &class, limits)?;
+        let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
         anyhow::ensure!(
             source.len() <= limits.output_bytes,
             "RESOURCE_LIMIT: output byte budget exceeded"
@@ -196,7 +249,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 Some(&input.source_id),
                 Some(input.file_bytes),
                 json!({"class":class,"filter":filter}),
-                json!({"analysis":"metadata","release":options.release})
+                json!({"analysis":"strings","release":options.release})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -227,11 +280,9 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     &record(
                         "string",
                         RecordMeta {
-                            source_id: Some(&selected.source_id),
                             ..RecordMeta::default()
                         },
                         json!({
-                            "entry":selected.entry,
                             "class":selected.class.name,
                             "index":index,
                             "value":text,
@@ -296,7 +347,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 Some(&input.source_id),
                 Some(input.file_bytes),
                 kind.query_json(),
-                json!({"analysis":"metadata","release":options.release})
+                json!({"analysis":"xref","release":options.release})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -309,12 +360,10 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 &record(
                     "reference",
                     RecordMeta {
-                        source_id: Some(&hit.source_id),
-                        context_at: Some(&hit.method_id),
+                        context_at: Some(&hit.method_at),
                         ..RecordMeta::default()
                     },
                     json!({
-                        "entry":hit.entry,
                         "class":hit.class,
                         "method":hit.method,
                         "method_descriptor":hit.method_descriptor,
@@ -337,29 +386,70 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
-    let (path, options, request, class_filter, method_filter) = match command {
-        Command::Outline {
+    let (path, options, request, class_filter, method_filter, listing) = match command {
+        Command::Classes {
             input,
             options,
             class,
-            method,
-        } => (input, options, None, class, method),
+            filter,
+        } => (
+            input,
+            options,
+            None,
+            class,
+            filter.map(|value| value.to_lowercase()),
+            Listing::Classes,
+        ),
+        Command::Fields {
+            input,
+            options,
+            class,
+            filter,
+        } => (
+            input,
+            options,
+            None,
+            class,
+            filter.map(|value| value.to_lowercase()),
+            Listing::Fields,
+        ),
+        Command::Methods {
+            input,
+            options,
+            class,
+            filter,
+        } => (
+            input,
+            options,
+            None,
+            class,
+            filter.map(|value| value.to_lowercase()),
+            Listing::Methods,
+        ),
         Command::Get {
             input,
-            id,
+            at,
             bytecode,
             options,
-        } => (input, options, Some((id, bytecode)), None, None),
+        } => (
+            input,
+            options,
+            Some((at, bytecode)),
+            None,
+            None,
+            Listing::Classes,
+        ),
         Command::GetClass { .. } => unreachable!("handled above"),
         Command::Strings { .. } => unreachable!("handled above"),
         Command::Xref { .. } => unreachable!("handled above"),
     };
+    let command_name = listing.name();
     let limits = options.limits();
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
-    if let Some((id, raw)) = request {
+    if let Some((at, raw)) = request {
         if raw {
-            let (selected, index) = input.method_by_id(&id)?;
+            let (selected, index) = input.method_by_at(&at)?;
             let method = &selected.class.methods[index];
             let code = method
                 .code
@@ -368,18 +458,15 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             let mut bytecode = record(
                 "bytecode",
                 RecordMeta {
-                    at: Some(&id),
-                    source_id: Some(&selected.source_id),
+                    at: Some(Input::method_at(selected, index).as_str()),
                     start: Some(code.range.start),
                     end: Some(code.range.end),
                     ..RecordMeta::default()
                 },
                 json!({
                     "representation":"bytecode",
-                    "entry":selected.entry,
                     "class":selected.class.name,
-                    "name":method.name,
-                    "descriptor":method.descriptor,
+                    "proto":method.descriptor,
                     "max_stack":code.max_stack,
                     "max_locals":code.max_locals,
                     "handlers":code.handlers,
@@ -396,7 +483,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             bytecode["schema_version"] = json!(SCHEMA_VERSION);
             append(&mut output, &bytecode, limits.output_bytes)?;
         } else {
-            let source = rxd_jvm::render_method(&input, &id, limits)?;
+            let source = rxd_jvm::render_method(&input, &at, limits)?;
             anyhow::ensure!(
                 source.len() <= limits.output_bytes,
                 "RESOURCE_LIMIT: output byte budget exceeded"
@@ -418,11 +505,11 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             &mut output,
             &header(
                 "jvm",
-                "outline",
+                command_name,
                 Some(&input.source_id),
                 Some(input.file_bytes),
-                json!({"class":class_filter,"method":method_filter}),
-                json!({"analysis":"metadata","release":options.release})
+                json!({"class":class_filter,"filter":method_filter}),
+                json!({"analysis":command_name,"release":options.release})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -432,22 +519,94 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         let mut records = 0usize;
         for selected in &selected_classes {
             let class = &selected.class;
+            if listing == Listing::Classes
+                && let Some(pattern) = method_filter.as_ref()
+                && !class
+                    .name
+                    .to_lowercase()
+                    .contains(&pattern.replace('.', "/"))
+            {
+                continue;
+            }
+            if listing == Listing::Fields {
+                for field in &class.fields {
+                    if method_filter
+                        .as_ref()
+                        .is_some_and(|pattern| !field.name.to_lowercase().contains(pattern))
+                    {
+                        continue;
+                    }
+                    let at = format!("L{};->{}:{}", class.name, field.name, field.descriptor);
+                    append(
+                        &mut output,
+                        &record(
+                            "field",
+                            RecordMeta {
+                                at: Some(&at),
+                                ..RecordMeta::default()
+                            },
+                            json!({
+                                "access_flags":field.access,
+                                "signature":field.signature,
+                                "constant_index":field.constant_index,
+                            })
+                            .as_object()
+                            .unwrap()
+                            .clone(),
+                        ),
+                        limits.output_bytes,
+                    )?;
+                    records += 1;
+                }
+                continue;
+            }
+            if listing == Listing::Methods {
+                for (index, method) in class.methods.iter().enumerate() {
+                    if method_filter
+                        .as_ref()
+                        .is_some_and(|pattern| !method.name.to_lowercase().contains(pattern))
+                    {
+                        continue;
+                    }
+                    append(
+                        &mut output,
+                        &record(
+                            "method",
+                            RecordMeta {
+                                at: Some(&Input::method_at(selected, index)),
+                                ..RecordMeta::default()
+                            },
+                            json!({
+                                "proto":method.descriptor,
+                                "access_flags":method.access,
+                                "signature":method.signature,
+                                "exceptions":method.exceptions,
+                                "has_code":method.code.is_some(),
+                            })
+                            .as_object()
+                            .unwrap()
+                            .clone(),
+                        ),
+                        limits.output_bytes,
+                    )?;
+                    records += 1;
+                }
+                continue;
+            }
             append(
                 &mut output,
                 &record(
                     "class",
                     RecordMeta {
-                        source_id: Some(&selected.source_id),
+                        at: Some(&format!("L{};", class.name)),
                         ..RecordMeta::default()
                     },
                     json!({
-                        "entry":selected.entry,
-                        "name":class.name,
                         "super":class.super_name,
                         "interfaces":class.interfaces,
                         "major":class.major,
                         "minor":class.minor,
-                        "access":class.access,
+                        "access_flags":class.access,
                         "signature":class.signature,
                         "source_file":class.source_file,
                         "fields":class.fields.len(),
@@ -460,39 +619,13 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 limits.output_bytes,
             )?;
             records += 1;
-            for field in &class.fields {
-                if method_filter.is_some() {
-                    break;
-                }
-                append(
-                    &mut output,
-                    &record(
-                        "field",
-                        RecordMeta {
-                            source_id: Some(&selected.source_id),
-                            ..RecordMeta::default()
-                        },
-                        json!({
-                            "entry":selected.entry,
-                            "class":class.name,
-                            "name":field.name,
-                            "descriptor":field.descriptor,
-                            "access":field.access,
-                            "signature":field.signature,
-                            "constant_index":field.constant_index,
-                        })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                    ),
-                    limits.output_bytes,
-                )?;
-                records += 1;
+            if listing == Listing::Classes {
+                continue;
             }
             for (index, method) in class.methods.iter().enumerate() {
                 if method_filter
                     .as_ref()
-                    .is_some_and(|name| *name != method.name)
+                    .is_some_and(|pattern| !method.name.to_lowercase().contains(pattern))
                 {
                     continue;
                 }
@@ -501,16 +634,12 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     &record(
                         "method",
                         RecordMeta {
-                            at: Some(&Input::method_id(selected, index)),
-                            source_id: Some(&selected.source_id),
+                            at: Some(&Input::method_at(selected, index)),
                             ..RecordMeta::default()
                         },
                         json!({
-                            "entry":selected.entry,
-                            "class":class.name,
-                            "name":method.name,
-                            "descriptor":method.descriptor,
-                            "access":method.access,
+                            "proto":method.descriptor,
+                            "access_flags":method.access,
                             "signature":method.signature,
                             "exceptions":method.exceptions,
                             "has_code":method.code.is_some(),
@@ -529,7 +658,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             &summary(
                 records,
                 true,
-                json!({"classes":selected_classes.len()})
+                json!({"classes":selected_classes.len(), "records":records})
                     .as_object()
                     .unwrap()
                     .clone(),

@@ -182,19 +182,40 @@ impl Input {
         })
     }
 
-    pub fn method_id(class: &InputClass, index: usize) -> String {
-        format!("rxd1:jvm:{}:method:{index}", class.source_id)
+    /// A method's coordinate: `Lclass;->name(proto)`, the same member identity DEX
+    /// prints. It names the method exactly (the prototype separates overloads) and can
+    /// be passed straight back to `--at`, with no content hash to assemble.
+    pub fn method_at(class: &InputClass, index: usize) -> String {
+        let method = &class.class.methods[index];
+        format!(
+            "L{};->{}{}",
+            class.class.name, method.name, method.descriptor
+        )
     }
 
-    pub fn method_by_id(&self, id: &str) -> Result<(&InputClass, usize)> {
+    pub fn method_by_at(&self, coordinate: &str) -> Result<(&InputClass, usize)> {
+        let Some((class_name, rest)) = coordinate.split_once("->") else {
+            bail!("INVALID_QUERY: {coordinate} is not 'Lclass;->name(proto)'");
+        };
+        let Some((name, proto)) = rest.split_once('(') else {
+            bail!("INVALID_QUERY: {coordinate} has no method prototype");
+        };
+        let descriptor = format!("({proto}");
+        let class_name = class_name
+            .strip_prefix('L')
+            .and_then(|name| name.strip_suffix(';'))
+            .unwrap_or(class_name);
         for class in &self.classes {
-            for index in 0..class.class.methods.len() {
-                if Self::method_id(class, index) == id {
+            if class.class.name != class_name {
+                continue;
+            }
+            for (index, method) in class.class.methods.iter().enumerate() {
+                if method.name == name && method.descriptor == descriptor {
                     return Ok((class, index));
                 }
             }
         }
-        bail!("INVALID_QUERY: method ID does not match this input")
+        bail!("INVALID_QUERY: {coordinate} is not a method of this input")
     }
 
     /// Select exactly one class by its internal, dotted or descriptor name.

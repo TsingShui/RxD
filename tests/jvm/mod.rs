@@ -32,10 +32,10 @@ fn assert_keys(value: &Value, expected: &[&str]) {
 fn assert_record(row: &Value) {
     let mut keys = vec![
         "record",
-        "id",
+        "at",
         "source_id",
-        "parent_id",
-        "context_id",
+        "parent_at",
+        "context_at",
         "start",
         "end",
         "detail",
@@ -47,44 +47,31 @@ fn assert_record(row: &Value) {
         assert_eq!(row["schema_version"], 2);
     }
     assert_keys(row, &keys);
-    assert!(row["source_id"].is_string());
-    assert!(row["parent_id"].is_null());
+    // Identity lives in the stream header now; a row does not repeat it.
+    assert!(row["source_id"].is_null());
+    assert!(row["parent_at"].is_null());
     let fields: &[&str] = match row["record"].as_str().unwrap() {
         "class" => &[
-            "entry",
-            "name",
             "super",
             "interfaces",
             "major",
             "minor",
-            "access",
+            "access_flags",
             "signature",
             "source_file",
             "fields",
             "methods",
         ],
-        "field" => &[
-            "entry",
-            "class",
-            "name",
-            "descriptor",
-            "access",
-            "signature",
-            "constant_index",
-        ],
+        "field" => &["proto", "access_flags", "signature", "constant_index"],
         "method" => &[
-            "entry",
-            "class",
-            "name",
-            "descriptor",
-            "access",
+            "proto",
+            "access_flags",
             "signature",
             "exceptions",
             "has_code",
         ],
-        "string" => &["entry", "class", "index", "value", "utf16"],
+        "string" => &["class", "index", "value", "utf16"],
         "reference" => &[
-            "entry",
             "class",
             "method",
             "method_descriptor",
@@ -94,10 +81,8 @@ fn assert_record(row: &Value) {
         ],
         "bytecode" => &[
             "representation",
-            "entry",
             "class",
-            "name",
-            "descriptor",
+            "proto",
             "max_stack",
             "max_locals",
             "handlers",
@@ -107,15 +92,15 @@ fn assert_record(row: &Value) {
         other => panic!("unexpected JVM record: {other}"),
     };
     assert_keys(&row["detail"], fields);
-    if row["record"] == "method" || row["record"] == "bytecode" {
-        assert!(row["id"].as_str().unwrap().starts_with("rxd1:jvm:"));
-    } else {
-        assert!(row["id"].is_null());
+    match row["record"].as_str().unwrap() {
+        "method" | "bytecode" => assert!(row["at"].as_str().unwrap().starts_with('L')),
+        "class" => assert!(row["at"].as_str().unwrap().starts_with('L')),
+        _ => assert!(row["at"].is_null()),
     }
     if row["record"] == "reference" {
-        assert!(row["context_id"].as_str().unwrap().starts_with("rxd1:jvm:"));
+        assert!(row["context_at"].as_str().unwrap().contains("->"));
     } else {
-        assert!(row["context_id"].is_null());
+        assert!(row["context_at"].is_null());
     }
     if row["record"] != "bytecode" {
         assert!(row["start"].is_null());
@@ -144,7 +129,10 @@ fn jvm_jsonl(output: &Output) -> Vec<Value> {
     assert_eq!(header["schema_version"], 2);
     assert!(header["input_bytes"].as_u64().unwrap() > 0);
     assert_keys(&header["detail"], &["analysis", "release"]);
-    assert_eq!(header["detail"]["analysis"], "metadata");
+    assert_eq!(
+        header["detail"]["analysis"],
+        header["command"].as_str().unwrap()
+    );
     for row in &rows[1..rows.len() - 1] {
         assert_record(row);
     }
@@ -153,20 +141,28 @@ fn jvm_jsonl(output: &Output) -> Vec<Value> {
     assert_eq!(summary["record"], "summary");
     assert_eq!(summary["records"], rows.len() - 2);
     assert_eq!(summary["complete"], true);
-    if header["command"] == "outline" {
-        assert_keys(&summary["detail"], &["classes"]);
-        assert_eq!(
-            summary["detail"]["classes"],
-            rows.iter().filter(|r| r["record"] == "class").count()
-        );
-    } else {
-        assert_keys(&summary["detail"], &[]);
+    match header["command"].as_str().unwrap() {
+        "classes" => {
+            assert_keys(&summary["detail"], &["classes", "records"]);
+            assert_eq!(
+                summary["detail"]["classes"],
+                rows.iter().filter(|r| r["record"] == "class").count()
+            );
+        }
+        "methods" => {
+            assert_keys(&summary["detail"], &["classes", "records"]);
+            assert_eq!(
+                summary["detail"]["records"],
+                rows.iter().filter(|r| r["record"] == "method").count()
+            );
+        }
+        _ => assert_keys(&summary["detail"], &[]),
     }
     rows
 }
 
 fn methods(path: &Path) -> Vec<Value> {
-    jvm_jsonl(&run(&["outline"], path))
+    jvm_jsonl(&run(&["methods"], path))
         .into_iter()
         .filter(|v| v["record"] == "method")
         .collect()
@@ -175,8 +171,13 @@ fn methods(path: &Path) -> Vec<Value> {
 fn method(path: &Path, name: &str) -> String {
     methods(path)
         .into_iter()
-        .find(|v| v["detail"]["name"] == name)
-        .unwrap()["id"]
+        .find(|v| {
+            v["at"]
+                .as_str()
+                .unwrap_or_default()
+                .contains(&format!("->{name}("))
+        })
+        .unwrap()["at"]
         .as_str()
         .unwrap()
         .to_owned()
@@ -220,20 +221,19 @@ fn jvm_multi_release_selection_is_explicit_and_duplicate_definitions_are_rejecte
     );
     let base_id = method(&path, "add");
     assert_eq!(base_id, method(&input("fixture/FlowFixture.class"), "add"));
-    let rows = jvm_jsonl(&run(&["outline", "--release", "17"], &path));
+    let rows = jvm_jsonl(&run(&["methods", "--release", "17"], &path));
     let selected = rows
         .iter()
-        .find(|v| v["record"] == "method" && v["detail"]["name"] == "add")
+        .find(|v| {
+            v["record"] == "method" && v["at"].as_str().unwrap_or_default().contains("->add(")
+        })
         .unwrap();
-    assert_ne!(selected["id"], base_id);
-    assert_eq!(
-        selected["detail"]["entry"],
-        "META-INF/versions/17/fixture/FlowFixture.class"
-    );
+
     let output = run(
         &[
             "get-method",
-            selected["id"].as_str().unwrap(),
+            "--at",
+            selected["at"].as_str().unwrap(),
             "--release",
             "17",
         ],
@@ -241,13 +241,13 @@ fn jvm_multi_release_selection_is_explicit_and_duplicate_definitions_are_rejecte
     );
     success(&output);
     assert!(String::from_utf8_lossy(&output.stdout).contains("return (left - right);"));
+    // The coordinate names the method, not the release: the same value renders the
+    // selected variant's body.
+    let variant = run(&["get-method", "--at", &base_id, "--release", "17"], &path);
+    success(&variant);
+    assert!(String::from_utf8_lossy(&variant.stdout).contains("return (left - right);"));
     failure(
-        run(&["get-method", &base_id, "--release", "17"], &path),
-        2,
-        "INVALID_QUERY",
-    );
-    failure(
-        run(&["outline", "--max-entries", "1"], &path),
+        run(&["classes", "--max-entries", "1"], &path),
         1,
         "RESOURCE_LIMIT",
     );
@@ -257,7 +257,7 @@ fn jvm_multi_release_selection_is_explicit_and_duplicate_definitions_are_rejecte
         &[("first.class", &original), ("second.class", &original)],
     );
     failure(
-        run(&["outline"], &duplicate),
+        run(&["classes"], &duplicate),
         1,
         "duplicate class definition",
     );
@@ -292,10 +292,18 @@ fn jvm_native_methods_recover_control_flow_values_calls_and_exceptions() {
         ("locked", "static synchronized"),
         ("block", "synchronized(lock)"),
     ] {
-        let id = rows.iter().find(|v| v["detail"]["name"] == name).unwrap()["id"]
+        let id = rows
+            .iter()
+            .find(|v| {
+                v["at"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains(&format!("->{name}("))
+            })
+            .unwrap()["at"]
             .as_str()
             .unwrap();
-        let output = run(&["get-method", id], &path);
+        let output = run(&["get-method", "--at", id], &path);
         success(&output);
         assert!(
             String::from_utf8_lossy(&output.stdout).contains(expected),
@@ -309,18 +317,18 @@ fn jvm_native_methods_recover_control_flow_values_calls_and_exceptions() {
 fn jvm_stored_and_deflated_jars_preserve_class_content_ids_and_original_bytecode() {
     let class = input("fixture/FlowFixture.class");
     let id = method(&class, "add");
-    let java = run(&["get-method", &id], &class);
+    let java = run(&["get-method", "--at", &id], &class);
     success(&java);
     assert_eq!(
         java.stdout,
         b"public static int add(int left, int right)\n{\n    return (left + right);\n}\n"
     );
-    let raw = run(&["get-method", &id, "--bytecode"], &class);
+    let raw = run(&["get-method", "--at", &id, "--bytecode"], &class);
     success(&raw);
     let record: Value = serde_json::from_slice(&raw.stdout).unwrap();
     assert_record(&record);
     assert_eq!(record["record"], "bytecode");
-    assert_eq!(record["id"], id);
+    assert_eq!(record["at"], id);
     assert_eq!(record["detail"]["representation"], "bytecode");
     assert_eq!(record["detail"]["complete"], true);
     assert_eq!(record["detail"]["max_stack"], 2);
@@ -360,14 +368,17 @@ fn jvm_stored_and_deflated_jars_preserve_class_content_ids_and_original_bytecode
     for name in ["flow-stored.jar", "flow-deflated.jar"] {
         let path = input(name);
         assert_eq!(method(&path, "add"), id);
-        let output = run(&["get-method", &id], &path);
+        let output = run(&["get-method", "--at", &id], &path);
         success(&output);
-        assert_eq!(output.stdout, run(&["get-method", &id], &class).stdout);
-        let raw = run(&["get-method", &id, "--bytecode"], &path);
+        assert_eq!(
+            output.stdout,
+            run(&["get-method", "--at", &id], &class).stdout
+        );
+        let raw = run(&["get-method", "--at", &id, "--bytecode"], &path);
         success(&raw);
         let jar: Value = serde_json::from_slice(&raw.stdout).unwrap();
         assert_record(&jar);
-        assert_eq!(jar["detail"]["entry"], "fixture/FlowFixture.class");
+        assert!(jar["detail"]["entry"].is_null());
         assert_eq!(
             jar["detail"]["instructions"],
             record["detail"]["instructions"]
@@ -380,7 +391,10 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
     let path = input("fixture/FlowFixture.class");
     let id = method(&path, "add");
     failure(
-        run(&["get-method", &id], &input("fixture/ModernFixture.class")),
+        run(
+            &["get-method", "--at", &id],
+            &input("fixture/ModernFixture.class"),
+        ),
         2,
         "INVALID_QUERY",
     );
@@ -390,6 +404,7 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
     let output = run(
         &[
             "get-method",
+            "--at",
             &id,
             "-o",
             destination.to_str().unwrap(),
@@ -401,14 +416,20 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
     failure(output, 1, "RESOURCE_LIMIT");
     assert_eq!(fs::read(&destination).unwrap(), b"existing");
     let output = run(
-        &["get-method", &id, "-o", destination.to_str().unwrap()],
+        &[
+            "get-method",
+            "--at",
+            &id,
+            "-o",
+            destination.to_str().unwrap(),
+        ],
         &path,
     );
     success(&output);
     assert!(output.stdout.is_empty());
     assert_eq!(
         fs::read(&destination).unwrap(),
-        run(&["get-method", &id], &path).stdout
+        run(&["get-method", "--at", &id], &path).stdout
     );
 }
 
@@ -417,7 +438,7 @@ fn jvm_modern_dynamic_bytecode_remains_extractable_without_guessed_java() {
     let path = input("fixture/ModernFixture.class");
     for name in ["concat", "lambda"] {
         let id = method(&path, name);
-        let raw = run(&["get-method", &id, "--bytecode"], &path);
+        let raw = run(&["get-method", "--at", &id, "--bytecode"], &path);
         success(&raw);
         let record: Value = serde_json::from_slice(&raw.stdout).unwrap();
         assert!(
@@ -427,13 +448,17 @@ fn jvm_modern_dynamic_bytecode_remains_extractable_without_guessed_java() {
                 .iter()
                 .any(|i| i["mnemonic"] == "invokedynamic")
         );
-        failure(run(&["get-method", &id], &path), 1, "UNSUPPORTED_BYTECODE");
+        failure(
+            run(&["get-method", "--at", &id], &path),
+            1,
+            "UNSUPPORTED_BYTECODE",
+        );
     }
     let path = input("fixture/InterfaceSuperFixture.class");
     let id = method(&path, "call");
-    success(&run(&["get-method", &id, "--bytecode"], &path));
+    success(&run(&["get-method", "--at", &id, "--bytecode"], &path));
     failure(
-        run(&["get-method", &id], &path),
+        run(&["get-method", "--at", &id], &path),
         1,
         "qualified interface-super",
     );
@@ -468,7 +493,7 @@ fn jvm_decoded_metadata_is_bounded_even_when_names_share_a_constant() {
     assert!(bytes.len() < 2000);
     let (_dir, path) = fixture(bytes, "amplified.class");
     failure(
-        run(&["outline", "--max-class-bytes", "2000"], &path),
+        run(&["classes", "--max-class-bytes", "2000"], &path),
         1,
         "metadata budget",
     );
@@ -478,18 +503,18 @@ fn jvm_decoded_metadata_is_bounded_even_when_names_share_a_constant() {
 fn jvm_corrupt_branches_stack_underflow_and_budgets_fail_without_partial_output() {
     let path = input("fixture/FlowFixture.class");
     failure(
-        run(&["outline", "--max-input-bytes", "10"], &path),
+        run(&["classes", "--max-input-bytes", "10"], &path),
         1,
         "RESOURCE_LIMIT",
     );
     failure(
-        run(&["outline", "--max-output-bytes", "10"], &path),
+        run(&["classes", "--max-output-bytes", "10"], &path),
         1,
         "RESOURCE_LIMIT",
     );
     failure(
         run(
-            &["outline", "--max-class-bytes", "10"],
+            &["classes", "--max-class-bytes", "10"],
             &input("flow-deflated.jar"),
         ),
         1,
@@ -508,10 +533,10 @@ fn jvm_corrupt_branches_stack_underflow_and_budgets_fail_without_partial_output(
         bytes[at..at + 4].copy_from_slice(&replacement);
         let (_dir, changed) = fixture(bytes, "changed.class");
         let id = method(&changed, "add");
-        failure(run(&["get-method", &id], &changed), 1, diagnostic);
+        failure(run(&["get-method", "--at", &id], &changed), 1, diagnostic);
     }
     let (_dir, truncated) = fixture(&original[..original.len() - 1], "truncated.class");
-    failure(run(&["outline"], &truncated), 1, "INVALID_INPUT");
+    failure(run(&["classes"], &truncated), 1, "INVALID_INPUT");
     let mut padded = original.clone();
     let switch = padded
         .windows(4)
@@ -521,7 +546,7 @@ fn jvm_corrupt_branches_stack_underflow_and_budgets_fail_without_partial_output(
     padded[switch + 3] = 0x7f;
     let (_dir, changed) = fixture(padded, "padding.class");
     let id = method(&changed, "choose");
-    let result = run(&["get-method", &id], &changed);
+    let result = run(&["get-method", "--at", &id], &changed);
     success(&result);
     assert!(String::from_utf8_lossy(&result.stdout).contains("case 100:"));
     let mut archive = fs::read(input("flow-stored.jar")).unwrap();
@@ -531,7 +556,7 @@ fn jvm_corrupt_branches_stack_underflow_and_budgets_fail_without_partial_output(
         .unwrap();
     archive[trailer + 16..trailer + 20].copy_from_slice(&u32::MAX.to_le_bytes());
     let (_dir, zip64) = fixture(archive, "zip64.jar");
-    failure(run(&["outline"], &zip64), 1, "UNSUPPORTED_INPUT");
+    failure(run(&["classes"], &zip64), 1, "UNSUPPORTED_INPUT");
 }
 
 #[test]
@@ -541,40 +566,57 @@ fn jvm_pinned_production_gson_queries_do_not_require_java_or_d8() {
     assert_eq!(rows.len(), 1210);
     let filtered = jvm_jsonl(&run(
         &[
-            "outline",
+            "methods",
             "--class",
             "com.google.gson.GsonBuilder",
-            "--method",
+            "--filter",
             "serializeNulls",
         ],
         &path,
     ));
-    assert_eq!(filtered.len(), 4);
-    assert_eq!(filtered[2]["detail"]["name"], "serializeNulls");
+    let listed: Vec<&Value> = filtered
+        .iter()
+        .filter(|v| v["record"] == "method")
+        .collect();
+    assert!(!listed.is_empty());
+    assert!(
+        listed[0]["at"]
+            .as_str()
+            .unwrap()
+            .contains("->serializeNulls(")
+    );
     let descriptor_filter = jvm_jsonl(&run(
         &[
-            "outline",
+            "methods",
             "--class",
             "Lcom/google/gson/GsonBuilder;",
-            "--method",
+            "--filter",
             "serializeNulls",
         ],
         &path,
     ));
-    assert_eq!(filtered[2], descriptor_filter[2]);
+    let descriptor_listed: Vec<&Value> = descriptor_filter
+        .iter()
+        .filter(|v| v["record"] == "method")
+        .collect();
+    assert_eq!(listed.len(), descriptor_listed.len());
+    assert_eq!(listed[0]["at"], descriptor_listed[0]["at"]);
     let id = rows
         .iter()
         .find(|v| {
-            v["detail"]["class"] == "com/google/gson/GsonBuilder"
-                && v["detail"]["name"] == "serializeNulls"
+            v["at"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Lcom/google/gson/GsonBuilder;->serializeNulls(")
         })
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .env("PATH", "")
         .args(["jar", "get-method"])
         .arg(&path)
+        .arg("--at")
         .arg(id)
         .output()
         .unwrap();
@@ -654,15 +696,10 @@ fn jvm_strings_lists_class_constant_literals_with_navigation_identity() {
         .find(|v| v["detail"]["value"] == "前端\u{0}😀")
         .expect("unicode literal present");
     assert_eq!(unicode["detail"]["class"], "fixture/FlowFixture");
-    assert_eq!(unicode["detail"]["entry"], "fixture/FlowFixture.class");
+
     assert!(unicode["detail"]["utf16"].is_null());
-    assert_eq!(
-        unicode["source_id"],
-        format!(
-            "{:x}",
-            Sha256::digest(fs::read(input("fixture/FlowFixture.class")).unwrap())
-        )
-    );
+    // Content identity is carried once by the stream header.
+    assert!(unicode["source_id"].is_null());
     assert!(unicode["detail"]["index"].as_u64().is_some());
     // Only string literals, never method/field names, class names or descriptors.
     assert!(
@@ -701,9 +738,13 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0]["detail"]["class"], "fixture/FlowFixture");
     assert_eq!(refs[0]["detail"]["method"], "text");
-    assert_eq!(refs[0]["context_id"], method(&path, "text"));
+    assert_eq!(refs[0]["context_at"], method(&path, "text"));
     success(&run(
-        &["get-method", refs[0]["context_id"].as_str().unwrap()],
+        &[
+            "get-method",
+            "--at",
+            refs[0]["context_at"].as_str().unwrap(),
+        ],
         &path,
     ));
     assert_eq!(refs[0]["detail"]["mnemonic"], "ldc");

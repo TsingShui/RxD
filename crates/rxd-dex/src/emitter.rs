@@ -48,7 +48,8 @@ pub fn render_method(
             .decompile_method(descriptor, name, prototype)
             .with_context(|| format!("could not decompile {descriptor}->{name}{prototype}"))
     })?;
-    // Keep the coordinate above the method: it is the identity `--at` takes, and a
-    // rendered method alone no longer shows which prototype it belonged to.
-    Ok(rendered.map(|output| format!("// {descriptor}->{name}{prototype}\n{}", output.source)))
+    // The signature already names the method and its prototype in Java spelling, so the
+    // DEX coordinate above it would be a second, derivable copy (and the class-member
+    // layout leaves the separator's blank line in front of a standalone rendering).
+    Ok(rendered.map(|output| output.source.trim_start_matches('\n').to_owned()))
 }

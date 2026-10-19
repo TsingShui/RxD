@@ -463,10 +463,10 @@ fn assert_js_keys(value: &Value, fields: &[&str]) {
 fn assert_js_record(row: &Value) {
     let mut outer = vec![
         "record",
-        "id",
+        "at",
         "source_id",
-        "parent_id",
-        "context_id",
+        "parent_at",
+        "context_at",
         "start",
         "end",
         "detail",
@@ -532,15 +532,15 @@ fn assert_js_record(row: &Value) {
         row["record"].as_str().unwrap(),
         "match" | "reference" | "unresolved_reference"
     ) {
-        assert!(row["id"].is_null());
-        assert!(row["parent_id"].is_string());
+        assert!(row["at"].is_null());
+        assert!(row["parent_at"].is_string());
     }
     if matches!(
         row["record"].as_str().unwrap(),
         "entity" | "symbol" | "binding" | "fragment"
     ) {
-        assert!(row["id"].is_string());
-        assert!(row["context_id"].is_null());
+        assert!(row["at"].is_string());
+        assert!(row["context_at"].is_null());
     }
     for field in ["entity", "symbol", "fragment"] {
         if row["detail"][field].is_object() {
@@ -674,7 +674,7 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
             syntax.map(|_| name == "g.d.ts")
         );
         let root = rows[0]["detail"]["root_id"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--id", root]);
+        let raw = invoke("get", &path, &["--at", root]);
         success(&raw);
         assert_eq!(raw.stdout, source.as_bytes());
     }
@@ -756,13 +756,13 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[1]["detail"]["literal_kind"], kind);
         assert_eq!(rows[1]["detail"]["value"], value);
-        let id = rows[1]["context_id"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--id", id]);
+        let id = rows[1]["context_at"].as_str().unwrap();
+        let raw = invoke("get", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, original.as_bytes());
         let located = invoke("locate", &path, &["--byte", &rows[1]["start"].to_string()]);
         success(&located);
-        assert_eq!(js_object(&located.stdout)["context_id"], id);
+        assert_eq!(js_object(&located.stdout)["context_at"], id);
     }
     let declaration = source.find("Widget=()").unwrap();
     let rows = jsonl(&invoke(
@@ -796,10 +796,10 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
     let id = symbols
         .iter()
         .find(|r| r["detail"]["name"] == "view")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
-    let raw = invoke("get", &path, &["--id", id]);
+    let raw = invoke("get", &path, &["--at", id]);
     success(&raw);
     assert_eq!(
         raw.stdout,
@@ -831,7 +831,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
             "Model={kind:'model'}",
         ])
     {
-        let raw = invoke("get", &path, &["--id", id.as_str().unwrap()]);
+        let raw = invoke("get", &path, &["--at", id.as_str().unwrap()]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
     }
@@ -867,7 +867,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
             .find(|r| r["record"] == "symbol" && r["detail"]["name"] == name)
             .unwrap();
         assert_eq!(symbol["detail"]["space"], space);
-        let raw = invoke("get", &path, &["--id", symbol["id"].as_str().unwrap()]);
+        let raw = invoke("get", &path, &["--at", symbol["at"].as_str().unwrap()]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
     }
@@ -883,7 +883,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
     let scoped = jsonl(&invoke(
         "symbols",
         &path,
-        &["--within", namespace["id"].as_str().unwrap()],
+        &["--within", namespace["at"].as_str().unwrap()],
     ));
     assert_eq!(
         scoped
@@ -896,7 +896,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         invoke(
             "get",
             &path,
-            &["--id", model["id"].as_str().unwrap(), "--max-records", "1"],
+            &["--at", model["at"].as_str().unwrap(), "--max-records", "1"],
         ),
         1,
         "RESOURCE_LIMIT",
@@ -957,13 +957,13 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
         2
     );
     for id in send["detail"]["declaration_ids"].as_array().unwrap() {
-        success(&invoke("get", &path, &["--id", id.as_str().unwrap()]));
+        success(&invoke("get", &path, &["--at", id.as_str().unwrap()]));
     }
     for symbol in symbols.iter().filter(|r| r["record"] == "symbol") {
         let output = invoke(
             "get",
             &path,
-            &["--id", symbol["id"].as_str().unwrap(), "--json"],
+            &["--at", symbol["at"].as_str().unwrap(), "--json"],
         );
         success(&output);
         let output: Value = js_object(&output.stdout);
@@ -981,7 +981,7 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     let output = invoke(
         "get",
         &path,
-        &["--id", found[1]["context_id"].as_str().unwrap()],
+        &["--at", found[1]["context_at"].as_str().unwrap()],
     );
     success(&output);
     assert_eq!(output.stdout, b"endpoint: '/api/login';");
@@ -1002,9 +1002,9 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
         "RESOURCE_LIMIT",
     );
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    let id = send["id"].as_str().unwrap().to_owned();
+    let id = send["at"].as_str().unwrap().to_owned();
     fs::write(&path, format!("{source}\n// changed")).unwrap();
-    failure(invoke("get", &path, &["--id", &id]), 1, "SOURCE_MISMATCH");
+    failure(invoke("get", &path, &["--at", &id]), 1, "SOURCE_MISMATCH");
     let (_tmp, path) = fixture("type Route=`/api/${'login'|'logout'}`;", "template.ts");
     let rows = jsonl(&invoke("find", &path, &["--string", "/api/"]));
     assert_eq!(rows[1]["detail"]["literal_kind"], "type_template");
@@ -1043,7 +1043,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
         );
         let by_id: std::collections::HashMap<_, _> = entities
             .iter()
-            .map(|e| (e["id"].as_str().unwrap(), e))
+            .map(|e| (e["at"].as_str().unwrap(), e))
             .collect();
         let rows: Vec<_> = entities
             .iter()
@@ -1052,7 +1052,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
                     e["detail"]["kind"],
                     e["start"],
                     e["end"],
-                    e["parent_id"]
+                    e["parent_at"]
                         .as_str()
                         .map(|id| entity_reference(by_id[id])),
                     e["detail"]["depth"],
@@ -1077,7 +1077,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
                         == serde_json::json!([entity["kind"], entity["start"], entity["end"]])
                 })
                 .unwrap();
-            let raw = invoke("get", &path, &["--id", record["id"].as_str().unwrap()]);
+            let raw = invoke("get", &path, &["--at", record["at"].as_str().unwrap()]);
             success(&raw);
             assert_eq!(
                 raw.stdout,
@@ -1090,7 +1090,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             &path,
             &["--string", case["needle"].as_str().unwrap()],
         ));
-        let actual:Vec<_>=found[1..found.len()-1].iter().map(|m|serde_json::json!({"literal_kind":m["detail"]["literal_kind"],"value":m["detail"]["value"],"start":m["start"],"end":m["end"],"dynamic":m["detail"]["dynamic"],"entity":entity_reference(by_id[m["parent_id"].as_str().unwrap()])})).collect();
+        let actual:Vec<_>=found[1..found.len()-1].iter().map(|m|serde_json::json!({"literal_kind":m["detail"]["literal_kind"],"value":m["detail"]["value"],"start":m["start"],"end":m["end"],"dynamic":m["detail"]["dynamic"],"entity":entity_reference(by_id[m["parent_at"].as_str().unwrap()])})).collect();
         assert_eq!(
             serde_json::json!(actual),
             case["expected"]["matches"],
@@ -1109,11 +1109,11 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             .zip(contexts["matches"].as_array().unwrap())
         {
             if expected["context"].is_null() {
-                assert!(row["context_id"].is_null());
+                assert!(row["context_at"].is_null());
             } else {
                 let c = &expected["context"];
                 assert_eq!(
-                    row["context_id"],
+                    row["context_at"],
                     format!(
                         "rxd1:js:{}:fragment.{}:{}:{}",
                         case["sha256"].as_str().unwrap(),
@@ -1128,9 +1128,9 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             }
             let output = invoke("locate", &path, &["--byte", &row["start"].to_string()]);
             success(&output);
-            assert_eq!(js_object(&output.stdout)["context_id"], row["context_id"]);
+            assert_eq!(js_object(&output.stdout)["context_at"], row["context_at"]);
             if expected["context"].is_null() {
-                assert!(row["context_id"].is_null());
+                assert!(row["context_at"].is_null());
                 continue;
             }
             let context = &expected["context"];
@@ -1141,8 +1141,8 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
                 context["start"],
                 context["end"]
             );
-            assert_eq!(row["context_id"], expected_id);
-            let raw = invoke("get", &path, &["--id", &expected_id]);
+            assert_eq!(row["context_at"], expected_id);
+            let raw = invoke("get", &path, &["--at", &expected_id]);
             success(&raw);
             assert_eq!(
                 raw.stdout,
@@ -1196,22 +1196,22 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
     ] {
         let rows = jsonl(&invoke("find", &path, &["--string", needle]));
         let found = &rows[1];
-        let id = found["context_id"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--id", id]);
+        let id = found["context_at"].as_str().unwrap();
+        let raw = invoke("get", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
         let located = invoke("locate", &path, &["--byte", &found["start"].to_string()]);
         success(&located);
         let located: Value = js_object(&located.stdout);
-        assert_eq!(located["context_id"], id);
+        assert_eq!(located["context_at"], id);
         let full = invoke(
             "get",
             &path,
-            &["--id", found["parent_id"].as_str().unwrap()],
+            &["--at", found["parent_at"].as_str().unwrap()],
         );
         success(&full);
         assert!(full.stdout.len() > expected.len() * 1000);
-        let output = invoke("get", &path, &["--id", id, "--json"]);
+        let output = invoke("get", &path, &["--at", id, "--json"]);
         success(&output);
         let output: Value = js_object(&output.stdout);
         assert_eq!(output["detail"]["complete"], true);
@@ -1220,7 +1220,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         assert_eq!(output["detail"]["fragment"]["detail"]["kind"], kind);
         assert_eq!(
             output["detail"]["fragment"]["detail"]["entity_id"],
-            found["parent_id"]
+            found["parent_at"]
         );
         let a = output["detail"]["fragment"]["start"].as_u64().unwrap() as usize;
         let b = output["detail"]["fragment"]["end"].as_u64().unwrap() as usize;
@@ -1230,8 +1230,8 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
                 "get",
                 &path,
                 &[
-                    "--id",
-                    output["detail"]["fragment"]["parent_id"].as_str().unwrap(),
+                    "--at",
+                    output["detail"]["fragment"]["parent_at"].as_str().unwrap(),
                     "--json",
                 ],
             );
@@ -1245,8 +1245,8 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
                 "get",
                 &path,
                 &[
-                    "--id",
-                    parent["detail"]["fragment"]["parent_id"].as_str().unwrap(),
+                    "--at",
+                    parent["detail"]["fragment"]["parent_at"].as_str().unwrap(),
                 ],
             );
             success(&declaration);
@@ -1273,11 +1273,11 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
             .iter()
             .find(|row| row["record"] == "reference" && row["detail"][flag] == true)
             .unwrap();
-        let id = reference["context_id"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--id", id]);
+        let id = reference["context_at"].as_str().unwrap();
+        let raw = invoke("get", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
-        let output = invoke("get", &path, &["--id", id, "--json"]);
+        let output = invoke("get", &path, &["--at", id, "--json"]);
         success(&output);
         let output: Value = js_object(&output.stdout);
         assert_eq!(output["detail"]["fragment"]["detail"]["kind"], kind);
@@ -1287,7 +1287,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
             &["--byte", &reference["start"].to_string()],
         );
         success(&located);
-        assert_eq!(js_object(&located.stdout)["context_id"], id);
+        assert_eq!(js_object(&located.stdout)["context_at"], id);
     }
 }
 
@@ -1346,19 +1346,19 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
         let rows = jsonl(&invoke("find", &path, &["--string", needle]));
         let found = &rows[1];
         assert_eq!(
-            found["context_id"].is_null(),
+            found["context_at"].is_null(),
             expected.is_none(),
             "{source}"
         );
         let output = invoke("locate", &path, &["--byte", &found["start"].to_string()]);
         success(&output);
         let located: Value = js_object(&output.stdout);
-        assert_eq!(located["context_id"], found["context_id"], "{source}");
+        assert_eq!(located["context_at"], found["context_at"], "{source}");
         if let Some(expected) = expected {
             let raw = invoke(
                 "get",
                 &path,
-                &["--id", found["context_id"].as_str().unwrap()],
+                &["--at", found["context_at"].as_str().unwrap()],
             );
             success(&raw);
             assert_eq!(raw.stdout, expected.as_bytes());
@@ -1367,9 +1367,9 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
     let source = "const f=()=>f();";
     let (_dir, path) = fixture(source, "arrow.js");
     let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
-    assert!(rows[1]["context_id"].is_null());
+    assert!(rows[1]["context_at"].is_null());
     assert!(
-        rows[0]["detail"]["selected"]["context_id"]
+        rows[0]["detail"]["selected"]["context_at"]
             .as_str()
             .unwrap()
             .contains(":fragment.variable_declarator:")
@@ -1382,8 +1382,8 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
         "get",
         &path,
         &[
-            "--id",
-            rows[0]["detail"]["selected"]["context_id"]
+            "--at",
+            rows[0]["detail"]["selected"]["context_at"]
                 .as_str()
                 .unwrap(),
         ],
@@ -1397,13 +1397,13 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let source = "const obj={endpoint:'/api/check'}; function later(){}";
     let (dir, path) = fixture(source, "check.js");
     let found = jsonl(&invoke("find", &path, &["--string", "/api/check"]));
-    let id = found[1]["context_id"].as_str().unwrap();
+    let id = found[1]["context_at"].as_str().unwrap();
     let fingerprint = found[0]["source_id"].as_str().unwrap();
     let destination = dir.path().join("context.js");
     let written = invoke(
         "get",
         &path,
-        &["--id", id, "-o", destination.to_str().unwrap()],
+        &["--at", id, "-o", destination.to_str().unwrap()],
     );
     success(&written);
     assert!(written.stdout.is_empty());
@@ -1420,7 +1420,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
                 "get",
                 &path,
                 &[
-                    "--id",
+                    "--at",
                     id,
                     budget[0],
                     budget[1],
@@ -1441,7 +1441,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         format!("rxd1:js:{fingerprint}:fragment.object_property:011:32"),
         format!("rxd1:js:{fingerprint}:fragment.object_property:32:11"),
     ] {
-        failure(invoke("get", &path, &["--id", &forged]), 1, "INVALID_ID");
+        failure(invoke("get", &path, &["--at", &forged]), 1, "INVALID_ID");
     }
     for command in ["outline", "symbols"] {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
@@ -1449,7 +1449,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     for (command, args) in [
         ("find", vec!["--string", "/api/check"]),
         ("locate", vec!["--byte", "21"]),
-        ("get", vec!["--id", id, "--max-semantic-nodes", "1"]),
+        ("get", vec!["--at", id, "--max-semantic-nodes", "1"]),
     ] {
         let plain = invoke(command, &path, &args);
         success(&plain);
@@ -1467,11 +1467,11 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let copy = path.with_file_name("copy.js");
     fs::copy(&path, &copy).unwrap();
     assert_eq!(
-        invoke("get", &copy, &["--id", id]).stdout,
+        invoke("get", &copy, &["--at", id]).stdout,
         b"endpoint:'/api/check'"
     );
     fs::write(&path, "const obj={changed:true};").unwrap();
-    failure(invoke("get", &path, &["--id", id]), 1, "SOURCE_MISMATCH");
+    failure(invoke("get", &path, &["--at", id]), 1, "SOURCE_MISMATCH");
     let path = dir.path().join("late.js");
     fs::write(&path, "const =;").unwrap();
     failure(
@@ -1554,9 +1554,9 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
             let located = invoke("locate", &path, &["--byte", &row["start"].to_string()]);
             success(&located);
             let located: Value = js_object(&located.stdout);
-            assert_eq!(located["context_id"], row["context_id"]);
+            assert_eq!(located["context_at"], row["context_at"]);
             if expected["context"].is_null() {
-                assert!(row["context_id"].is_null());
+                assert!(row["context_at"].is_null());
                 continue;
             }
             let context = &expected["context"];
@@ -1567,25 +1567,25 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
                 context["start"],
                 context["end"]
             );
-            assert_eq!(row["context_id"], id);
-            let raw = invoke("get", &path, &["--id", &id]);
+            assert_eq!(row["context_at"], id);
+            let raw = invoke("get", &path, &["--at", &id]);
             success(&raw);
             let a = context["start"].as_u64().unwrap() as usize;
             let b = context["end"].as_u64().unwrap() as usize;
             assert_eq!(raw.stdout, bytes[a..b]);
-            let output = invoke("get", &path, &["--id", &id, "--json"]);
+            let output = invoke("get", &path, &["--at", &id, "--json"]);
             success(&output);
             let output: Value = js_object(&output.stdout);
             assert_eq!(
                 output["detail"]["fragment"]["detail"]["entity_id"],
-                *row.get("parent_id").unwrap_or(&row["entity_id"])
+                *row.get("parent_at").unwrap_or(&row["entity_id"])
             );
             assert_eq!(
                 output["detail"]["source"].as_str().unwrap().as_bytes(),
                 &bytes[a..b]
             );
             if context["parent"].is_null() {
-                assert!(output["detail"]["fragment"]["parent_id"].is_null());
+                assert!(output["detail"]["fragment"]["parent_at"].is_null());
             } else {
                 let parent = &context["parent"];
                 let id = format!(
@@ -1595,8 +1595,8 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
                     parent["start"],
                     parent["end"]
                 );
-                assert_eq!(output["detail"]["fragment"]["parent_id"], id);
-                let raw = invoke("get", &path, &["--id", &id]);
+                assert_eq!(output["detail"]["fragment"]["parent_at"], id);
+                let raw = invoke("get", &path, &["--at", &id]);
                 success(&raw);
                 assert_eq!(
                     raw.stdout,
@@ -1653,17 +1653,17 @@ fn get_symbol_extracts_declarators_without_siblings_or_large_enclosing_functions
             .iter()
             .find(|r| r["record"] == "symbol" && r["start"] == start)
             .unwrap();
-        let id = symbol["id"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--id", id]);
+        let id = symbol["at"].as_str().unwrap();
+        let raw = invoke("get", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
-        let output = invoke("get", &path, &["--id", id, "--json"]);
+        let output = invoke("get", &path, &["--at", id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(extracted["detail"]["complete"], true);
         assert_eq!(extracted["detail"]["representation"], "original");
         assert!(extracted["detail"]["entity"].is_null());
-        assert_eq!(extracted["detail"]["symbol"]["id"], id);
+        assert_eq!(extracted["detail"]["symbol"]["at"], id);
         assert_eq!(extracted["detail"]["symbol"]["detail"]["name"], name);
         for field in ["start", "end", "entity_id"] {
             assert_eq!(extracted["detail"]["symbol"][field], symbol[field]);
@@ -1684,7 +1684,7 @@ fn get_symbol_extracts_declarators_without_siblings_or_large_enclosing_functions
         let containing = invoke(
             "get",
             &path,
-            &["--id", symbol["parent_id"].as_str().unwrap()],
+            &["--at", symbol["parent_at"].as_str().unwrap()],
         );
         success(&containing);
         assert!(containing.stdout.len() > raw.stdout.len());
@@ -1815,13 +1815,13 @@ fn get_symbol_preserves_complete_patterns_parameters_imports_and_canonical_decla
         let id = rows
             .iter()
             .find(|r| r["record"] == "symbol" && r["detail"]["name"] == name)
-            .unwrap()["id"]
+            .unwrap()["at"]
             .as_str()
             .unwrap();
-        let raw = invoke("get", &path, &["--id", id]);
+        let raw = invoke("get", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes(), "{source}");
-        let output = invoke("get", &path, &["--id", id, "--json"]);
+        let output = invoke("get", &path, &["--at", id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(extracted["detail"]["declaration"]["kind"], kind);
@@ -1873,9 +1873,9 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
             case["identifier"]["end"]
         );
         let symbols = jsonl(&invoke("symbols", &path, &[]));
-        let symbol = symbols.iter().find(|r| r["id"] == id).unwrap();
+        let symbol = symbols.iter().find(|r| r["at"] == id).unwrap();
         assert_eq!(symbol["detail"]["name"], case["binding_name"]);
-        let output = invoke("get", &path, &["--id", &id, "--json"]);
+        let output = invoke("get", &path, &["--at", &id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(
@@ -1892,12 +1892,12 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
             case["identifier"]["end"]
         );
         assert_eq!(
-            extracted["detail"]["symbol"]["parent_id"],
-            symbol["parent_id"]
+            extracted["detail"]["symbol"]["parent_at"],
+            symbol["parent_at"]
         );
         let a = case["declaration"]["start"].as_u64().unwrap() as usize;
         let b = case["declaration"]["end"].as_u64().unwrap() as usize;
-        let raw = invoke("get", &path, &["--id", &id]);
+        let raw = invoke("get", &path, &["--at", &id]);
         success(&raw);
         assert_eq!(raw.stdout, source[a..b]);
         assert_eq!(
@@ -1907,7 +1907,7 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
         let containing = invoke(
             "get",
             &path,
-            &["--id", symbol["parent_id"].as_str().unwrap()],
+            &["--at", symbol["parent_at"].as_str().unwrap()],
         );
         success(&containing);
         assert!(containing.stdout.len() > raw.stdout.len());
@@ -1921,14 +1921,14 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let (dir, path) = fixture(source, "binding.js");
     let rows = jsonl(&invoke("symbols", &path, &[]));
     let symbol = &rows[1];
-    let id = symbol["id"].as_str().unwrap();
+    let id = symbol["at"].as_str().unwrap();
     let fingerprint = rows[0]["source_id"].as_str().unwrap();
     let expected = b"config={url:'/api/login'}";
     let destination = dir.path().join("definition.js");
     let written = invoke(
         "get",
         &path,
-        &["--id", id, "-o", destination.to_str().unwrap()],
+        &["--at", id, "-o", destination.to_str().unwrap()],
     );
     success(&written);
     assert!(written.stdout.is_empty());
@@ -1946,7 +1946,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
                 "get",
                 &path,
                 &[
-                    "--id",
+                    "--at",
                     id,
                     budget[0],
                     budget[1],
@@ -1973,7 +1973,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
             invoke(
                 "get",
                 &path,
-                &["--id", &format!("rxd1:js:{fingerprint}:symbol:{a}:{b}")],
+                &["--at", &format!("rxd1:js:{fingerprint}:symbol:{a}:{b}")],
             ),
             1,
             "INVALID_ID",
@@ -1986,12 +1986,12 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         format!("rxd1:js:{fingerprint}:symbol:06:12"),
         format!("rxd1:js:{fingerprint}:symbol:12:6"),
     ] {
-        failure(invoke("get", &path, &["--id", &forged]), 1, "INVALID_ID");
+        failure(invoke("get", &path, &["--at", &forged]), 1, "INVALID_ID");
     }
     for command in ["outline", "symbols"] {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
     }
-    let profile = invoke("get", &path, &["--id", id, "--perf"]);
+    let profile = invoke("get", &path, &["--at", id, "--perf"]);
     success(&profile);
     assert_eq!(profile.stdout, expected);
     let reports = perf_reports(&profile);
@@ -2002,13 +2002,13 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     success(&invoke(
         "get",
         &path,
-        &["--id", id, "--max-semantic-nodes", &nodes.to_string()],
+        &["--at", id, "--max-semantic-nodes", &nodes.to_string()],
     ));
     failure(
         invoke(
             "get",
             &path,
-            &["--id", id, "--max-semantic-nodes", &(nodes - 1).to_string()],
+            &["--at", id, "--max-semantic-nodes", &(nodes - 1).to_string()],
         ),
         1,
         "RESOURCE_LIMIT",
@@ -2017,8 +2017,8 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         "get",
         &path,
         &[
-            "--id",
-            symbol["parent_id"].as_str().unwrap(),
+            "--at",
+            symbol["parent_at"].as_str().unwrap(),
             "--max-semantic-nodes",
             "1",
             "--perf",
@@ -2033,9 +2033,9 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     );
     let copied = path.with_file_name("copy.js");
     fs::copy(&path, &copied).unwrap();
-    assert_eq!(invoke("get", &copied, &["--id", id]).stdout, expected);
+    assert_eq!(invoke("get", &copied, &["--at", id]).stdout, expected);
     fs::write(&path, "const config={changed:true};").unwrap();
-    failure(invoke("get", &path, &["--id", id]), 1, "SOURCE_MISMATCH");
+    failure(invoke("get", &path, &["--at", id]), 1, "SOURCE_MISMATCH");
     // Syntax extraction remains available in a dynamic file; it claims no runtime value.
     let dynamic = "let x=1; eval('x=2');";
     fs::write(&path, dynamic).unwrap();
@@ -2043,7 +2043,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let extracted = invoke(
         "get",
         &path,
-        &["--id", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
+        &["--at", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
     );
     success(&extracted);
     assert_eq!(extracted.stdout, b"x=1");
@@ -2053,7 +2053,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         invoke(
             "get",
             &path,
-            &["--id", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
+            &["--at", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
         ),
         1,
         "INVALID_INPUT",
@@ -2100,7 +2100,7 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
         assert_eq!(row["start"], start);
         assert_eq!(row["end"], start + raw.len());
         assert_eq!(
-            row["id"],
+            row["at"],
             format!(
                 "rxd1:js:{}:symbol:{}:{}",
                 rows[0]["source_id"].as_str().unwrap(),
@@ -2108,19 +2108,19 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
                 start + raw.len()
             )
         );
-        assert!(ids.insert(row["id"].clone().to_string()));
+        assert!(ids.insert(row["at"].clone().to_string()));
         let refs = jsonl(&invoke("xref", &path, &["--byte", &start.to_string()]));
         assert_eq!(refs[0]["detail"]["selected"]["name"], name);
         assert_eq!(refs[0]["detail"]["declaration"]["start"], row["start"]);
         assert_eq!(refs[0]["detail"]["declaration"]["end"], row["end"]);
         assert_eq!(
             refs[0]["detail"]["declaration"]["entity_id"],
-            row["parent_id"]
+            row["parent_at"]
         );
         let extracted = invoke(
             "get",
             &path,
-            &["--id", row["parent_id"].as_str().unwrap(), "--json"],
+            &["--at", row["parent_at"].as_str().unwrap(), "--json"],
         );
         success(&extracted);
         let extracted: Value = js_object(&extracted.stdout);
@@ -2146,7 +2146,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
     let id = entities
         .iter()
         .find(|row| row["detail"]["label"] == "inner")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
     let rows = jsonl(&invoke("symbols", &path, &["--within", id]));
@@ -2166,7 +2166,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
     assert_eq!(records[2]["detail"]["relation"], "declared");
     for row in &records[3..] {
         assert_eq!(row["record"], "unresolved_reference");
-        assert!(row["id"].is_null());
+        assert!(row["at"].is_null());
         assert!(row["detail"].get("relation").is_none());
         assert_eq!(
             row["end"].as_u64().unwrap() - row["start"].as_u64().unwrap(),
@@ -2181,7 +2181,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
     let repeated = jsonl(&invoke(
         "symbols",
         &path,
-        &["--within", second["id"].as_str().unwrap()],
+        &["--within", second["at"].as_str().unwrap()],
     ));
     assert_eq!(repeated.len(), 3);
     assert_eq!(repeated[1]["detail"]["relation"], "declared");
@@ -2192,7 +2192,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
         .iter()
         .find(|r| r["start"] == records[0]["start"])
         .unwrap();
-    assert_eq!(parameter["id"], records[0]["id"]);
+    assert_eq!(parameter["at"], records[0]["at"]);
     assert_eq!(parameter["detail"]["relation"], "declared");
     for (label, name, relation) in [
         ("recur", "recur", "external"),
@@ -2201,7 +2201,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
         let id = entities
             .iter()
             .find(|row| row["detail"]["label"] == label)
-            .unwrap()["id"]
+            .unwrap()["at"]
             .as_str()
             .unwrap();
         let rows = jsonl(&invoke("symbols", &path, &["--within", id]));
@@ -2256,7 +2256,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
     );
     for id in [
         "garbage".to_owned(),
-        rows[1]["id"].as_str().unwrap().to_owned(),
+        rows[1]["at"].as_str().unwrap().to_owned(),
         format!(
             "rxd1:js:{}:function_declaration:0:1",
             rows[0]["source_id"].as_str().unwrap()
@@ -2353,7 +2353,7 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
         assert_eq!(row["detail"]["read"], read);
         assert_eq!(row["detail"]["write"], write);
         assert_eq!(row["detail"]["member_write"], false);
-        assert_eq!(row["parent_id"], global[0]["detail"]["root_id"]);
+        assert_eq!(row["parent_at"], global[0]["detail"]["root_id"]);
     }
     let declaration = source.find("outer(count)").unwrap() + "outer(".len();
     let inner = jsonl(&invoke(
@@ -2383,7 +2383,7 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
     let extracted = invoke(
         "get",
         &path,
-        &["--id", inner[2]["parent_id"].as_str().unwrap()],
+        &["--at", inner[2]["parent_at"].as_str().unwrap()],
     );
     success(&extracted);
     assert_eq!(extracted.stdout, b"()=>count");
@@ -2473,7 +2473,7 @@ fn refs_handles_module_aliases_unicode_redeclarations_and_exact_entity_boundarie
             success(&located);
             let located: Value = js_object(&located.stdout);
             assert_eq!(
-                row["parent_id"], located["detail"]["entity"]["id"],
+                row["parent_at"], located["detail"]["entity"]["at"],
                 "{filename}"
             );
         }
@@ -2745,7 +2745,7 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
     let extracted = invoke(
         "get",
         &module,
-        &["--id", rows[1]["parent_id"].as_str().unwrap()],
+        &["--at", rows[1]["parent_at"].as_str().unwrap()],
     );
     success(&extracted);
     assert_eq!(
@@ -2801,7 +2801,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         "INVALID_INPUT",
     );
     failure(
-        invoke("get", dir.path(), &["--id", "dummy"]),
+        invoke("get", dir.path(), &["--at", "dummy"]),
         1,
         "INVALID_INPUT",
     );
@@ -2811,7 +2811,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         "unexpected argument",
     );
     failure(
-        invoke("get", dir.path(), &["-r", "--id", "dummy"]),
+        invoke("get", dir.path(), &["-r", "--at", "dummy"]),
         2,
         "unexpected argument",
     );
@@ -3002,9 +3002,9 @@ fn search_then_extract_and_locate_complete_function() {
         &["--string", "/api/login", "--jsonl"],
     ));
     assert_eq!(found.len(), 4);
-    assert_eq!(found[1]["parent_id"], found[0]["detail"]["root_id"]);
-    let id = found[2]["parent_id"].as_str().unwrap();
-    let original = invoke("get", &path, &["--id", id]);
+    assert_eq!(found[1]["parent_at"], found[0]["detail"]["root_id"]);
+    let id = found[2]["parent_at"].as_str().unwrap();
+    let original = invoke("get", &path, &["--at", id]);
     success(&original);
     assert_eq!(
         original.stdout,
@@ -3018,7 +3018,7 @@ fn search_then_extract_and_locate_complete_function() {
     );
     success(&located);
     let location: Value = js_object(&located.stdout);
-    assert_eq!(location["detail"]["entity"]["id"], id);
+    assert_eq!(location["detail"]["entity"]["at"], id);
     assert_eq!(
         location["detail"]["ancestors"][0]["detail"]["name"],
         "request"
@@ -3064,7 +3064,7 @@ fn outline_entities_have_exact_spans_and_no_duplicate_methods() {
         1
     );
     for entity in entities {
-        let get = invoke("get", &path, &["--id", entity["id"].as_str().unwrap()]);
+        let get = invoke("get", &path, &["--at", entity["at"].as_str().unwrap()]);
         success(&get);
         assert_eq!(
             get.stdout,
@@ -3099,12 +3099,12 @@ fn filtering_preserves_absolute_depth_and_parent_ids() {
     );
     let all = jsonl(&invoke("outline", &path, &[]));
     let outer = all.iter().find(|e| e["detail"]["name"] == "outer").unwrap();
-    let id = outer["id"].as_str().unwrap();
+    let id = outer["at"].as_str().unwrap();
     let filtered = jsonl(&invoke("outline", &path, &["--within", id, "--depth", "1"]));
     assert_eq!(filtered.len(), 3);
     assert_eq!(filtered[1]["detail"]["name"], "inner");
     assert_eq!(filtered[1]["detail"]["depth"], 2);
-    assert_eq!(filtered[1]["parent_id"], id);
+    assert_eq!(filtered[1]["parent_at"], id);
     assert_eq!(
         jsonl(&invoke("outline", &path, &["--within", id, "--depth", "0"])).len(),
         2
@@ -3123,7 +3123,7 @@ fn get_json_preserves_original_source_for_functions_arrows_classes_and_members()
         let output = invoke(
             "get",
             &path,
-            &["--id", entity["id"].as_str().unwrap(), "--json"],
+            &["--at", entity["at"].as_str().unwrap(), "--json"],
         );
         success(&output);
         let extracted: Value = js_object(&output.stdout);
@@ -3143,19 +3143,19 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     let source = "\u{feff}// 中文\r\nfunction 登录(){return \"你好😀\";}\r\n";
     let (_dir, path) = fixture(source, "bundle.js");
     let found = jsonl(&invoke("find", &path, &["--string", "你好😀"]));
-    let id = found[1]["parent_id"].as_str().unwrap();
-    let get = invoke("get", &path, &["--id", id]);
+    let id = found[1]["parent_at"].as_str().unwrap();
+    let get = invoke("get", &path, &["--at", id]);
     success(&get);
     assert_eq!(get.stdout, "function 登录(){return \"你好😀\";}".as_bytes());
     let position = source.find("你好").unwrap() + 1;
     let located = invoke("locate", &path, &["--byte", &position.to_string()]);
     success(&located);
-    assert_eq!(js_object(&located.stdout)["detail"]["entity"]["id"], id);
+    assert_eq!(js_object(&located.stdout)["detail"]["entity"]["at"], id);
     let records = jsonl(&invoke("outline", &path, &[]));
     assert_eq!(records[1]["start"], 0);
     assert_eq!(records[1]["end"], source.len());
     assert_eq!(
-        invoke("get", &path, &["--id", records[1]["id"].as_str().unwrap()]).stdout,
+        invoke("get", &path, &["--at", records[1]["at"].as_str().unwrap()]).stdout,
         source.as_bytes()
     );
 }
@@ -3185,13 +3185,13 @@ fn identifiers_find_lexical_occurrences_without_static_property_names() {
     assert!(!property.iter().any(|row| row["start"] == 49));
     // Each occurrence reports its enclosing local syntax fragment when one exists.
     assert!(
-        identifiers[2]["context_id"]
+        identifiers[2]["context_at"]
             .as_str()
             .is_some_and(|id| id.contains(":fragment."))
     );
     // --within restricts occurrences to one structure and its descendants.
     let outline = jsonl(&invoke("outline", &path, &["--name", "f"]));
-    let function_id = outline.iter().find(|r| r["detail"]["name"] == "f").unwrap()["id"]
+    let function_id = outline.iter().find(|r| r["detail"]["name"] == "f").unwrap()["at"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -3512,13 +3512,13 @@ fn computed_members_private_names_and_context_labels_are_explicit() {
 fn same_content_has_same_identity_and_changed_content_rejects_old_ids() {
     let (dir, path) = fixture("function a(){}", "one.js");
     let records = jsonl(&invoke("outline", &path, &[]));
-    let id = records[2]["id"].as_str().unwrap();
+    let id = records[2]["at"].as_str().unwrap();
     let other = dir.path().join("two.js");
     fs::copy(&path, &other).unwrap();
     let copied = jsonl(&invoke("outline", &other, &[]));
-    assert_eq!(records[2]["id"], copied[2]["id"]);
+    assert_eq!(records[2]["at"], copied[2]["at"]);
     fs::write(&path, "function b(){}").unwrap();
-    failure(invoke("get", &path, &["--id", id]), 1, "SOURCE_MISMATCH");
+    failure(invoke("get", &path, &["--at", id]), 1, "SOURCE_MISMATCH");
 }
 
 #[test]
@@ -3532,7 +3532,7 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
         format!("rxd2:js:{source_id}:program:0:14"),
         "garbage".into(),
     ] {
-        failure(invoke("get", &path, &["--id", &id]), 1, "INVALID_ID");
+        failure(invoke("get", &path, &["--at", &id]), 1, "INVALID_ID");
         failure(
             invoke("outline", &path, &["--within", &id]),
             1,
@@ -3633,7 +3633,7 @@ fn cli_argument_errors_exit_with_two() {
             "get",
             &example(),
             &[
-                "--id",
+                "--at",
                 "dummy",
                 "--pretty",
                 "--json",
@@ -3754,12 +3754,12 @@ fn input_code_is_never_executed() {
 fn raw_get_output_file_matches_stdout_without_an_added_newline() {
     let (dir, path) = fixture("const f=()=>42;", "bundle.js");
     let records = jsonl(&invoke("outline", &path, &[]));
-    let id = records[2]["id"].as_str().unwrap();
+    let id = records[2]["at"].as_str().unwrap();
     let destination = dir.path().join("fragment.js");
     let saved = invoke(
         "get",
         &path,
-        &["--id", id, "-o", destination.to_str().unwrap()],
+        &["--at", id, "-o", destination.to_str().unwrap()],
     );
     success(&saved);
     assert!(saved.stdout.is_empty());
@@ -3828,15 +3828,15 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
     let id = entities
         .iter()
         .find(|e| e["detail"]["label"] == "send")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
     for (command, arguments) in [
         ("outline", vec![]),
         ("find", vec!["--string", "/api/login"]),
         ("locate", vec!["--byte", "100"]),
-        ("get", vec!["--id", id]),
-        ("get", vec!["--id", id, "--json"]),
+        ("get", vec!["--at", id]),
+        ("get", vec!["--at", id, "--json"]),
     ] {
         let plain = invoke(command, &path, &arguments);
         success(&plain);
@@ -3908,7 +3908,7 @@ fn perf_reports_failed_stages_without_partial_stdout() {
             "RESOURCE_LIMIT",
             "visit",
         ),
-        ("get", vec!["--id", "invalid"], "INVALID_ID", "query"),
+        ("get", vec!["--at", "invalid"], "INVALID_ID", "query"),
     ] {
         let mut arguments = arguments;
         arguments.push("--perf");
@@ -4089,10 +4089,10 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
                 })
                 .unwrap();
             assert_eq!(symbol["detail"]["name"], case["identifier"]);
-            assert_eq!(symbol["parent_id"], entity_id);
+            assert_eq!(symbol["parent_at"], entity_id);
             assert_eq!(symbol["detail"]["relation"], "declared");
             assert_eq!(
-                symbol["id"],
+                symbol["at"],
                 format!(
                     "rxd1:js:{}:symbol:{}:{}",
                     source_id, case["declaration"]["start"], case["declaration"]["end"]
@@ -4103,7 +4103,7 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
                 .map(|r| (r["start"].as_u64().unwrap(), r["end"].as_u64().unwrap()))
                 .collect();
             assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
-            let ids: Vec<_> = rows.iter().filter_map(|r| r["id"].as_str()).collect();
+            let ids: Vec<_> = rows.iter().filter_map(|r| r["at"].as_str()).collect();
             assert_eq!(
                 ids.iter().collect::<std::collections::HashSet<_>>().len(),
                 ids.len()
@@ -4158,7 +4158,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             assert_eq!(rows[0]["detail"]["declaration"], declaration);
         }
         let actual: Vec<_> = rows[1..rows.len()-1].iter().map(|row| {
-            assert_eq!(row["parent_id"], entity_id, "{}", case["name"]);
+            assert_eq!(row["parent_at"], entity_id, "{}", case["name"]);
             serde_json::json!({"start": row["start"], "end": row["end"], "read": row["detail"]["read"], "write": row["detail"]["write"], "member_write": row["detail"]["member_write"]})
         }).collect();
         assert_eq!(
@@ -4167,7 +4167,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             "{}",
             case["name"]
         );
-        let extracted = invoke("get", &path, &["--id", &entity_id]);
+        let extracted = invoke("get", &path, &["--at", &entity_id]);
         success(&extracted);
         assert_eq!(
             extracted.stdout,
@@ -4213,12 +4213,12 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
         );
         let by_id: std::collections::HashMap<_, _> = entities
             .iter()
-            .map(|e| (e["id"].as_str().unwrap(), e))
+            .map(|e| (e["at"].as_str().unwrap(), e))
             .collect();
         let rows: Vec<_> = entities
             .iter()
             .map(|entity| {
-                let parent = entity["parent_id"]
+                let parent = entity["parent_at"]
                     .as_str()
                     .map(|id| entity_reference(by_id[id]))
                     .unwrap_or(Value::Null);
@@ -4248,7 +4248,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
         ));
         let actual_matches: Vec<_> = found[1..found.len() - 1].iter().map(|m| serde_json::json!({
             "literal_kind": m["detail"]["literal_kind"], "value": m["detail"]["value"], "start": m["start"], "end": m["end"],
-            "dynamic": m["detail"]["dynamic"], "entity": entity_reference(by_id[m["parent_id"].as_str().unwrap()])
+            "dynamic": m["detail"]["dynamic"], "entity": entity_reference(by_id[m["parent_at"].as_str().unwrap()])
         })).collect();
         assert_eq!(
             serde_json::json!(actual_matches),
@@ -4264,8 +4264,8 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
                         == serde_json::json!([expected["kind"], expected["start"], expected["end"]])
                 })
                 .unwrap();
-            let id = entity["id"].as_str().unwrap();
-            let source = invoke("get", &path, &["--id", id]);
+            let id = entity["at"].as_str().unwrap();
+            let source = invoke("get", &path, &["--at", id]);
             success(&source);
             let start = expected["start"].as_u64().unwrap() as usize;
             let end = expected["end"].as_u64().unwrap() as usize;
@@ -4283,8 +4283,8 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
                 "get",
                 &path,
                 &[
-                    "--id",
-                    located["detail"]["entity"]["id"].as_str().unwrap(),
+                    "--at",
+                    located["detail"]["entity"]["at"].as_str().unwrap(),
                     "--json",
                 ],
             );
@@ -4594,10 +4594,10 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
     let receipt: Value = js_object(&extracted.stdout);
     let rows = jsonl(&invoke("outline", &destination, &[]));
     assert_eq!(rows[0]["source_id"], receipt["source_id"]);
-    let id = rows.iter().find(|r| r["detail"]["name"] == "run").unwrap()["id"]
+    let id = rows.iter().find(|r| r["detail"]["name"] == "run").unwrap()["at"]
         .as_str()
         .unwrap();
-    let get = invoke("get", &destination, &["--id", id]);
+    let get = invoke("get", &destination, &["--at", id]);
     success(&get);
     assert_eq!(
         get.stdout,
@@ -4632,7 +4632,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         &["--file", "main.cjs", "-o", destination.to_str().unwrap()],
     ));
     failure(
-        invoke("get", &destination, &["--id", id]),
+        invoke("get", &destination, &["--at", id]),
         1,
         "SOURCE_MISMATCH",
     );

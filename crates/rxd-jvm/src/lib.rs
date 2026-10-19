@@ -173,8 +173,8 @@ fn class_method_body(
     }))
 }
 
-pub fn render_method(input: &Input, id: &str, limits: Limits) -> anyhow::Result<String> {
-    let (selected, index) = input.method_by_id(id)?;
+pub fn render_method(input: &Input, coordinate: &str, limits: Limits) -> anyhow::Result<String> {
+    let (selected, index) = input.method_by_at(coordinate)?;
     let class = &selected.class;
     let method = &class.methods[index];
     let spec = method_spec(method)?;
@@ -256,7 +256,8 @@ pub enum RefQuery<'a> {
 #[derive(serde::Serialize)]
 pub struct RefHit {
     /// Content-bound FETCH context for the referencing instruction.
-    pub method_id: String,
+    /// `Lclass;->name(proto)`: the caller's coordinate, printable and selectable.
+    pub method_at: String,
     pub source_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
@@ -297,7 +298,7 @@ pub fn find_refs(input: &Input, query: &RefQuery, limits: Limits) -> anyhow::Res
                     continue;
                 };
                 hits.push(RefHit {
-                    method_id: Input::method_id(selected, method_index),
+                    method_at: Input::method_at(selected, method_index),
                     source_id: selected.source_id.clone(),
                     entry: selected.entry.clone(),
                     class: class.name.clone(),
