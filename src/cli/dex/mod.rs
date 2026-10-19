@@ -281,25 +281,30 @@ fn run_command(
                 name: args.filter.as_deref(),
                 with_flags: args.with_flags,
             };
-            let (rows, records) = apk::list_methods_with_policy(
+            let (chunks, records) = apk::list_methods_with_policy(
                 &args.apk_path,
                 archive_policy,
                 &selector,
                 args.threads,
                 args.debug,
             )?;
-            let mut payload = stream_header(
+            let header = stream_header(
                 "methods",
                 std::slice::from_ref(&args.apk_path),
                 json!({
                     "class":args.class, "filter":args.filter, "with_flags":args.with_flags,
                 }),
             )?;
-            payload.push_str(&rows);
             let mut summary = String::new();
             finish_stream(&mut summary, records)?;
-            payload.push_str(&summary);
-            emit(&payload, args.output.as_deref())?;
+            // Stream the per-entry payloads: a full listing is ~680 MiB, and joining
+            // them first held two copies of it.
+            super::dex::output::emit_rows(
+                std::iter::once(header)
+                    .chain(chunks)
+                    .chain(std::iter::once(summary)),
+                args.output.as_deref(),
+            )?;
         }
         Command::Entries(args) => {
             let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {

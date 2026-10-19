@@ -395,7 +395,7 @@ pub fn list_methods_with_policy(
     selector: &MethodSelector<'_>,
     threads: usize,
     debug: bool,
-) -> Result<(String, usize)> {
+) -> Result<(Vec<String>, usize)> {
     let started = Instant::now();
     let chunks = map_dex_entries(
         path,
@@ -412,21 +412,23 @@ pub fn list_methods_with_policy(
             Ok(vec![(out, rows)])
         },
     )?;
-    let mut payload = String::new();
     let mut records = 0usize;
+    let mut bytes = 0usize;
+    let mut payloads = Vec::with_capacity(chunks.len());
     for (chunk, count) in chunks {
-        payload.push_str(&chunk);
+        bytes += chunk.len();
         records += count;
+        payloads.push(chunk);
     }
     if debug {
         crate::diag::diagnose(format_args!(
             "[methods] records={} rendered={:.2} ms bytes={}",
             records,
             started.elapsed().as_secs_f64() * 1e3,
-            payload.len()
+            bytes
         ));
     }
-    Ok((payload, records))
+    Ok((payloads, records))
 }
 
 pub fn list_classes_with_policy(
