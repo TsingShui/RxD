@@ -66,7 +66,8 @@ The current layout is:
 - `docs/design/mcp-design.md`: transport, snapshot and scheduling contracts.
 - `docs/demo/`: one `*.md` of runnable examples per backend.
 - `site/`: static GitHub Pages site (`index.html`, `examples.html`,
-  `arxd.html`) served by `.github/workflows/pages.yml`; no build step.
+  `arxd.html`, `roadmap.html`, `changelog.html`, and `zh/` counterparts) served
+  by `.github/workflows/pages.yml`; no build step.
 
 Keep each backend's design changes in its `docs/design/*-design.md` and update
 affected examples in the matching `docs/demo/*.md`. Keep cross-backend

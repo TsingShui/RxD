@@ -7,9 +7,13 @@
 <meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats. One binary, content-bound IDs, no input execution.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/">
+<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/">
+<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/">
+<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
 <link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
+<script src="assets/lang.js"></script>
 <link rel="stylesheet" href="assets/style.css">
 <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -23,11 +27,17 @@
       RxD<span class="brand-dot">.</span>
       <span class="brand-sub">Rust × Decompiler</span>
     </a>
-    <nav class="nav-links" aria-label="Site">
+    <nav class="nav-links" id="nav-links" aria-label="Site">
       <a href="./" aria-current="page">RxD</a>
       <a href="examples.html">Examples</a>
       <a href="arxd.html">Arxd</a>
+      <a href="roadmap.html">RoadMap</a>
+      <a href="changelog.html">ChangeLog</a>
     </nav>
+    <a class="lang-switch" href="zh/index.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
+    <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
     <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
   </div>
 </header>
@@ -148,6 +158,8 @@ rxd mcp serve --base /workspace --root /workspace</code></pre>
       <span>Project</span>
       <a href="https://github.com/TsingShui/RxD">GitHub</a>
       <a href="https://github.com/TsingShui/RxD/blob/main/README.md">README</a>
+      <a href="roadmap.html">RoadMap</a>
+      <a href="changelog.html">ChangeLog</a>
       <a href="https://github.com/TsingShui/RxD/blob/main/AGENTS.md">Design principles</a>
     </nav>
     <nav class="footer-col" aria-label="Docs">

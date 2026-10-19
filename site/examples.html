@@ -7,8 +7,12 @@
 <meta name="description" content="RxD query examples for APK/DEX, JavaScript, .NET and other backends. Returned IDs are the input to the next command.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/examples.html">
+<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/examples.html">
+<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/examples.html">
+<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/examples.html">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
 <link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
+<script src="assets/lang.js"></script>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -19,11 +23,17 @@
       <img class="brand-icon" src="assets/arxd-light-128.png" alt="" width="26" height="26">
       RxD<span class="brand-dot">.</span><span class="brand-sub">Rust × Decompiler</span>
     </a>
-    <nav class="nav-links" aria-label="Site">
+    <nav class="nav-links" id="nav-links" aria-label="Site">
       <a href="./">RxD</a>
       <a href="examples.html" aria-current="page">Examples</a>
       <a href="arxd.html">Arxd</a>
+      <a href="roadmap.html">RoadMap</a>
+      <a href="changelog.html">ChangeLog</a>
     </nav>
+    <a class="lang-switch" href="zh/examples.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
+    <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
     <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
   </div>
 </header>
@@ -92,7 +102,7 @@ rxd mcp install -a pi --root /absolute/path/to/inputs</code></pre>
 <footer class="footer">
   <div class="wrap">
     <p>Every ID binds an input hash and byte range; extraction returns original bytes. Failures leave stdout empty.</p>
-    <a href="./">RxD</a> · <a href="arxd.html">Arxd</a> · <a href="https://github.com/TsingShui/RxD">GitHub</a>
+    <a href="./">RxD</a> · <a href="examples.html">Examples</a> · <a href="arxd.html">Arxd</a> · <a href="roadmap.html">RoadMap</a> · <a href="changelog.html">ChangeLog</a> · <a href="https://github.com/TsingShui/RxD">GitHub</a>
     <a href="#top">Back to top ↑</a>
   </div>
 </footer>

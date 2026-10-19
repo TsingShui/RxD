@@ -8,8 +8,12 @@ Static, dependency-free pages served by GitHub Pages at
 - `index.html` — RxD overview: hero, supported formats, quick start, backends and MCP.
 - `examples.html` — standalone query examples for APK, JavaScript, .NET and more.
 - `arxd.html` — standalone Android host page for Arxd.
+- `roadmap.html` — development status, next work and permanent non-goals.
+- `changelog.html` — dated public/site milestones and unreleased work.
+- `zh/` — Chinese counterparts of all five pages.
 - `assets/style.css` — design tokens, layout, shared subpage styles, responsive rules.
-- `assets/main.js` — reveals, sticky-nav border, copy buttons. No tracking.
+- `assets/main.js` — reveals, sticky nav, mobile menu, language preference, copy buttons. No tracking.
+- `assets/lang.js` — early language selection: stored choice, then browser language; honors `?lang=en|zh`.
 - `assets/arxd-light.svg`, `arxd-light-1024.png`, `arxd-light-128.png` — the
   light Arxd app mark (cream `#f4f0e8`, ink `#101114`) from
   `apps/arxd/assets/rxd-mono-black.svg`; `favicon.svg` is the rounded, transparent-corner favicon;
@@ -18,6 +22,11 @@ Static, dependency-free pages served by GitHub Pages at
 - `assets/og.png` — 1200×630 social card. Regenerate from the same design
   language when the headline or benchmark claims change.
 - `.nojekyll` — upload the directory as-is.
+
+English lives at the root; Chinese lives under `zh/`. The header switch sets
+`localStorage.rxd-lang`; `assets/lang.js` redirects on first visit based on the
+browser language and honors `?lang=en` / `?lang=zh` for explicit links. Keep
+both trees, hreflang pairs and canonical URLs in sync.
 
 The pages have no build step, webfonts, analytics, or third-party requests.
 Open `index.html` directly or serve the directory:
@@ -41,7 +50,12 @@ Keep these aligned with the repository:
 - install commands come from `docs/demo/install.md`, `docs/demo/ci.md`, and the
   root README;
 - the public release / curl installer is not yet available; do not present it
-  as live until the release is published.
+  as live until the release is published;
+- RoadMap statuses move only after implementation and acceptance; no dates are
+  promised;
+- ChangeLog records public/main changes; earlier internal acceptance dates stay
+  labeled and are never presented as releases;
+- English and Chinese pages must carry equivalent claims, commands and links.
 
 ## Deployment
 

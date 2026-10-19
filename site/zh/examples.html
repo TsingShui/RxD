@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RxD 示例 — 从字符串到源码</title>
+<meta name="description" content="RxD 的 APK/DEX、JavaScript、.NET 等后端查询示例。返回的 ID 就是下一条命令的输入。">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="canonical" href="https://tsingshui.github.io/RxD/zh/examples.html">
+<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/examples.html">
+<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/examples.html">
+<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/examples.html">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg?v=1">
+<link rel="icon" href="../assets/favicon.png?v=3" sizes="64x64">
+<script src="../assets/lang.js"></script>
+<link rel="stylesheet" href="../assets/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+<header class="nav" data-nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="./" aria-label="RxD 首页">
+      <img class="brand-icon" src="../assets/arxd-light-128.png" alt="" width="26" height="26">
+      RxD<span class="brand-dot">.</span><span class="brand-sub">Rust × Decompiler</span>
+    </a>
+    <nav class="nav-links" id="nav-links" aria-label="站点导航">
+      <a href="./">RxD</a>
+      <a href="examples.html" aria-current="page">示例</a>
+      <a href="arxd.html">Arxd</a>
+      <a href="roadmap.html">RoadMap</a>
+      <a href="changelog.html">ChangeLog</a>
+    </nav>
+    <a class="lang-switch" href="../examples.html?lang=en" data-lang-switch="en" aria-label="Switch to English">EN</a>
+    <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="打开导航">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
+    <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <section class="page-hero">
+    <p class="kicker">示例</p>
+    <h1>从字符串<br>到源码。</h1>
+    <p class="lede">覆盖 Android、JavaScript 与 .NET 的三条完整路径。命令只读；把 <code>&lt;id&gt;</code> 换成上一条输出里的真实值。</p>
+  </section>
+
+  <section class="section">
+    <h2>APK：找到 Authorization，再取回它的类</h2>
+    <p class="section-lede">搜索字符串表，把命中路由到引用类，再按 descriptor 取 Java。APK 永不安装、永不运行。</p>
+    <pre><code>rxd dex strings app.apk --filter Authorization --limit 20
+rxd dex findrefs app.apk string Authorization
+rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
+    <p class="section-lede"><code>findrefs.detail.class</code> 是 Dalvik descriptor，可直接传给 <code>get-class</code>。退出码 3 表示无结果，4 表示歧义。只有 <code>summary.complete=true</code> 才算完整。</p>
+  </section>
+
+  <section class="section">
+    <h2>JavaScript：定位一个请求处理器</h2>
+    <p class="section-lede">不执行、不去混淆。看结构，搜解码字面量，再按 ID 取原始源码。</p>
+    <pre><code>rxd js outline bundle.js --jsonl
+rxd js find bundle.js --string '/api/login'
+rxd js refs bundle.js --byte 122
+rxd js get bundle.js --id '&lt;id&gt;'</code></pre>
+    <p class="section-lede"><code>get</code> 默认返回精确原始字节；需要源码信封时加 <code>--json</code>。<code>outline</code> 提供内容绑定结构 ID；<code>find</code> 匹配解码字面量；<code>refs</code> 追踪词法绑定。</p>
+  </section>
+
+  <section class="section">
+    <h2>.NET：一个方法，两种视图</h2>
+    <p class="section-lede">成员身份由模块与 metadata token 共同确定。默认输出恢复 C#；<code>--il</code> 保留原始证据。</p>
+    <pre><code>rxd dotnet outline app.dll --method Add
+rxd dotnet get-method app.dll '&lt;id&gt;'
+rxd dotnet get-method app.dll '&lt;id&gt;' --il
+rxd dotnet strings app.dll --contains hello
+rxd dotnet refs app.dll --token 0x06000006</code></pre>
+    <p class="section-lede">async、迭代器、lambda 与 LINQ 语法糖由固定版本 ILSpy 恢复。无法完整重建时，保留完整原始 IL/EH 与明确原因。</p>
+  </section>
+
+  <section class="section">
+    <h2>其他后端</h2>
+    <table class="format-table">
+      <thead><tr><th>入口</th><th>最短查询</th></tr></thead>
+      <tbody>
+        <tr><td><code>rxd kuna</code></td><td>Native 函数清单与反编译</td></tr>
+        <tr><td><code>rxd jar</code></td><td>JVM 元数据、字符串、引用与 Java</td></tr>
+        <tr><td><code>rxd wasm</code></td><td>模块结构、指令与引用</td></tr>
+        <tr><td><code>rxd pyc</code></td><td>CPython 3.8–3.13 导航与源码恢复</td></tr>
+        <tr><td><code>rxd evm</code></td><td>EVMole 分析、CFG 与有界重建</td></tr>
+        <tr><td><code>rxd asar</code> / <code>rxd html</code></td><td>容器提取；把内容交给对应后端</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>把同样的查询交给 Agent</h2>
+    <p class="section-lede">注册输入根目录，让 Agent 直接消费类型化结果。预览不会写入配置。</p>
+    <pre><code>rxd mcp install -a pi --root /absolute/path/to/inputs --preview
+rxd mcp install -a pi --root /absolute/path/to/inputs</code></pre>
+    <p class="section-lede">见 <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/demo/mcp.md">MCP 指南</a> 与 <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/demo/install.md#agent-onboarding">Agent 接入</a>。</p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>每个 ID 绑定输入哈希与字节区间；提取返回原始字节。失败时 stdout 为空。</p>
+    <a href="./">RxD</a> · <a href="examples.html">示例</a> · <a href="arxd.html">Arxd</a> · <a href="roadmap.html">RoadMap</a> · <a href="changelog.html">ChangeLog</a> · <a href="https://github.com/TsingShui/RxD">GitHub</a>
+    <a href="#top">回到顶部 ↑</a>
+  </div>
+</footer>
+<script src="../assets/main.js"></script>
+</body>
+</html>

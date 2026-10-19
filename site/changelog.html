@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RxD ChangeLog — what already changed</title>
+<meta name="description" content="A dated public record of RxD site, backend and Arxd milestones, with earlier internal acceptance clearly separated from releases.">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="canonical" href="https://tsingshui.github.io/RxD/changelog.html">
+<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/changelog.html">
+<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/changelog.html">
+<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/changelog.html">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
+<link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
+<script src="assets/lang.js"></script>
+<link rel="stylesheet" href="assets/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" data-nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="./" aria-label="RxD home">
+      <img class="brand-icon" src="assets/arxd-light-128.png" alt="" width="26" height="26">
+      RxD<span class="brand-dot">.</span><span class="brand-sub">Rust × Decompiler</span>
+    </a>
+    <nav class="nav-links" id="nav-links" aria-label="Site">
+      <a href="./">RxD</a>
+      <a href="examples.html">Examples</a>
+      <a href="arxd.html">Arxd</a>
+      <a href="roadmap.html">RoadMap</a>
+      <a href="changelog.html" aria-current="page">ChangeLog</a>
+    </nav>
+    <a class="lang-switch" href="zh/changelog.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
+    <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
+    <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <section class="page-hero">
+    <p class="kicker">CHANGELOG</p>
+    <h1>What already changed.</h1>
+    <p class="lede">Newest first. Public site and repository changes lead; earlier dates come from internal acceptance records and are not releases.</p>
+    <div class="page-links" aria-label="Changelog links">
+      <a href="roadmap.html">RoadMap</a>
+      <a href="examples.html">Examples</a>
+      <a href="./">RxD</a>
+    </div>
+    <p class="log-note">The Cargo version is <code>0.1.0</code>. There is no tag or public Release yet; the anonymous installer is still pending acceptance. Only changes merged to main belong here.</p>
+  </section>
+
+  <div class="log">
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-19">2026-10-19</time><span class="log-state is-public">Public preview</span></div>
+      <div class="log-body">
+        <h3>Public site and repository preview</h3>
+        <ul>
+          <li>Public site and repository preview: RxD overview, Examples, Arxd, RoadMap and ChangeLog.</li>
+          <li>English and Chinese pages with browser-language selection and a manual language switch.</li>
+          <li>The light Arxd mark, rounded favicon, responsive navigation and mobile menu.</li>
+          <li>Cargo <code>0.1.0</code>; no tag or public Release, and the anonymous installer is not accepted yet.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-18">2026-10-18</time><span class="log-state">Internal acceptance</span></div>
+      <div class="log-body">
+        <h3>Arxd Android host</h3>
+        <ul>
+          <li>Pi-durable workspace, independent file library, skills, MCP, context compaction and on-device GGUF models reached the product-improvement goal.</li>
+          <li>Pixel 10 evidence covers files, skills, activity and on-device models. Arxd remains an Android preview; no public APK.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-15">2026-10-15</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>HTML lexical container</h3>
+        <ul>
+          <li><code>list</code> and <code>extract</code> for lexical HTML records and byte-exact node extraction. No DOM, no page execution and no external resource loading.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-14">2026-10-14</time><span class="log-state">Internal acceptance</span></div>
+      <div class="log-body">
+        <h3>EVM static closure</h3>
+        <ul>
+          <li>EVMole 0.9.4 native analysis: interface, storage, CFG and metadata, plus declared on-demand pseudocode reconstruction.</li>
+          <li>Static navigation closure accepted. No claim of complete runtime semantics or an arbitrary ABI.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-13">2026-10-13</time><span class="log-state">Internal acceptance / design</span></div>
+      <div class="log-body">
+        <h3>CPython bytecode and linked Kuna</h3>
+        <ul>
+          <li>Static closure for the six final CPython 3.8–3.13 formats, with original instructions, explicit references and bounded whole-module source recovery.</li>
+          <li>Kuna CLI adapter linked directly; binwalk planned as a separate external tool with extraction semantics distinct from native carving.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-12">2026-10-12</time><span class="log-state">Internal acceptance</span></div>
+      <div class="log-body">
+        <h3>.NET IL / C#</h3>
+        <ul>
+          <li>Type, member, string and semantic XREF; single-method and whole-class IL or C# reconstruction through the pinned ILSpy v11 native library.</li>
+          <li>Performance exceptions record the exact input, selected type and measured bound; they do not transfer to other assemblies.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-11">2026-10-11</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>JS / ASAR / DEX initial closures</h3>
+        <ul>
+          <li>JS structures, decoded literals, lexical references and original source; ASAR entry enumeration and raw extraction.</li>
+          <li>DEX migrated from rasc, preserving <code>get-class</code>, Java output, Manifest and streaming contracts.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+
+  <div class="log-unreleased">
+    <h3>Unreleased / next</h3>
+    <p>PyInstaller / zipapp (<code>rxd pyz</code>), binwalk, MCP over HTTPS, the public Release and anonymous curl installer, and an Arxd public build. Scope and status live in the <a class="text-link" href="roadmap.html">RoadMap</a>.</p>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>RxD is Apache-2.0 licensed. Component notices are in the repository NOTICE file.</p>
+    <p><a href="./">RxD</a> · <a href="examples.html">Examples</a> · <a href="arxd.html">Arxd</a> · <a href="roadmap.html">RoadMap</a> · <a href="changelog.html">ChangeLog</a> · <a href="https://github.com/TsingShui/RxD">GitHub</a></p>
+    <a href="#top">Back to top ↑</a>
+  </div>
+</footer>
+<script src="assets/main.js"></script>
+</body>
+</html>

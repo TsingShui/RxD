@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arxd — 手机上的 RxD</title>
+<meta name="description" content="Arxd 是 RxD 的 Android 宿主：持久 Agent 对话、本地 rxd 分析、文件、Skills、MCP 与可选端侧 GGUF 模型。">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="canonical" href="https://tsingshui.github.io/RxD/zh/arxd.html">
+<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/arxd.html">
+<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/arxd.html">
+<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/arxd.html">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg?v=1">
+<link rel="icon" href="../assets/favicon.png?v=3" sizes="64x64">
+<script src="../assets/lang.js"></script>
+<link rel="stylesheet" href="../assets/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+<header class="nav" data-nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="./" aria-label="RxD 首页">
+      <img class="brand-icon" src="../assets/arxd-light-128.png" alt="" width="26" height="26">
+      RxD<span class="brand-dot">.</span><span class="brand-sub">Rust × Decompiler</span>
+    </a>
+    <nav class="nav-links" id="nav-links" aria-label="站点导航">
+      <a href="./">RxD</a>
+      <a href="examples.html">示例</a>
+      <a href="arxd.html" aria-current="page">Arxd</a>
+      <a href="roadmap.html">RoadMap</a>
+      <a href="changelog.html">ChangeLog</a>
+    </nav>
+    <a class="lang-switch" href="../arxd.html?lang=en" data-lang-switch="en" aria-label="Switch to English">EN</a>
+    <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="打开导航">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
+    <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <section class="page-hero">
+    <p class="kicker">ANDROID 宿主</p>
+    <h1>手机上的 RxD。</h1>
+    <p class="lede">Arxd 是 Android Agent 工作区：Expo 58 + Pi-durable + 内嵌 ARM64 rxd。对话、文件、Skills、MCP 与可选端侧模型共享同一块设备。</p>
+    <p><a class="btn btn-primary" href="https://github.com/TsingShui/RxD/blob/main/apps/arxd/README.md">构建说明 <span aria-hidden="true">↗</span></a>
+    <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD/blob/main/docs/design/arxd-design.md">设计文档 <span aria-hidden="true">↗</span></a></p>
+  </section>
+
+  <section class="section">
+    <h2>工作区，不是壳。</h2>
+    <p class="section-lede">原生页面负责交互，Pi-durable 运行 Agent 循环，RxD 执行分析。分层让一次真实查询可以在设备上走完。</p>
+    <div class="feature-grid">
+      <article><h3>端侧模型</h3><p>下载固定 Qwen3.5-2B Q4_K_M（1.28 GB）或导入 GGUF。llama.rn 在 CPU 上做文本推理，最高 8k 上下文、1,024 token 回复，thinking 可选。模型不内嵌 APK；导入按 SHA-256 绑定并通过真实引擎探针。</p></article>
+      <article><h3>模型连接</h3><p>通过 Pi AI 接入 OpenAI Completions/Responses、Anthropic Messages 与 Google Generative AI。命名连接、模型设置与设备凭据；凭据使用 Android Keystore/SecureStore。本地 HTTP 端点有明确的未加密提示。</p></article>
+      <article><h3>真实分析</h3><p>内嵌 ARM64 rxd 覆盖 JS、ASAR、HTML、APK/DEX、JVM、.NET、WASM、EVM、PYC 与 Kuna。<code>rxd_file_outline</code> 是有界 JS 快路径，其他格式走 shell 里的 <code>$ARXD_RXD</code>。分析源码永不执行。</p></article>
+      <article><h3>持久工作区</h3><p>Pi-durable 管理对话、工具轮次与持久化。SQLite 保留历史、归档、附件与报告。删除会话不会删除文件库。</p></article>
+      <article><h3>文件与 Skills</h3><p>浏览、编辑、复制、分享与附加文件。导入 <code>SKILL.md</code>、目录或工作区技能；默认禁用，导入永不执行脚本。Agent 按需加载已准入的 Skills。</p></article>
+      <article><h3>MCP 与后台进程</h3><p>保存 stdio 启动定义或 HTTP(S) 端点，连接并发现工具。长任务实例可见，停止是显式动作。Android 上的明文 HTTP 仅限 loopback。</p></article>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>三层，各有边界。</h2>
+    <table class="format-table">
+      <thead><tr><th>层</th><th>职责</th></tr></thead>
+      <tbody>
+        <tr><td>Arxd 宿主</td><td>原生页面、主题、文件选择、分享与进程管理。不是 WebView。</td></tr>
+        <tr><td>Pi-durable</td><td>对话、工具轮次、上下文压缩、持久化与恢复。</td></tr>
+        <tr><td>RxD</td><td>共享 Rust 后端的解析与反编译；身份、预算与输出契约不变。</td></tr>
+      </tbody>
+    </table>
+    <p class="section-lede">端侧模型是可选路径，不改变分析身份。同一个文件从 CLI 或 Arxd 查询，得到相同的输入哈希/字节区间 ID。</p>
+  </section>
+
+  <section class="section">
+    <h2>能力与边界。</h2>
+    <p class="section-lede">Arxd 是 Android 宿主，不是完整产品的保证。这些边界是设计的一部分。</p>
+    <div class="feature-grid">
+      <article><h3>仅 Android ARM64</h3><p>按 <code>apps/arxd/README.md</code> 从源码构建。设备证据与宿主机检查分开记录；尚未发布 APK。</p></article>
+      <article><h3>端侧模型不是沙箱</h3><p>2B CPU 路径的能力与延迟不同于云端模型。shell 工具不提供网络隔离；不可信输入仍应在设备外隔离。</p></article>
+      <article><h3>导入不等于执行</h3><p>Skill 导入不运行脚本，模型文件不内嵌 APK。只启用你信任的工作流。模型导入必须通过哈希、模板与工具解析器探针。</p></article>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>构建与验证。</h2>
+    <p class="section-lede">Arxd 与 RxD 同仓维护，需要 Android SDK/NDK。模型文件、APK 与设备证据不进入源码。完整前置条件与验证边界见 README。</p>
+    <pre><code>git submodule update --init third_party/kuna
+cd apps/arxd
+npm ci --ignore-scripts
+npm run build:rxd
+python3 scripts/build-preload.py
+npx expo prebuild --platform android --no-install
+cd android && ./gradlew :app:assembleRelease --max-workers=2 -PreactNativeArchitectures=arm64-v8a</code></pre>
+    <p><a class="btn btn-primary" href="https://github.com/TsingShui/RxD/blob/main/apps/arxd/README.md">阅读构建说明 <span aria-hidden="true">↗</span></a>
+    <a class="btn btn-ghost" href="examples.html">查询示例 <span aria-hidden="true">→</span></a></p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>Arxd 是 RxD 的一部分，使用 Apache-2.0 许可。组件声明见仓库 NOTICE 文件。</p>
+    <a href="./">RxD</a> · <a href="examples.html">示例</a> · <a href="arxd.html">Arxd</a> · <a href="roadmap.html">RoadMap</a> · <a href="changelog.html">ChangeLog</a> · <a href="https://github.com/TsingShui/RxD">GitHub</a>
+    <a href="#top">回到顶部 ↑</a>
+  </div>
+</footer>
+<script src="../assets/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RxD RoadMap — development without dates</title>
+<meta name="description" content="What RxD already ships, what comes next, and what stays out of scope. A capability-status roadmap, not a release calendar.">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="canonical" href="https://tsingshui.github.io/RxD/roadmap.html">
+<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/roadmap.html">
+<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/roadmap.html">
+<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/roadmap.html">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
+<link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
+<script src="assets/lang.js"></script>
+<link rel="stylesheet" href="assets/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" data-nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="./" aria-label="RxD home">
+      <img class="brand-icon" src="assets/arxd-light-128.png" alt="" width="26" height="26">
+      RxD<span class="brand-dot">.</span><span class="brand-sub">Rust × Decompiler</span>
+    </a>
+    <nav class="nav-links" id="nav-links" aria-label="Site">
+      <a href="./">RxD</a>
+      <a href="examples.html">Examples</a>
+      <a href="arxd.html">Arxd</a>
+      <a href="roadmap.html" aria-current="page">RoadMap</a>
+      <a href="changelog.html">ChangeLog</a>
+    </nav>
+    <a class="lang-switch" href="zh/roadmap.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
+    <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
+    <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <section class="page-hero">
+    <p class="kicker">ROADMAP</p>
+    <h1>A roadmap<br>without dates.</h1>
+    <p class="lede">RxD grows by closing capability loops, not by shipping calendars. Status changes only after the contract, budget and validation land on main. No date below is a promise.</p>
+    <div class="page-links" aria-label="Roadmap sections">
+      <a href="#shipped">01 / Shipped</a>
+      <a href="#next">02 / Next</a>
+      <a href="#not-doing">03 / Not doing</a>
+      <a href="changelog.html">ChangeLog →</a>
+    </div>
+  </section>
+
+  <div class="rm-facts">
+    <div class="rm-fact"><b>10</b><span>static-analysis backends</span></div>
+    <div class="rm-fact"><b>3</b><span>desktop platforms</span></div>
+    <div class="rm-fact"><b>6.7</b><span>median cold-start · ms</span></div>
+    <div class="rm-fact"><b>0/620</b><span>RxD-owned samples over 150 ms</span></div>
+  </div>
+
+  <section class="rm-section" id="shipped">
+    <div class="rm-head">
+      <span class="rm-num">01</span>
+      <div>
+        <h2>Already shipped</h2>
+        <p>Not a format checklist: each path can locate, trace and fetch a real unit.</p>
+      </div>
+    </div>
+    <div class="rm-list">
+      <div class="rm-item">
+        <span class="rm-status">Shipped</span>
+        <div class="rm-body">
+          <h3>10 static-analysis backends</h3>
+          <p>JS, ASAR, HTML, APK/DEX, JVM, .NET, WASM, PYC, EVM and optional Kuna. Each keeps its own query semantics, content-bound IDs and byte-exact extraction.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status">Shipped</span>
+        <div class="rm-body">
+          <h3>Agent entry point</h3>
+          <p>Typed MCP over stdio, an embedded Agent skill and <code>structuredContent</code>. An Agent does not need to compose shell strings; <a class="text-link" href="examples.html">see the query examples</a>.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status">Shipped</span>
+        <div class="rm-body">
+          <h3>Cross-platform single binary</h3>
+          <p>macOS arm64, Linux x86_64/arm64 and Windows x86_64. No JVM, .NET, CPython or Node runtime to install.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status">Shipped</span>
+        <div class="rm-body">
+          <h3>Performance and budgets</h3>
+          <p>37 cold CLI workloads; the RxD-owned median is 6.7 ms and 0/620 samples exceed 150 ms. Whole-function/class exceptions are approved per input, target and measurement.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-pending">Preview</span>
+        <div class="rm-body">
+          <h3>Arxd Android host</h3>
+          <p>An embedded ARM64 rxd, on-device GGUF and remote model connections, MCP, skills and a durable file workspace. No public APK yet; <a class="text-link" href="arxd.html">read the boundaries</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rm-section" id="next">
+    <div class="rm-head">
+      <span class="rm-num">02</span>
+      <div>
+        <h2>Next work</h2>
+        <p>Contract, budget and acceptance first. Implementation follows a closed loop.</p>
+      </div>
+    </div>
+    <div class="rm-list">
+      <div class="rm-item">
+        <span class="rm-status is-next">Planned</span>
+        <div class="rm-body">
+          <h3><code>rxd pyz</code>: PyInstaller / zipapp containers</h3>
+          <p>A container entry separate from PYC. No promise of whole-tree decompilation, and container contents are not treated as verified source.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-next">Planned</span>
+        <div class="rm-body">
+          <h3><code>rxd binwalk</code>: a separate external tool</h3>
+          <p>Signature hits, carve results and extraction outcomes stay distinct. Native binwalk UUIDs are not wrapped as RxD content-bound IDs.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-next">Planned</span>
+        <div class="rm-body">
+          <h3>MCP over HTTPS</h3>
+          <p>A transport milestone after stdio. Tool contracts, content identity and degradation semantics do not change with transport.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-pending">Pending</span>
+        <div class="rm-body">
+          <h3>Public release and installer</h3>
+          <p>Checksums, versioned assets and the anonymous <code>curl</code> installer still need acceptance. Today: source builds or Actions artifacts.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-pending">Pending</span>
+        <div class="rm-body">
+          <h3>Arxd public build</h3>
+          <p>No public APK yet. Build from <code>apps/arxd/README.md</code>; model files, APKs and device evidence stay out of source.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status">Ongoing</span>
+        <div class="rm-body">
+          <h3>Coverage and regression</h3>
+          <p>Declared EVM/WASM support ranges, corpus updates, performance exceptions and cross-platform builds are re-checked continuously. Status moves only when the loop closes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rm-section" id="not-doing">
+    <div class="rm-head">
+      <span class="rm-num">03</span>
+      <div>
+        <h2>Not doing</h2>
+        <p>These are boundaries, not backlog items. More capability does not bring them back.</p>
+      </div>
+    </div>
+    <div class="rm-list">
+      <div class="rm-item">
+        <span class="rm-status is-hold">Never</span>
+        <div class="rm-body">
+          <h3>Deobfuscation / string decryption</h3>
+          <p>Standard literal, escape and immediate decoding is parsing. Deliberately scrambled structure and strings stay out of scope; obfuscated inputs remain useful for structure queries.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-hold">Never</span>
+        <div class="rm-body">
+          <h3>Executing input / dynamic behavior</h3>
+          <p>Inputs are never run, modules are never instantiated and pages are never loaded. RxD reads static bytes and does not claim runtime semantics.</p>
+        </div>
+      </div>
+      <div class="rm-item">
+        <span class="rm-status is-hold">Design boundary</span>
+        <div class="rm-body">
+          <h3>Human terminal UI</h3>
+          <p>Agent-only. No colors, tree renderers, alternate output modes or layouts optimized for human reading.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <p class="kicker">PRINCIPLES</p>
+      <h2>Close the loop first.</h2>
+      <p class="section-lede">Fast primitives beat one heavy call. Static facts beat guesses. A measured exception is still an exception.</p>
+    </div>
+    <div class="feature-grid">
+      <article><h3>Agent-first</h3><p>Low latency, low token cost and structured output. Query precision is never traded for a human presentation layer.</p></article>
+      <article><h3>Static-only</h3><p>Inputs never execute. Capability is bounded by static facts, content identity and explicit budgets.</p></article>
+      <article><h3>Measured</h3><p>150 ms is the backend acceptance line. Exceptions need scope, release measurements and approval; they do not transfer to other inputs.</p></article>
+    </div>
+  </section>
+
+  <div class="rm-end">
+    <div>
+      <p class="kicker">CHANGELOG</p>
+      <h2>What already changed.</h2>
+    </div>
+    <a class="btn btn-primary" href="changelog.html">Open ChangeLog <span aria-hidden="true">→</span></a>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>RxD is Apache-2.0 licensed. Component notices are in the repository NOTICE file.</p>
+    <p><a href="./">RxD</a> · <a href="examples.html">Examples</a> · <a href="arxd.html">Arxd</a> · <a href="roadmap.html">RoadMap</a> · <a href="changelog.html">ChangeLog</a> · <a href="https://github.com/TsingShui/RxD">GitHub</a></p>
+    <a href="#top">Back to top ↑</a>
+  </div>
+</footer>
+<script src="assets/main.js"></script>
+</body>
+</html>
