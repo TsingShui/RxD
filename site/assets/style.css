@@ -1360,7 +1360,7 @@ h2 {
 .footer-cta .btn { flex: none; }
 .footer-grid {
   display: grid;
-  grid-template-columns: 1.5fr repeat(3, 1fr);
+  grid-template-columns: 1.5fr repeat(2, 1fr);
   gap: 32px;
   padding: 44px 0 40px;
   border-bottom: 1px solid var(--ink-line);
