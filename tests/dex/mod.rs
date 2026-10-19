@@ -158,7 +158,7 @@ fn dex_envelope_escapes_strings_entry_names_and_member_names_without_extra_rows(
         json!({"filter":null, "offset":null, "limit":1})
     );
     assert_eq!(header["input_bytes"], fs::metadata(&path).unwrap().len());
-    let out = query("findrefs", &path, &["string", "λ"]);
+    let out = query("xref", &path, &["string", "λ"]);
     success(&out);
     assert_eq!(
         dex_records(&out)[0]["detail"],
@@ -212,7 +212,7 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
             assert_eq!(alias.stdout, output.stdout);
             assert_eq!(alias.stderr, output.stderr);
             let output = query(
-                "findrefs",
+                "xref",
                 &path,
                 &["--thread", threads, "string", "Authorization"],
             );
@@ -230,11 +230,11 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     success(&output);
     assert_eq!(dex_records(&output).len(), 1);
     assert!(text(&output).contains("LFixture1;"));
-    let output = query("findrefs", &bare, &["string", "no-match"]);
+    let output = query("xref", &bare, &["string", "no-match"]);
     success(&output);
     assert!(dex_records(&output).is_empty());
     for kind in ["type", "method", "field"] {
-        let output = query("findrefs", &bare, &[kind, "no-match"]);
+        let output = query("xref", &bare, &[kind, "no-match"]);
         success(&output);
         assert!(dex_records(&output).is_empty());
     }
@@ -474,8 +474,8 @@ fn dex041_queries_keep_physical_entry_and_logical_member_names() {
         deflated_zip(&[("classes.dex", &container)]),
         "container.apk",
     );
-    for command in ["classes", "findrefs"] {
-        let args: &[&str] = if command == "findrefs" {
+    for command in ["classes", "xref"] {
+        let args: &[&str] = if command == "xref" {
             &["string", "Authorization"]
         } else {
             &[]
@@ -582,7 +582,7 @@ fn dex_cli_rejects_mcp_and_invalid_indices_without_analyzing_input() {
         "get-class",
         "entries",
         "strings",
-        "findrefs",
+        "xref",
         "manifest",
         "classes",
         "fields-plan",
@@ -603,7 +603,7 @@ fn dex_cli_rejects_mcp_and_invalid_indices_without_analyzing_input() {
         assert_eq!(invoke(&args).status.code(), Some(2));
     }
     assert_eq!(
-        invoke(&["findrefs", "missing.dex", "method"]).status.code(),
+        invoke(&["xref", "missing.dex", "method"]).status.code(),
         Some(1)
     );
 }

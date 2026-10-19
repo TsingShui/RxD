@@ -37,7 +37,7 @@ impl Member {
             "member",
             rxd_core::envelope::RecordMeta {
                 source_id: Some(source_id),
-                parent_id: Some(&self.entity_id),
+                parent_at: Some(&self.entity_id),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),
                 ..Default::default()

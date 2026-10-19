@@ -54,16 +54,16 @@ fn kind_schema(kind: &str) -> Value {
 }
 fn body(kind: &str, detail: Value) -> Value {
     let mut schema = fields(
-        "record:s id:?s source_id:?s parent_id:?s context_id:?s start:?n end:?n backend:s command:s schema_version:n",
+        "record:s at:?s source_id:?s parent_at:?s context_at:?s start:?n end:?n backend:s command:s schema_version:n",
     );
     schema["properties"]["record"] = json!({"const":kind});
     schema["properties"]["detail"] = detail;
     schema["required"] = json!([
         "record",
-        "id",
+        "at",
         "source_id",
-        "parent_id",
-        "context_id",
+        "parent_at",
+        "context_at",
         "start",
         "end",
         "detail"
@@ -126,7 +126,7 @@ pub(super) fn output(name: &str) -> Value {
         let analysis = evm(&mut defs);
         if matches!(
             name,
-            "evm_outline" | "evm_strings" | "evm_refs" | "evm_get_block" | "evm_get_function"
+            "evm_outline" | "evm_strings" | "evm_xref" | "evm_get_block" | "evm_get_function"
         ) {
             evm_navigation(name, &mut defs)
         } else {
@@ -494,7 +494,7 @@ fn dex(name: &str, defs: &mut Map<String, Value>) -> Value {
         "dex_entries" => vec!["DexEntry"],
         "dex_strings" => vec!["DexString"],
         "dex_classes" => vec!["DexClass"],
-        "dex_findrefs" => vec!["DexReference"],
+        "dex_xref" => vec!["DexReference"],
         _ => vec!["DexField", "DexMethod"],
     };
     envelope(

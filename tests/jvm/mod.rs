@@ -688,12 +688,12 @@ fn jvm_strings_lists_class_constant_literals_with_navigation_identity() {
 }
 
 #[test]
-fn jvm_findrefs_locates_string_type_method_and_field_uses_with_owning_unit() {
+fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     let path = input("flow-deflated.jar");
 
     // String literal reference: the ldc site in FlowFixture.text().
-    let string_hits = jvm_jsonl(&run(&["findrefs", "string", "前端"], &path));
-    assert_eq!(string_hits[0]["command"], "findrefs");
+    let string_hits = jvm_jsonl(&run(&["xref", "string", "前端"], &path));
+    assert_eq!(string_hits[0]["command"], "xref");
     let refs: Vec<&Value> = string_hits
         .iter()
         .filter(|v| v["record"] == "reference")
@@ -718,7 +718,7 @@ fn jvm_findrefs_locates_string_type_method_and_field_uses_with_owning_unit() {
     let gson = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/jvm/gson-2.11.0.jar");
 
     // Method call sites, with every hit carrying its owning class and method.
-    let methods = jvm_jsonl(&run(&["findrefs", "method", "toJson"], &gson));
+    let methods = jvm_jsonl(&run(&["xref", "method", "toJson"], &gson));
     let method_refs: Vec<&Value> = methods
         .iter()
         .filter(|v| v["record"] == "reference")
@@ -732,7 +732,7 @@ fn jvm_findrefs_locates_string_type_method_and_field_uses_with_owning_unit() {
 
     // Owner-class substring filter narrows method hits to the matching owner.
     let filtered = jvm_jsonl(&run(
-        &["findrefs", "method", "append", "--class", "StringBuilder"],
+        &["xref", "method", "append", "--class", "StringBuilder"],
         &gson,
     ));
     let filtered_refs: Vec<&Value> = filtered
@@ -748,7 +748,7 @@ fn jvm_findrefs_locates_string_type_method_and_field_uses_with_owning_unit() {
     }));
 
     // Type reference by substring.
-    let types = jvm_jsonl(&run(&["findrefs", "type", "JsonReader"], &gson));
+    let types = jvm_jsonl(&run(&["xref", "type", "JsonReader"], &gson));
     assert!(
         types
             .iter()
@@ -761,7 +761,7 @@ fn jvm_findrefs_locates_string_type_method_and_field_uses_with_owning_unit() {
     assert!(types.iter().any(|v| v["record"] == "reference"));
 
     // Field access sites.
-    let fields = jvm_jsonl(&run(&["findrefs", "field", "factories"], &gson));
+    let fields = jvm_jsonl(&run(&["xref", "field", "factories"], &gson));
     let field_refs: Vec<&Value> = fields
         .iter()
         .filter(|v| v["record"] == "reference")
@@ -775,7 +775,7 @@ fn jvm_findrefs_locates_string_type_method_and_field_uses_with_owning_unit() {
     }));
 
     // No match is a clean, complete empty result.
-    let empty = jvm_jsonl(&run(&["findrefs", "method", "zzzznotexist"], &gson));
+    let empty = jvm_jsonl(&run(&["xref", "method", "zzzznotexist"], &gson));
     assert!(!empty.iter().any(|v| v["record"] == "reference"));
     assert_eq!(empty.last().unwrap()["complete"], true);
 }

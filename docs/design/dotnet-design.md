@@ -55,11 +55,24 @@ members without IL, but `get-method` requires IL.
 
 One bounded binary buffer is read from a regular file and hashed with SHA-256;
 extension, path and MVID never replace content identity. dotscope's automatic PE
-repair result is rejected; rewritten bytes are never labeled original input. Entity ID
-format is `rxd1:dotnet:<sha256>:<kind>:<8-lowercase-hex-token>` where kind is `type`,
-`field` or `method`, bound to TypeDef, FieldDef or MethodDef. Method IDs keep the
-original contract; members carry `declaring_type_id`. ID lookup validates backend,
-content hash, kind, token table and row range.
+repair result is rejected; rewritten bytes are never labeled original input.
+
+Units are addressed with one copy-only coordinate, never with a hash, and the
+coordinate is the **ECMA-335 metadata token itself**: `0x0600000b` (table byte plus
+row). The token already encodes its table in the high byte, so no noun prefix is
+needed and none is accepted: `method:0600000b` is refused with the token to use
+instead. Exactly eight hex digits are accepted, optionally behind `0x`; a shorter,
+longer or shifted spelling is refused rather than resolved to another row, and a token
+whose table does not fit the command is refused with the table it is in. A
+coordinate is unique inside one input and meaningless outside it: the same
+coordinate addresses the same metadata row in two versions of an assembly, which is
+what makes version comparison possible. Content identity lives in
+`header.source_id` and in each record's `source_id`. FETCH commands also accept
+`--from <jsonl|->`, which reads the coordinate **and** its `source_id` from a
+previous stream and fails closed when that stream came from a different input; a
+stale or foreign coordinate is therefore reported on the one path where an Agent
+copies it across calls, while a direct `--at` query stays file-scoped. Lookup still
+validates kind, token table and row range.
 
 Parsing first validates metadata table/heap layout, references and ranges, then reads
 a method body on demand; it does not build a whole-assembly `CilObject`, SSA or decode
@@ -76,15 +89,22 @@ silently ignore corrupt data.
 
 ```sh
 rxd dotnet outline app.dll --type Example.Worker --method Run
-rxd dotnet get-method app.dll 'rxd1:dotnet:HASH:method:06000001'
-rxd dotnet get-method app.dll 'rxd1:dotnet:HASH:method:06000001' --il
-rxd dotnet get-class app.dll 'rxd1:dotnet:HASH:type:02000002' --il
+rxd dotnet get-method app.dll --at 0x06000001
+rxd dotnet get-method app.dll --at 0x06000001 --il
+rxd dotnet get-class app.dll --at 0x02000002 --il
 rxd dotnet strings app.dll --contains 'example'
-rxd dotnet refs app.dll --token 0x0a000001
-rxd dotnet refs app.dll --string 'example'
-rxd dotnet refs app.dll --id 'rxd1:dotnet:HASH:method:06000001'
-rxd dotnet refs app.dll --token 0x2b000001 --semantic
+rxd dotnet xref app.dll --at 0x0a000001
+rxd dotnet xref app.dll --string 'example'
+rxd dotnet xref app.dll --at 0x06000001
+rxd dotnet outline app.dll --method Run | rxd dotnet get-method app.dll --from -
 ```
+
+- `get-method` and `get-class` take exactly one selector: `--at <token>` or
+  `--from <jsonl|->`. `--from` takes the first record whose `record` kind matches
+  the command (`method` for `get-method`, `type` for `get-class`; `xref` accepts
+  `method`/`field`/`type`) and which carries an `at` coordinate; the stream is
+  bounded to 64 KiB and a mismatched `source_id` is `INVALID_QUERY`. The analyzed
+  input itself remains a regular file: only the selector stream may be piped.
 
 - `outline` emits header, type/field/method and summary JSONL. Header echoes filters;
   order follows metadata tokens. `--type` matches the full type name exactly;
@@ -92,14 +112,50 @@ rxd dotnet refs app.dll --token 0x2b000001 --semantic
 - `get-method` emits one JSON record with method, source_id, raw `il_hex`, instructions,
   exception handlers, locals and original file range. Instruction `offset` is the IL
   byte offset within the method code; file offsets are separate and never mixed.
+  Every metadata-token operand additionally carries `owner`, `name`, `status`,
+  `scope` and (for members of this input) `target_at`, so a method that falls back to
+  `representation: il` can still be read without a second `xref` round trip. A `#US`
+  operand has no member identity, so it instead carries `target_at` (its own
+  `0x70xxxxxx` coordinate) plus `string` (the decoded UTF-16 literal), or
+  `utf16_units` when the entry does not decode as UTF-8; reading a literal therefore
+  never needs a second `strings` call.
+- C# is always a **member rendering**, not a compilable translation unit: a `MethodDef`
+  is owned by its `TypeDef`, so `get-method` returns the body the engine renders
+  without the class header, usings or type context. `get-method` is the FETCH unit the
+  navigation records point at (`context_at`, `at`); `get-class` is the unit for type
+  shape and whole-class C#.
 - `get-method --il` returns `representation: il`. Default `get-method` attempts
   reconstruction. Success returns `representation: csharp`, `decompiled: true`,
   structured C# code and a mapping from output lines to real IL offsets. After async/
   iterator recovery, MoveNext's independent offset domain is not used as the entry
   method mapping; mapping may be empty.
 - An unsupported method returns `representation: il`, `decompiled: false`, an explicit
-  reason, `code: null`, and all original IL/EH. `complete: true` means the record is
-  complete, not that reconstruction succeeded. Partial guessed code is never returned.
+  reason, `reason_detail`, `code: null`, and all original IL/EH. `complete: true` means
+  the record is complete, not that reconstruction succeeded. Partial guessed code is
+  never returned.
+- `reason` is a stable machine code and `reason_detail` explains it in words, so an
+  Agent can tell the states apart without extra knowledge:
+  `representation: csharp, reason: null` = reconstructed; `representation: il,
+  reason: null` = IL was requested (`--il`); `representation: il, reason: <code>` =
+  the engine could not deliver C# at all. Warnings are not a reason code: they travel in
+  `detail.warnings` next to the code, one entry per engine caveat, each prefixed with the
+  member the caveat belongs to. A missing expression or branch is a warning too
+  (`<member>: unreconstructed expression at IL_xxxx`), never a refusal: the surrounding
+  reconstruction is still returned. Codes: `engine_unavailable` /
+  `class_engine_unavailable`
+  (no usable engine in this build), `class_abi_unavailable` (engine has no whole-class
+  entry point), `invalid_engine_output` / `input_limit` / `output_limit` (the engine
+  returned no usable payload at all, or a budget was reached).
+- `detail.warnings` is a fixed key in both `method_body` and `class_body`: an array of
+  engine diagnostics, empty when reconstruction was clean. A whole-class body prefixes
+  each warning with the member it belongs to, so one class fetch names the members that
+  were reconstructed with caveats without probing them one by one.
+- Member records nested inside `class_body` always carry original IL. Their
+  `reason: member_inventory` with a `reason_detail` pointing at `class_body.code` and
+  `get-method --at <token>` states that this is the schema, not a failure. A rejected
+  whole-class C# body names no culprit member either (the engine reports one failure for
+  the selected scope), so `reason_detail` routes the Agent to `get-method --at <at>` per
+  member instead of guessing which one blocked the class.
 - `get-class INPUT TYPE_ID --il` returns the selected TypeDef and recursively nested
   types under explicit NestedClass ownership, including generated types; sibling and
   inherited definitions are excluded, and `<Module>` is rejected. Types retain
@@ -119,7 +175,7 @@ rxd dotnet refs app.dll --token 0x2b000001 --semantic
   original inventory. `--il` sets reason null and bypasses the native engine.
 - `strings` scans the `#US` heap and all readable IL methods, emitting one record per
   `(heap offset, method token)` with `il_offsets` preserving all ordered, unique
-  `ldstr` offsets. `context_id` routes to get-method; `detail.declaring_type_id` routes
+  `ldstr` offsets. `context_at` routes to get-method; `detail.declaring_type_id` routes
   to get-class; duplicate heap entries keep independent identity. An unreferenced
   entry emits exactly one `status: unreferenced` inventory record with null context/
   owner/method and `offsets: []`; no FETCH route is invented. Valid UTF-16 becomes a
@@ -127,18 +183,23 @@ rxd dotnet refs app.dll --token 0x2b000001 --semantic
   and no lossy replacement. Empty strings, NUL and supplementary Unicode are
   preserved. `--contains` matches UTF-16 subsequences (empty needle matches all) with a
   bounded linear algorithm.
-- `refs --string VALUE` matches UTF-16 values exactly and case-sensitively across all
+- `xref --string VALUE` matches UTF-16 values exactly and case-sensitively across all
   equal heap entries and every original `ldstr` site, ordered by method token then IL
-  offset. It is mutually exclusive with `--token`; exactly one target is required.
+  offset. It is mutually exclusive with `--at`; exactly one target is required.
   When CLI UTF-8 argv cannot express NUL or isolated surrogates, use the original
-  `token` returned by strings with `refs --token`. String SEARCH/XREF still validates
-  the whole heap and readable methods even with zero hits; corrupt/resource failures
-  never become a complete zero result.
-- `refs --token TOKEN` matches the original operand token exactly. `refs --id
-  METHOD_ID/FIELD_ID/TYPE_ID` and `refs --token TOKEN --semantic` query provable
-  member/type identity. Exactly one selector is required; `--semantic` only modifies
-  token mode. Missing/conflicting selectors, bad entity IDs and non-member/type
-  semantic tokens are `INVALID_QUERY`.
+  `token` returned by strings with `xref --at 0x70000001`. String SEARCH/XREF still
+  validates the whole heap and readable methods even with zero hits; corrupt/resource
+  failures never become a complete zero result.
+- `xref` takes exactly one target: `--at` (the metadata token of a member or type,
+  which also covers external `MemberRef`, `TypeSpec` and `MethodSpec` targets),
+  `--string` (a `#US` literal, a different kind of target), or `--from` (read the
+  target from a previous stream). Two flags cover targets and one covers delivery;
+  there is no separate `--token` flag, because a token is the coordinate. There is one matching algorithm:
+  operands are resolved to provable member/type identity, so a `MethodDef` token also
+  matches its `MemberRef` and `MethodSpec` spellings instead of requiring the identical
+  operand. There is no token-equality mode and no mode flag. A user-string token
+  (`0x70` table) has no member identity and keeps the string route. Missing/conflicting
+  targets, malformed coordinates and non-member/type tokens are `INVALID_QUERY`.
 - Method definition queries include provable MethodSpec instances and local MemberRefs;
   a MethodSpec/constructed-owner MemberRef keeps owner and method arguments distinct.
   A MemberRef merges into a local MethodDef only when the fixed module scope, type
@@ -191,8 +252,9 @@ member/type descriptor (null for raw token mode); other header/summary extras ar
 The header retains `backend`, `command`, `source_id`, `input_bytes`,
 `schema_version: 2`, `query`; the summary retains `records` and `complete`.
 
-Every data record has `record`, `id`, `source_id`, `parent_id`, `context_id`, `start`,
-`end`, `detail`; absent values are null. `source_id` is the fixed PE buffer SHA-256.
+Every data record has `record`, `at`, `source_id`, `parent_at`, `context_at`, `start`,
+`end`, `detail`; absent values are null. `source_id` is the fixed PE buffer SHA-256;
+`at`, `parent_at` and `context_at` are copy-only coordinates and never contain a hash.
 Fixed detail fields:
 
 | Record | Detail fields |
@@ -202,17 +264,17 @@ Fixed detail fields:
 | `method` | `token, declaring_type, declaring_type_token, declaring_type_is_value_type, name, signature, parameters, signature_flags, return_type, has_this, has_body, rva, flags, impl_flags, declaring_type_id, generic_parameters` |
 | `string` | `offset, token, value, utf16_units, status, method_token, declaring_type_id, il_offsets` |
 | `reference` | `method_token, declaring_type, declaring_type_id, name, il_offset, opcode, target_token, target_kind, canonical_target_id, canonical_target_token, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments` |
-| `method_body` | `method, body_present, representation, decompiled, reason, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
+| `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
 
-Type/field/method content-bound IDs live only in outer `id`; string id is null. A
-top-level type has parent null; nested types use the direct owning type ID. Field/
-method/method_body parents are the declaring type ID. `reference.id` is null;
-`context_id` is the caller method ID, directly usable by get-method, while its original
-token and IL offset live in detail. `reference.parent_id` and
+Type/field/method coordinates live in outer `at`; string `at` is null. A top-level
+type has no `parent_at`; nested types use the direct owning type coordinate. Field/
+method/method_body `parent_at` is the declaring type. `reference.at` is null;
+`context_at` is the caller method coordinate, directly usable by get-method, while its
+original token and IL offset live in detail. `reference.parent_at` and
 `reference.detail.declaring_type_id` are the caller's declaring type, usable for
-whole-class FETCH; other outline records have `context_id: null`.
+whole-class FETCH; other outline records have `context_at: null`.
 
-`string.parent_id` is the using declaring type and `context_id` the using method; an
+`string.parent_at` is the using declaring type and `context_at` the using method; an
 unreferenced inventory record has both and detail method/type IDs null. Its start/end
 are always null; one group may contain multiple non-contiguous use sites. Heap offset,
 user-string token and method IL offsets are independent domains and never PE file
@@ -220,7 +282,11 @@ ranges. Groups sort by heap offset then method token; offsets are in original IL
 All statuses have the same fixed detail keys.
 
 `reference.detail.target_kind` is semantic `method`/`field`/`type`, string route
-`string`, otherwise `token`. `signature` is non-null only for method semantic targets
+`string`, otherwise `token`. A string-route `header.detail.target` names the literal
+instead of being null: `{target_kind: "user_string", token: "0x7000001b", value: "N3CTF"}`
+for `--at 0x70xxxxxx`, and `{target_kind: "user_string", value: "<query>"}` for
+`--string` (no token, because one value may match several heap entries; each hit row
+keeps its own `target_token`). `signature` is non-null only for method semantic targets
 (flags, generic_arity, sentinel, return_type, parameters); `type_signature` only for
 field/type semantic targets, using structural AST kind/element/token/value/arguments.
 Raw/string set both null but keep the same fixed key set. Named tokens in the AST merge
@@ -257,16 +323,17 @@ always `il/false/null code`; `class_body` owns whole-class reconstruction state.
 
 Property detail: `token, declaring_type_token, declaring_type_id, name, signature,
 signature_hex, flags, accessors`; event detail: `token, declaring_type_token,
-declaring_type_id, name, event_type_token, flags, accessors`. Both have null id/start/
-end and parent/context set to the declaring type. Accessors retain `method_token,
-method_id` and original MethodSemantics `semantics`, ordered by method token and
-semantics. Generic parameter entries: `token, number, flags, name, constraints`
+declaring_type_id, name, event_type_token, flags, accessors`. Both have null `at`/start/
+end and `parent_at`/`context_at` set to the declaring type. Accessors retain
+`method_token, method_id` and original MethodSemantics `semantics`, ordered by method
+token and semantics; every nested `*_id` is the same copy-only coordinate as the outer
+envelope, never a hash. Generic parameter entries: `token, number, flags, name, constraints`
 (original TypeDefOrRef token list). Properties, events, interfaces and generic
 relationships are verified from metadata tables, never guessed by name.
 
 This is an explicit schema migration; no flat or same-name subobject output is kept.
 Consumers read content from `detail` and route references to methods through
-`context_id`.
+`context_at`.
 
 ## Structured C# reconstruction
 
@@ -303,12 +370,19 @@ select restoration); and collection/object/array initializers, `using`/`lock`, n
 propagation and string interpolation. Expression-tree support depends on the engine.
 
 Default `get-method` attempts reconstruction. Success returns `representation:
-csharp`, `decompiled: true`, structured C# and mapping. When the engine errors or
-produces no result, the whole record degrades to `representation: il`, `decompiled:
-false`, explicit reason, `code: null`, and complete original IL/EH; no partial guessed
-code. Degradation is a correctness guarantee: `complete: true` means the record is
-complete, not that C# reconstruction succeeded. Failed compiler-generated members
-remain indexable, queryable and extractable.
+csharp`, `decompiled: true`, structured C#, mapping **and every reconstruction warning
+the engine reported** in `detail.warnings`. A warning means ILSpy reconstructed the
+body with a stated caveat (typically "unknown result type" at a given IL offset), not
+that the body is unusable: the code is returned as produced and each caveat names the
+member and offset it applies to, so an Agent can judge the result instead of receiving a
+blanket refusal. The reconstruction is returned whenever the engine produced one: an unproven source
+mapping entry is dropped and counted in `detail.warnings` instead of discarding the code,
+and an unreconstructed expression or branch only adds a warning. The record degrades to
+`representation: il`, `decompiled: false`, `code: null` plus complete original IL/EH only
+when the engine delivers no payload at all (crash, exception, absent entry point, or a
+reached budget). `complete: true` always means the record is complete, not that
+reconstruction was warning-free. Members the engine cannot render remain indexable,
+queryable and extractable.
 
 ## Exception regions and continuation
 
@@ -327,8 +401,8 @@ generated members remain indexable, queryable and extractable.
 Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
 4 GiB), entities 100,000, work 16,777,216, instructions per method 100,000, records
 100,000, output 32 MiB. Each has a positive `--max-*` override. Entities count types,
-fields and methods; work bounds parsing stages; refs charge actual decode, signature,
-string and EH work. Full refs/strings scans share one fixed `#US` heap validation and
+fields and methods; work bounds parsing stages; xref charge actual decode, signature,
+string and EH work. Full xref/strings scans share one fixed `#US` heap validation and
 reuse entry boundaries; FETCH shares instruction/token-kind/locals/parameter/branch/
 prefix/EH validation and skips IL hex and non-token mnemonic allocation when not
 needed. Every readable method is validated; a corrupt method is never skipped to
@@ -368,7 +442,7 @@ engine or inherently-large-target grounds in
 and any exception needs its own input hash, selected target, measurements and bound.
 
 `benches/dotnet_class.py` validates selected whole-class IL and C# using an independent
-Newtonsoft.Json 13.0.3 net6.0 DLL and PEReader expectations; `benches/dotnet_refs.py`
+Newtonsoft.Json 13.0.3 net6.0 DLL and PEReader expectations; `benches/dotnet_xref.py`
 and the field/type XREF runner use independent metadata expectations. `--perf` reports
 stage timings separately from real serialization and stdout/atomic writes. C#
 reconstruction success rates from coverage runs do not prove correctness and are never
@@ -409,7 +483,7 @@ JS deobfuscation and string decryption remain permanent non-goals.
 
 ## MCP projection
 
-`dotnet_outline/strings/refs/get_method/get_class` reuse metadata, semantic reference
+`dotnet_outline/strings/xref/get_method/get_class` reuse metadata, semantic reference
 and FETCH implementations. JSONL projects to header/records/summary; single FETCH keeps
 its original record. Actual MethodDef/TypeDef IDs, original UTF-16 code units, original
 IL/EH and C# representation/decompiled/reason/mapping are preserved; `complete` does

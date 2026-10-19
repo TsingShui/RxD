@@ -14,7 +14,7 @@ pub enum Command {
     /// List every string in every root DEX of an archive.
     Strings(StringsArgs),
     /// Find code references across every DEX in an APK.
-    Findrefs(FindRefsArgs),
+    Xref(XrefArgs),
     /// Decode and print AndroidManifest.xml from an APK.
     Manifest(ManifestArgs),
     /// List classes defined across every DEX in an APK.
@@ -157,7 +157,8 @@ pub struct GetClassArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct FindRefsArgs {
+pub struct XrefArgs {
+    /// Print phase timings on stderr.
     #[arg(long)]
     pub debug: bool,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -167,7 +168,7 @@ pub struct FindRefsArgs {
     pub kind: FindKind,
 }
 
-impl FindRefsArgs {
+impl XrefArgs {
     pub fn query(&self) -> Result<Query> {
         match &self.kind {
             FindKind::String(q) => Ok(Query::String(q.value.clone())),
@@ -201,9 +202,13 @@ impl FindRefsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum FindKind {
+    /// Instructions loading a string literal containing the value (case-sensitive).
     String(ValueQuery),
+    /// Instructions referencing a type whose name contains the value (case-sensitive).
     Type(ValueQuery),
+    /// Call sites of a method, optionally restricted to an owner class.
     Method(MemberArgs),
+    /// Access sites of a field, optionally restricted to an owner class.
     Field(MemberArgs),
 }
 
@@ -211,6 +216,7 @@ pub enum FindKind {
 pub struct ValueQuery {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+    /// Literal substring to search for (case-sensitive).
     pub value: String,
 }
 
@@ -218,9 +224,12 @@ pub struct ValueQuery {
 pub struct MemberArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+    /// Member name to search for (case-sensitive exact match).
     pub name: Option<String>,
+    /// Owner class, as `Lcom/foo/Bar;` or `com.foo.Bar` (exact unless `--fuzzy-class`).
     #[arg(long = "class")]
     pub class_name: Option<String>,
+    /// Treat `--class` as a case-sensitive substring instead of an exact name.
     #[arg(long)]
     pub fuzzy_class: bool,
 }
@@ -250,7 +259,7 @@ impl Command {
             Self::Getclass(_) => "get-class",
             Self::Entries(_) => "entries",
             Self::Strings(_) => "strings",
-            Self::Findrefs(_) => "findrefs",
+            Self::Xref(_) => "xref",
             Self::Manifest(_) => "manifest",
             Self::Classes(_) => "classes",
             Self::FieldsPlan(_) => "fields-plan",

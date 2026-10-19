@@ -9,7 +9,7 @@ Java, JADX, D8 or dx process is invoked. JADX is a development reference only; v
 and license are in `crates/rxd-jvm/REFERENCE.md`.
 
 The capability set follows [ADR 0002](../adr/0002-backend-capability-closure.md):
-ENUMERATE=`outline`, SEARCH=`strings`, XREF=`findrefs`, FETCH=`get-method` (unit) and
+ENUMERATE=`outline`, SEARCH=`strings`, XREF=`xref`, FETCH=`get-method` (unit) and
 `get-class` (class aggregate).
 
 ## Backend boundary
@@ -34,7 +34,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | `jar get-method INPUT METHOD_ID --bytecode [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
 | `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class, source_id and pool index |
-| `jar findrefs INPUT {string VALUE \| type NAME \| method NAME [--class C] \| field NAME [--class C]}` | header/reference/summary JSONL; cross-class references to strings/types/methods/fields with owner class/method, byte_offset, mnemonic and target |
+| `jar xref INPUT {string VALUE \| type NAME \| method NAME [--class C] \| field NAME [--class C]}` | header/reference/summary JSONL; cross-class references to strings/types/methods/fields with owner class/method, byte_offset, mnemonic and target |
 
 `outline` filters classes exactly by internal name, dotted name or descriptor, and
 methods exactly by name while retaining all overloads; a method filter omits field
@@ -98,11 +98,11 @@ member names, descriptors or other Utf8 entries. `index` is the local pool index
 has no global string table). `value` is decoded text; unpaired surrogates also retain
 the raw `utf16` code units to avoid lossy conversion.
 
-`findrefs` scans method instructions in every class and distinguishes four kinds:
+`xref` scans method instructions in every class and distinguishes four kinds:
 string/type use case-sensitive substring matching on literals/type names; method/field
 match exact member names, with optional owner-class substring via `--class`. Each hit
 includes owner class, method, byte_offset, mnemonic and target and can be routed to
-`get-method`/`get-class`. As an index query, `findrefs` follows the ordinary 150 ms
+`get-method`/`get-class`. As an index query, `xref` follows the ordinary 150 ms
 requirement; it is not aggregate decompilation.
 
 Success writes stdout by default; `-o` atomically replaces the file and does not copy
@@ -113,14 +113,14 @@ errors exit 2; other failures exit 1. Diagnostics go to stderr.
 ## Envelope (schema_version=2)
 
 All structured output uses the shared [ADR 0003](../adr/0003-output-envelope.md)
-constructors. `outline`, `strings` and `findrefs` return header → zero or more
+constructors. `outline`, `strings` and `xref` return header → zero or more
 records → summary, with no legacy flat-field shim.
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
 query, detail`. Streaming commands set `header.detail` to `analysis, release` with
 `analysis: metadata`. `query` echoes command conditions. Summary contains `record,
 records, complete, detail`; `outline` sets `summary.detail.classes`, while
-strings/findrefs use `{}`.
+strings/xref use `{}`.
 
 Data records contain `record, id, source_id, parent_id, context_id, start, end,
 detail`; inapplicable values are null. `source_id` is the actual owning class-byte
@@ -216,7 +216,7 @@ conditions. The 150 ms requirement applies; JVM adds no performance exception (r
 
 ## MCP projection
 
-`jar_outline/strings/findrefs/get_method/get_class` keep the CLI namespace `jar` and
+`jar_outline/strings/xref/get_method/get_class` keep the CLI namespace `jar` and
 record `backend: jvm`. JSONL becomes header/records/summary; Java text gains a
 representation/source/complete/source_id wrapper, while bytecode and Java fallback keep
 their single-record shape. A container `target_id` does not replace class SHA-256 or

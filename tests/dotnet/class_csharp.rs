@@ -9,7 +9,7 @@ fn type_id(path: &Path, name: &str) -> String {
     jsonl(&run("outline", path, &["--type", name]))
         .into_iter()
         .find(|row| row["record"] == "type")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap()
         .to_owned()
@@ -19,7 +19,7 @@ fn type_id(path: &Path, name: &str) -> String {
 fn dotnet_class_csharp_recovers_generic_declarations_members_and_owned_nested_scope() {
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
-    let output = run("get-class", &path, &[&id]);
+    let output = run("get-class", &path, &["--at", &id]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(row["detail"]["decompiled"], true, "{row}");
@@ -41,7 +41,7 @@ fn dotnet_class_csharp_recovers_generic_declarations_members_and_owned_nested_sc
     }
     assert!(!code.contains("Separate(") && !code.contains("Inherited("));
     let raw: Value =
-        serde_json::from_slice(&run("get-class", &path, &[&id, "--il"]).stdout).unwrap();
+        serde_json::from_slice(&run("get-class", &path, &["--at", &id, "--il"]).stdout).unwrap();
     for field in [
         "type",
         "types",
@@ -111,6 +111,7 @@ fn dotnet_native_class_resource_failures_keep_the_previous_output_and_emit_no_su
         let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
             .args(["dotnet", "get-class"])
             .arg(&path)
+            .arg("--at")
             .arg(&id)
             .arg("-o")
             .arg(&destination)
@@ -135,7 +136,7 @@ fn dotnet_native_class_resource_failures_keep_the_previous_output_and_emit_no_su
 }
 
 fn fetched(path: &Path, id: &str, args: &[&str]) -> Value {
-    let mut options = vec![id];
+    let mut options = vec!["--at", id];
     options.extend_from_slice(args);
     let output = run("get-class", path, &options);
     success(&output);
@@ -149,7 +150,7 @@ fn valid_mapping(row: &Value) {
     for point in mapping {
         let method = methods
             .iter()
-            .find(|method| method["id"] == point["method_id"])
+            .find(|method| method["at"] == point["method_id"])
             .unwrap();
         assert_eq!(
             point["method_token"],
@@ -207,7 +208,7 @@ fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_dire
                     .contains("DisplayClass")
         })
         .unwrap();
-    let row = fetched(&sugar, generated["id"].as_str().unwrap(), &[]);
+    let row = fetched(&sugar, generated["at"].as_str().unwrap(), &[]);
     assert_eq!(
         row["detail"]["decompiled"], true,
         "{}",
@@ -239,19 +240,37 @@ fn dotnet_class_csharp_retains_no_body_declarations_and_complete_failed_reconstr
             fetched(&path, &id, &["--il"])["detail"]["methods"]
         );
     }
+    // A body the engine reconstructs with caveats is still returned, and every caveat
+    // travels with it: the warning names the member and the IL offset it applies to.
     let path = input();
     let id = type_id(&path, "Rxd.测试.Probe");
     let row = fetched(&path, &id, &[]);
-    assert_eq!(row["detail"]["decompiled"], false);
-    assert_eq!(row["detail"]["representation"], "il");
-    assert!(!row["detail"]["reason"].as_str().unwrap().is_empty());
-    assert!(row["detail"]["code"].is_null());
-    assert_eq!(row["detail"]["mapping"], serde_json::json!([]));
+    assert_eq!(
+        row["detail"]["decompiled"], true,
+        "{}",
+        row["detail"]["reason"]
+    );
+    assert_eq!(row["detail"]["representation"], "csharp");
+    assert!(row["detail"]["reason"].is_null());
+    assert!(!row["detail"]["code"].as_str().unwrap().is_empty());
+    let warnings = row["detail"]["warnings"].as_array().unwrap();
+    assert!(!warnings.is_empty(), "{row}");
+    for warning in warnings {
+        let warning = warning.as_str().unwrap();
+        assert!(
+            warning.contains("IL_") || warning.contains(':'),
+            "{warning}"
+        );
+    }
     assert_eq!(row["detail"]["complete"], true);
     assert_eq!(
         row["detail"]["methods"],
         fetched(&path, &id, &["--il"])["detail"]["methods"]
     );
+    // The same bodies requested explicitly still carry no reconstruction at all.
+    let raw = fetched(&path, &id, &["--il"]);
+    assert_eq!(raw["detail"]["decompiled"], false);
+    assert!(raw["detail"]["warnings"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -263,6 +282,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", "get-method"])
         .arg(&path)
+        .arg("--at")
         .arg(&method)
         .env("RXD_DOTNET_NATIVE_LIBRARY", &library)
         .output()
@@ -276,6 +296,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", "get-class"])
         .arg(&path)
+        .arg("--at")
         .arg(&id)
         .env("RXD_DOTNET_NATIVE_LIBRARY", &library)
         .output()
@@ -292,7 +313,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
 }
 
 #[test]
-fn dotnet_invalid_native_class_mappings_preserve_complete_original_scope() {
+fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() {
     let directory = tempfile::tempdir().unwrap();
     let library = native_fixture(directory.path(), false);
     let path = closure_input();
@@ -313,15 +334,30 @@ fn dotnet_invalid_native_class_mappings_preserve_complete_original_scope() {
         serde_json::json!([{"il_offset":0,"line":1}]),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-            .args(["dotnet", "get-class"]).arg(&path).arg(&id)
+            .args(["dotnet", "get-class"]).arg(&path).arg("--at").arg(&id)
             .env("RXD_DOTNET_NATIVE_LIBRARY", &library)
             .env("RXD_TEST_NATIVE_PAYLOAD", serde_json::json!({"ok":true,"reason":null,"code":"class Root<T> {}","mapping":mapping}).to_string())
             .output().unwrap();
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(row["detail"]["reason"], "invalid_engine_output");
-        assert_eq!(row["detail"]["decompiled"], false);
-        assert!(row["detail"]["code"].is_null());
+        // The engine's reconstruction is returned as produced; only the navigation
+        // entry it cannot prove is dropped, and the drop is reported.
+        assert_eq!(row["detail"]["decompiled"], true, "{row}");
+        assert_eq!(row["detail"]["representation"], "csharp");
+        assert_eq!(row["detail"]["reason"], serde_json::Value::Null);
+        assert_eq!(row["detail"]["code"], "class Root<T> {}");
+        assert_eq!(row["detail"]["mapping"], serde_json::json!([]));
+        assert!(
+            row["detail"]["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|warning| warning
+                    .as_str()
+                    .unwrap()
+                    .contains("dropped 1 unprovable source entry")),
+            "{row}"
+        );
         assert_eq!(row["detail"]["methods"], raw["detail"]["methods"]);
     }
 }
@@ -339,7 +375,7 @@ fn dotnet_class_reconstruction_charges_referenced_signatures_to_one_work_budget(
         .map(Vec::len)
         .sum();
     let limit = (raw["detail"]["work_used"].as_u64().unwrap() as usize + instructions).to_string();
-    let output = run("get-class", &path, &[&id, "--max-work", &limit]);
+    let output = run("get-class", &path, &["--at", &id, "--max-work", &limit]);
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
     rejected(output);

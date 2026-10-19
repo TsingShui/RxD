@@ -37,7 +37,7 @@ DWARF, source maps and `producers` provenance are not reconstructed.
 rxd wasm outline module.wasm --func-name run
 rxd wasm get-function module.wasm 'rxd1:wasm:HASH:func:42'
 rxd wasm strings module.wasm --contains 'example'
-rxd wasm refs module.wasm --func 42
+rxd wasm xref module.wasm --func 42
 ```
 
 - `outline` emits header/records/summary JSONL with `detail.analysis: metadata`.
@@ -64,7 +64,7 @@ rxd wasm refs module.wasm --func 42
   without lossy replacement. `--contains` matches a byte subsequence. Data-segment
   linear-memory layout is reported as the declared offset expression; no constant
   folding or runtime evaluation is performed.
-- `refs --func N` finds instructions in all defined function bodies that explicitly
+- `xref --func N` finds instructions in all defined function bodies that explicitly
   reference the target function index (`call`, `return_call`, `ref.func`) and retains
   the caller index and code-body offset. It does not resolve `call_indirect` runtime
   table targets and never claims a statically determined indirect callee;
@@ -78,7 +78,7 @@ and argument errors exit 2; input, resource and I/O failures exit 1.
 
 All structured output uses the shared [ADR 0003](../adr/0003-output-envelope.md)
 constructors, with no legacy flat fields or same-name record subobjects. `outline`,
-`strings` and `refs` return header → zero or more data records → summary. The header
+`strings` and `xref` return header → zero or more data records → summary. The header
 contains `record, backend, command, source_id, input_bytes, schema_version, query,
 detail`; `query` echoes command arguments. The summary contains `record, records,
 complete, detail` with `detail: {}`. Only exit 0 plus `summary.complete: true` means a
@@ -180,7 +180,7 @@ Defaults: input 8 GiB (may be lowered; 32-bit spans keep actual addressable cont
 below 4 GiB), entities 100,000, work 16,777,216, instructions per function 1,000,000,
 records 100,000, output 32 MiB. Each limit has a positive-integer `--max-*` override.
 Entities count type/import/export/function/table/memory/global/data/element entries.
-Work bounds section decode, function-body decode and reference scanning; `refs`
+Work bounds section decode, function-body decode and reference scanning; `xref`
 charges actual decode and match work across all defined bodies. Budgets are checked
 before allocation, section enumeration, function decode and output, including JSONL
 header/summary and complete `get-function` original bytes. Code bodies are validated
@@ -221,7 +221,7 @@ parsing, not deobfuscation.
 
 ## MCP projection
 
-`wasm_outline`/`strings`/`refs`/`get_function` reuse the same validation/decode and
+`wasm_outline`/`strings`/`xref`/`get_function` reuse the same validation/decode and
 reconstruction code. JSONL becomes header/records/summary; FETCH keeps the original
 function view and raw option. Combined function indices, module file ranges,
 body-relative offsets, indirect calls and complete fallback remain unchanged; inputs

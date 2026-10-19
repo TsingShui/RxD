@@ -26,7 +26,9 @@ pub enum Command {
     #[command(name = "get-function")]
     Get {
         input: PathBuf,
-        id: String,
+        /// Coordinate copied from a `function` record: `func:42`.
+        #[arg(long)]
+        at: String,
         /// Force the raw instruction view instead of attempting decompilation.
         #[arg(long)]
         raw: bool,
@@ -42,7 +44,7 @@ pub enum Command {
         options: Options,
     },
     /// Find defined functions that explicitly reference a target function index.
-    Refs {
+    Xref {
         input: PathBuf,
         #[arg(long = "func")]
         func: u32,
@@ -93,7 +95,7 @@ impl Command {
             Self::Outline { options, .. }
             | Self::Get { options, .. }
             | Self::Strings { options, .. }
-            | Self::Refs { options, .. } => options,
+            | Self::Xref { options, .. } => options,
         }
     }
 
@@ -102,7 +104,7 @@ impl Command {
             Self::Outline { .. } => "outline",
             Self::Get { .. } => "get-function",
             Self::Strings { .. } => "strings",
-            Self::Refs { .. } => "refs",
+            Self::Xref { .. } => "xref",
         }
     }
 
@@ -130,7 +132,7 @@ pub fn execute(command: Command) -> Result<()> {
         .into_iter()
         .find(|code| message.contains(code))
         .unwrap_or("IO_ERROR");
-        Error::new(code, message)
+        Error::coded(code, message)
     });
     super::finish(perf, emit_perf, debug, result)
 }
@@ -140,7 +142,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Outline { input, options, .. }
         | Command::Get { input, options, .. }
         | Command::Strings { input, options, .. }
-        | Command::Refs { input, options, .. } => (input, options),
+        | Command::Xref { input, options, .. } => (input, options),
     };
     let limits = options.limits();
     let module = perf.measure("read_parse", || Module::read(path, limits))?;
@@ -162,13 +164,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     let mut records = 0usize;
 
     // `get` returns exactly one JSON record, not a header/records/summary stream.
-    if let Command::Get { id, raw, .. } = &command {
-        let position = module.defined_position_by_id(id)?;
+    if let Command::Get { at, raw, .. } = &command {
+        let at = rxd_core::envelope::full_id("wasm", &module.source_id, at);
+        let position = module.defined_position_by_id(&at)?;
         let view = perf.measure("decode", || rxd_wasm::get_view(&module, position, *raw))?;
         let mut value = record(
             "function_view",
             RecordMeta {
-                id: Some(id),
+                at: Some(&at),
                 source_id: Some(&module.source_id),
                 start: Some(view.body_file_offset),
                 end: Some(view.body_file_offset + view.body_size),
@@ -216,7 +219,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             func_name, func, ..
         } => json!({"func_name": func_name, "func": func}),
         Command::Strings { contains, .. } => json!({"contains": contains}),
-        Command::Refs { func, .. } => json!({"func": func}),
+        Command::Xref { func, .. } => json!({"func": func}),
         Command::Get { .. } => unreachable!(),
     };
     append(
@@ -279,8 +282,8 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 )?;
             }
         }
-        Command::Refs { func, .. } => {
-            let references = perf.measure("refs", || rxd_wasm::refs(&module, *func))?;
+        Command::Xref { func, .. } => {
+            let references = perf.measure("xref", || rxd_wasm::refs(&module, *func))?;
             for reference in references {
                 emit_record(
                     &mut output,
@@ -290,7 +293,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                         "reference",
                         RecordMeta {
                             source_id: Some(&module.source_id),
-                            context_id: Some(&reference.id),
+                            context_at: Some(&reference.id),
                             ..RecordMeta::default()
                         },
                         json!({
@@ -421,7 +424,7 @@ fn outline(
                 "function",
                 RecordMeta {
                     source_id: Some(&module.source_id),
-                    id: Some(&function.id),
+                    at: Some(&function.id),
                     start: Some(function.body_file_offset),
                     end: Some(function.body_file_offset + function.body_size),
                     ..RecordMeta::default()

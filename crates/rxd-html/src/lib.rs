@@ -544,7 +544,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
                     json!({"tag":tag,"attrs":attrs,"self_closing":self_closing,"void":is_void,"depth":node.depth,"end_tag":end_tag,"content_start":content_start,"content_end":content_end}),
                 Detail::Value => json!({"value":catalog.slice(node.start, node.end)?,"depth":node.depth}),
             };
-            output.json(&envelope::record(node.kind, RecordMeta { id: Some(id), source_id: Some(&hash), parent_id: parent.as_deref(), context_id: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end) }, detail.as_object().unwrap().clone()))?;
+            output.json(&envelope::record(node.kind, RecordMeta { at: Some(id), source_id: Some(&hash), parent_at: parent.as_deref(), context_at: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end) }, detail.as_object().unwrap().clone()))?;
         }
         let count = |kind| catalog.nodes.iter().filter(|node| node.kind == kind).count();
         output.json(&envelope::summary(order.len(), true,

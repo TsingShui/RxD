@@ -43,7 +43,7 @@ fn mcp_js_navigation_preserves_cli_identity_and_source() {
         ("js_calls", json!({"name":"fetch"})),
         ("js_members", json!({"name":"login"})),
         ("js_locate", json!({"byte":80})),
-        ("js_refs", json!({"byte":6})),
+        ("js_xref", json!({"byte":6})),
         ("js_symbols", json!({})),
     ] {
         let mut arguments = extra;
@@ -93,7 +93,7 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("js_calls", "js", "calls"),
     ("js_members", "js", "members"),
     ("js_locate", "js", "locate"),
-    ("js_refs", "js", "refs"),
+    ("js_xref", "js", "xref"),
     ("js_symbols", "js", "symbols"),
     ("js_get", "js", "get"),
     ("asar_list", "asar", "list"),
@@ -103,33 +103,33 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("dex_entries", "dex", "entries"),
     ("dex_classes", "dex", "classes"),
     ("dex_strings", "dex", "strings"),
-    ("dex_findrefs", "dex", "findrefs"),
+    ("dex_xref", "dex", "xref"),
     ("dex_manifest", "dex", "manifest"),
     ("dex_get_class", "dex", "get-class"),
     ("dex_fields_plan", "dex", "fields-plan"),
     ("dex_member_by_index", "dex", "member-by-index"),
     ("jar_outline", "jar", "outline"),
     ("jar_strings", "jar", "strings"),
-    ("jar_findrefs", "jar", "findrefs"),
+    ("jar_xref", "jar", "xref"),
     ("jar_get_method", "jar", "get-method"),
     ("jar_get_class", "jar", "get-class"),
     ("dotnet_outline", "dotnet", "outline"),
     ("dotnet_strings", "dotnet", "strings"),
-    ("dotnet_refs", "dotnet", "refs"),
+    ("dotnet_xref", "dotnet", "xref"),
     ("dotnet_get_method", "dotnet", "get-method"),
     ("dotnet_get_class", "dotnet", "get-class"),
     ("wasm_outline", "wasm", "outline"),
     ("wasm_strings", "wasm", "strings"),
-    ("wasm_refs", "wasm", "refs"),
+    ("wasm_xref", "wasm", "xref"),
     ("wasm_get_function", "wasm", "get-function"),
     ("pyc_outline", "pyc", "outline"),
     ("pyc_strings", "pyc", "strings"),
-    ("pyc_refs", "pyc", "refs"),
+    ("pyc_xref", "pyc", "xref"),
     ("pyc_get_code", "pyc", "get-code"),
     ("pyc_decompile", "pyc", "decompile"),
     ("evm_outline", "evm", "outline"),
     ("evm_strings", "evm", "strings"),
-    ("evm_refs", "evm", "refs"),
+    ("evm_xref", "evm", "xref"),
     ("evm_get_block", "evm", "get-block"),
     ("evm_get_function", "evm", "get-function"),
     ("evm_analyze", "evm", "analyze"),
@@ -164,7 +164,7 @@ fn cli_query(
     } else {
         argv.push(path.to_owned());
     }
-    let refs = matches!(name, "dex_findrefs" | "jar_findrefs");
+    let refs = matches!(name, "dex_xref" | "jar_xref");
     if refs {
         argv.push(arguments["kind"].as_str().unwrap().to_owned());
     }
@@ -888,16 +888,13 @@ fn mcp_dex_preserves_typed_queries_and_resolution_verdicts() {
             "dex_strings",
             json!({"filter":"Authorization","limit":1,"offset":0}),
         ),
+        ("dex_xref", json!({"kind":"string","value":"Authorization"})),
+        ("dex_xref", json!({"kind":"type","value":"Fixture"})),
         (
-            "dex_findrefs",
-            json!({"kind":"string","value":"Authorization"}),
-        ),
-        ("dex_findrefs", json!({"kind":"type","value":"Fixture"})),
-        (
-            "dex_findrefs",
+            "dex_xref",
             json!({"kind":"method","name":"m0","class":"Fixture0"}),
         ),
-        ("dex_findrefs", json!({"kind":"field","name":"missing"})),
+        ("dex_xref", json!({"kind":"field","name":"missing"})),
         ("dex_manifest", json!({})),
         ("dex_get_class", json!({"class":"Fixture0","members":true})),
         ("dex_fields_plan", json!({"descriptor":"Fixture0"})),
@@ -1015,10 +1012,10 @@ fn mcp_jvm_navigation_preserves_original_instruction_fetch() {
         .unwrap();
     for (name, extra) in [
         ("jar_strings", json!({"filter":""})),
-        ("jar_findrefs", json!({"kind":"string","value":""})),
-        ("jar_findrefs", json!({"kind":"type","name":"Object"})),
-        ("jar_findrefs", json!({"kind":"method","name":"println"})),
-        ("jar_findrefs", json!({"kind":"field","name":"counter"})),
+        ("jar_xref", json!({"kind":"string","value":""})),
+        ("jar_xref", json!({"kind":"type","name":"Object"})),
+        ("jar_xref", json!({"kind":"method","name":"println"})),
+        ("jar_xref", json!({"kind":"field","name":"counter"})),
         ("jar_get_method", json!({"id":method["id"],"bytecode":true})),
         ("jar_get_method", json!({"id":method["id"]})),
         ("jar_get_class", json!({"class":"fixture.FlowFixture"})),
@@ -1078,9 +1075,9 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
         .unwrap();
     for (name, extra) in [
         ("dotnet_strings", json!({"contains":""})),
-        ("dotnet_refs", json!({"token":method["detail"]["token"]})),
-        ("dotnet_refs", json!({"id":method["id"]})),
-        ("dotnet_refs", json!({"string":"missing"})),
+        ("dotnet_xref", json!({"token":method["detail"]["token"]})),
+        ("dotnet_xref", json!({"id":method["id"]})),
+        ("dotnet_xref", json!({"string":"missing"})),
         ("dotnet_get_method", json!({"id":method["id"],"il":true})),
         ("dotnet_get_class", json!({"id":ty["id"],"il":true})),
     ] {
@@ -1112,7 +1109,7 @@ fn mcp_wasm_navigation_retains_raw_body_and_explicit_references() {
     for (name, extra) in [
         ("wasm_strings", json!({"contains":""})),
         (
-            "wasm_refs",
+            "wasm_xref",
             json!({"func":function["detail"]["func_index"]}),
         ),
         ("wasm_get_function", json!({"id":function["id"],"raw":true})),
@@ -1140,7 +1137,7 @@ fn mcp_python_navigation_preserves_code_tables_and_source_completeness() {
     let code = &outline["records"][0];
     for (name, extra) in [
         ("pyc_strings", json!({"contains":""})),
-        ("pyc_refs", json!({"name":"print"})),
+        ("pyc_xref", json!({"name":"print"})),
         ("pyc_get_code", json!({"code_id":code["id"]})),
         ("pyc_decompile", json!({})),
     ] {
@@ -1275,7 +1272,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     ]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let result=client.tool("dex_findrefs",json!({"input":{"path":input},"kind":"method","class":"Fixture0","name":format!("--output={}",victim.display())}));
+    let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","name":format!("--output={}",victim.display())}));
     assert!(
         !victim.exists(),
         "typed name was incorrectly interpreted as a host output destination: {result}"
@@ -1283,7 +1280,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     checked(
         &mut client,
         &tools,
-        "dex_findrefs",
+        "dex_xref",
         json!({"input":{"path":input},"kind":"string","value":"-needle"}),
     );
 }
@@ -1450,14 +1447,14 @@ fn mcp_latest_evm_navigation_routes_returned_ids_to_exact_cli_fetch_and_referenc
             "evm_get_function",
             json!({"selector":function["detail"]["selector"]}),
         ),
-        ("evm_refs", json!({"id":block["id"]})),
+        ("evm_xref", json!({"id":block["id"]})),
     ] {
         let mut args = extra;
         args["input"] = json!({"path":input});
         args["encoding"] = json!("hex");
         checked(&mut client, &tools, name, args);
     }
-    for name in ["evm_strings", "evm_refs"] {
+    for name in ["evm_strings", "evm_xref"] {
         let extra = if name == "evm_strings" {
             json!({"kind":"text","query":"absent-final-mcp"})
         } else {
@@ -1502,7 +1499,7 @@ fn mcp_latest_evm_navigation_routes_returned_ids_to_exact_cli_fetch_and_referenc
             let refs = checked(
                 &mut client,
                 &tools,
-                "evm_refs",
+                "evm_xref",
                 json!({"input":{"path":input},"encoding":"hex","id":literal["id"]}),
             );
             if let Some(context) = refs["records"]

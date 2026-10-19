@@ -34,7 +34,7 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
         let id = literal["id"].as_str().unwrap();
         let owner = literal["detail"]["code_index"].as_u64().unwrap() as usize;
         let slot = &literal["detail"]["constant_slot"];
-        let stream = rows(&invoke("refs", &path, &["--const-id", id]));
+        let stream = rows(&invoke("xref", &path, &["--const-id", id]));
         let expected: Vec<_> = oracle["codes"][owner]["dis_instructions"]
             .as_array()
             .unwrap()
@@ -107,7 +107,7 @@ fn pyc_constant_refs_preserve_real_extended_constant_operands() {
     let literal = &literals[1];
     let owner = literal["detail"]["code_index"].as_u64().unwrap() as usize;
     let result = rows(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--const-id", literal["id"].as_str().unwrap()],
     ));
@@ -207,7 +207,7 @@ fn pyc_constant_refs_keep_equal_slots_owners_shared_paths_and_each_real_instruct
             serde_json::json!(path_indices)
         );
         let result = rows(&invoke(
-            "refs",
+            "xref",
             &path,
             &[
                 "--version",
@@ -315,12 +315,12 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         .as_str()
         .unwrap();
     let all = rows(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--version", "3.12", "--const-id", id],
     ));
     let scoped = rows(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--version", "3.12", "--const-id", id, "--within", owner_id],
     ));
@@ -356,7 +356,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         ],
     );
     let excluded = rows(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--version", "3.12", "--const-id", id, "--within", other_id],
     ));
@@ -388,7 +388,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     ] {
         failure(
             invoke(
-                "refs",
+                "xref",
                 &path,
                 &["--version", "3.12", "--const-id", &invalid],
             ),
@@ -398,7 +398,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     }
     failure(
         invoke(
-            "refs",
+            "xref",
             &path,
             &["--version", "3.12", "--const-id", id, "--within", id],
         ),
@@ -409,15 +409,15 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         vec!["--version", "3.12"],
         vec!["--version", "3.12", "--const-id", id, "--name", "x"],
     ] {
-        let failed = invoke("refs", &path, &args);
+        let failed = invoke("xref", &path, &args);
         assert_eq!(failed.status.code(), Some(2));
         assert!(failed.stdout.is_empty());
     }
     let copied = dir.path().join("renamed.marshal");
     fs::write(&copied, &bytes).unwrap();
     assert_eq!(
-        invoke("refs", &copied, &["--version", "3.12", "--const-id", id]).stdout,
-        invoke("refs", &path, &["--version", "3.12", "--const-id", id]).stdout
+        invoke("xref", &copied, &["--version", "3.12", "--const-id", id]).stdout,
+        invoke("xref", &path, &["--version", "3.12", "--const-id", id]).stdout
     );
     let mut changed = bytes.clone();
     let pos = changed
@@ -427,7 +427,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     changed[pos] = b'F';
     fs::write(&copied, &changed).unwrap();
     failure(
-        invoke("refs", &copied, &["--version", "3.12", "--const-id", id]),
+        invoke("xref", &copied, &["--version", "3.12", "--const-id", id]),
         2,
         "INVALID_QUERY",
     );
@@ -436,7 +436,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let forged = format!("rxd1:pyc:{:x}:const:0:0.0", Sha256::digest(&mutable));
     failure(
         invoke(
-            "refs",
+            "xref",
             &copied,
             &["--version", "3.12", "--const-id", &forged],
         ),
@@ -444,7 +444,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         "INVALID_QUERY",
     );
     let names = rows(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--version", "3.12", "--name", "x"],
     ));
@@ -468,7 +468,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         .unwrap()
         .to_owned();
     let complete = invoke(
-        "refs",
+        "xref",
         &path,
         &["--version", "3.12", "--const-id", &id, "--perf"],
     );
@@ -496,7 +496,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         let exact = amount.to_string();
         let less = (amount - 1).to_string();
         let accepted = invoke(
-            "refs",
+            "xref",
             &path,
             &["--version", "3.12", "--const-id", &id, flag, &exact],
         );
@@ -504,7 +504,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         assert_eq!(accepted.stdout, complete.stdout, "{flag}");
         fs::write(&out, b"keep").unwrap();
         let failed = invoke(
-            "refs",
+            "xref",
             &path,
             &[
                 "--version",
@@ -527,7 +527,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         }
     }
     let output = invoke(
-        "refs",
+        "xref",
         &path,
         &[
             "--version",
@@ -543,7 +543,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     assert_eq!(fs::read(&out).unwrap(), complete.stdout);
     failure(
         invoke(
-            "refs",
+            "xref",
             &path,
             &[
                 "--version",
@@ -574,7 +574,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         71
     );
     let selected = invoke(
-        "refs",
+        "xref",
         &deep_path,
         &[
             "--version",
@@ -586,7 +586,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     success(&selected);
     let exact = selected.stdout.len().to_string();
     let bounded = invoke(
-        "refs",
+        "xref",
         &deep_path,
         &[
             "--version",
@@ -610,7 +610,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
     let strings = rows(&invoke("strings", &path, &["--version", "3.12"]));
     for literal in &strings[1..strings.len() - 1] {
         let result = rows(&invoke(
-            "refs",
+            "xref",
             &path,
             &[
                 "--version",
@@ -648,7 +648,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
         fs::write(&out, b"keep").unwrap();
         failure(
             invoke(
-                "refs",
+                "xref",
                 &path,
                 &[
                     "--version",
@@ -675,7 +675,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
         .find(|r| r["detail"]["code_index"] == 1 && r["detail"]["constant_slot"] == 0)
         .unwrap();
     success(&invoke(
-        "refs",
+        "xref",
         &path,
         &[
             "--version",
@@ -686,7 +686,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
     ));
     failure(
         invoke(
-            "refs",
+            "xref",
             &path,
             &[
                 "--version",
@@ -699,7 +699,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
         "INVALID_INPUT",
     );
     let excluded = rows(&invoke(
-        "refs",
+        "xref",
         &path,
         &[
             "--version",

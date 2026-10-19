@@ -130,15 +130,15 @@ cannot be called. Startup and catalog discovery do not load ILSpy or unpack Kuna
 
 | Backend | Analysis tools |
 | --- | --- |
-| js | outline, find, identifiers, calls, members, locate, refs, symbols, get |
+| js | outline, find, identifiers, calls, members, locate, xref, symbols, get |
 | asar | list, extract |
 | html | list, extract |
-| dex | get_class, entries, strings, findrefs, manifest, classes, fields_plan, member_by_index |
-| jar | outline, strings, findrefs, get_method, get_class |
-| dotnet | outline, strings, refs, get_method, get_class |
-| wasm | outline, strings, refs, get_function |
-| pyc | outline, strings, refs, get_code, decompile |
-| evm | analyze, interface, storage, disassemble, basic_blocks, cfg, metadata, outline, strings, refs, get_block, get_function |
+| dex | get_class, entries, strings, xref, manifest, classes, fields_plan, member_by_index |
+| jar | outline, strings, xref, get_method, get_class |
+| dotnet | outline, strings, xref, get_method, get_class |
+| wasm | outline, strings, xref, get_function |
+| pyc | outline, strings, xref, get_code, decompile |
+| evm | analyze, interface, storage, disassemble, basic_blocks, cfg, metadata, outline, strings, xref, get_block, get_function |
 | kuna (bundled-kuna only) | functions, decompile |
 
 There are 52 built-in analysis tools plus `rxd_open`/`rxd_close`; linked Kuna adds only
@@ -307,7 +307,7 @@ listener.
 
 EVM navigation uses the current CLI's fixed nullable stream fields and returned carrier/
 encoding-bound IDs. `evm_strings` accepts explicit text/bytes/number interpretations;
-`evm_refs` preserves PUSH-use, CODECOPY and code-flow evidence; `evm_get_function`
+`evm_xref` preserves PUSH-use, CODECOPY and code-flow evidence; `evm_get_function`
 requires exactly one ID or selector and keeps raw/default reconstruction and structuring
 facts. Lower-only navigation budgets are work/states/stack_cells, with
 reconstruction_work/values for default function FETCH; block FETCH uses work. Native

@@ -1303,7 +1303,7 @@ fn evm_code_refs_route_unowned_static_jumps_to_exact_raw_blocks() {
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 3)
             .unwrap();
         let target_id = target["id"].as_str().unwrap();
-        let rows = jsonl(&run("refs", input, encoding, &["--id", target_id]));
+        let rows = jsonl(&run("xref", input, encoding, &["--id", target_id]));
         assert_eq!(rows[0]["query"]["id"], target_id);
         assert_eq!(rows.len(), 3);
         let hit = &rows[1];
@@ -1370,7 +1370,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
                 })
                 .unwrap();
             let rows = jsonl(&run(
-                "refs",
+                "xref",
                 input,
                 encoding,
                 &["--id", block["id"].as_str().unwrap()],
@@ -1425,7 +1425,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
                 assert!(!starts.contains(&(if owner == a_id { 55 } else { 41 })));
             }
         }
-        let rows = jsonl(&run("refs", input, encoding, &["--id", a_id]));
+        let rows = jsonl(&run("xref", input, encoding, &["--id", a_id]));
         let hits: Vec<_> = rows
             .iter()
             .filter(|r| r["record"] == "code_reference")
@@ -1466,7 +1466,7 @@ fn evm_code_refs_do_not_resolve_a_block_that_requires_an_impossible_incoming_sta
         .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 1031)
         .unwrap();
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", target["id"].as_str().unwrap()],
@@ -1522,7 +1522,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == target_start)
             .unwrap();
         let rows = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             "hex",
             &["--id", block["id"].as_str().unwrap()],
@@ -1563,7 +1563,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
     let (_directory, path) = fixture("0061ff", "tail-refs.hex");
     let outline = jsonl(&run("outline", &path, "hex", &[]));
     let rows = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", outline[1]["id"].as_str().unwrap()],
@@ -1586,7 +1586,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
     let destination = directory.path().join("previous.jsonl");
     let copy = directory.path().join("copy.hex");
     fs::copy(&path, &copy).unwrap();
-    success(&run("refs", &copy, "hex", &["--id", id]));
+    success(&run("xref", &copy, "hex", &["--id", id]));
     for forged in [
         id.replace("rxd1:", "rxd2:"),
         id.replace(":function:", ":literal:"),
@@ -1598,7 +1598,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
         fs::write(&destination, "preserved").unwrap();
         failure(
             run(
-                "refs",
+                "xref",
                 &path,
                 "hex",
                 &["--id", &forged, "-o", destination.to_str().unwrap()],
@@ -1609,13 +1609,13 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
     failure(
-        run("refs", &path, "raw", &["--id", id]),
+        run("xref", &path, "raw", &["--id", id]),
         1,
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, format!("{SHARED_HELPER}00")).unwrap();
     failure(
-        run("refs", &copy, "hex", &["--id", id]),
+        run("xref", &copy, "hex", &["--id", id]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -1625,13 +1625,13 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
         .unwrap();
     let forged = block["id"].as_str().unwrap().replace(":60:66", ":61:66");
     failure(
-        run("refs", &path, "hex", &["--id", &forged]),
+        run("xref", &path, "hex", &["--id", &forged]),
         1,
         "INVALID_ID",
     );
     failure(
         run(
-            "refs",
+            "xref",
             &path,
             "hex",
             &["--id", id, "-o", path.to_str().unwrap()],
@@ -1651,7 +1651,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
         .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 60)
         .unwrap();
     let id = target["id"].as_str().unwrap();
-    let plain = run("refs", &path, "hex", &["--id", id]);
+    let plain = run("xref", &path, "hex", &["--id", id]);
     let rows = jsonl(&plain);
     assert_js_keys(
         &rows[0],
@@ -1709,7 +1709,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
         &rows.last().unwrap()["detail"],
         acceptance::SUMMARY_DETAIL_KEYS,
     );
-    let profiled = run("refs", &path, "hex", &["--id", id, "--perf"]);
+    let profiled = run("xref", &path, "hex", &["--id", id, "--perf"]);
     assert_eq!(profiled.stdout, plain.stdout);
     let reports = perf_reports(&profiled);
     assert_eq!(reports[0]["resource_limits"]["states"], 100_000);
@@ -1721,21 +1721,21 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     }
     let work = reports[0]["counters"]["work"].as_u64().unwrap();
     success(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", id, "--max-work", &work.to_string()],
     ));
     let destination = directory.path().join("saved.jsonl");
     success(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", id, "-o", destination.to_str().unwrap()],
     ));
     assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
     success(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &[
@@ -1755,7 +1755,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     ] {
         fs::write(&destination, "preserved").unwrap();
         let failed = run(
-            "refs",
+            "xref",
             &path,
             "hex",
             &[
@@ -1791,7 +1791,7 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 152)
             .unwrap();
         let rows = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             encoding,
             &["--id", revert["id"].as_str().unwrap()],
@@ -1868,7 +1868,7 @@ fn evm_code_refs_keep_raw_block_stack_preconditions_and_actual_pc_zero_underflow
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == target)
             .unwrap();
         let rows = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             "hex",
             &["--id", target["id"].as_str().unwrap()],
@@ -1893,7 +1893,7 @@ fn evm_code_refs_keep_unvalidated_producer_candidate_entries_incomplete() {
     let target = outline.iter().find(|r| r["record"] == "function").unwrap();
     assert_eq!(target["detail"]["decoded_entry"], 33);
     let rows = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", target["id"].as_str().unwrap()],
@@ -1948,7 +1948,7 @@ fn evm_immediate_text_search_refs_fetch_compiler_owned_contexts() {
             "push_immediate_text_candidate"
         );
         let id = literal["id"].as_str().unwrap();
-        let references = jsonl(&run("refs", &path, encoding, &["--id", id]));
+        let references = jsonl(&run("xref", &path, encoding, &["--id", id]));
         let references: Vec<_> = references
             .iter()
             .filter(|r| r["record"] == "literal_reference")
@@ -2035,7 +2035,7 @@ fn evm_immediate_search_preserves_utf8_boundaries_and_overlapping_matches() {
     assert_eq!(zeros.last().unwrap()["records"], 0);
     for row in [&rows[1], &unicode[1]] {
         let refs = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             "hex",
             &["--id", row["id"].as_str().unwrap()],
@@ -2087,7 +2087,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
             assert_eq!(row["start"], origin + start * stride);
             assert_eq!(row["end"], origin + end * stride);
             let refs = jsonl(&run(
-                "refs",
+                "xref",
                 path,
                 encoding,
                 &["--id", row["id"].as_str().unwrap()],
@@ -2137,7 +2137,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
     assert_eq!(shared.len(), 2);
     assert_eq!(shared[0]["id"], shared[1]["id"]);
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", shared[0]["id"].as_str().unwrap()],
@@ -2191,7 +2191,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         .find(|r| r["record"] == "literal" && r["detail"]["instruction_offset"] == 61)
         .unwrap();
     let id = literal["id"].as_str().unwrap();
-    let references = run("refs", &path, "hex", &["--id", id]);
+    let references = run("xref", &path, "hex", &["--id", id]);
     let reference_rows = jsonl(&references);
     assert_js_keys(
         &rows[0]["query"],
@@ -2279,7 +2279,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         &["--kind", "number", "--query", "1"],
     ));
     assert_eq!(copy_rows[1]["id"], rows[1]["id"]);
-    success(&run("refs", &copy, "hex", &["--id", id]));
+    success(&run("xref", &copy, "hex", &["--id", id]));
     for invalid in [
         id.replace("rxd1:", "rxd2:"),
         id.replace(":literal:", ":block:"),
@@ -2292,19 +2292,19 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         id.replace(":61:1", ":184467440737095516160:1"),
     ] {
         failure(
-            run("refs", &path, "hex", &["--id", &invalid]),
+            run("xref", &path, "hex", &["--id", &invalid]),
             1,
             "INVALID_ID",
         );
     }
     failure(
-        run("refs", &path, "raw", &["--id", id]),
+        run("xref", &path, "raw", &["--id", id]),
         1,
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, format!("{SHARED_HELPER}00")).unwrap();
     failure(
-        run("refs", &copy, "hex", &["--id", id]),
+        run("xref", &copy, "hex", &["--id", id]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -2332,7 +2332,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
             vec!["--kind", "number", "--query", "1"],
             plain.stdout.as_slice(),
         ),
-        ("refs", vec!["--id", id], references.stdout.as_slice()),
+        ("xref", vec!["--id", id], references.stdout.as_slice()),
     ] {
         let mut profiled_args = args.clone();
         profiled_args.push("--perf");
@@ -2399,7 +2399,7 @@ fn evm_immediate_clues_do_not_upgrade_unknown_function_boundaries_or_address_sem
     assert_eq!(rows[1]["detail"]["context_kind"], "function");
     assert_eq!(rows[1]["detail"]["context_boundary_complete"], false);
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", rows[1]["id"].as_str().unwrap()],
@@ -2445,7 +2445,7 @@ fn evm_immediate_clues_do_not_upgrade_unknown_function_boundaries_or_address_sem
     assert_eq!(address[1]["detail"]["width_bytes"], 20);
     assert_eq!(address[1]["detail"]["context_kind"], "block");
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", address[1]["id"].as_str().unwrap()],
@@ -2494,7 +2494,7 @@ fn evm_real_compiler_data_id_refs_fetch_prove_codecopy_source_length_and_owner()
             "unindexed_data_text_candidate"
         );
         let refs = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             encoding,
             &["--id", data["id"].as_str().unwrap()],
@@ -2559,7 +2559,7 @@ fn evm_data_unknown_copy_operands_remain_coverage_evidence_without_fabricated_ro
     assert_eq!(unknown["length_hex"], format!("{:064x}", 4));
     assert_eq!(unknown["reason"], "source_offset_unknown");
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "raw",
         &["--id", data["id"].as_str().unwrap()],
@@ -2633,7 +2633,7 @@ fn evm_data_shared_helper_copy_witnesses_keep_each_callers_actual_source() {
         ));
         let literal = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
         let refs = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             "raw",
             &["--id", literal["id"].as_str().unwrap()],
@@ -2656,7 +2656,7 @@ fn evm_data_shared_helper_copy_witnesses_keep_each_callers_actual_source() {
             );
             failure(
                 run(
-                    "refs",
+                    "xref",
                     &path,
                     "raw",
                     &[
@@ -2713,7 +2713,7 @@ fn evm_data_copy_intersections_preserve_zero_padding_and_huge_length_without_all
     ));
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "raw",
         &["--id", data["id"].as_str().unwrap()],
@@ -2755,7 +2755,7 @@ fn evm_data_copy_intersections_preserve_zero_padding_and_huge_length_without_all
     ));
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "raw",
         &["--id", data["id"].as_str().unwrap()],
@@ -2806,7 +2806,7 @@ fn evm_data_metadata_and_copied_push_bytes_keep_distinct_candidate_evidence() {
     for literal in data {
         assert_eq!(literal["context_id"], Value::Null);
         let refs = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             "raw",
             &["--id", literal["id"].as_str().unwrap()],
@@ -2842,7 +2842,7 @@ fn evm_data_metadata_and_copied_push_bytes_keep_distinct_candidate_evidence() {
     assert_eq!(data["detail"]["decoded_start"], 1);
     assert_eq!(data["detail"]["decoded_end"], 5);
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "raw",
         &["--id", data["id"].as_str().unwrap()],
@@ -2889,7 +2889,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             "runtime_string_proven",
         ],
     );
-    let references = run("refs", &path, "raw", &["--id", id]);
+    let references = run("xref", &path, "raw", &["--id", id]);
     let refs = jsonl(&references);
     let reference = refs
         .iter()
@@ -2947,7 +2947,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     }
     let copy = directory.path().join("renamed.bin");
     fs::copy(&path, &copy).unwrap();
-    success(&run("refs", &copy, "raw", &["--id", id]));
+    success(&run("xref", &copy, "raw", &["--id", id]));
     for forged in [
         id.replace("rxd1:", "rxd2:"),
         id.replace(":unindexed:", ":tail:"),
@@ -2957,14 +2957,14 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
         id.replace(":data:", ":push:"),
     ] {
         failure(
-            run("refs", &path, "raw", &["--id", &forged]),
+            run("xref", &path, "raw", &["--id", &forged]),
             1,
             "INVALID_ID",
         );
     }
     fs::write(&copy, b"\x60\x04\x60\x07\x5f\x39\x00CHANGED").unwrap();
     failure(
-        run("refs", &copy, "raw", &["--id", id]),
+        run("xref", &copy, "raw", &["--id", id]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -2988,7 +2988,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             vec!["--kind", "text", "--query", "CLUE"],
             plain.stdout.as_slice(),
         ),
-        ("refs", vec!["--id", id], references.stdout.as_slice()),
+        ("xref", vec!["--id", id], references.stdout.as_slice()),
     ] {
         let mut save = query.clone();
         save.extend(["-o", destination.to_str().unwrap()]);
@@ -3064,7 +3064,7 @@ fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_
             );
         }
         let refs = jsonl(&run(
-            "refs",
+            "xref",
             &path,
             "raw",
             &["--id", data["id"].as_str().unwrap()],
@@ -3107,13 +3107,13 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
         .find(|r| r["record"] == "literal" && r["detail"]["instruction_offset"] == 61)
         .unwrap();
     let code = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &["--id", block["id"].as_str().unwrap(), "--include-bytecode"],
     ));
     let literals = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "hex",
         &[
@@ -3159,7 +3159,7 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
         .as_str()
         .unwrap();
     let data = jsonl(&run(
-        "refs",
+        "xref",
         &data_path,
         "raw",
         &["--id", data_id, "--include-bytecode"],
@@ -3202,7 +3202,7 @@ fn evm_data_ownerless_block_refs_preserve_observed_incoming_copy_preconditions()
     ));
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &path,
         "raw",
         &["--id", data["id"].as_str().unwrap()],

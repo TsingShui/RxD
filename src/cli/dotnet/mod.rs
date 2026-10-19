@@ -1,15 +1,110 @@
 use std::{
     collections::BTreeMap,
-    io::{self, Write},
-    path::PathBuf,
+    io::{self, Read, Write},
+    path::{Path, PathBuf},
 };
 
+use anyhow::Context;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Result};
 use rxd_dotnet::{Input, Limits};
 use serde_json::{Map, Value, json};
+
+/// One FETCH selector: a coordinate copied from a record, or a previous JSONL
+/// stream to read that coordinate from.
+#[derive(Args, Clone, Debug)]
+pub struct Selector {
+    /// Coordinate copied from a record: the metadata token, such as `0x06000003`
+    /// (`0x` optional).
+    #[arg(long, required_unless_present = "from", conflicts_with = "from")]
+    at: Option<String>,
+    /// Read the coordinate from a previous JSONL stream (a file, or `-` for stdin).
+    /// The stream's `source_id` must match this input, so a stale stream cannot
+    /// silently fetch a member from another file.
+    #[arg(
+        long,
+        value_name = "JSONL",
+        required_unless_present = "at",
+        conflicts_with = "at"
+    )]
+    from: Option<PathBuf>,
+}
+
+impl Selector {
+    /// Resolve the coordinate to fetch; `units` are the record kinds the stream may
+    /// carry (a stream is not trusted to name the unit the command needs).
+    fn resolve(&self, units: &[&str], source_id: &str) -> anyhow::Result<String> {
+        match &self.at {
+            Some(at) => Ok(at.clone()),
+            None => read_selector(
+                self.from
+                    .as_deref()
+                    .expect("clap requires exactly one selector"),
+                units,
+                source_id,
+            ),
+        }
+    }
+}
+
+/// Bounded read of one JSONL stream: the first record whose `record` is in `units`
+/// and which carries an `at` coordinate wins. A mismatched `source_id` is an error,
+/// never a silent fetch from another input.
+fn read_selector(path: &Path, units: &[&str], source_id: &str) -> anyhow::Result<String> {
+    const LIMIT: u64 = 64 * 1024;
+    let mut text = String::new();
+    if path == Path::new("-") {
+        // The parent reads stdin because the isolated worker has none; a direct
+        // invocation (no worker) falls back to reading it here.
+        match std::env::var("RXD_SELECTOR_STDIN") {
+            Ok(stream) => text = stream,
+            Err(_) => {
+                io::stdin()
+                    .take(LIMIT)
+                    .read_to_string(&mut text)
+                    .context("INVALID_QUERY: cannot read --from stdin")?;
+            }
+        }
+    } else {
+        std::fs::File::open(path)
+            .and_then(|file| file.take(LIMIT).read_to_string(&mut text).map(|_| ()))
+            .with_context(|| format!("INVALID_QUERY: cannot read --from {}", path.display()))?;
+    }
+    for line in text.lines() {
+        let Ok(row) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let kind = row
+            .get("record")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !units.contains(&kind) {
+            continue;
+        }
+        let Some(at) = row.get("at").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(found) = row.get("source_id").and_then(Value::as_str) {
+            anyhow::ensure!(
+                found == source_id,
+                "INVALID_QUERY: --from stream came from a different input (stream {}…, this input {}…); re-run outline for this file",
+                short_source(found),
+                short_source(source_id)
+            );
+        }
+        return Ok(at.to_string());
+    }
+    anyhow::bail!(
+        "INVALID_QUERY: --from stream carries no {} record with an `at` coordinate",
+        units.join("/")
+    )
+}
+
+fn short_source(id: &str) -> &str {
+    id.get(..12).unwrap_or(id)
+}
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -27,7 +122,8 @@ pub enum Command {
     #[command(name = "get-method")]
     Get {
         input: PathBuf,
-        id: String,
+        #[command(flatten)]
+        selector: Selector,
         #[arg(long)]
         il: bool,
         #[command(flatten)]
@@ -37,7 +133,8 @@ pub enum Command {
     #[command(name = "get-class")]
     GetClass {
         input: PathBuf,
-        id: String,
+        #[command(flatten)]
+        selector: Selector,
         #[arg(long)]
         il: bool,
         #[command(flatten)]
@@ -52,16 +149,19 @@ pub enum Command {
         options: Options,
     },
     /// Find exact/semantic member and type operands or decoded user-string loads.
-    Refs {
+    Xref {
         input: PathBuf,
-        #[arg(long, value_parser = token, required_unless_present_any = ["id","string"], conflicts_with_all = ["id","string"])]
-        token: Option<u32>,
-        #[arg(long, required_unless_present_any = ["token","string"], conflicts_with_all = ["token","string"])]
-        id: Option<String>,
-        #[arg(long, required_unless_present_any = ["token","id"], conflicts_with_all = ["token","id"])]
+        /// Reference target: the metadata token of a member or type, such as
+        /// `0x0a00001f`; it also covers external members and generic instantiations.
+        #[arg(long, required_unless_present_any = ["string","from"], conflicts_with_all = ["string","from"])]
+        at: Option<String>,
+        #[arg(long, required_unless_present_any = ["at","from"], conflicts_with_all = ["at","from"])]
         string: Option<String>,
-        #[arg(long, requires = "token")]
-        semantic: bool,
+        /// Read the target from a previous JSONL stream (a file, or `-` for stdin);
+        /// `method`, `field` and `type` records are accepted.
+        #[arg(long, value_name = "JSONL", required_unless_present_any = ["at","string"], conflicts_with_all = ["at","string"])]
+        from: Option<PathBuf>,
+
         #[command(flatten)]
         options: Options,
     },
@@ -110,7 +210,7 @@ impl Command {
             | Self::Get { options, .. }
             | Self::GetClass { options, .. }
             | Self::Strings { options, .. }
-            | Self::Refs { options, .. } => options,
+            | Self::Xref { options, .. } => options,
         }
     }
 
@@ -120,7 +220,7 @@ impl Command {
             Self::Get { .. } => "get-method",
             Self::GetClass { .. } => "get-class",
             Self::Strings { .. } => "strings",
-            Self::Refs { .. } => "refs",
+            Self::Xref { .. } => "xref",
         }
     }
 
@@ -153,7 +253,7 @@ pub fn execute(command: Command) -> Result<()> {
         } else {
             "IO_ERROR"
         });
-        Error::new(code, message)
+        Error::coded(code, message)
     });
     super::finish(perf, emit_perf, debug, result)
 }
@@ -164,7 +264,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         | Command::Get { input, options, .. }
         | Command::GetClass { input, options, .. }
         | Command::Strings { input, options, .. }
-        | Command::Refs { input, options, .. } => (input, options),
+        | Command::Xref { input, options, .. } => (input, options),
     };
     let limits = options.limits();
     let input = perf.measure("read_parse", || Input::read(path, limits))?;
@@ -174,48 +274,77 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     let query_start = perf.start_stage();
     let mut output = Vec::new();
     let mut records = 0;
-    let mut reference_result = if let Command::Refs {
-        token,
-        id,
-        string,
-        semantic,
-        ..
+    let mut reference_result = if let Command::Xref {
+        at, string, from, ..
     } = &command
     {
         anyhow::ensure!(
-            !*semantic || token.is_some(),
-            "INVALID_QUERY: --semantic requires --token"
-        );
-        anyhow::ensure!(
-            usize::from(token.is_some())
-                + usize::from(id.is_some())
-                + usize::from(string.is_some())
+            usize::from(at.is_some()) + usize::from(string.is_some()) + usize::from(from.is_some())
                 == 1,
-            "INVALID_QUERY: exactly one reference selector is required"
+            "INVALID_QUERY: exactly one reference target is required (`--at`, `--string` or `--from`)"
         );
-        if string.is_some() || (!*semantic && token.is_some_and(|token| token >> 24 == 0x70)) {
+        let at = match (at, from) {
+            (Some(at), _) => Some(at.clone()),
+            (None, Some(path)) => Some(read_selector(
+                path,
+                &["method", "field", "type"],
+                &input.source_id,
+            )?),
+            (None, None) => None,
+        };
+        let target = at.as_deref().map(parse_token).transpose()?;
+        // A user-string token (0x70 table) has no member identity; it takes the
+        // string route.
+        let string_route = string.is_some() || target.is_some_and(|token| token >> 24 == 0x70);
+        if string_route {
             None
         } else {
-            let target = if let Some(id) = id {
-                input.reference_token_by_id(id)?
-            } else {
-                token.unwrap()
-            };
             Some(perf.measure("references", || {
-                input.references(target, *semantic || id.is_some())
+                input.references(target.expect("clap requires one target"), true)
             })?)
         }
     } else {
         None
     };
-    if let Command::Get { id, il, .. } = &command {
-        let method = input.method_by_id(id)?;
+    // The header names the reference target: a member identity, or the `#US` literal
+    // when the query went through the string route.
+    let reference_target = match (&reference_result, &command) {
+        (Some(result), _) => match result.target.as_deref() {
+            Some(target) => serde_json::to_value(target)?,
+            None => Value::Null,
+        },
+        (None, Command::Xref { at, string, .. }) => {
+            if let Some(value) = string {
+                json!({"target_kind": "user_string", "value": value})
+            } else if let Some(token) = at.as_deref().and_then(|value| parse_token(value).ok()) {
+                let mut target =
+                    json!({"target_kind": "user_string", "token": format!("0x{token:08x}")});
+                if let Some(record) = user_string(&input, token) {
+                    match (record.value, record.utf16_units) {
+                        (Some(text), _) => target["value"] = Value::from(text),
+                        (None, Some(units)) => {
+                            target["utf16_units"] = serde_json::to_value(units)?;
+                        }
+                        (None, None) => {}
+                    }
+                }
+                target
+            } else {
+                Value::Null
+            }
+        }
+        _ => Value::Null,
+    };
+    if let Command::Get { selector, il, .. } = &command {
+        let at = selector.resolve(&["method"], &input.source_id)?;
+        let method = input.method_by_id(&at)?;
         let body = perf.measure("decode", || input.body(method))?;
         let decompilation = if *il {
             rxd_dotnet::Decompilation {
                 representation: "il".into(),
                 decompiled: false,
                 reason: None,
+                warnings: Vec::new(),
                 code: None,
                 mapping: Vec::new(),
             }
@@ -224,29 +353,42 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 rxd_dotnet::render(&input, method, &body, limits)
             })?
         };
+        // Each metadata-token operand carries the resolved member it denotes, so a
+        // fallback to IL does not require a separate --token --semantic round trip.
+        let instructions = annotate_operands(&input, &body.instructions)?;
+        let reason_detail = decompilation.reason.as_deref().map(|reason| {
+            describe_method_reason(
+                reason,
+                body.instructions.len(),
+                body.handlers.len(),
+                &unresolved_operands(&instructions),
+            )
+        });
         let value = fetch_record(
             "method_body",
             command.name(),
             RecordMeta {
-                id: Some(id),
+                at: Some(&at),
                 source_id: Some(&input.source_id),
-                parent_id: Some(&method.declaring_type_id),
+                parent_at: Some(&method.declaring_type_id),
                 start: Some(body.code_offset),
                 end: Some(body.code_offset + body.code_size),
                 ..RecordMeta::default()
             },
             detail(
-                json!({"method":method_record(&input, method)?,"body_present":true,"representation":decompilation.representation,"decompiled":decompilation.decompiled,"reason":decompilation.reason,"code":decompilation.code,"mapping":decompilation.mapping,"file_offset":body.file_offset,"code_offset":body.code_offset,"code_size":body.code_size,"work_used":body.work_used,"max_stack":body.max_stack,"init_locals":body.init_locals,"locals":body.locals,"local_signature_token":body.local_signature_token,"instructions":body.instructions,"handlers":body.handlers,"il_hex":body.il_hex,"complete":true}),
+                json!({"method":method_record(&input, method)?,"body_present":true,"representation":decompilation.representation,"decompiled":decompilation.decompiled,"reason":decompilation.reason,"reason_detail":reason_detail,"warnings":decompilation.warnings,"code":decompilation.code,"mapping":decompilation.mapping,"file_offset":body.file_offset,"code_offset":body.code_offset,"code_size":body.code_size,"work_used":body.work_used,"max_stack":body.max_stack,"init_locals":body.init_locals,"locals":body.locals,"local_signature_token":body.local_signature_token,"instructions":instructions,"handlers":body.handlers,"il_hex":body.il_hex,"complete":true}),
             ),
         );
         append(&mut output, &value, limits.output_bytes)?;
-    } else if let Command::GetClass { id, il, .. } = &command {
-        let class = perf.measure("decode", || input.class_body(id))?;
+    } else if let Command::GetClass { selector, il, .. } = &command {
+        let at = selector.resolve(&["type"], &input.source_id)?;
+        let class = perf.measure("decode", || input.class_body(&at))?;
         let rendered = if *il {
             rxd_dotnet::ClassDecompilation {
                 representation: "il".into(),
                 decompiled: false,
                 reason: None,
+                warnings: Vec::new(),
                 code: None,
                 mapping: vec![],
             }
@@ -283,7 +425,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             .map(|item| class_method_record(&input, item))
             .collect::<anyhow::Result<Vec<_>>>()?;
         let mut payload = detail(
-            json!({"type":type_record(&input, class.root)?,"work_used":class.work_used,"representation":rendered.representation,"decompiled":rendered.decompiled,"reason":rendered.reason,"code":rendered.code,"mapping":rendered.mapping,"complete":true}),
+            json!({"type":type_record(&input, class.root)?,"work_used":class.work_used,"representation":rendered.representation,"decompiled":rendered.decompiled,"reason":rendered.reason,"reason_detail":rendered.reason.as_deref().map(|reason| describe_class_reason(reason, class.methods.len())),"warnings":rendered.warnings,"code":rendered.code,"mapping":rendered.mapping,"complete":true}),
         );
         // The inventories are already bounded JSON records. Move them into the
         // aggregate rather than serializing and duplicating every original body.
@@ -296,12 +438,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         ] {
             payload.insert(key.into(), Value::Array(records));
         }
+        // Nested inventories carry the same entity references as the top level.
+        shorten_detail_ids(&mut payload);
         let value = fetch_record(
             "class_body",
             command.name(),
             RecordMeta {
-                id: Some(id),
-                parent_id: class.root.declaring_type_id.as_deref(),
+                at: Some(&at),
+                parent_at: class.root.declaring_type_id.as_deref(),
                 ..metadata(&input)
             },
             payload,
@@ -319,13 +463,9 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 type_name, method, ..
             } => json!({"type":type_name,"method":method}),
             Command::Strings { contains, .. } => json!({"contains":contains}),
-            Command::Refs {
-                token,
-                id,
-                string,
-                semantic,
-                ..
-            } => json!({"token":token,"id":id,"string":string,"semantic":semantic}),
+            Command::Xref {
+                at, string, from, ..
+            } => json!({"at":at,"from":from,"string":string}),
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
         };
         append(
@@ -336,10 +476,8 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 Some(&input.source_id),
                 Some(input.file_bytes),
                 query,
-                if matches!(command, Command::Refs { .. }) {
-                    detail(
-                        json!({"target":reference_result.as_ref().and_then(|result|result.target.as_deref())}),
-                    )
+                if matches!(command, Command::Xref { .. }) {
+                    detail(json!({"target": reference_target}))
                 } else {
                     Map::new()
                 },
@@ -412,18 +550,18 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                         &envelope::record(
                             "string",
                             RecordMeta {
-                                parent_id: method.map(|method| method.declaring_type_id.as_str()),
-                                context_id: method.map(|method| method.id.as_str()),
+                                parent_at: method.map(|method| method.declaring_type_id.as_str()),
+                                context_at: method.map(|method| method.id.as_str()),
                                 ..metadata(&input)
                             },
                             detail(
-                                json!({"offset":literal.offset,"token":0x70000000u32 | literal.offset,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"declaring_type_id":method.map(|method| &method.declaring_type_id),"il_offsets":group.il_offsets}),
+                                json!({"offset":literal.offset,"token":0x70000000u32 | literal.offset,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"declaring_type_id":method.map(|method| envelope::at_of(&method.declaring_type_id)),"il_offsets":group.il_offsets}),
                             ),
                         ),
                     )?;
                 }
             }
-            Command::Refs { token, string, .. } => {
+            Command::Xref { at, string, .. } => {
                 if let Some(result) = reference_result.take() {
                     for reference in result.references {
                         let value = reference_record(
@@ -438,7 +576,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                     let sites = if let Some(value) = string {
                         perf.measure("strings", || input.string_references(value))?
                     } else {
-                        perf.measure("strings", || input.user_string_references(token.unwrap()))?
+                        let token = at
+                            .as_deref()
+                            .and_then(|value| parse_token(value).ok())
+                            .expect("a `0x70` token routes here only with `--at`");
+                        perf.measure("strings", || input.user_string_references(token))?
                     };
                     for site in sites {
                         let value = reference_record(
@@ -502,14 +644,14 @@ fn reference_record(
     Ok(envelope::record(
         "reference",
         RecordMeta {
-            context_id: Some(&method.id),
-            parent_id: Some(&method.declaring_type_id),
+            context_at: Some(&method.id),
+            parent_at: Some(&method.declaring_type_id),
             start: Some(start),
             end: Some(start + site.size as usize),
             ..metadata(input)
         },
         detail(
-            json!({"method_token":method.token,"declaring_type":method.declaring_type,"declaring_type_id":method.declaring_type_id,"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"canonical_target_id":target.and_then(|target|target.canonical_id.as_ref()),"canonical_target_token":target.and_then(|target|target.canonical_token),"resolution_status":target.map_or("exact",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
+            json!({"method_token":method.token,"declaring_type":method.declaring_type,"declaring_type_id":envelope::at_of(&method.declaring_type_id),"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"canonical_target_id":target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of),"canonical_target_token":target.and_then(|target|target.canonical_token),"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
         ),
     ))
 }
@@ -582,14 +724,213 @@ impl Write for BoundedOutput<'_> {
     }
 }
 
+/// Names of token operands the resolver could not place, deduplicated and truncated so
+/// the reason stays readable.
+fn unresolved_operands(instructions: &Value) -> Vec<String> {
+    let mut names = Vec::new();
+    let Some(list) = instructions.as_array() else {
+        return names;
+    };
+    for instruction in list {
+        let Some(operand) = instruction.get("operand") else {
+            continue;
+        };
+        if operand.get("kind").and_then(Value::as_str) != Some("token") {
+            continue;
+        }
+        match operand.get("status").and_then(Value::as_str) {
+            Some("resolved" | "external") => {}
+            _ => {
+                // A user-string operand (0x70 table) has no member identity at all, so
+                // it is expected to be nameless rather than unresolved.
+                if operand.get("value").and_then(Value::as_u64).unwrap_or(0) >> 24 == 0x70 {
+                    continue;
+                }
+                // An unresolved operand has no owner or name; the token is the only
+                // thing an Agent can act on.
+                let label = match (
+                    operand.get("owner").and_then(Value::as_str),
+                    operand.get("name").and_then(Value::as_str),
+                ) {
+                    (Some(owner), Some(name)) => format!("{owner}::{name}"),
+                    _ => format!(
+                        "token {:#010x}",
+                        operand.get("value").and_then(Value::as_u64).unwrap_or(0)
+                    ),
+                };
+                if !names.contains(&label) {
+                    names.push(label);
+                }
+            }
+        }
+    }
+    names.truncate(4);
+    names
+}
+
+/// Explain, in the record itself, why this body is IL instead of C#.
+fn describe_method_reason(
+    reason: &str,
+    instructions: usize,
+    handlers: usize,
+    unresolved: &[String],
+) -> String {
+    let unresolved_detail = if unresolved.is_empty() {
+        "every member operand resolves, so the refusal is the engine's own reconstruction limit rather than missing metadata".to_string()
+    } else {
+        format!(
+            "{} unresolved member operand(s): {}",
+            unresolved.len(),
+            unresolved.join(", ")
+        )
+    };
+    match reason {
+        "engine_unavailable" => format!(
+            "this build cannot load the pinned C# engine ({}), so only the original IL is available: {instructions} instructions, {unresolved_detail}",
+            engine_state(),
+        ),
+        other => format!(
+            "the C# engine rejected this body (`{other}`); the original IL is returned: {instructions} instructions, {handlers} exception handlers, {unresolved_detail}"
+        ),
+    }
+}
+
+fn describe_class_reason(reason: &str, methods: usize) -> String {
+    match reason {
+        "class_engine_unavailable" => format!(
+            "this build cannot load the pinned C# engine ({}); the {methods}-member inventory and original IL are complete, whole-class C# is not available",
+            engine_state(),
+        ),
+        "class_abi_unavailable" => format!(
+            "the loaded engine exposes no whole-class entry point; the {methods}-member inventory and original IL are complete. Fetch one member with `get-method --at <method:token>`"
+        ),
+        other => format!(
+            "the C# engine rejected this class (`{other}`); the {methods}-member inventory and original IL are complete and no partial C# is returned. The refusal names no member, so fetch each member with `get-method --at <at>`: a member the engine also refuses reports `il_warning` and still returns its original IL"
+        ),
+    }
+}
+
+/// Decode one `#US` literal by token so a record can carry the text, not just the token.
+fn user_string(input: &Input, token: u32) -> Option<rxd_dotnet::StringRecord> {
+    input
+        .strings()
+        .ok()?
+        .into_iter()
+        .find(|record| record.offset == token & 0x00ff_ffff)
+}
+
+fn engine_state() -> &'static str {
+    if cfg!(feature = "bundled-ilspy") {
+        "bundled engine failed to load"
+    } else {
+        "built without the bundled engine"
+    }
+}
+
+/// Annotate every metadata-token operand with the member it provably denotes.
+fn annotate_operands(
+    input: &Input,
+    instructions: &[rxd_dotnet::Instruction],
+) -> anyhow::Result<Value> {
+    let mut value = serde_json::to_value(instructions)?;
+    let Some(list) = value.as_array_mut() else {
+        return Ok(value);
+    };
+    let mut resolver = input.target_resolver()?;
+    // A `#US` operand has no member identity, but its token is a usable coordinate and
+    // the literal is already decoded in the heap, so one lookup answers both questions.
+    let literals = if instructions.iter().any(|instruction| {
+        matches!(instruction.operand, rxd_dotnet::Operand::Token(token) if token >> 24 == 0x70)
+    }) {
+        let mut map = BTreeMap::new();
+        for record in input.strings()? {
+            map.insert(record.offset, record);
+        }
+        Some(map)
+    } else {
+        None
+    };
+    for instruction in list.iter_mut() {
+        let Some(operand) = instruction.get_mut("operand") else {
+            continue;
+        };
+        if operand.get("kind").and_then(Value::as_str) != Some("token") {
+            continue;
+        }
+        let Some(token) = operand.get("value").and_then(Value::as_u64) else {
+            continue;
+        };
+        let token = u32::try_from(token).unwrap_or(0);
+        if token >> 24 == 0x70 {
+            operand["target_at"] = Value::from(format!("0x{token:08x}"));
+            if let Some(record) = literals
+                .as_ref()
+                .and_then(|map| map.get(&(token & 0x00ff_ffff)))
+            {
+                match (&record.value, &record.utf16_units) {
+                    (Some(text), _) => operand["string"] = Value::from(text.clone()),
+                    (None, Some(units)) => {
+                        operand["utf16_units"] = serde_json::to_value(units)?;
+                    }
+                    (None, None) => {}
+                }
+            }
+            continue;
+        }
+        let Some(target) = resolver.target(token)? else {
+            continue;
+        };
+        operand["owner"] = Value::from(target.owner_name.clone());
+        operand["name"] = Value::from(target.name.clone());
+        operand["status"] = Value::from(target.resolution_status.clone());
+        operand["scope"] = serde_json::to_value(&target.scope)?;
+        if let Some(canonical) = &target.canonical_id {
+            operand["target_at"] = Value::from(envelope::at_of(canonical).into_owned());
+        }
+    }
+    Ok(value)
+}
+
+/// Detail-level entity references use the same copy-only coordinate as the outer
+/// envelope; a caller never receives a hash it did not ask for. Nested inventories
+/// (class bodies, refs rows) carry the same keys, so the rewrite is recursive.
+fn shorten_ids(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            for (key, child) in fields.iter_mut() {
+                if key == "id" || key.ends_with("_id") {
+                    if let Value::String(text) = child {
+                        if text.starts_with("rxd1:") {
+                            *text = envelope::at_of(text).into_owned();
+                            continue;
+                        }
+                    }
+                }
+                shorten_ids(child);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(shorten_ids),
+        _ => {}
+    }
+}
+
+fn shorten_detail_ids(fields: &mut serde_json::Map<String, Value>) {
+    let mut value = Value::Object(std::mem::take(fields));
+    shorten_ids(&mut value);
+    if let Value::Object(restored) = value {
+        *fields = restored;
+    }
+}
+
 fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<Value> {
     let mut fields = detail(serde_json::to_value(method)?);
     fields.remove("id");
+    shorten_detail_ids(&mut fields);
     Ok(envelope::record(
         "method",
         RecordMeta {
-            id: Some(&method.id),
-            parent_id: Some(&method.declaring_type_id),
+            at: Some(&method.id),
+            parent_at: Some(&method.declaring_type_id),
             ..metadata(input)
         },
         fields,
@@ -599,11 +940,12 @@ fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<V
 fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value> {
     let mut fields = detail(serde_json::to_value(ty)?);
     fields.remove("id");
+    shorten_detail_ids(&mut fields);
     Ok(envelope::record(
         "type",
         RecordMeta {
-            id: Some(&ty.id),
-            parent_id: ty.declaring_type_id.as_deref(),
+            at: Some(&ty.id),
+            parent_at: ty.declaring_type_id.as_deref(),
             ..metadata(input)
         },
         fields,
@@ -616,8 +958,8 @@ fn field_record(input: &Input, field: &rxd_dotnet::Field) -> anyhow::Result<Valu
     Ok(envelope::record(
         "field",
         RecordMeta {
-            id: Some(&field.id),
-            parent_id: Some(&field.declaring_type_id),
+            at: Some(&field.id),
+            parent_at: Some(&field.declaring_type_id),
             ..metadata(input)
         },
         fields,
@@ -638,14 +980,18 @@ fn class_method_record(input: &Input, item: &rxd_dotnet::ClassMethod<'_>) -> any
     fields.insert("complete".into(), json!(true));
     fields.insert("representation".into(), json!("il"));
     fields.insert("decompiled".into(), json!(false));
-    fields.insert("reason".into(), Value::Null);
+    fields.insert("reason".into(), json!("member_inventory"));
+    fields.insert(
+        "reason_detail".into(),
+        json!("whole-class C# lives in `class_body.code`; a member record carries original IL only. Use `get-method --at <method:token>` for one member's C#."),
+    );
     fields.insert("code".into(), Value::Null);
     fields.insert("mapping".into(), json!([]));
     Ok(envelope::record(
         "method_body",
         RecordMeta {
-            id: Some(&item.method.id),
-            parent_id: Some(&item.method.declaring_type_id),
+            at: Some(&item.method.id),
+            parent_at: Some(&item.method.declaring_type_id),
             start: body.map(|body| body.code_offset),
             end: body.map(|body| body.code_offset + body.code_size),
             ..metadata(input)
@@ -663,8 +1009,8 @@ fn relationship_record<T: serde::Serialize>(
     Ok(envelope::record(
         kind,
         RecordMeta {
-            parent_id: Some(owner),
-            context_id: Some(owner),
+            parent_at: Some(owner),
+            context_at: Some(owner),
             ..metadata(input)
         },
         detail(serde_json::to_value(relationship)?),
@@ -685,10 +1031,22 @@ fn detail(value: Value) -> Map<String, Value> {
     fields
 }
 
-fn token(value: &str) -> std::result::Result<u32, String> {
-    let value = value
+/// A dotnet coordinate is the ECMA-335 metadata token itself: eight hex digits,
+/// optional `0x`. A kind prefix is refused with the value to use instead.
+fn parse_token(value: &str) -> anyhow::Result<u32> {
+    if let Some((kind, _)) = value.split_once(':') {
+        anyhow::bail!(
+            "INVALID_QUERY: `{value}` carries a `{kind}:` prefix; a dotnet coordinate is the metadata token alone, for example `{}`",
+            value.rsplit(':').next().unwrap_or(value)
+        );
+    }
+    let body = value
         .strip_prefix("0x")
         .or_else(|| value.strip_prefix("0X"))
         .unwrap_or(value);
-    u32::from_str_radix(value, 16).map_err(|_| "expected a hexadecimal metadata token".into())
+    anyhow::ensure!(
+        body.len() == 8 && body.bytes().all(|b| b.is_ascii_hexdigit()),
+        "INVALID_QUERY: expected a metadata token such as `0x0600000b` (eight hex digits, `0x` optional)"
+    );
+    Ok(u32::from_str_radix(body, 16)?)
 }

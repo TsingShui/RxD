@@ -7,7 +7,7 @@ fn corpus(name: &str) -> PathBuf {
 }
 fn refs(path: &Path, name: &str, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["pyc", "refs"])
+        .args(["pyc", "xref"])
         .arg(path)
         .args(["--name", name])
         .args(args)
@@ -293,7 +293,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
     assert!(stream[0]["query"]["const_id"].is_null());
     assert!(stream[0]["query"]["version"].is_null());
     assert_eq!(stream[0]["query"]["name"], "value");
-    assert_eq!(stream[0]["command"], "refs");
+    assert_eq!(stream[0]["command"], "xref");
     assert_eq!(stream[0]["schema_version"], 2);
     for hit in &stream[1..stream.len() - 1] {
         assert_js_keys(
@@ -414,7 +414,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         selected[1]["start"].as_u64().unwrap()
     );
     let missing = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["pyc", "refs"])
+        .args(["pyc", "xref"])
         .arg(&path)
         .output()
         .unwrap();

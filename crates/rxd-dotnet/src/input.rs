@@ -129,34 +129,77 @@ impl Input {
         Ok(&self.types[index])
     }
 
+    /// Resolve a content-bound id, or the short form this input already fixes:
+    /// `method:06000003`, `06000003` or `0x06000003`. A short form names a token in
+    /// the validated buffer, so content identity still comes from the parsed input.
     fn entity_token(&self, id: &str, kind: &str, table: u32) -> Result<u32> {
-        let prefix = format!("rxd1:dotnet:{}:{kind}:", self.source_id);
-        let encoded = id
-            .strip_prefix(&prefix)
-            .context("INVALID_QUERY: source, backend or kind mismatch")?;
+        let token = match self.token_from_id(id, kind)? {
+            Some(token) => token,
+            None => self.token_at(id)?,
+        };
+        self.checked_token(token, kind, table)
+    }
+
+    fn checked_token(&self, token: u32, kind: &str, table: u32) -> Result<u32> {
         ensure!(
-            encoded.len() == 8 && encoded.bytes().all(|b| b.is_ascii_hexdigit()),
-            "INVALID_QUERY: entity token"
+            token >> 24 == table,
+            "INVALID_QUERY: token 0x{token:08x} is in table 0x{:02x}, not the `{kind}` table 0x{table:02x}; copy the `at` of a `{kind}` record from `rxd dotnet outline`",
+            token >> 24,
         );
-        let token = u32::from_str_radix(encoded, 16).context("INVALID_QUERY: entity token")?;
         ensure!(
-            token >> 24 == table
-                && token & 0xffffff > 0
-                && token & 0xffffff <= self.rows[table as usize],
-            "INVALID_QUERY: entity token table or row"
+            token & 0xffffff > 0 && token & 0xffffff <= self.rows[table as usize],
+            "INVALID_QUERY: token 0x{token:08x} is outside the `{kind}` table row range",
         );
         Ok(token)
     }
 
-    pub fn reference_token_by_id(&self, id: &str) -> Result<u32> {
-        let kind = id.split(':').nth(3).context("INVALID_QUERY: entity ID")?;
-        let table = match kind {
-            "method" => 6,
-            "field" => 4,
-            "type" => 2,
-            _ => bail!("INVALID_QUERY: reference ID kind"),
+    /// Strict `rxd1:dotnet:<sha256>:<kind>:<token>` parsing that names the part
+    /// which does not match, instead of one opaque "mismatch".
+    fn token_from_id(&self, id: &str, kind: &str) -> Result<Option<u32>> {
+        let Some(rest) = id.strip_prefix("rxd1:") else {
+            return Ok(None);
         };
-        self.entity_token(id, kind, table)
+        let mut parts = rest.split(':');
+        let backend = parts.next().unwrap_or_default();
+        ensure!(
+            backend == "dotnet",
+            "INVALID_QUERY: id belongs to backend `{backend}`; `rxd dotnet` needs a `dotnet` id"
+        );
+        let hash = parts.next().unwrap_or_default();
+        ensure!(
+            hash == self.source_id,
+            "INVALID_QUERY: id belongs to a different input (id sha256 {}…, this input {}…); re-run `outline` for this file",
+            short_hash(hash),
+            short_hash(&self.source_id),
+        );
+        let actual = parts.next().unwrap_or_default();
+        ensure!(
+            actual == kind,
+            "INVALID_QUERY: id is a `{actual}` id but this command needs a `{kind}` id"
+        );
+        let encoded = parts.next().unwrap_or_default();
+        ensure!(
+            parts.next().is_none(),
+            "INVALID_QUERY: malformed id: unexpected segments after `{encoded}`"
+        );
+        Ok(Some(
+            hex_token(encoded).context("INVALID_QUERY: malformed id token")?,
+        ))
+    }
+
+    /// Parse the coordinate an Agent copies out of a record: the ECMA-335 metadata
+    /// token, eight hex digits with an optional `0x`. A kind prefix is refused with
+    /// the value to use instead, because the token's high byte already names the table.
+    fn token_at(&self, value: &str) -> Result<u32> {
+        if let Some((kind, _)) = value.split_once(':') {
+            bail!(
+                "INVALID_QUERY: `{value}` carries a `{kind}:` prefix; a dotnet coordinate is the metadata token alone, for example `{}`",
+                value.rsplit(':').next().unwrap_or(value)
+            );
+        }
+        hex_token(value).context(
+            "INVALID_QUERY: expected a metadata token such as `0x0600000b` (eight hex digits, `0x` optional)",
+        )
     }
 
     pub fn class_body(&self, id: &str) -> Result<crate::ClassBody<'_>> {
@@ -377,6 +420,27 @@ impl Input {
     pub(crate) fn id(&self, kind: &str, token: u32) -> String {
         format!("rxd1:dotnet:{}:{kind}:{token:08x}", self.source_id)
     }
+}
+
+/// First 12 hex digits of a content hash, enough to tell inputs apart in a message.
+fn short_hash(hash: &str) -> &str {
+    hash.get(..12).unwrap_or(hash)
+}
+
+/// Parse `06000003` or `0x06000003`; every CIL token is eight hex digits.
+fn hex_token(value: &str) -> Result<u32> {
+    let body = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    // ECMA-335 tokens are exactly eight hex digits (table byte + three-byte row).
+    // A dropped or extra digit can land on another row, so length is enforced
+    // instead of letting a mis-copied token resolve to a different member.
+    ensure!(
+        body.len() == 8 && body.bytes().all(|b| b.is_ascii_hexdigit()),
+        "`{value}` is not an 8-hex metadata token (expected e.g. `0600000b` or `0x0600000b`)"
+    );
+    u32::from_str_radix(body, 16).context("metadata token")
 }
 
 pub(crate) struct Work {

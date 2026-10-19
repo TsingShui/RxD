@@ -277,6 +277,21 @@ impl Cli {
         }
     }
 }
+/// Restore the default `SIGPIPE` disposition so a closed consumer (`| head`,
+/// `| grep -m1`) ends this process quietly instead of turning a normal Unix idiom
+/// into `IO_ERROR: Broken pipe`.
+#[cfg(unix)]
+pub fn restore_default_sigpipe() {
+    // SAFETY: setting a signal disposition to SIG_DFL is async-signal-safe and
+    // affects only this process.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
+#[cfg(not(unix))]
+pub fn restore_default_sigpipe() {}
+
 pub fn execute(cli: Cli) -> Result<i32> {
     match cli.backend {
         #[cfg(feature = "mcp")]

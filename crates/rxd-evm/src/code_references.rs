@@ -213,7 +213,7 @@ impl<'a> References<'a> {
             "code_reference",
             RecordMeta {
                 source_id: Some(&navigation.carrier.source_id),
-                context_id: Some(&context_id),
+                context_at: Some(&context_id),
                 start: Some(start),
                 end: Some(end),
                 ..RecordMeta::default()

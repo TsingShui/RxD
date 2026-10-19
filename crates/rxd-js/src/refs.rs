@@ -18,7 +18,7 @@ pub struct Selected {
     role: &'static str,
     #[serde(flatten)]
     location: Location,
-    context_id: Option<String>,
+    context_at: Option<String>,
     type_reference: Option<bool>,
     value_reference: Option<bool>,
 }
@@ -28,7 +28,7 @@ pub struct Reference {
     read: bool,
     write: bool,
     member_write: bool,
-    context_id: Option<String>,
+    context_at: Option<String>,
     type_reference: Option<bool>,
     value_reference: Option<bool>,
 }
@@ -47,8 +47,8 @@ impl Reference {
             "reference",
             rxd_core::envelope::RecordMeta {
                 source_id: Some(source_id),
-                parent_id: Some(&self.location.entity_id),
-                context_id: self.context_id.as_deref(),
+                parent_at: Some(&self.location.entity_id),
+                context_at: self.context_at.as_deref(),
                 start: Some(self.location.start as usize),
                 end: Some(self.location.end as usize),
                 ..Default::default()
@@ -148,7 +148,7 @@ pub fn run(
             name,
             role,
             location: location(span),
-            context_id: context_id(node_id),
+            context_at: context_id(node_id),
             type_reference: if typed {
                 reference_kind.map(|kind| kind.0)
             } else {
@@ -186,7 +186,7 @@ pub fn run(
                 read: reference.is_read(),
                 write: reference.is_write(),
                 member_write: reference.flags().is_member_write_target(),
-                context_id: context_id(reference.node_id()),
+                context_at: context_id(reference.node_id()),
                 type_reference: typed.then(|| reference.is_type()),
                 value_reference: typed.then(|| reference.is_value()),
             })

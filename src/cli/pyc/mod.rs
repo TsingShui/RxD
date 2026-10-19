@@ -15,7 +15,7 @@ use serde_json::json;
 #[derive(Subcommand)]
 pub enum Command {
     /// Find explicit name or constant-occurrence references, with enclosing code IDs.
-    Refs {
+    Xref {
         input: PathBuf,
         #[arg(
             long,
@@ -192,7 +192,7 @@ impl Command {
             Self::Outline { .. } => "outline",
             Self::Strings { .. } => "strings",
             Self::GetCode { .. } => "get-code",
-            Self::Refs { .. } => "refs",
+            Self::Xref { .. } => "xref",
         }
     }
 
@@ -202,7 +202,7 @@ impl Command {
             Self::Outline { options, .. } => options.perf,
             Self::Strings { options, .. } => options.perf,
             Self::GetCode { options, .. } => options.common.perf,
-            Self::Refs { options, .. } => options.common.perf,
+            Self::Xref { options, .. } => options.common.perf,
         }
     }
 
@@ -212,7 +212,7 @@ impl Command {
             Self::Outline { options, .. } => options.debug,
             Self::Strings { options, .. } => options.debug,
             Self::GetCode { options, .. } => options.common.debug,
-            Self::Refs { options, .. } => options.common.debug,
+            Self::Xref { options, .. } => options.common.debug,
         }
     }
 }
@@ -227,7 +227,7 @@ pub fn execute(command: Command) -> Result<()> {
 
 fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
     let command = match command {
-        Command::Refs {
+        Command::Xref {
             input,
             name,
             const_id,

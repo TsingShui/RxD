@@ -41,8 +41,8 @@ exemption. Examples: JS `find`, JVM/DEX/.NET/WASM `strings`.
 
 From a symbol, string, type or member, find who references it. This is the "relate"
 step; without it the loop is broken. Formats with code instructions or reference
-relationships are applicable. Examples: JS `refs`, DEX `findrefs`, .NET `refs`, WASM
-`refs`.
+relationships are applicable. Examples: JS `xref`, DEX `xref`, .NET `xref`, WASM
+`xref`.
 
 ### 4. FETCH
 
@@ -77,7 +77,7 @@ Read a unit by ID or name. Granularity follows the format:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ENUMERATE | outline | outline | classes | outline | outline | list | list | outline | outline (candidates/blocks) |
 | SEARCH | find | strings | strings | strings | strings | exempt (container) | `--attr` (limited metadata) | strings | strings (PUSH/data candidates) |
-| XREF | refs | findrefs | findrefs | refs | refs | exempt (container) | exempt (no code-reference semantics) | refs (explicit name/constant) | refs (literal/CODECOPY/control flow) |
+| XREF | xref | xref | xref | xref | xref | exempt (container) | exempt (no code-reference semantics) | xref (explicit name/constant) | xref (literal/CODECOPY/control flow) |
 | FETCH unit | get | get-method | get-class (unit selection available) | get-method | get-function | extract | extract | get-code (raw instructions) | get-function/get-block |
 | FETCH aggregate | see JS design | get-class | get-class | get-class | exempt (no classes) | n/a | n/a (no aggregate) | decompile (whole module; source completeness separate) | exempt (no source classes; selected shared regions travel with function) |
 

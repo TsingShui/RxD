@@ -166,6 +166,8 @@ pub struct Decompilation {
     pub representation: String,
     pub decompiled: bool,
     pub reason: Option<String>,
+    /// Reconstruction diagnostics the engine reported while still producing code.
+    pub warnings: Vec<String>,
     pub code: Option<String>,
     pub mapping: Vec<SourceMap>,
 }
@@ -183,6 +185,8 @@ pub struct ClassDecompilation {
     pub representation: String,
     pub decompiled: bool,
     pub reason: Option<String>,
+    /// Reconstruction diagnostics the engine reported while still producing code.
+    pub warnings: Vec<String>,
     pub code: Option<String>,
     pub mapping: Vec<ClassSourceMap>,
 }

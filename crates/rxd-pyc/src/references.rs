@@ -36,7 +36,7 @@ pub struct Hit {
 #[derive(Serialize)]
 pub struct Unsupported {
     pub code_index: usize,
-    pub context_id: String,
+    pub context_at: String,
     pub offset: usize,
     pub start: usize,
     pub end: usize,
@@ -196,7 +196,7 @@ pub fn scan(
                 reserve(a, scan, 192)?;
                 scan.unsupported.push(Unsupported {
                     code_index: owner,
-                    context_id: a.code_id(owner),
+                    context_at: a.code_id(owner),
                     offset: ins.offset,
                     start: span.start + ins.offset,
                     end: span.start + ins.offset + 2,

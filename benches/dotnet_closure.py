@@ -12,7 +12,7 @@ from pathlib import Path
 
 from dotnet import digest, invoke, metrics, native_identity
 from dotnet_class import verify_fetch
-from dotnet_refs import sites_digest
+from dotnet_xref import sites_digest
 from dotnet_strings import verify as verify_strings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -176,8 +176,8 @@ def main():
     common = ['--binary', args.binary, '--samples', args.samples, '--cpu-model', args.cpu_model, '--memory-gb', args.memory_gb]
     ref_args = ['--production', args.production, '--framework', args.framework, '--upstream', args.upstream]
     phases = [
-        ('method-refs', 'dotnet_refs.py', ref_args),
-        ('field-type-refs', 'dotnet_refs.py', [*ref_args, '--manifest', ROOT / 'tests/corpus/dotnet/field-type-refs-expectations.json']),
+        ('method-refs', 'dotnet_xref.py', ref_args),
+        ('field-type-refs', 'dotnet_xref.py', [*ref_args, '--manifest', ROOT / 'tests/corpus/dotnet/field-type-refs-expectations.json']),
         ('strings', 'dotnet_strings.py', ['--input', args.production, '--probe-input', args.framework / 'System.Private.CoreLib.dll']),
         ('class-il', 'dotnet_class.py', ['--input', args.production]),
         ('class-csharp', 'dotnet_class.py', ['--input', args.production, '--csharp', '--native-library', args.native_library, '--framework', args.framework]),

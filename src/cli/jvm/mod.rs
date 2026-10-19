@@ -51,7 +51,7 @@ pub enum Command {
         options: Options,
     },
     /// Find code references to a string, type, method or field across all classes.
-    Findrefs {
+    Xref {
         input: PathBuf,
         #[command(subcommand)]
         kind: RefKind,
@@ -135,7 +135,7 @@ impl Command {
             Self::Get { .. } => "get-method",
             Self::GetClass { .. } => "get-class",
             Self::Strings { .. } => "strings",
-            Self::Findrefs { .. } => "findrefs",
+            Self::Xref { .. } => "xref",
         }
     }
 }
@@ -155,7 +155,7 @@ pub fn execute(command: Command) -> Result<()> {
         .into_iter()
         .find(|code| message.contains(code))
         .unwrap_or("IO_ERROR");
-        Error::new(code, message)
+        Error::coded(code, message)
     })
 }
 
@@ -185,12 +185,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     {
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
-        let wanted = class.as_deref().map(|name| {
-            name.strip_prefix('L')
-                .and_then(|n| n.strip_suffix(';'))
-                .unwrap_or(name)
-                .replace('.', "/")
-        });
+        let wanted = class.as_deref().map(rxd_jvm::normalize_class_name);
         let needle = filter.as_deref().map(str::to_lowercase);
         let mut output = Vec::new();
         append(
@@ -263,7 +258,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
-    if let Command::Findrefs {
+    if let Command::Xref {
         input,
         kind,
         options,
@@ -271,16 +266,24 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     {
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
+        // The filter matches internal slashed names, so accept the same dotted and
+        // descriptor spellings `get-class` already accepts instead of returning zero hits.
+        let owner_class = match &kind {
+            RefKind::Method { class, .. } | RefKind::Field { class, .. } => {
+                class.as_deref().map(rxd_jvm::normalize_class_name)
+            }
+            RefKind::String { .. } | RefKind::Type { .. } => None,
+        };
         let query = match &kind {
             RefKind::String { value } => rxd_jvm::RefQuery::String(value),
             RefKind::Type { name } => rxd_jvm::RefQuery::Type(name),
-            RefKind::Method { name, class } => rxd_jvm::RefQuery::Method {
+            RefKind::Method { name, .. } => rxd_jvm::RefQuery::Method {
                 name,
-                class: class.as_deref(),
+                class: owner_class.as_deref(),
             },
-            RefKind::Field { name, class } => rxd_jvm::RefQuery::Field {
+            RefKind::Field { name, .. } => rxd_jvm::RefQuery::Field {
                 name,
-                class: class.as_deref(),
+                class: owner_class.as_deref(),
             },
         };
         let hits = rxd_jvm::find_refs(&input, &query, limits)?;
@@ -289,7 +292,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             &mut output,
             &header(
                 "jvm",
-                "findrefs",
+                "xref",
                 Some(&input.source_id),
                 Some(input.file_bytes),
                 kind.query_json(),
@@ -307,7 +310,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     "reference",
                     RecordMeta {
                         source_id: Some(&hit.source_id),
-                        context_id: Some(&hit.method_id),
+                        context_at: Some(&hit.method_id),
                         ..RecordMeta::default()
                     },
                     json!({
@@ -349,7 +352,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         } => (input, options, Some((id, bytecode)), None, None),
         Command::GetClass { .. } => unreachable!("handled above"),
         Command::Strings { .. } => unreachable!("handled above"),
-        Command::Findrefs { .. } => unreachable!("handled above"),
+        Command::Xref { .. } => unreachable!("handled above"),
     };
     let limits = options.limits();
     let input = Input::read(&path, limits, options.release)?;
@@ -365,7 +368,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             let mut bytecode = record(
                 "bytecode",
                 RecordMeta {
-                    id: Some(&id),
+                    at: Some(&id),
                     source_id: Some(&selected.source_id),
                     start: Some(code.range.start),
                     end: Some(code.range.end),
@@ -401,12 +404,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             output.extend_from_slice(source.as_bytes());
         }
     } else {
-        let class_name = class_filter.as_deref().map(|name| {
-            name.strip_prefix('L')
-                .and_then(|n| n.strip_suffix(';'))
-                .unwrap_or(name)
-                .replace('.', "/")
-        });
+        let class_name = class_filter.as_deref().map(rxd_jvm::normalize_class_name);
         let selected_classes: Vec<_> = input
             .classes
             .iter()
@@ -503,7 +501,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     &record(
                         "method",
                         RecordMeta {
-                            id: Some(&Input::method_id(selected, index)),
+                            at: Some(&Input::method_id(selected, index)),
                             source_id: Some(&selected.source_id),
                             ..RecordMeta::default()
                         },

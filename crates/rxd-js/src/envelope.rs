@@ -15,10 +15,10 @@ impl<T: Serialize> Serialize for Body<T> {
         let mut map = serializer.serialize_map(None)?;
         for key in [
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "backend",

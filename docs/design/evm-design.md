@@ -97,7 +97,7 @@ resource parameters; stdout is unchanged.
 
 ## Navigation stream schema
 
-`outline`, `strings` and every refs branch (block/function/PUSH/data, including empty
+`outline`, `strings` and every xref branch (block/function/PUSH/data, including empty
 results) share the same fixed `header.detail` and `summary.detail` field sets; absent
 values are explicit null. Objects are built before bounded serialization, so new
 nullable fields and the trailing newline are covered by `max-output-bytes`; failure
@@ -118,9 +118,9 @@ resolution_complete, discovery_complete, disassembly_complete and
 source_call_graph_complete.
 
 Query echoes are fixed: outline `{encoding}`; strings `{encoding, kind, query,
-match_mode}`; refs `{encoding, id, reference_scope}`. Null does not mean an analysis
+match_mode}`; xref `{encoding, id, reference_scope}`. Null does not mean an analysis
 ran or a count is zero. `outline.basic_block_end=exclusive` and
-`boundary_status=producer_candidate`; refs keeps source_call_graph/ABI false. Function
+`boundary_status=producer_candidate`; xref keeps source_call_graph/ABI false. Function
 inventory and `function_code` FETCH use different discriminators while identity kind
 stays `function`, so detail fields do not change between ENUMERATE and FETCH.
 
@@ -277,9 +277,9 @@ decode size; get-function matches are selected raw instruction count, semantic_n
 selected contexts, entities are function candidates. analyze/navigate and serialize are
 timed separately.
 
-## `refs`
+## `xref`
 
-`evm refs INPUT --id ID --encoding raw|hex` accepts outline block/function IDs and emits
+`evm xref INPUT --id ID --encoding raw|hex` accepts outline block/function IDs and emits
 a schema-v2 JSONL header, zero or more `code_reference` records and a summary. ID
 grammar/canonical validation/carrier/encoding/unit validation follow the corresponding
 FETCH; stale/forged/wrong-kind IDs are errors, not zero hits. Copy/rename remains valid.
@@ -327,7 +327,7 @@ source_call_verified/abi_call_verified are always false and source_call_graph_co
 abi_verified false. Data, metadata and unknown ownership are never promoted to executed
 function calls.
 
-`refs` header query is `{encoding, id, reference_scope}`; code scope is
+`xref` header query is `{encoding, id, reference_scope}`; code scope is
 `static_control_flow`. Header detail uses the common nullable schema with target_kind
 block/function, target_decoded_offset (target PC), target_semantics (exact_block_start/
 validated_candidate_entry/unvalidated_candidate_entry), coverage
@@ -346,7 +346,7 @@ abi_call_verified=false. Contextual route indices come from that function FETCH'
 control_flow and incoming_stack_words=null; block-local route indices are null,
 incoming_stack_words is the minimum unknown input words, owner_ids=[].
 
-Summary uses the fixed 20-field schema. Code refs fill target fields/references/
+Summary uses the fixed 20-field schema. Code xref fill target fields/references/
 disassembly_complete/resolved_edges/unknown_jumps/invalid_jumps/analysis_problems/
 scanned_contexts/scanned_blocks/external_call_sites/resolution_complete and
 source_call_graph_complete=false; other fields null. Resolved/unknown/invalid counts
@@ -397,19 +397,19 @@ merged. Copy/rename is stable; carrier/encoding mismatch is `SOURCE_MISMATCH`; w
 grammar/kind/width/position or no established literal is `INVALID_ID`. IDs never drive
 slicing.
 
-`evm refs --id LITERAL_ID` queries only that exact occurrence's decoded PUSH uses, not
+`evm xref --id LITERAL_ID` queries only that exact occurrence's decoded PUSH uses, not
 all equal immediates or arbitrary runtime uses. Each supported function owner returns a
 route; shared blocks keep deterministic function order; one literal ID may have multiple
 context_ids. Without a function owner, the actual block ID is returned for get-block.
-Strings hits use the same routes, so SEARCH → literal ID → refs → context_id → get-
+Strings hits use the same routes, so SEARCH → literal ID → xref → context_id → get-
 function --raw/get-block works. Function context_boundary_complete is separate from
 query complete; literal existence never upgrades boundary proof.
 
 Strings query is `{encoding, kind, query, match_mode}` with normalized query or null;
-match_mode is inventory/contains/equal_bytes/equal_u256. Literal refs query is
+match_mode is inventory/contains/equal_bytes/equal_u256. Literal xref query is
 `{encoding, id, reference_scope}`, scope `exact_literal_occurrence`. Strings sets
 literal_scope, excluded_unindexed_pushes and data coverage fields; target/coverage/
-source_call_graph_complete/abi_verified are null. Immediate refs set target_kind=literal,
+source_call_graph_complete/abi_verified are null. Immediate xref set target_kind=literal,
 target_decoded_offset (opcode PC), target_semantics=exact_literal_occurrence,
 coverage=validated_block_push_immediates, literal_scope, excluded_unindexed_pushes,
 source_call_graph_complete=false, abi_verified=false, data fields null.
@@ -445,7 +445,7 @@ source_call_graph_complete=false. Null means the graph scan did not run, not pro
 zero unknown jumps. Records count actual route records; a zero-hit SEARCH still emits
 header + complete summary.
 
-Data candidates: `strings` also returns `data_literal`, and `refs --id` accepts its ID as
+Data candidates: `strings` also returns `data_literal`, and `xref --id` accepts its ID as
 `data_reference`. Origins are static evidence, not proof of bytecode role:
 
 - `unindexed`: complement of validated producer blocks, including internal gaps and the
@@ -500,14 +500,14 @@ range; uncopied candidate bytes never fill reference evidence.
 A SEARCH candidate without a witness keeps context_id/context_kind/context_index null.
 reference_status=statically_copied means a known source-range witness; unreferenced means
 none in the supported scope; unknown operands or unvisited CODECOPY sites mean
-unreferenced_or_unknown. A zero-reference refs result still emits header + complete summary
+unreferenced_or_unknown. A zero-reference xref result still emits header + complete summary
 and zero data records. discovery_complete=null; delivery completeness does not prove no
 dynamic use, source string use, executable path or function boundary.
 
 Header detail includes data_scope, metadata_range, copy_witnesses,
 unknown_copy_witnesses, unvisited_copy_sites, data_reference_coverage,
-unknown_copy_evidence. Strings/data refs set them; PUSH/code-unit refs set them null and
-do not claim a data scan. Data refs keep the common three-key query, 23-field header and
+unknown_copy_evidence. Strings/data xref set them; PUSH/code-unit xref set them null and
+do not claim a data scan. Data xref keep the common three-key query, 23-field header and
 20-field summary; target_kind=literal, target_decoded_offset=candidate start,
 target_semantics=bytecode_data_candidate, coverage=contextual_static_evidence,
 literal_scope=null, data_scope=unindexed_and_contextually_copied_bytecode,
@@ -542,7 +542,7 @@ evidence_kind=contextual_constant_codecopy, resolution=resolved means only stati
 source-range evidence. available_* is the copy∩input; copied_* is the further
 intersection with the candidate. Outer id=null; context_id is the witness function/block
 FETCH; start/end is the copied intersection's carrier range; instruction_carrier_* is the
-actual CODECOPY opcode. Data refs summary literals/data_literals=1, references/records =
+actual CODECOPY opcode. Data xref summary literals/data_literals=1, references/records =
 contextual witness routes, reference_status as above.
 
 Budgets preserve fixed input, atomic output and old-file protection. max-work charges

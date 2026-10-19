@@ -1231,7 +1231,7 @@ impl FunctionNavigation {
         let mut record = envelope::record(
             if fetch { "function_code" } else { "function" },
             RecordMeta {
-                id: Some(&id),
+                at: Some(&id),
                 source_id: Some(&navigation.carrier.source_id),
                 start: range.map(|r| r.0),
                 end: range.map(|r| r.1),

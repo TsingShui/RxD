@@ -219,7 +219,7 @@ impl Input {
 
 /// Normalize a user class name (internal, dotted, or `Lpkg/Type;` descriptor)
 /// to the internal slashed form stored on `ClassFile::name`.
-fn normalize_class_name(name: &str) -> String {
+pub fn normalize_class_name(name: &str) -> String {
     name.strip_prefix('L')
         .and_then(|rest| rest.strip_suffix(';'))
         .unwrap_or(name)

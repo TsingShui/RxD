@@ -580,7 +580,7 @@ fn assert_js_stream(rows: &[Value]) {
         "origin",
     ];
     match rows[0]["command"].as_str().unwrap() {
-        "refs" => fields.extend(["resolution", "selected", "declaration", "declaration_ids"]),
+        "xref" => fields.extend(["resolution", "selected", "declaration", "declaration_ids"]),
         "symbols" => fields.extend(["resolution", "within_id"]),
         _ => {}
     }
@@ -766,7 +766,7 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
     }
     let declaration = source.find("Widget=()").unwrap();
     let rows = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &declaration.to_string()],
     ));
@@ -778,13 +778,13 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
         assert!(row["detail"]["type_reference"].is_null());
     }
     let ui = source.find("UI={").unwrap();
-    let rows = jsonl(&invoke("refs", &path, &["--byte", &ui.to_string()]));
+    let rows = jsonl(&invoke("xref", &path, &["--byte", &ui.to_string()]));
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[1]["start"], source.find("UI.Widget").unwrap());
     for marker in ["div data-label", "data-label=", "Widget/>"] {
         failure(
             invoke(
-                "refs",
+                "xref",
                 &path,
                 &["--byte", &source.find(marker).unwrap().to_string()],
             ),
@@ -836,7 +836,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         assert_eq!(raw.stdout, expected.as_bytes());
     }
     let rows = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &model["start"].to_string()],
     ));
@@ -872,7 +872,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         assert_eq!(raw.stdout, expected.as_bytes());
     }
     let a = symbols.iter().find(|r| r["detail"]["name"] == "A").unwrap();
-    let rows = jsonl(&invoke("refs", &path, &["--byte", &a["start"].to_string()]));
+    let rows = jsonl(&invoke("xref", &path, &["--byte", &a["start"].to_string()]));
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[1]["detail"]["value_reference"], true);
     let outlines = jsonl(&invoke("outline", &path, &[]));
@@ -923,7 +923,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         .unwrap();
     assert_eq!(value["detail"]["value_reference"], true);
     let refs = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &source.find("missing;").unwrap().to_string()],
     ));
@@ -1157,7 +1157,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             .find(|q| q["name"] == case["name"])
             .unwrap();
         let refs = jsonl(&invoke(
-            "refs",
+            "xref",
             &path,
             &["--byte", &query["byte"].to_string()],
         ));
@@ -1257,7 +1257,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         }
     }
     let rows = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &source.find("config={").unwrap().to_string()],
     ));
@@ -1366,7 +1366,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
     }
     let source = "const f=()=>f();";
     let (_dir, path) = fixture(source, "arrow.js");
-    let rows = jsonl(&invoke("refs", &path, &["--byte", "6"]));
+    let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
     assert!(rows[1]["context_id"].is_null());
     assert!(
         rows[0]["detail"]["selected"]["context_id"]
@@ -1376,7 +1376,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
     );
     let source = "host(value);";
     let (_dir, path) = fixture(source, "host.js");
-    let rows = jsonl(&invoke("refs", &path, &["--byte", "0"]));
+    let rows = jsonl(&invoke("xref", &path, &["--byte", "0"]));
     assert_eq!(rows[0]["detail"]["resolution"], "unresolved");
     let context = invoke(
         "get",
@@ -1530,7 +1530,7 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
             &["--string", input["needle"].as_str().unwrap()],
         ));
         let refs = jsonl(&invoke(
-            "refs",
+            "xref",
             &path,
             &["--byte", &case["selected"]["start"].to_string()],
         ));
@@ -2109,7 +2109,7 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
             )
         );
         assert!(ids.insert(row["id"].clone().to_string()));
-        let refs = jsonl(&invoke("refs", &path, &["--byte", &start.to_string()]));
+        let refs = jsonl(&invoke("xref", &path, &["--byte", &start.to_string()]));
         assert_eq!(refs[0]["detail"]["selected"]["name"], name);
         assert_eq!(refs[0]["detail"]["declaration"]["start"], row["start"]);
         assert_eq!(refs[0]["detail"]["declaration"]["end"], row["end"]);
@@ -2336,7 +2336,7 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
     let source = "let count=0;\nfunction outer(count){count++; const next=()=>count; return next();}\ncount=1; count+=2; count;\n";
     let (_dir, path) = fixture(source, "bindings.js");
     let global = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &source.find("count=0").unwrap().to_string()],
     ));
@@ -2357,7 +2357,7 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
     }
     let declaration = source.find("outer(count)").unwrap() + "outer(".len();
     let inner = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &declaration.to_string()],
     ));
@@ -2370,7 +2370,7 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
     let closure_byte = source.find("()=>count").unwrap() + "()=>".len();
     assert_eq!(inner[2]["start"], closure_byte);
     let from_reference = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &closure_byte.to_string()],
     ));
@@ -2460,7 +2460,7 @@ fn refs_handles_module_aliases_unicode_redeclarations_and_exact_entity_boundarie
         let byte = source.find(selected).unwrap();
         // Selecting a byte inside a multi-byte identifier also selects that identifier.
         let offset = if name == "登录" { byte + 1 } else { byte };
-        let output = invoke("refs", &path, &["--byte", &offset.to_string()]);
+        let output = invoke("xref", &path, &["--byte", &offset.to_string()]);
         let rows = jsonl(&output);
         assert_eq!(rows[0]["detail"]["resolution"], "resolved", "{filename}");
         assert_eq!(rows[0]["detail"]["selected"]["name"], name);
@@ -2488,7 +2488,7 @@ fn refs_handles_module_aliases_unicode_redeclarations_and_exact_entity_boundarie
 fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
     let source = "const obj={}; obj.x=1; obj.x++; delete obj.x; obj[unknown];";
     let (_dir, path) = fixture(source, "properties.js");
-    let rows = jsonl(&invoke("refs", &path, &["--byte", "6"]));
+    let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
     assert_eq!(rows.len(), 6);
     for row in &rows[1..4] {
         assert_eq!(row["detail"]["read"], true);
@@ -2498,7 +2498,7 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
     assert_eq!(rows[4]["detail"]["member_write"], false);
     failure(
         invoke(
-            "refs",
+            "xref",
             &path,
             &["--byte", &(source.find("obj.x").unwrap() + 4).to_string()],
         ),
@@ -2506,7 +2506,7 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
         "INVALID_TARGET",
     );
     let unknown = jsonl(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", &source.find("unknown").unwrap().to_string()],
     ));
@@ -2520,19 +2520,19 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
         "let x=1; const eval=()=>0; eval('x=2'); x;",
     ] {
         let (_dir, path) = fixture(source, "dynamic.js");
-        let rows = jsonl(&invoke("refs", &path, &["--byte", "4"]));
+        let rows = jsonl(&invoke("xref", &path, &["--byte", "4"]));
         assert_eq!(rows[0]["detail"]["resolution"], "dynamic");
         assert!(rows[0]["detail"]["declaration"].is_null());
         assert_eq!(rows.len(), 2);
     }
     for source in ["let x=1; eval?.('x=2'); x;", "let x=1; obj.eval('x=2'); x;"] {
         let (_dir, path) = fixture(source, "not-direct-eval.js");
-        let rows = jsonl(&invoke("refs", &path, &["--byte", "4"]));
+        let rows = jsonl(&invoke("xref", &path, &["--byte", "4"]));
         assert_eq!(rows[0]["detail"]["resolution"], "resolved");
         assert_eq!(rows.len(), 3);
     }
     let (_dir, path) = fixture("const unused=1;", "unused.js");
-    let rows = jsonl(&invoke("refs", &path, &["--byte", "6"]));
+    let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
     assert_eq!(rows[0]["detail"]["resolution"], "resolved");
     assert_eq!(rows.len(), 2);
 }
@@ -2540,16 +2540,16 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
 #[test]
 fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     let (dir, path) = fixture("let x=0; x++; x;", "bounded.js");
-    let plain = invoke("refs", &path, &["--byte", "4"]);
+    let plain = invoke("xref", &path, &["--byte", "4"]);
     jsonl(&plain);
     assert!(plain.stderr.is_empty());
     assert_eq!(
-        invoke("refs", &path, &["--byte", "4", "--jsonl"]).stdout,
+        invoke("xref", &path, &["--byte", "4", "--jsonl"]).stdout,
         plain.stdout
     );
     let destination = dir.path().join("refs.jsonl");
     let saved = invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", "4", "-o", destination.to_str().unwrap()],
     );
@@ -2565,7 +2565,7 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     ] {
         failure(
             invoke(
-                "refs",
+                "xref",
                 &path,
                 &[
                     "--byte",
@@ -2583,28 +2583,28 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     }
     for byte in ["16", "999"] {
         failure(
-            invoke("refs", &path, &["--byte", byte]),
+            invoke("xref", &path, &["--byte", byte]),
             1,
             "INVALID_OFFSET",
         );
     }
-    failure(invoke("refs", &path, &["--byte", "0"]), 1, "INVALID_TARGET");
+    failure(invoke("xref", &path, &["--byte", "0"]), 1, "INVALID_TARGET");
     failure(
-        invoke("refs", dir.path(), &["--byte", "0"]),
+        invoke("xref", dir.path(), &["--byte", "0"]),
         1,
         "INVALID_INPUT",
     );
     failure(
-        invoke("refs", &path, &["--byte", "4", "-r"]),
+        invoke("xref", &path, &["--byte", "4", "-r"]),
         2,
         "unexpected argument",
     );
     failure(
-        invoke("refs", &path, &["--byte", "4", "--max-semantic-nodes", "0"]),
+        invoke("xref", &path, &["--byte", "4", "--max-semantic-nodes", "0"]),
         2,
         "error:",
     );
-    let profiled = invoke("refs", &path, &["--byte", "4", "--perf"]);
+    let profiled = invoke("xref", &path, &["--byte", "4", "--perf"]);
     success(&profiled);
     assert_eq!(profiled.stdout, plain.stdout);
     let reports = perf_reports(&profiled);
@@ -2615,13 +2615,13 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     assert_eq!(reports[0]["limits"]["semantic_nodes"], 1_000_000);
     let nodes = reports[0]["counters"]["semantic_nodes"].as_u64().unwrap();
     success(&invoke(
-        "refs",
+        "xref",
         &path,
         &["--byte", "4", "--max-semantic-nodes", &nodes.to_string()],
     ));
     failure(
         invoke(
-            "refs",
+            "xref",
             &path,
             &[
                 "--byte",
@@ -2643,7 +2643,7 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     let (_dir, invalid) = fixture("let x; let x;", "redeclaration.js");
     success(&invoke("outline", &invalid, &[]));
     failure(
-        invoke("refs", &invalid, &["--byte", "4"]),
+        invoke("xref", &invalid, &["--byte", "4"]),
         1,
         "INVALID_INPUT",
     );
@@ -4130,7 +4130,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
         let bytes = fs::read(&path).unwrap();
         assert_eq!(case["source_id"], format!("{:x}", Sha256::digest(&bytes)));
         let rows = jsonl(&invoke(
-            "refs",
+            "xref",
             &path,
             &["--byte", &case["byte"].to_string()],
         ));
@@ -4176,7 +4176,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
         );
         if let Some(reference) = case["references"].as_array().unwrap().first() {
             let selected = jsonl(&invoke(
-                "refs",
+                "xref",
                 &path,
                 &["--byte", &reference["start"].to_string()],
             ));
@@ -4615,7 +4615,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         .unwrap()
         .to_string();
     assert_eq!(
-        jsonl(&invoke("refs", &destination, &["--byte", &byte]))
+        jsonl(&invoke("xref", &destination, &["--byte", &byte]))
             .last()
             .unwrap()["records"],
         1

@@ -57,3 +57,32 @@ A non-debuggable Android App compared the same four targets on ARM64 with
 ordinary App sandboxing. All 480 timed calls succeeded with identical selected
 C# and mappings across versions. This corroborates the engine choice but is not
 Android product support, a full CLI latency result, or a 16 KiB-runtime result.
+
+## Amendment: reconstruction warnings are returned, not refused
+
+The original integration aborted every body for which ILSpy recorded a warning
+(`il_warning`) and returned only original IL. That discarded usable output: in a
+63-instruction, handler-free method whose every operand resolved, the engine still
+refused, and the ABI carried no warning text, so neither the caller nor `rxd` could say
+what the engine objected to.
+
+The engine now returns the reconstruction together with its diagnostics:
+
+- `Payload.warnings` carries the deduplicated `ILFunction.Warnings` text, prefixed with
+  the owning method name, so a class-scope failure names the member;
+- `detail.warnings` exposes that array next to `code`; `decompiled` stays `true`;
+- an `InvalidExpression`/`InvalidBranch` node is a diagnostic as well
+  (`unreconstructed expression at IL_xxxx`), never an abort: the surrounding
+  reconstruction is still returned;
+- a source-mapping entry the selected body cannot prove is dropped and counted in
+  `detail.warnings` (`mapping: dropped N unprovable source entry/entries`) instead of
+  discarding the reconstruction.
+
+Only an engine that returns no payload at all — crash, exception, absent entry point or a
+reached resource budget — degrades the record to original IL.
+
+This changes observable output for bodies that previously degraded to `il_warning`.
+Because the native library is a pinned prebuilt per target, the source change requires
+rebuilding every registered bundle (`prebuilt/ilspy/*` and `prebuilt/android-ilspy`) —
+`scripts/prebuilt-ilspy.py check` compares each manifest's `source_inputs` with the
+current source and fails until they match.

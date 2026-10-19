@@ -336,9 +336,9 @@ impl LiteralInventory {
                 "literal_reference"
             },
             RecordMeta {
-                id: search.map(|_| id.as_str()),
+                at: search.map(|_| id.as_str()),
                 source_id: Some(&navigation.carrier.source_id),
-                context_id: Some(&context_id),
+                context_at: Some(&context_id),
                 start: Some(start),
                 end: Some(end),
                 ..RecordMeta::default()

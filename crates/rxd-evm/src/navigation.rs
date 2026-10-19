@@ -249,7 +249,7 @@ impl Navigation {
         let mut record = envelope::record(
             if fetch { "block" } else { "basic_block" },
             RecordMeta {
-                id: Some(&id),
+                at: Some(&id),
                 source_id: Some(&self.carrier.source_id),
                 start: Some(start),
                 end: Some(end),

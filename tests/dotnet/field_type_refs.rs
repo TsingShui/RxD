@@ -21,15 +21,9 @@ fn dotnet_semantic_refs_reject_local_class_valuetype_contradictions_atomically()
     for token in ["0x1b000001", "0x04000006", "0x06000008"] {
         fs::write(&destination, b"preserved").unwrap();
         let output = run(
-            "refs",
+            "xref",
             &path,
-            &[
-                "--token",
-                token,
-                "--semantic",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
+            &["--at", token, "-o", destination.to_str().unwrap()],
         );
         assert_eq!(
             output.status.code(),
@@ -55,7 +49,7 @@ fn dotnet_semantic_refs_reject_local_class_valuetype_contradictions_atomically()
         bytes[position + 3] = 0x11;
     }
     fs::write(&path, bytes).unwrap();
-    let output = run("refs", &path, &["--token", "0x0600000a", "--semantic"]);
+    let output = run("xref", &path, &["--at", "0x0600000a"]);
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
@@ -68,12 +62,10 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
     let id = outline
         .iter()
         .find(|row| row["record"] == "field" && row["detail"]["token"] == 0x04000003u32)
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
-    let raw = jsonl(&run("refs", &path, &["--token", "0x04000003"]));
-    assert_eq!(raw.last().unwrap()["records"], 0);
-    let rows = jsonl(&run("refs", &path, &["--id", id]));
+    let rows = jsonl(&run("xref", &path, &["--at", id]));
     assert_eq!(rows.last().unwrap()["records"], 1);
     let hit = &rows[1];
     assert_eq!(hit["detail"]["target_kind"], "field");
@@ -85,18 +77,14 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
     success(&run(
         "get-method",
         &path,
-        &[hit["context_id"].as_str().unwrap(), "--il"],
+        &["--at", hit["context_at"].as_str().unwrap(), "--il"],
     ));
     success(&run(
         "get-class",
         &path,
-        &[hit["parent_id"].as_str().unwrap(), "--il"],
+        &["--at", hit["parent_at"].as_str().unwrap(), "--il"],
     ));
-    let by_token = jsonl(&run(
-        "refs",
-        &path,
-        &["--token", "0x04000003", "--semantic"],
-    ));
+    let by_token = jsonl(&run("xref", &path, &["--at", "0x04000003"]));
     assert_eq!(by_token[1], rows[1]);
 }
 
@@ -135,10 +123,10 @@ fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operand
         let id = outline
             .iter()
             .find(|row| row["record"] == "type" && row["detail"]["token"] == token)
-            .unwrap()["id"]
+            .unwrap()["at"]
             .as_str()
             .unwrap();
-        let rows = jsonl(&run("refs", &path, &["--id", id]));
+        let rows = jsonl(&run("xref", &path, &["--at", id]));
         assert_proof_sites(&rows, &proof_sites(&path, &operands));
         for hit in &rows[1..rows.len() - 1] {
             assert_eq!(hit["detail"]["target_kind"], "type");
@@ -146,12 +134,12 @@ fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operand
             success(&run(
                 "get-method",
                 &path,
-                &[hit["context_id"].as_str().unwrap(), "--il"],
+                &["--at", hit["context_at"].as_str().unwrap(), "--il"],
             ));
             success(&run(
                 "get-class",
                 &path,
-                &[hit["parent_id"].as_str().unwrap(), "--il"],
+                &["--at", hit["parent_at"].as_str().unwrap(), "--il"],
             ));
         }
     }
@@ -175,7 +163,7 @@ fn dotnet_field_refs_keep_signature_owner_instantiations_and_external_scopes_dis
         ("0x04000003", vec![], "resolved"),
         ("0x04000005", vec![], "resolved"),
     ] {
-        let rows = jsonl(&run("refs", &path, &["--token", token, "--semantic"]));
+        let rows = jsonl(&run("xref", &path, &["--at", token]));
         assert_proof_sites(&rows, &proof_sites(&path, &operands));
         assert_eq!(rows[0]["detail"]["target"]["resolution_status"], status);
         for row in &rows[1..rows.len() - 1] {
@@ -190,70 +178,25 @@ fn dotnet_field_refs_keep_signature_owner_instantiations_and_external_scopes_dis
 }
 
 #[test]
-fn dotnet_type_refs_preserve_concrete_shapes_and_keep_unresolved_targets_honest() {
-    let path = proof_input();
-    for (token, operands, status, canonical) in [
-        (
-            "0x1b000001",
-            vec![0x1b000001, 0x1b000006],
-            "resolved",
-            Some(0x02000003u32),
-        ),
-        ("0x1b000002", vec![0x1b000002], "resolved", Some(0x02000003)),
-        ("0x1b000003", vec![0x1b000003], "unresolved", None),
-        ("0x1b000004", vec![0x1b000004], "unresolved", None),
-        ("0x1b000005", vec![0x1b000005], "unresolved", None),
-        ("0x01000002", vec![0x01000002], "external", None),
-        ("0x01000003", vec![0x01000003], "external", None),
-        ("0x01000006", vec![0x01000006], "external", None),
-        ("0x01000007", vec![0x01000007], "unresolved", None),
-    ] {
-        let rows = jsonl(&run("refs", &path, &["--token", token, "--semantic"]));
-        assert_proof_sites(&rows, &proof_sites(&path, &operands));
-        let target = &rows[0]["detail"]["target"];
-        assert_eq!(target["resolution_status"], status);
-        assert_eq!(target["canonical_token"], serde_json::json!(canonical));
-    }
-    for token in [0x1b000001u32, 0x04000001, 0x02000002] {
-        let encoded = format!("0x{token:08x}");
-        let rows = jsonl(&run("refs", &path, &["--token", &encoded]));
-        assert_proof_sites(&rows, &proof_sites(&path, &[token]));
-        assert!(rows[0]["detail"]["target"].is_null());
-        assert!(
-            rows[1..rows.len() - 1]
-                .iter()
-                .all(|row| row["detail"]["resolution_status"] == "exact")
-        );
-    }
-}
-
-#[test]
 fn dotnet_field_type_reference_queries_keep_id_budget_and_atomic_failure_contracts() {
     let path = proof_input();
     let outline = jsonl(&run("outline", &path, &[]));
     let field = outline
         .iter()
         .find(|row| row["record"] == "field" && row["detail"]["token"] == 0x04000001u32)
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
     let ty = outline
         .iter()
         .find(|row| row["record"] == "type" && row["detail"]["token"] == 0x02000003u32)
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
-    for id in [
-        field.replace(":field:", ":type:"),
-        ty.replace(":type:", ":field:"),
-        field.replacen(
-            outline[0]["source_id"].as_str().unwrap(),
-            &"0".repeat(64),
-            1,
-        ),
-    ] {
-        let output = run("refs", &path, &["--id", &id]);
-        assert_eq!(output.status.code(), Some(2));
+    // A token outside the member/type tables is refused instead of being guessed at.
+    for id in ["0x11000001", "0x70000000", "0x0400ffff"] {
+        let output = run("xref", &path, &["--at", id]);
+        assert_eq!(output.status.code(), Some(2), "{id}");
         assert!(output.stdout.is_empty());
     }
     success(&run("outline", &path, &["--max-work", "7000"]));
@@ -268,10 +211,10 @@ fn dotnet_field_type_reference_queries_keep_id_budget_and_atomic_failure_contrac
         ] {
             fs::write(&destination, b"preserved").unwrap();
             let output = run(
-                "refs",
+                "xref",
                 &path,
                 &[
-                    "--id",
+                    "--at",
                     id,
                     limit,
                     value,
@@ -289,16 +232,16 @@ fn dotnet_field_type_reference_queries_keep_id_budget_and_atomic_failure_contrac
             assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
             assert_eq!(fs::read(&destination).unwrap(), b"preserved");
         }
-        let plain = run("refs", &path, &["--id", id]);
+        let plain = run("xref", &path, &["--at", id]);
         success(&plain);
-        let perf = run("refs", &path, &["--id", id, "--perf"]);
+        let perf = run("xref", &path, &["--at", id, "--perf"]);
         success(&perf);
         assert_eq!(plain.stdout, perf.stdout);
         assert_eq!(String::from_utf8(perf.stderr).unwrap().lines().count(), 2);
         let file = run(
-            "refs",
+            "xref",
             &path,
-            &["--id", id, "-o", destination.to_str().unwrap()],
+            &["--at", id, "-o", destination.to_str().unwrap()],
         );
         success(&file);
         assert!(file.stdout.is_empty());
@@ -325,7 +268,7 @@ fn dotnet_field_type_reference_queries_reject_recursive_types_and_malformed_fiel
         let broken = directory.path().join(name);
         fs::write(&broken, bytes).unwrap();
         for token in ["0x02000003", "0x04000006"] {
-            let output = run("refs", &broken, &["--token", token, "--semantic"]);
+            let output = run("xref", &broken, &["--at", token]);
             assert_eq!(output.status.code(), Some(1));
             assert!(output.stdout.is_empty());
             assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));

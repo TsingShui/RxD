@@ -59,7 +59,7 @@ impl Record {
             },
         }
         let location = self.location();
-        let (kind, id, detail) = match self {
+        let (kind, at, detail) = match self {
             Self::Symbol(symbol) => (
                 "symbol",
                 Some(symbol.id.as_str()),
@@ -83,9 +83,9 @@ impl Record {
         crate::envelope::body(
             kind,
             rxd_core::envelope::RecordMeta {
-                id,
+                at,
                 source_id: Some(source_id),
-                parent_id: Some(&location.entity_id),
+                parent_at: Some(&location.entity_id),
                 start: Some(location.start as usize),
                 end: Some(location.end as usize),
                 ..Default::default()

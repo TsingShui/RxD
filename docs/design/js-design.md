@@ -4,7 +4,7 @@ Status: implemented.
 
 `rxd js` uses Rust and Oxc for compact bundles and ordinary JavaScript files without
 source maps. It provides `outline`, `find`, `identifiers`, `calls`, `members`,
-`locate`, `get`, `refs --byte` and `symbols`. The backend maps literals, identifiers,
+`locate`, `get`, `xref --byte` and `symbols`. The backend maps literals, identifiers,
 call sites and static member names to content-bound AST structures, lexical
 relationships and original source ranges. It never executes input, performs
 deobfuscation or string decryption, restores obfuscator intent, or promises runtime
@@ -48,7 +48,7 @@ A typical task locates an API and extracts its implementation:
 4. `get` the parent structure, or `locate` another position by known byte offset.
 5. `symbols --within` lists declarations, external bindings and unresolved references
    with exact declaration offsets.
-6. `refs --byte` follows an explicit binding and returns declaration/reference
+6. `xref --byte` follows an explicit binding and returns declaration/reference
    structures, reducing same-name false matches.
 
 For an existing `rg` hit, `locate` can be used directly. `get` on a function preserves
@@ -69,7 +69,7 @@ rxd js identifiers bundle.js --name '_0x4e3653' --role reference --within '<enti
 rxd js calls bundle.js --name 'AIS3' --jsonl
 rxd js members bundle.js --name 'checkFlag' --jsonl
 rxd js locate bundle.js --byte 183240 --json
-rxd js refs bundle.js --byte 183240 --jsonl
+rxd js xref bundle.js --byte 183240 --jsonl
 rxd js symbols bundle.js --within '<entity-id>' --jsonl
 rxd js get bundle.js --id '<entity-id>'
 rxd js get bundle.js --id '<symbol-id>' --json
@@ -85,7 +85,7 @@ rxd js get bundle.js --id '<parent-id>' --json
 | `members` | Static member names, property keys, JSX attribute names and statically resolvable computed keys. | JSONL |
 | `locate` | Innermost structure and ancestors containing a byte position. | JSON |
 | `get` | Validate a structure, symbol or fragment ID and extract original source. | Raw bytes |
-| `refs --byte` | Single-file lexical binding and same-binding references at a byte position. | JSONL |
+| `xref --byte` | Single-file lexical binding and same-binding references at a byte position. | JSONL |
 | `symbols` | Lexical bindings and unresolved references in a file or selected structure. | JSONL |
 
 `outline` returns the program and all descendants by default. `--within` returns
@@ -167,7 +167,7 @@ inputs, and therefore peak memory: each worker holds at most one input and AST. 
 and parallel `--perf` counters and phase totals agree (summed in one process; peak RSS
 is the maximum). `--depth`/`--kind`/`--name` apply per file; `--within` is single-file
 and returns `INVALID_QUERY` (exit 2) for directory input, including empty directories.
-`locate/get/refs/symbols/identifiers/calls/members` remain single-file.
+`locate/get/xref/symbols/identifiers/calls/members` remain single-file.
 
 Regular-file input keeps its single-file output and does not restrict extension.
 `-r/--recursive` is retained for compatibility; directories behave identically with or
@@ -224,7 +224,7 @@ TS string literal types and template type static fragments are `type_string`/
 Type declaration names/hierarchy support source navigation; enum initializers remain
 original expressions without evaluation. Enum members are bindings in their
 initializer scope, and identifiers or static string/template member names can be
-refs/get source bindings; ordinary JS/JSX static property names remain
+xref/get source bindings; ordinary JS/JSX static property names remain
 `INVALID_TARGET`.
 
 TS/TSX symbol records and get symbol metadata add `space: type|value|type_value`,
@@ -236,7 +236,7 @@ than guessing; these are not tsc results.
 
 TS merged/redeclared symbols keep Oxc's canonical first identifier; declaration/value/
 type facts are not textually merged into a new type. With multiple declarations,
-`symbols.detail`, resolved `refs` header detail and `get` symbol detail expose
+`symbols.detail`, resolved `xref` header detail and `get` symbol detail expose
 `declaration_ids` in original order as structure/fragment IDs. `get(symbol)` stdout
 still extracts only the canonical declaration; the Agent can expand other
 declarations/overloads. Metadata declaration IDs and top-level records share the
@@ -295,24 +295,24 @@ spans and never silently moves offsets.
 ## Structured output (schema_version=2)
 
 All structured output follows [ADR 0003](../adr/0003-output-envelope.md) and shared
-constructors, with no legacy flat shim. Single-file `outline/find/refs/symbols` JSONL
+constructors, with no legacy flat shim. Single-file `outline/find/xref/symbols` JSONL
 is header → zero or more records → summary. Success requires exit 0 and
 `summary.complete=true`; budget failures return no partial result.
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
 query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: outline
 `within, depth, kind, name`; find `string, resolve_static`; identifiers `name, role,
-within`; calls/members `name, within`; refs `byte`; symbols `within`.
+within`; calls/members `name, within`; xref `byte`; symbols `within`.
 
 Header detail fields:
 
 | Command | Fields |
 | --- | --- |
 | outline/find | `path, root_id, source_type, analysis, syntax, declaration_file, origin` |
-| refs | above plus `resolution, selected, declaration, declaration_ids` |
+| xref | above plus `resolution, selected, declaration, declaration_ids` |
 | symbols | above plus `resolution, within_id` |
 
-`analysis` is `lexical` for refs/symbols and null otherwise. `source_type` is the final
+`analysis` is `lexical` for xref/symbols and null otherwise. `source_type` is the final
 script/module mode. `root_id` always points at program (`parent_id: null`,
 `detail.depth: 0`). `origin` is the container adapter's
 `container, format, entry, header_id` or null for a direct file; an entry path is the
@@ -402,9 +402,9 @@ added.
 
 ## Lexical references
 
-`refs FILE --byte N` uses Oxc Semantic binding/reference analysis on demand. It is
+`xref FILE --byte N` uses Oxc Semantic binding/reference analysis on demand. It is
 single-file only, with no `--id`, `--within` or recursion. `symbols` implements symbol
-discovery and content-bound symbol IDs; `refs --id` and cross-file bindings are not
+discovery and content-bound symbol IDs; `xref --id` and cross-file bindings are not
 implemented.
 
 `N` must be less than the original length and inside a declaration identifier or
@@ -444,7 +444,7 @@ structure. Summary records count reference records only; `complete: true` means 
 lexical query completed, not runtime reference completeness. Unused resolved
 declarations, unresolved and dynamic queries can all succeed with zero records.
 
-`refs`/`symbols` and get symbol paths enable the semantic pass as needed and return its
+`xref`/`symbols` and get symbol paths enable the semantic pass as needed and return its
 diagnostics as `INVALID_INPUT`; outline/find/locate and get structure paths stay
 parser-only. Structural traversal checks entity and AST-depth budgets first; semantic
 nodes above `--max-semantic-nodes` (default 1,000,000) return `RESOURCE_LIMIT` before
@@ -466,7 +466,7 @@ Only this command builds the same Oxc Semantic index on demand. Header detail ad
 `analysis: lexical`, `within_id` (program ID by default) and `resolution:
 static|dynamic`. A whole file containing `with` or direct `eval(...)` returns dynamic
 and zero records even if the eval is outside the selected region; the rule matches
-refs. Static means static lexical analysis, but unresolved names may remain.
+xref. Static means static lexical analysis, but unresolved names may remain.
 
 Two record kinds:
 
@@ -474,7 +474,7 @@ Two record kinds:
   detail `name/relation/space/declaration_ids`. `name` is decoded; start/end are the
   canonical declaration identifier's original half-open UTF-8 range; `parent_id` is
   its innermost containing structure. Repeated `var` declarations merge into one
-  binding with the refs canonical position. `relation: declared` means at least one
+  binding with the xref canonical position. `relation: declared` means at least one
   declaration identifier is in the region; otherwise `external` means a region
   reference to a binding declared outside. External positions still point at the
   original declaration. Same-name different bindings stay separate; imports point only
@@ -489,16 +489,16 @@ Symbol IDs are `rxd1:js:<source-sha256>:symbol:<canonical-start>:<canonical-end>
 Oxc internal ordinals. They are stable for the same content, parse options and schema
 across calls, paths and within selections, but not across incompatible versions or
 different source content. Structure and symbol IDs have different target semantics:
-outline/symbols `--within` reject symbol IDs; refs does not accept `--id`; get accepts
+outline/symbols `--within` reject symbol IDs; xref does not accept `--id`; get accepts
 symbol IDs and extracts the canonical declaration; get accepts parent_id for the
-containing structure. A symbol record's `start` can be passed directly to `refs --byte`.
+containing structure. A symbol record's `start` can be passed directly to `xref --byte`.
 
 Both record kinds mix in ascending `(start, end)`. Summary records count symbols plus
 unresolved references; complete means the query completed, not resolution/runtime
 completeness. Record budgets are checked before collecting identities/positions;
 output bytes include header/summary. The semantic node default is 1,000,000
 (`--max-semantic-nodes`); entity, depth, input and atomic-output contracts are
-unchanged. Perf adds the semantic phase/counts only for refs/symbols/get-symbol.
+unchanged. Perf adds the semantic phase/counts only for xref/symbols/get-symbol.
 
 ## Declaration extraction by binding
 
@@ -552,7 +552,7 @@ semantic phase and whole-file index counts.
 
 ## Local syntax fragments
 
-Each find match, locate object and refs selected/reference adds
+Each find match, locate object and xref selected/reference adds
 `context_id: string|null` for local source around the hit. Structural parent IDs/
 ranges/order keep their meaning. Refs `declaration` still means the canonical binding
 identifier; `context_id` is the selected/reference location and never replaces binding
@@ -704,14 +704,14 @@ lower task correctness is not acceptance.
 
 ## MCP projection
 
-`js_outline/find/identifiers/calls/members/locate/refs/symbols/get` reuse existing
+`js_outline/find/identifiers/calls/members/locate/xref/symbols/get` reuse existing
 implementations. JSONL becomes header/records/summary; recursive directories keep
 `files` and `scan_summary` (only for directory-capable `outline`/`find`); get uses the
 original source record's `detail.source` with source/CRLF unchanged. Isolated UTF-16
 surrogate decoded values are represented losslessly as `{utf16_units: [...]}` in
 structuredContent, while ordinary strings stay strings; CLI JSON escaping is unchanged.
 A directory target must declare `backend: js`, pin the file set and obey file/discovery/
-depth budgets. `identifiers`/`calls`/`members`, like `locate/get/refs/symbols`, are
+depth budgets. `identifiers`/`calls`/`members`, like `locate/get/xref/symbols`, are
 single-file only.
 
 Shared snapshot, quota, cancellation and complete-response rules are in the

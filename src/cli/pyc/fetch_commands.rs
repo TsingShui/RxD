@@ -39,8 +39,8 @@ struct View<'a> {
     record: &'static str,
     id: &'a str,
     source_id: &'a str,
-    parent_id: Option<String>,
-    context_id: Option<&'a str>,
+    parent_at: Option<String>,
+    context_at: Option<&'a str>,
     start: usize,
     end: usize,
     detail: Detail<'a>,
@@ -80,8 +80,10 @@ pub fn fetch(
             record: "code_view",
             id: &id,
             source_id: &analysis.source_id,
-            parent_id: entry.parent.map(|i| analysis.code_id(i)),
-            context_id: None,
+            parent_at: entry
+                .parent
+                .map(|i| rxd_core::envelope::at_of(&analysis.code_id(i)).into_owned()),
+            context_at: None,
             start: span.start,
             end: span.end,
             detail: Detail {

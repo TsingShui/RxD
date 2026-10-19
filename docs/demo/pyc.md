@@ -1,6 +1,6 @@
 # PYC navigation and decompilation
 
-`rxd pyc decompile` and `outline/strings/get-code/refs` for final CPython 3.8–3.13 are
+`rxd pyc decompile` and `outline/strings/get-code/xref` for final CPython 3.8–3.13 are
 implemented. Repository PYC fixtures are offline; analysis never runs their code and
 does not need a Python interpreter.
 
@@ -134,9 +134,9 @@ semantics or source equivalence. Use real outline IDs, not filenames/names.
 ## Name and constant references
 
 ```sh
-target/debug/rxd pyc refs tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name shared
-target/debug/rxd pyc refs tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name shared --within '<code-id>'
-target/debug/rxd pyc refs tests/corpus/pyc/3.12.14/graph.timestamp.pyc \
+target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name shared
+target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name shared --within '<code-id>'
+target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc \
   --const-id 'rxd1:pyc:<input-sha256>:const:<code-index>:<path>'
 ```
 
@@ -154,7 +154,7 @@ directly loaded. See the [PYC design](../design/pyc-design.md#name-references).
 Static commands support final CPython 3.8.20, 3.9.6, 3.10.16, 3.11.11, 3.12.14 and
 3.13.2. `.pyc` headers allow PEP 552 flags 0/1/3; raw marshal requires `--version X.Y`.
 The code index uses deterministic DFS preorder and first containment, with IDs stable
-across renames and processes. Outline/strings/get-code/refs share input, entity, work,
+across renames and processes. Outline/strings/get-code/xref share input, entity, work,
 record and output budgets; get-code adds `--max-instructions` (default 1,000,000). All
 output is complete before atomic stdout/`-o` publication. `rxd pyz` and PyInstaller
 containers are separate and still planned. Control-flow deflattening, deobfuscation and

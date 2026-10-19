@@ -12,7 +12,7 @@ pub enum Command {
     /// Search decoded PUSH literals and data candidates using an explicit query interpretation.
     Strings(StringsOptions),
     /// Find evidenced references and fetchable contexts for a literal or code-unit ID.
-    Refs(RefsOptions),
+    Xref(XrefOptions),
     /// Return all native EVMole analyses as one JSON object.
     Analyze(Options),
     /// Infer selectors, argument types and state mutability.
@@ -55,7 +55,7 @@ pub struct StringsOptions {
 }
 
 #[derive(Args)]
-pub struct RefsOptions {
+pub struct XrefOptions {
     #[command(flatten)]
     options: Options,
     #[arg(long)]
@@ -143,7 +143,7 @@ impl Command {
             Self::Metadata(options) => (options, Some(Query::Metadata)),
             Self::Outline(options) => (options, None),
             Self::Strings(options) => (&options.options, None),
-            Self::Refs(options) => (&options.options, None),
+            Self::Xref(options) => (&options.options, None),
             Self::GetBlock(options) => (&options.options, None),
             Self::GetFunction(options) => (&options.options, None),
         }
@@ -160,7 +160,7 @@ impl Command {
             Self::Metadata(_) => "metadata",
             Self::Outline(_) => "outline",
             Self::Strings(_) => "strings",
-            Self::Refs(_) => "refs",
+            Self::Xref(_) => "xref",
             Self::GetBlock(_) => "get-block",
             Self::GetFunction(_) => "get-function",
         }
@@ -195,7 +195,7 @@ pub fn execute(command: Command) -> Result<()> {
     }
     if matches!(
         command,
-        Command::Outline(_) | Command::GetFunction(_) | Command::Strings(_) | Command::Refs(_)
+        Command::Outline(_) | Command::GetFunction(_) | Command::Strings(_) | Command::Xref(_)
     ) {
         effective_limits.insert("states", options.max_states);
         effective_limits.insert("stack_cells", options.max_stack_cells);
@@ -245,7 +245,7 @@ pub fn execute(command: Command) -> Result<()> {
                 Command::Outline(_)
                     | Command::GetFunction(_)
                     | Command::Strings(_)
-                    | Command::Refs(_)
+                    | Command::Xref(_)
             ) {
                 Some(FunctionNavigation::discover(
                     &navigation,
@@ -257,7 +257,7 @@ pub fn execute(command: Command) -> Result<()> {
             };
             let serialization = if matches!(
                 &command,
-                Command::GetFunction(_) | Command::Strings(_) | Command::Refs(_)
+                Command::GetFunction(_) | Command::Strings(_) | Command::Xref(_)
             ) {
                 None
             } else {
@@ -287,7 +287,7 @@ pub fn execute(command: Command) -> Result<()> {
                         &mut perf,
                     )
                 }
-                Command::Refs(refs) => rxd_evm::references::refs_json(
+                Command::Xref(refs) => rxd_evm::references::refs_json(
                     &navigation,
                     functions.as_ref().unwrap(),
                     &refs.id,
@@ -309,7 +309,7 @@ pub fn execute(command: Command) -> Result<()> {
                 ),
                 _ => unreachable!("native query handled above"),
             };
-            if !matches!(command, Command::Strings(_) | Command::Refs(_)) {
+            if !matches!(command, Command::Strings(_) | Command::Xref(_)) {
                 perf.record("serialize", serialization);
             }
             bytes?

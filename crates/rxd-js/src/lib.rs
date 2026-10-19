@@ -490,10 +490,10 @@ pub fn run_source(
             let located = envelope::body(
                 "locate",
                 RecordMeta {
-                    id: Some(&entity.id),
+                    at: Some(&entity.id),
                     source_id: Some(&source.id),
-                    parent_id: entity.parent_id.as_deref(),
-                    context_id: context_id.as_deref(),
+                    parent_at: entity.parent_id.as_deref(),
+                    context_at: context_id.as_deref(),
                     start: Some(entity.start as usize),
                     end: Some(entity.end as usize),
                 },
@@ -591,9 +591,9 @@ pub fn run_source(
                     let fragment_record = envelope::body(
                         "fragment",
                         RecordMeta {
-                            id: Some(&fragment.id),
+                            at: Some(&fragment.id),
                             source_id: Some(&source.id),
-                            parent_id: fragment.parent_id.as_deref(),
+                            parent_at: fragment.parent_id.as_deref(),
                             start: Some(fragment.start as usize),
                             end: Some(fragment.end as usize),
                             ..Default::default()
@@ -606,9 +606,9 @@ pub fn run_source(
                     let extracted = envelope::body(
                         "source",
                         RecordMeta {
-                            id: Some(&fragment.id),
+                            at: Some(&fragment.id),
                             source_id: Some(&source.id),
-                            parent_id: fragment.parent_id.as_deref(),
+                            parent_at: fragment.parent_id.as_deref(),
                             start: Some(fragment.start as usize),
                             end: Some(fragment.end as usize),
                             ..Default::default()
@@ -646,9 +646,9 @@ pub fn run_source(
                     let extracted = envelope::body(
                         "source",
                         RecordMeta {
-                            id: Some(&id),
+                            at: Some(&id),
                             source_id: Some(&source.id),
-                            parent_id: Some(&definition.symbol.location.entity_id),
+                            parent_at: Some(&definition.symbol.location.entity_id),
                             start: Some(range.start as usize),
                             end: Some(range.end as usize),
                             ..Default::default()
@@ -683,9 +683,9 @@ pub fn run_source(
                 let extracted = envelope::body(
                     "source",
                     RecordMeta {
-                        id: Some(&target.entity.id),
+                        at: Some(&target.entity.id),
                         source_id: Some(&source.id),
-                        parent_id: target.entity.parent_id.as_deref(),
+                        parent_at: target.entity.parent_id.as_deref(),
                         start: Some(target.entity.start as usize),
                         end: Some(target.entity.end as usize),
                         ..Default::default()

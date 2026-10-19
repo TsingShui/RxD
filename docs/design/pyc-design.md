@@ -5,7 +5,7 @@ Status: implemented; `rxd pyz` is planned.
 `rxd pyc` is the Agent-facing entry for compiled CPython bytecode. `decompile` uses
 the imported pycdc Rust library to turn a `.pyc` or explicitly versioned raw marshal
 code object into Python text without importing/executing input or loading a Python
-runtime. `outline`, `strings`, `get-code` and `refs` provide static navigation,
+runtime. `outline`, `strings`, `get-code` and `xref` provide static navigation,
 lossless constant search, original FETCH and explicit name/constant references for
 final CPython 3.8–3.13 formats. `rxd pyz` container handling is planned separately.
 
@@ -146,7 +146,7 @@ matches is a complete empty result. `--index` missing is `INVALID_QUERY` (exit 2
 filters are mutually exclusive. Marshal surrogatepass payloads keep raw bytes: valid
 UTF-8 metadata uses a string, otherwise text is null and corresponding `*_bytes` give
 lowercase payload hex; the lossy decompiler compatibility view is never used. Non-ASCII
-payloads for ASCII tags are rejected. Cycles/forward refs are rejected; FLAG_REF
+payloads for ASCII tags are rejected. Cycles/forward xref are rejected; FLAG_REF
 containers reserve reference slots before children, and definition and reference site
 stay separate.
 
@@ -229,7 +229,7 @@ concatenation or f-strings are not evaluated.
 Constant ID:
 `rxd1:pyc:<full-input-sha256>:const:<code-index>:<dot-separated-index-path>`.
 Different owner/slot/path is a different ID; equal text or shared objects do not
-deduplicate. Tuple/frozenset and whole-`co_consts` shared refs still expand every owner/
+deduplicate. Tuple/frozenset and whole-`co_consts` shared xref still expand every owner/
 path; raw payload shares a definition handle; path/alias copies and actual traversal
 charge work first. Owner is the owning code definition; a shared code's literal is
 enumerated once under its distinct index. context_id/parent_id are the owner code ID;
@@ -407,9 +407,9 @@ are not scanned and no AST is built.
 ## Name references
 
 ```sh
-rxd pyc refs module.pyc --name marker
-rxd pyc refs module.pyc --name marker --within 'rxd1:pyc:<input-sha256>:code:9'
-rxd pyc refs graph.marshal --version 3.12 --name cell -o target/refs.jsonl
+rxd pyc xref module.pyc --name marker
+rxd pyc xref module.pyc --name marker --within 'rxd1:pyc:<input-sha256>:code:9'
+rxd pyc xref graph.marshal --version 3.12 --name cell -o target/xref.jsonl
 ```
 
 `--name` and `--const-id` are mutually exclusive and exactly one is required. Name
@@ -499,8 +499,8 @@ do not replace output or modify input; failed perf preserves actual work/instruc
 ## Constant references
 
 ```sh
-rxd pyc refs module.pyc --const-id 'rxd1:pyc:<input-sha256>:const:9:2.0'
-rxd pyc refs graph.marshal --version 3.12 --const-id "$CONST_ID" --within "$CODE_ID"
+rxd pyc xref module.pyc --const-id 'rxd1:pyc:<input-sha256>:const:9:2.0'
+rxd pyc xref graph.marshal --version 3.12 --const-id "$CONST_ID" --within "$CODE_ID"
 ```
 
 CONST_ID comes from a real strings ID, not a literal value. It strictly validates full
@@ -534,12 +534,12 @@ in different slots/owners are not linked; multiple nested leaves in one containi
 share instruction evidence, but each query echoes only the selected occurrence. Ordering is
 code index then instruction offset.
 
-The common refs query retains name/const_id/within/version with absent keys null;
+The common xref query retains name/const_id/within/version with absent keys null;
 constant header/summary detail.analysis=`explicit_constant_references`; the rest of the
 fixed schema is shared with name selectors. Summary/perf records count only real hits;
 unsupported evidence is counted separately under the same records budget. Unknown/
 RESERVED/instrumented opcodes make that owner's coverage incomplete. The supported matrix,
-input safety, atomic output and non-goals are the same as name refs.
+input safety, atomic output and non-goals are the same as name xref.
 
 ## Capability status and MCP
 
@@ -550,10 +550,10 @@ references and explicit constant-occurrence references, while retaining whole-mo
 source reconstruction. PYZ container ownership remains `rxd pyz`, still planned.
 Control-flow deflattening, deobfuscation and decryption are permanent non-goals.
 
-`pyc_outline/strings/refs/get_code/decompile` reuse the fixed input/evidence/index and
+`pyc_outline/strings/xref/get_code/decompile` reuse the fixed input/evidence/index and
 preserve native source/fallback/completeness. JSONL projects to header/records/summary;
 single FETCH keeps its original record. Unsolvable raw text, code IDs and original spans
-remain unchanged. The MCP `refs` tool preserves name/const selectors and within scope;
+remain unchanged. The MCP `xref` tool preserves name/const selectors and within scope;
 resource limits map to input/entities/work/records/output/instructions where supported.
 
 Shared snapshot, quota, cancellation and complete-response rules are in the

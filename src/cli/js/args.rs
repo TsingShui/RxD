@@ -155,7 +155,7 @@ pub(crate) enum Command {
         json: bool,
     },
     /// List lexical references for a binding/reference at a UTF-8 byte offset (JSONL).
-    Refs {
+    Xref {
         #[command(flatten)]
         common: Common,
         #[arg(long)]
@@ -195,7 +195,7 @@ pub(crate) enum Command {
 impl Command {
     pub(super) fn semantic_nodes(&self) -> usize {
         match self {
-            Self::Refs {
+            Self::Xref {
                 max_semantic_nodes, ..
             }
             | Self::Symbols {
@@ -243,7 +243,7 @@ impl Command {
             Self::Calls { name, within, .. } => Query::Calls { name, within },
             Self::Members { name, within, .. } => Query::Members { name, within },
             Self::Locate { byte, .. } => Query::Locate { byte },
-            Self::Refs { byte, .. } => Query::Refs { byte },
+            Self::Xref { byte, .. } => Query::Refs { byte },
             Self::Symbols { within, .. } => Query::Symbols { within },
             Self::Get { id, json, .. } => Query::Get { id, json },
         }
@@ -257,7 +257,7 @@ impl Command {
             Self::Calls { .. } => "calls",
             Self::Members { .. } => "members",
             Self::Locate { .. } => "locate",
-            Self::Refs { .. } => "refs",
+            Self::Xref { .. } => "xref",
             Self::Symbols { .. } => "symbols",
             Self::Get { .. } => "get",
         }
@@ -276,7 +276,7 @@ impl Command {
             | Self::Calls { common, .. }
             | Self::Members { common, .. }
             | Self::Locate { common, .. }
-            | Self::Refs { common, .. }
+            | Self::Xref { common, .. }
             | Self::Symbols { common, .. }
             | Self::Get { common, .. } => common,
         }

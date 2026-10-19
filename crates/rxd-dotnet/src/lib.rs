@@ -17,6 +17,6 @@ pub use decompile::{render, render_class};
 pub use input::Input;
 pub use model::*;
 
-pub use refs::{Reference, ReferenceResult, SemanticTarget};
+pub use refs::{Reference, ReferenceResult, SemanticTarget, TargetResolver};
 
 pub use scan::{IlScan, TokenSite};

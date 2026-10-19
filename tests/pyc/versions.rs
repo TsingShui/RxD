@@ -375,7 +375,7 @@ fn pyc_final_versions_trace_every_explicit_name_and_packed_target_to_fetch() {
             }
             let mut fetched = std::collections::BTreeMap::<usize, Value>::new();
             for name in names {
-                let all = rows(&command("refs", &path, &["--name", name]));
+                let all = rows(&command("xref", &path, &["--name", name]));
                 assert_eq!(all[0]["query"]["name"], name);
                 assert!(all[0]["query"]["const_id"].is_null());
                 assert_eq!(all.last().unwrap()["complete"], true);
@@ -467,7 +467,7 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
             };
             let mut name_args = base_args.clone();
             name_args.extend(["--name", "cell"]);
-            let named = rows(&command("refs", &path, &name_args));
+            let named = rows(&command("xref", &path, &name_args));
             assert_eq!(named.last().unwrap()["complete"], true);
             assert!(named.last().unwrap()["records"].as_u64().unwrap() > 0);
             let hit = &named[1];
@@ -551,7 +551,7 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                 }
                 let mut args = base_args.clone();
                 args.extend(["--const-id", literal["id"].as_str().unwrap()]);
-                let refs = rows(&command("refs", &path, &args));
+                let refs = rows(&command("xref", &path, &args));
                 assert_eq!(refs[0]["query"]["const_id"], literal["id"]);
                 assert_eq!(refs.last().unwrap()["complete"], true);
                 let owner = d["code_index"].as_u64().unwrap() as usize;
@@ -684,7 +684,7 @@ fn pyc_final_versions_use_original_frozenset_child_order_for_occurrence_ids() {
         assert_eq!(all[2]["detail"]["constant_path"], serde_json::json!([0, 1]));
         for literal in &all[1..3] {
             let refs = rows(&command(
-                "refs",
+                "xref",
                 &path,
                 &[
                     "--version",
@@ -856,7 +856,7 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
             if lines.is_empty() && exceptions.is_empty() {
                 failure(
                     command(
-                        "refs",
+                        "xref",
                         &path,
                         &[
                             "--name",
@@ -899,7 +899,7 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
         );
         assert_eq!(fetched["detail"]["complete"], true);
         let refs = rows(&command(
-            "refs",
+            "xref",
             &path,
             &["--name", "no-hit", "--version", minor],
         ));
@@ -944,7 +944,7 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
             for (cmd, args) in [
                 ("outline", vec![]),
                 ("strings", vec![]),
-                ("refs", vec!["--name", "none"]),
+                ("xref", vec!["--name", "none"]),
                 ("get-code", vec![id]),
             ] {
                 let mut args = args;
@@ -970,12 +970,12 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         fs::write(&path, &changed).unwrap();
         failure(command("get-code", &path, &[id]), 2, "INVALID_QUERY");
         failure(
-            command("refs", &path, &["--name", "arg", "--within", id]),
+            command("xref", &path, &["--name", "arg", "--within", id]),
             2,
             "INVALID_QUERY",
         );
         let zero = rows(&command(
-            "refs",
+            "xref",
             &original,
             &["--name", "no-exact-name-matches"],
         ));
@@ -1014,7 +1014,7 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
         for (cmd, args) in [
             ("outline", vec![]),
             ("strings", vec![]),
-            ("refs", vec!["--name", "arg"]),
+            ("xref", vec!["--name", "arg"]),
             ("get-code", vec![id]),
         ] {
             let mut instrumented = args.clone();
@@ -1046,7 +1046,7 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
                     codes[0]["detail"]["bytecode_bytes"].as_u64().unwrap() as usize / 2,
                 ));
             }
-            if cmd == "refs" {
+            if cmd == "xref" {
                 limits.push((
                     "--max-instructions",
                     codes
@@ -1162,7 +1162,7 @@ fn pyc_final_versions_navigate_pinned_actual_email_policy_modules_offline() {
                 code["code_hex"].as_str().unwrap().len() / 2
             );
         }
-        let refs = rows(&command("refs", &path, &["--name", "value"]));
+        let refs = rows(&command("xref", &path, &["--name", "value"]));
         assert!(refs.last().unwrap()["records"].as_u64().unwrap() > 0);
         assert_eq!(refs.last().unwrap()["complete"], true);
         let hit = &refs[1];
@@ -1176,7 +1176,7 @@ fn pyc_final_versions_navigate_pinned_actual_email_policy_modules_offline() {
         assert!(strings.last().unwrap()["records"].as_u64().unwrap() > 0);
         for literal in strings.iter().filter(|r| r["record"] == "string") {
             let refs = rows(&command(
-                "refs",
+                "xref",
                 &path,
                 &["--const-id", literal["id"].as_str().unwrap()],
             ));

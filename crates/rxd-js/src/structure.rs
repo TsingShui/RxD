@@ -70,9 +70,9 @@ impl Entity {
         crate::envelope::body(
             "entity",
             rxd_core::envelope::RecordMeta {
-                id: Some(&self.id),
+                at: Some(&self.id),
                 source_id: Some(source_id),
-                parent_id: self.parent_id.as_deref(),
+                parent_at: self.parent_id.as_deref(),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),
                 ..Default::default()
@@ -104,8 +104,8 @@ impl Match {
             "match",
             rxd_core::envelope::RecordMeta {
                 source_id: Some(source_id),
-                parent_id: Some(&self.entity_id),
-                context_id: self.context_id.as_deref(),
+                parent_at: Some(&self.entity_id),
+                context_at: self.context_id.as_deref(),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),
                 ..Default::default()

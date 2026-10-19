@@ -117,7 +117,18 @@ struct Payload {
     ok: bool,
     reason: Option<String>,
     code: Option<String>,
+    #[serde(default)]
+    warnings: Vec<String>,
     mapping: Vec<NativeSourceMap>,
+}
+
+/// Keep only the navigation entries the selected body can prove, reporting how many
+/// were dropped so the reconstruction is never discarded over a mapping detail.
+fn retain_mapping<T>(mapping: Vec<T>, keep: impl Fn(&T) -> bool) -> (Vec<T>, usize) {
+    let before = mapping.len();
+    let kept: Vec<T> = mapping.into_iter().filter(|site| keep(site)).collect();
+    let dropped = before - kept.len();
+    (kept, dropped)
 }
 
 #[derive(Deserialize)]
@@ -130,6 +141,7 @@ struct NativeSourceMap {
 enum DecodedPayload {
     Code {
         code: String,
+        warnings: Vec<String>,
         mapping: Vec<NativeSourceMap>,
     },
     Fallback(String),
@@ -189,6 +201,7 @@ impl Engine {
         }
         Ok(DecodedPayload::Code {
             code,
+            warnings: payload.warnings,
             mapping: payload.mapping,
         })
     }
@@ -220,26 +233,37 @@ pub(super) fn render(
     // SAFETY: input.view owns the immutable, validated module buffer throughout
     // the call; out_len is writable; method is a validated MethodDef token.
     let ptr = unsafe { (engine.method)(bytes.as_ptr(), length, method.token as i32, &mut out_len) };
-    let (code, mapping) = match engine.decode_payload(ptr, out_len, limits)? {
-        DecodedPayload::Code { code, mapping } => (code, mapping),
+    let (code, warnings, mapping) = match engine.decode_payload(ptr, out_len, limits)? {
+        DecodedPayload::Code {
+            code,
+            warnings,
+            mapping,
+        } => (code, warnings, mapping),
         DecodedPayload::Fallback(reason) => return Ok(fallback(reason)),
     };
+    // Navigation entries that cannot be proven are dropped and reported; the engine's
+    // reconstruction itself is always returned as produced.
     let lines = code.lines().count();
-    if mapping.iter().any(|site| {
-        site.method_token.is_some_and(|token| token != method.token)
-            || site.line == 0
-            || site.line > lines
-            || body
+    let mut warnings = warnings;
+    let (mapping, dropped) = retain_mapping(mapping, |site| {
+        !site.method_token.is_some_and(|token| token != method.token)
+            && site.line != 0
+            && site.line <= lines
+            && body
                 .instructions
                 .binary_search_by_key(&site.il_offset, |instruction| instruction.offset)
-                .is_err()
-    }) {
-        return Ok(fallback("invalid_engine_output"));
+                .is_ok()
+    });
+    if dropped != 0 {
+        warnings.push(format!(
+            "mapping: dropped {dropped} unprovable source entry/entries"
+        ));
     }
     Ok(Decompilation {
         representation: "csharp".into(),
         decompiled: true,
         reason: None,
+        warnings,
         code: Some(code),
         mapping: mapping
             .into_iter()
@@ -283,41 +307,50 @@ pub(super) fn render_class(
             &mut out_len,
         )
     };
-    let (code, sites) = match engine.decode_payload(ptr, out_len, limits)? {
-        DecodedPayload::Code { code, mapping } => (code, mapping),
+    let (code, warnings, sites) = match engine.decode_payload(ptr, out_len, limits)? {
+        DecodedPayload::Code {
+            code,
+            warnings,
+            mapping,
+        } => (code, warnings, mapping),
         DecodedPayload::Fallback(reason) => return Ok(class_fallback(reason)),
     };
+    // Same rule as a single body: keep every provable entry, report the rest, and return
+    // the reconstruction no matter what the mapping looks like.
     let lines = code.lines().count();
+    let mut warnings = warnings;
     let mut mapping = Vec::new();
+    let mut dropped = 0usize;
     for site in sites {
-        let Some(token) = site.method_token else {
-            return Ok(class_fallback("invalid_engine_output"));
-        };
-        let Ok(index) = class
-            .methods
-            .binary_search_by_key(&token, |item| item.method.token)
-        else {
-            return Ok(class_fallback("invalid_engine_output"));
-        };
-        let item = &class.methods[index];
-        let Some(body) = &item.body else {
-            return Ok(class_fallback("invalid_engine_output"));
-        };
-        if site.line == 0
-            || site.line > lines
-            || body
-                .instructions
-                .binary_search_by_key(&site.il_offset, |instruction| instruction.offset)
-                .is_err()
-        {
-            return Ok(class_fallback("invalid_engine_output"));
-        }
-        mapping.push(ClassSourceMap {
-            method_id: item.method.id.clone(),
-            method_token: token,
-            il_offset: site.il_offset,
-            line: site.line,
+        let resolved = site.method_token.and_then(|token| {
+            let index = class
+                .methods
+                .binary_search_by_key(&token, |item| item.method.token)
+                .ok()?;
+            let item = &class.methods[index];
+            let body = item.body.as_ref()?;
+            (site.line != 0
+                && site.line <= lines
+                && body
+                    .instructions
+                    .binary_search_by_key(&site.il_offset, |instruction| instruction.offset)
+                    .is_ok())
+            .then(|| (item, token))
         });
+        match resolved {
+            Some((item, token)) => mapping.push(ClassSourceMap {
+                method_id: item.method.id.clone(),
+                method_token: token,
+                il_offset: site.il_offset,
+                line: site.line,
+            }),
+            None => dropped += 1,
+        }
+    }
+    if dropped != 0 {
+        warnings.push(format!(
+            "mapping: dropped {dropped} unprovable source entry/entries"
+        ));
     }
     mapping.sort_unstable_by_key(|site| (site.method_token, site.il_offset, site.line));
     mapping.dedup_by_key(|site| (site.method_token, site.il_offset, site.line));
@@ -325,6 +358,7 @@ pub(super) fn render_class(
         representation: "csharp".into(),
         decompiled: true,
         reason: None,
+        warnings,
         code: Some(code),
         mapping,
     })

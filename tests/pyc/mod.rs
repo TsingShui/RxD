@@ -185,7 +185,7 @@ fn pyc_outputs_reject_resolved_input_aliases_for_every_command() {
     for (command, selection) in [
         ("outline", vec![]),
         ("strings", vec![]),
-        ("refs", vec!["--name", "fib"]),
+        ("xref", vec!["--name", "fib"]),
         ("get-code", vec![id.as_str()]),
         ("decompile", vec!["--json"]),
     ] {

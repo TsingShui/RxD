@@ -66,12 +66,12 @@ rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding
 ```sh
 rxd evm outline tests/corpus/evm/authored-navigation.runtime.hex --encoding hex -o target/evm-ref-outline.jsonl
 TARGET_ID=$(jq -r 'select(.record=="function") | .id' target/evm-ref-outline.jsonl | head -n 1)
-rxd evm refs tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --id "$TARGET_ID" -o target/evm-code-refs.jsonl
-CONTEXT_ID=$(jq -r 'select(.record=="code_reference") | .context_id' target/evm-code-refs.jsonl | head -n 1)
+rxd evm xref tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --id "$TARGET_ID" -o target/evm-code-xref.jsonl
+CONTEXT_ID=$(jq -r 'select(.record=="code_reference") | .context_id' target/evm-code-xref.jsonl | head -n 1)
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex "$CONTEXT_ID" --encoding hex --raw
 ```
 
-`refs` reports explicit static control-flow references (`jump`, `branch_true`,
+`xref` reports explicit static control-flow references (`jump`, `branch_true`,
 `branch_false`, `fallthrough`, `selector_dispatch`) with concrete function/context
 witnesses or block-local stack evidence. It does not claim source-level calls, runtime
 dispatch, complete selector discovery or a runtime call graph. Unknown/invalid jumps are
@@ -82,8 +82,8 @@ counted separately; zero hits can still be a complete scan.
 ```sh
 rxd evm strings tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --kind text --query RXD_DATA_NAVIGATION -o target/evm-literals.jsonl
 LITERAL_ID=$(jq -r 'select(.record=="literal") | .id' target/evm-literals.jsonl | head -n 1)
-rxd evm refs tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --id "$LITERAL_ID" -o target/evm-literal-refs.jsonl
-CONTEXT_ID=$(jq -r 'select(.record=="literal_reference") | .context_id' target/evm-literal-refs.jsonl | head -n 1)
+rxd evm xref tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --id "$LITERAL_ID" -o target/evm-literal-xref.jsonl
+CONTEXT_ID=$(jq -r 'select(.record=="literal_reference") | .context_id' target/evm-literal-xref.jsonl | head -n 1)
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex "$CONTEXT_ID" --encoding hex --raw
 ```
 

@@ -34,8 +34,8 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             assert_eq!(groups.len(), 1);
             let row = groups[0];
             assert_eq!(row["detail"]["status"], "unreferenced");
-            assert!(row["context_id"].is_null());
-            assert!(row["parent_id"].is_null());
+            assert!(row["context_at"].is_null());
+            assert!(row["parent_at"].is_null());
             assert!(row["detail"]["declaring_type_id"].is_null());
             assert!(row["detail"]["method_token"].is_null());
             assert_eq!(row["detail"]["il_offsets"], serde_json::json!([]));
@@ -58,19 +58,13 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                     .iter()
                     .find(|method| method["token"] == method_token)
                     .unwrap();
-                let method_id = format!(
-                    "rxd1:dotnet:{}:method:{method_token:08x}",
-                    oracle["sha256"].as_str().unwrap()
-                );
+                let method_id = format!("0x{method_token:08x}");
                 let owner_token = expected_method["declaring_type_token"].as_u64().unwrap();
-                let owner_id = format!(
-                    "rxd1:dotnet:{}:type:{owner_token:08x}",
-                    oracle["sha256"].as_str().unwrap()
-                );
-                assert_eq!(row["context_id"], method_id);
+                let owner_id = format!("0x{owner_token:08x}");
+                assert_eq!(row["context_at"], method_id);
                 assert_eq!(row["detail"]["declaring_type_id"], owner_id);
-                assert_eq!(row["parent_id"], owner_id);
-                let fetched = run("get-method", &path, &[&method_id, "--il"]);
+                assert_eq!(row["parent_at"], owner_id);
+                let fetched = run("get-method", &path, &["--at", &method_id, "--il"]);
                 success(&fetched);
                 let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
                 assert_eq!(fetched["detail"]["il_hex"], expected_method["il_hex"]);
@@ -80,7 +74,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             assert_eq!(row["detail"]["token"], entry["token"]);
             assert_eq!(row["detail"]["value"], entry["value"]);
             assert_eq!(row["detail"]["utf16_units"], entry["utf16_units"]);
-            assert!(row["id"].is_null());
+            assert!(row["at"].is_null());
             assert!(row["start"].is_null());
             assert!(row["end"].is_null());
             assert_eq!(
@@ -119,8 +113,8 @@ fn dotnet_exact_string_refs_match_every_equal_heap_entry_and_original_load_site(
     let path = string_input();
     let oracle = string_expected();
     for value in ["shared 世界\nλ", "", "🙂世界", "SHARED 世界\nλ", "absent"] {
-        let rows = jsonl(&run("refs", &path, &["--string", value]));
-        assert_eq!(rows, jsonl(&run("refs", &path, &["--string", value])));
+        let rows = jsonl(&run("xref", &path, &["--string", value]));
+        assert_eq!(rows, jsonl(&run("xref", &path, &["--string", value])));
         assert_eq!(rows[0]["query"]["string"], value);
         let mut expected = Vec::new();
         for entry in oracle["entries"]
@@ -158,18 +152,18 @@ fn dotnet_exact_string_refs_match_every_equal_heap_entry_and_original_load_site(
             let fetched = run(
                 "get-method",
                 &path,
-                &[row["context_id"].as_str().unwrap(), "--il"],
+                &["--at", row["context_at"].as_str().unwrap(), "--il"],
             );
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
             assert_eq!(fetched["detail"]["method"]["detail"]["token"], method);
-            assert_eq!(fetched["parent_id"], row["detail"]["declaring_type_id"]);
+            assert_eq!(fetched["parent_at"], row["detail"]["declaring_type_id"]);
         }
     }
     // Values not expressible as argv UTF-8 remain reachable by raw user-string token.
     for entry in oracle["entries"].as_array().unwrap() {
         let token = format!("0x{:08x}", entry["token"].as_u64().unwrap());
-        let rows = jsonl(&run("refs", &path, &["--token", &token]));
+        let rows = jsonl(&run("xref", &path, &["--at", &token]));
         assert_eq!(
             rows.last().unwrap()["records"],
             entry["uses"].as_array().unwrap().len()
@@ -199,8 +193,8 @@ fn dotnet_string_token_scan_rejects_damaged_unused_heap_data() {
     fs::write(&path, bytes).unwrap();
     for (command, args) in [
         ("strings", vec!["--contains", "shared"]),
-        ("refs", vec!["--string", "shared 世界\nλ"]),
-        ("refs", vec!["--token", "0x70000001"]),
+        ("xref", vec!["--string", "shared 世界\nλ"]),
+        ("xref", vec!["--at", "0x70000001"]),
     ] {
         let output = run(command, &path, &args);
         assert_eq!(
@@ -231,8 +225,8 @@ fn dotnet_string_scans_reject_damage_even_when_the_selected_value_is_absent() {
         fs::write(&path, bytes).unwrap();
         for (command, args) in [
             ("strings", vec!["--contains", "absent"]),
-            ("refs", vec!["--string", "absent"]),
-            ("refs", vec!["--token", "0x70000001"]),
+            ("xref", vec!["--string", "absent"]),
+            ("xref", vec!["--at", "0x70000001"]),
         ] {
             let output = run(command, &path, &args);
             assert_eq!(output.status.code(), Some(1), "{name}: {command} {args:?}");
@@ -242,13 +236,14 @@ fn dotnet_string_scans_reject_damage_even_when_the_selected_value_is_absent() {
     }
     for args in [
         vec![],
-        vec!["--token", "0x70000001", "--string", "shared"],
-        vec!["--token", "0x70000002"],
-        vec!["--token", "0x70000000"],
-        vec!["--token", "0x70ffffff"],
-        vec!["--token", "bad-token"],
+        vec!["--at", "0x70000001", "--string", "shared"],
+        vec!["--at", "0x70000002"],
+        vec!["--at", "0x70000000"],
+        vec!["--at", "0x70ffffff"],
+        vec!["--at", "token:not-a-token"],
+        vec!["--at", "bad-token"],
     ] {
-        let output = run("refs", &string_input(), &args);
+        let output = run("xref", &string_input(), &args);
         assert_eq!(output.status.code(), Some(2), "{args:?}");
         rejected(output);
     }
@@ -260,15 +255,11 @@ fn dotnet_string_scans_account_cumulative_work_and_fail_atomically_at_cli_limits
     let oracle = string_expected();
     success(&run("outline", &path, &["--max-work", "400"]));
     for method in oracle["methods"].as_array().unwrap() {
-        let id = format!(
-            "rxd1:dotnet:{}:method:{:08x}",
-            oracle["sha256"].as_str().unwrap(),
-            method["token"].as_u64().unwrap()
-        );
+        let id = format!("0x{:08x}", method["token"].as_u64().unwrap());
         success(&run(
             "get-method",
             &path,
-            &[&id, "--il", "--max-work", "400"],
+            &["--at", &id, "--il", "--max-work", "400"],
         ));
     }
     let directory = tempfile::tempdir().unwrap();
@@ -276,8 +267,8 @@ fn dotnet_string_scans_account_cumulative_work_and_fail_atomically_at_cli_limits
     fs::write(&destination, b"previous result").unwrap();
     for (command, query) in [
         ("strings", vec!["--contains", "shared"]),
-        ("refs", vec!["--string", "shared 世界\nλ"]),
-        ("refs", vec!["--token", "0x70000001"]),
+        ("xref", vec!["--string", "shared 世界\nλ"]),
+        ("xref", vec!["--at", "0x70000001"]),
     ] {
         fs::write(&destination, b"previous result").unwrap();
         for (flag, limit) in [
@@ -319,10 +310,10 @@ fn dotnet_string_search_routes_directly_to_original_method_and_class() {
     let hit = rows.iter().find(|row| row["record"] == "string").unwrap();
     assert_eq!(hit["detail"]["status"], "referenced");
     assert_eq!(hit["detail"]["il_offsets"], serde_json::json!([0]));
-    let id = hit["context_id"]
+    let id = hit["context_at"]
         .as_str()
         .expect("search must return method FETCH context");
-    let method = run("get-method", &path, &[id, "--il"]);
+    let method = run("get-method", &path, &["--at", id, "--il"]);
     success(&method);
     let method: Value = serde_json::from_slice(&method.stdout).unwrap();
     assert_eq!(
@@ -332,7 +323,7 @@ fn dotnet_string_search_routes_directly_to_original_method_and_class() {
     let owner = hit["detail"]["declaring_type_id"]
         .as_str()
         .expect("search must return class FETCH context");
-    let class = run("get-class", &path, &[owner, "--il"]);
+    let class = run("get-class", &path, &["--at", owner, "--il"]);
     success(&class);
     let class: Value = serde_json::from_slice(&class.stdout).unwrap();
     assert!(
@@ -340,6 +331,69 @@ fn dotnet_string_search_routes_directly_to_original_method_and_class() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|item| item["id"] == id)
+            .any(|item| item["at"] == id)
     );
+}
+
+#[test]
+fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
+    let path = string_input();
+    let oracle = string_expected();
+    let entries = oracle["entries"].as_array().unwrap();
+
+    // A `ldstr` operand names the heap entry it loads: the token is a usable
+    // coordinate and the decoded literal travels with it, so reading IL does not
+    // require a second `strings` round trip.
+    for entry in entries {
+        for site in entry["uses"].as_array().unwrap() {
+            let token = entry["token"].as_u64().unwrap();
+            let at = format!("0x{:08x}", site["method_token"].as_u64().unwrap());
+            let fetched: Value =
+                serde_json::from_slice(&run("get-method", &path, &["--at", &at, "--il"]).stdout)
+                    .unwrap();
+            let offset = site["il_offset"].as_u64().unwrap();
+            let instruction = fetched["detail"]["instructions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|instruction| instruction["offset"] == offset)
+                .unwrap_or_else(|| panic!("missing instruction at {offset}"));
+            assert_eq!(instruction["mnemonic"], "ldstr");
+            let operand = &instruction["operand"];
+            assert_eq!(operand["value"], token);
+            assert_eq!(operand["target_at"], format!("0x{token:08x}"));
+            match &entry["value"] {
+                Value::String(value) => assert_eq!(&operand["string"], value),
+                _ => assert!(
+                    operand["utf16_units"].is_array(),
+                    "an undecodable heap entry keeps its raw UTF-16 units"
+                ),
+            }
+        }
+    }
+
+    // The header names what a string reference query resolved to instead of `null`.
+    for entry in entries {
+        if entry["uses"].as_array().unwrap().is_empty() {
+            continue;
+        }
+        let token = entry["token"].as_u64().unwrap();
+        let rows = jsonl(&run("xref", &path, &["--at", &format!("0x{token:08x}")]));
+        let target = &rows[0]["detail"]["target"];
+        assert_eq!(target["target_kind"], "user_string");
+        assert_eq!(target["token"], format!("0x{token:08x}"));
+        if let Value::String(value) = &entry["value"] {
+            assert_eq!(&target["value"], value);
+            // argv cannot carry a NUL; those literals stay reachable by token only.
+            if value.contains('\0') {
+                continue;
+            }
+            let by_value = jsonl(&run("xref", &path, &["--string", value]));
+            assert_eq!(
+                by_value[0]["detail"]["target"]["target_kind"],
+                "user_string"
+            );
+            assert_eq!(&by_value[0]["detail"]["target"]["value"], value);
+        }
+    }
 }

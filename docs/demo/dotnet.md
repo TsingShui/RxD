@@ -10,39 +10,41 @@ rxd=target/release/rxd
 $rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add
 ```
 
-Take the content-bound ID from a `method` record and query:
+Copy the `at` coordinate from a `method` record and query; the stream can also be
+piped straight into the FETCH command, which validates that it came from this input:
 
 ```sh
-id=$($rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add | python3 -c 'import json,sys; print(next(r["id"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll "$id"
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll "$id" --il
+at=$($rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --il
+$rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add | $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --from -
 $rxd dotnet strings tests/fixtures/dotnet/Fixture.dll --contains hello
-$rxd dotnet refs tests/fixtures/dotnet/Fixture.dll --token 0x06000006
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll "$id" --perf
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --perf
 ```
 
 JSONL `schema_version` is 2 and content is under `detail`. Method records navigate by
-outer `id`; refs hits route to the caller through outer `context_id`. `get-method`
+outer `at`; xref hits route to the caller through outer `context_at`. `get-method`
 returns one `method_body` envelope with `backend/command/schema_version`; read C# from
 `detail.code`, original IL from `detail.il_hex`, completeness from `detail.complete`, and
 embedded metadata from `detail.method.detail`.
 
 ```sh
-caller=$($rxd dotnet refs tests/fixtures/dotnet/Fixture.dll --token 0x70000001 | python3 -c 'import json,sys; print(next(r["context_id"] for r in map(json.loads,sys.stdin) if r["record"]=="reference"))')
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll "$caller" --il
+caller=$($rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x70000001 | python3 -c 'import json,sys; print(next(r["context_at"] for r in map(json.loads,sys.stdin) if r["record"]=="reference"))')
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$caller" --il
 ```
 
-String hits already carry method/class FETCH IDs; no heap token needs to be constructed.
+String hits already carry method/class coordinates; no heap token needs to be constructed.
 Check the complete summary, then route the hit contexts:
 
 ```sh
 fixture=tests/fixtures/dotnet/Fixture.dll
 $rxd dotnet strings "$fixture" --contains hello -o target/string-hits.jsonl
-caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["context_id"] for r in rows if r["record"]=="string" and r["context_id"]))')
-owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["detail"]["declaring_type_id"] for r in rows if r["record"]=="string" and r["context_id"]))')
-$rxd dotnet get-method "$fixture" "$caller" --il
-$rxd dotnet get-class "$fixture" "$owner" --il
-$rxd dotnet refs "$fixture" --string $'hello\nlambda'
+caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["context_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
+owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["detail"]["declaring_type_id"] for r in rows if r["record"]=="string" and r["context_at"]))')
+$rxd dotnet get-method "$fixture" --at "$caller" --il
+$rxd dotnet get-class "$fixture" --at "$owner" --il
+$rxd dotnet xref "$fixture" --string $'hello\nlambda'
 ```
 
 `string.detail.il_offsets` lists every original `ldstr` offset of that heap entry in the
@@ -54,17 +56,17 @@ python3 tests/fixtures/dotnet/strings/generate.py
 $rxd dotnet strings tests/fixtures/dotnet/strings/Strings.dll --contains unused
 ```
 
-The unreferenced entry has `status: unreferenced`; context_id, parent_id, method_token
+The unreferenced entry has `status: unreferenced`; context_at, parent_at, method_token
 and declaring_type_id are null and il_offsets is `[]`. NUL or isolated surrogates cannot
-be expressed in UTF-8 argv; use the returned original token with `refs`. Entries with
+be expressed in UTF-8 argv; use the returned original token with `xref`. Entries with
 `value: null` still retain complete `utf16_units`.
 
 Exception methods are fetched by the same member ID; with the engine enabled the C#
 reconstruction and the preserved EH table are both visible:
 
 ```sh
-id=$($rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method NestedFinally | python3 -c 'import json,sys; print(next(r["id"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll "$id"
+at=$($rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method NestedFinally | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 ```
 
 Original IL `leave` crosses two finally handlers; `get --il` preserves original
@@ -93,9 +95,9 @@ the platform toolchain; Cargo never calls dotnet. Analysis only reads assemblies
 ```sh
 sugar=tests/fixtures/dotnet/sugar/Sugar.dll
 for method in AsyncAwait Iterator ClosureAndLocalFunction Linq Initializers Using Lock NullPropagation Interpolation; do
-  id=$($rxd dotnet outline "$sugar" --type Rxd.Sugar.Probe --method "$method" | python3 -c 'import json,sys; print(next(r["id"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
-  $rxd dotnet get-method "$sugar" "$id"
-  $rxd dotnet get-method "$sugar" "$id" --il
+  at=$($rxd dotnet outline "$sugar" --type Rxd.Sugar.Probe --method "$method" | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
+  $rxd dotnet get-method "$sugar" --at "$at"
+  $rxd dotnet get-method "$sugar" --at "$at" --il
 done
 ```
 
@@ -107,41 +109,68 @@ not semantic equivalence or a recompilation proof.
 `get` always includes original IL and instruction offsets. With `csharp-decompiler` and a
 prebuilt engine, success returns `csharp`, `decompiled: true`, code and an IL→line
 mapping; a default build or missing runtime library returns complete `il`,
-`decompiled: false`, `code: null` and `engine_unavailable`. Engine failures keep complete
-IL/EH and an explicit reason. See [the engine guide](../../benches/ilspy/README.md).
-Changing any input byte invalidates old IDs. Outline/refs follow the
-header/records/summary completeness contract.
+`decompiled: false`, `code: null`, `engine_unavailable` and a `reason_detail` explaining
+the state. `representation: il` with `reason: null` means IL was requested with `--il`,
+not that reconstruction failed. See [the engine guide](../../benches/ilspy/README.md).
+
+Coordinates are file-scoped: `0x0600000b` names metadata row 11 in *this* input, so
+the same coordinate addresses the same row in another version, and a coordinate copied
+from a different stream is caught by `--from` (which compares `source_id`) rather than by
+the handle itself. Outline/xref follow the header/records/summary completeness contract.
 
 ## Type to complete original IL
 
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
-type_id=$($rxd dotnet outline "$closure" --type 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["id"] for r in map(json.loads,sys.stdin) if r["record"]=="type"))')
-$rxd dotnet get-class "$closure" "$type_id" --il
-$rxd dotnet get-class "$closure" "$type_id" --il -o target/closure-il.json --perf
-$rxd dotnet get-class "$closure" "$type_id"
-$rxd dotnet get-class "$closure" "$type_id" -o target/closure-csharp.json --perf
+type_at=$($rxd dotnet outline "$closure" --type 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="type"))')
+$rxd dotnet get-class "$closure" --at "$type_at" --il
+$rxd dotnet get-class "$closure" --at "$type_at" --il -o target/closure-il.json --perf
+$rxd dotnet get-class "$closure" --at "$type_at"
+$rxd dotnet get-class "$closure" --at "$type_at" -o target/closure-csharp.json --perf
 ```
 
-The type and its members bind the same assembly bytes; a member's `parent_id` can be
+A body the engine reconstructs with caveats is returned together with those caveats;
+`warnings` names the member and IL offset each one applies to:
+
+```sh
+$rxd dotnet get-method app.exe --at 0x06000003 | jq '.detail | {decompiled, warnings}'
+{"decompiled":true,
+ "warnings":["button1_Click: IL_0033: Unknown result type (might be due to invalid IL or missing references)", …]}
+```
+
+The type and its members bind the same assembly bytes; a member's `parent_at` can be
 passed directly to `get-class`. `--il` bypasses the C# engine and preserves complete
 original bodies/EH.
 
 ## Method, field and type XREF
 
 ```sh
-$rxd dotnet refs tests/fixtures/dotnet/Fixture.dll --token 0x0a000001
-$rxd dotnet refs tests/fixtures/dotnet/Fixture.dll --token 0x0a000001 --semantic
-$rxd dotnet refs tests/fixtures/dotnet/Fixture.dll --id '<method-or-field-or-type-id>'
-$rxd dotnet refs tests/fixtures/dotnet/Fixture.dll --string 'hello'
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x0a000001
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --string 'hello'
 ```
 
-String refs match UTF-16 exactly across every equal heap entry and original `ldstr` site.
-`--token` preserves raw operand identity; `--id` and `--token --semantic` prove member/
-type identity and keep unproven targets `external`/`unresolved`/`ambiguous` with null
-canonical ID. Method/field/type XREF reports only explicit instruction operands; it does
-not infer reflection, cross-assembly loading or virtual dispatch. See the
-[.NET design](../design/dotnet-design.md#commands-and-protocol).
+String xref match UTF-16 exactly across every equal heap entry and original `ldstr` site.
+The header names the literal it resolved to rather than `null`:
+
+```sh
+$rxd dotnet xref tests/fixtures/dotnet/strings/Strings.dll --at 0x70000001 | head -1
+{"record":"header",...,"detail":{"target":{"target_kind":"user_string","token":"0x70000001","value":"shared 世界\nλ"}}}
+```
+
+Reading IL needs no string lookup either: a `ldstr` operand carries `target_at` (its own
+`0x70xxxxxx` coordinate) and the decoded literal as `string`:
+
+```json
+{"mnemonic":"ldstr","offset":3,"operand":{"kind":"token","value":1879048193,
+ "target_at":"0x70000001","string":"shared 世界\nλ"}}
+```
+
+Any metadata token (`--at 0x0a000001` for an external member, `--at 0x06000006` for a
+local definition) resolves member/type identity, and unproven targets stay
+`external`/`unresolved`/`ambiguous` with null canonical ID. Method/field/type XREF reports
+only explicit instruction operands; it does not infer reflection, cross-assembly loading
+or virtual dispatch. See the [.NET design](../design/dotnet-design.md#commands-and-protocol).
 
 ## Android App embedding
 

@@ -1036,6 +1036,32 @@ pub fn matches(query: &SemanticTarget, candidate: &SemanticTarget, definition: b
     }
 }
 
+/// One reusable semantic resolver for a batch of token lookups (for example the
+/// operands of one method body). Building it once amortizes the candidate index.
+pub struct TargetResolver<'a> {
+    resolver: Resolver<'a>,
+}
+
+impl TargetResolver<'_> {
+    /// Resolve one operand token to its provable target. Tokens without member or
+    /// type identity (user strings, literals) return `None` instead of failing.
+    pub fn target(&mut self, token: u32) -> Result<Option<Rc<SemanticTarget>>> {
+        if !matches!(token >> 24, 1 | 2 | 4 | 6 | 10 | 27 | 43) {
+            return Ok(None);
+        }
+        self.resolver.target(token).map(Some)
+    }
+}
+
+impl Input {
+    /// Open one semantic resolver for this input.
+    pub fn target_resolver(&self) -> Result<TargetResolver<'_>> {
+        Ok(TargetResolver {
+            resolver: Resolver::new(self, 0)?,
+        })
+    }
+}
+
 pub struct ReferenceResult {
     pub target: Option<Rc<SemanticTarget>>,
     pub references: Vec<Reference>,

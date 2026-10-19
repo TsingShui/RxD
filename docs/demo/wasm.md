@@ -20,7 +20,7 @@ $rxd wasm get-function tests/fixtures/wasm/fixture.wasm "$id"
 # --raw forces the instruction view (opcode + immediates + code-body offsets).
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm "$id" --raw
 $rxd wasm strings tests/fixtures/wasm/fixture.wasm --contains hello
-$rxd wasm refs tests/fixtures/wasm/fixture.wasm --func 1
+$rxd wasm xref tests/fixtures/wasm/fixture.wasm --func 1
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm "$id" --perf
 ```
 
@@ -30,11 +30,11 @@ code and a line→code-body-offset `mapping`. Unsupported instructions/proposals
 exception handling, etc.), `call_indirect`, or unstructured cases degrade completely to
 `representation: wasm`, `decompiled: false`, `reason: UNSUPPORTED_*`, an instruction view
 and original bytes; `--raw` always selects that view. Both retain code-body offsets and
-original file ranges. `refs --func` reports only direct calls and `ref.func`;
+original file ranges. `xref --func` reports only direct calls and `ref.func`;
 `call_indirect` is marked indirect and its runtime table target is not resolved. Changing
-any input byte invalidates old IDs. Outline/strings/refs follow the
+any input byte invalidates old IDs. Outline/strings/xref follow the
 header/records/summary completeness contract. Whole-function decompilation may exceed
-150 ms only for genuinely large targets; ordinary outline/strings/refs and instruction
+150 ms only for genuinely large targets; ordinary outline/strings/xref and instruction
 view get remain under the 150 ms rule.
 
 ## MCP

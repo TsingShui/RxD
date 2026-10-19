@@ -9,10 +9,10 @@ target/release/rxd dex entries /path/to/app.apk
 target/release/rxd dex classes /path/to/app.apk -f example
 target/release/rxd dex strings /path/to/app.apk --filter Authorization --limit 20
 target/release/rxd dex strings /path/to/app.apk --filter Authorization --offset 20 --limit 20
-target/release/rxd dex findrefs /path/to/app.apk string Authorization
-target/release/rxd dex findrefs /path/to/app.apk type Gson
-target/release/rxd dex findrefs /path/to/app.apk method onCreate --class com.example.Main
-target/release/rxd dex findrefs /path/to/app.apk field INSTANCE --class example --fuzzy-class
+target/release/rxd dex xref /path/to/app.apk string Authorization
+target/release/rxd dex xref /path/to/app.apk type Gson
+target/release/rxd dex xref /path/to/app.apk method onCreate --class com.example.Main
+target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example --fuzzy-class
 target/release/rxd dex get-class /path/to/app.apk com.example.Main
 target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' --members -o target/Main.java
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
@@ -47,15 +47,15 @@ The old rasc MCP transport is not imported; the shared stdio entry is in the
 
 ## Consuming schema v2
 
-`classes/strings/findrefs/entries/member-by-index` return header → records → summary
+`classes/strings/xref/entries/member-by-index` return header → records → summary
 JSONL even for zero results; success requires exit 0 and `summary.complete=true`.
 Navigation fields are always present but null; FETCH IDs are never constructed from
-indices. Route from `findrefs.detail.class` or `classes.detail.descriptor` to
+indices. Route from `xref.detail.class` or `classes.detail.descriptor` to
 `get-class`:
 
 ```sh
-target/release/rxd dex findrefs /path/to/app.apk string Authorization > target/dex-refs.jsonl
-jq -r 'select(.record == "reference") | .detail.class' target/dex-refs.jsonl
+target/release/rxd dex xref /path/to/app.apk string Authorization > target/dex-xref.jsonl
+jq -r 'select(.record == "reference") | .detail.class' target/dex-xref.jsonl
 target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' > target/Main.java
 ```
 

@@ -39,8 +39,8 @@ impl Identifier {
             "identifier",
             rxd_core::envelope::RecordMeta {
                 source_id: Some(source_id),
-                parent_id: Some(&self.entity_id),
-                context_id: self.context_id.as_deref(),
+                parent_at: Some(&self.entity_id),
+                context_at: self.context_id.as_deref(),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),
                 ..Default::default()

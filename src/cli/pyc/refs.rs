@@ -20,10 +20,10 @@ pub struct RefsOptions {
 #[derive(Serialize)]
 struct Record<'a> {
     record: &'static str,
-    id: Option<&'a str>,
+    at: Option<&'a str>,
     source_id: &'a str,
-    parent_id: Option<&'a str>,
-    context_id: String,
+    parent_at: Option<&'a str>,
+    context_at: String,
     start: usize,
     end: usize,
     detail: &'a references::Hit,
@@ -107,13 +107,13 @@ pub fn run(
     };
     let bytes = perf.measure("serialize", || -> Result<_> {
         let mut out = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
-        append(&mut out, &envelope::header("pyc", "refs", Some(&analysis.source_id), Some(analysis.bytes.len()),
+        append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
             json!({"name":name,"const_id":const_id,"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
-            append(&mut out, &Record {record:"reference", id:None, source_id:&analysis.source_id, parent_id:None,
-                context_id:analysis.code_id(hit.code_index), start:hit.start, end:hit.end, detail:hit})?;
+            append(&mut out, &Record {record:"reference", at:None, source_id:&analysis.source_id, parent_at:None,
+                context_at:envelope::at_of(&analysis.code_id(hit.code_index)).into_owned(), start:hit.start, end:hit.end, detail:hit})?;
         }
         analysis.charge_work(scan.unsupported.len())?;
         append(&mut out, &envelope::summary(scan.hits.len(), scan.unsupported.is_empty(),

@@ -64,7 +64,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-js")]
     Spec {
-        name: "js_refs",
+        name: "js_xref",
         fields: "byte:n! source_type:mode syntax:syntax",
         capability: "XREF",
         description: "Find lexical references selected by original UTF-8 offset; unresolved/dynamic names are not guessed.",
@@ -134,7 +134,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-dex")]
     Spec {
-        name: "dex_findrefs",
+        name: "dex_xref",
         fields: "kind:ref! value:s name:s class:s fuzzy_class:b",
         capability: "XREF",
         description: "Find explicit string/type/method/field references; descriptors, DEX entries and member selectors preserve existing semantics.",
@@ -183,7 +183,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-jvm")]
     Spec {
-        name: "jar_findrefs",
+        name: "jar_xref",
         fields: "kind:ref! value:s name:s class:s release:n",
         capability: "XREF",
         description: "Find explicit JVM instruction references to string/type/method/field; preserve bytecode offsets and content-bound method context.",
@@ -218,7 +218,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-dotnet")]
     Spec {
-        name: "dotnet_refs",
+        name: "dotnet_xref",
         fields: "token:n id:s string:s semantic:b",
         capability: "XREF",
         description: "Find explicit IL operands by exactly one token/entity-ID/string selector; semantic matching requires provable metadata identity.",
@@ -253,7 +253,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-wasm")]
     Spec {
-        name: "wasm_refs",
+        name: "wasm_xref",
         fields: "func:n!",
         capability: "XREF",
         description: "Find explicit references to a merged function index; indirect calls remain explicitly indirect.",
@@ -281,7 +281,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-pyc")]
     Spec {
-        name: "pyc_refs",
+        name: "pyc_xref",
         fields: "version:s name:s const_id:s within:s",
         capability: "XREF",
         description: "Find explicit bytecode names or constant-occurrence references; unsupported instructions retain explicit coverage evidence.",
@@ -316,7 +316,7 @@ const SPECS: &[Spec] = &[
     },
     #[cfg(feature = "backend-evm")]
     Spec {
-        name: "evm_refs",
+        name: "evm_xref",
         fields: "encoding:encoding! include_bytecode:b id:s!",
         capability: "XREF",
         description: "Find original literal-use, CODECOPY or static control-flow references by a returned content-bound ID; unknown resolution stays explicit.",
@@ -429,7 +429,7 @@ fn input_schema(spec: &Spec) -> Value {
     match backend {
         "js" => {
             limit_names.extend(["entities", "ast_depth"]);
-            if matches!(spec.name, "js_refs" | "js_symbols" | "js_get") {
+            if matches!(spec.name, "js_xref" | "js_symbols" | "js_get") {
                 limit_names.push("semantic_nodes");
             }
         }
@@ -444,14 +444,14 @@ fn input_schema(spec: &Spec) -> Value {
             } else {
                 limit_names.push("entities");
             }
-            if matches!(spec.name, "pyc_refs" | "pyc_get_code") {
+            if matches!(spec.name, "pyc_xref" | "pyc_get_code") {
                 limit_names.push("instructions");
             }
         }
         "evm"
             if matches!(
                 spec.name,
-                "evm_outline" | "evm_strings" | "evm_refs" | "evm_get_block" | "evm_get_function"
+                "evm_outline" | "evm_strings" | "evm_xref" | "evm_get_block" | "evm_get_function"
             ) =>
         {
             limit_names.push("work");
@@ -503,9 +503,9 @@ fn input_schema(spec: &Spec) -> Value {
     let mut schema = json!({"type":"object","properties":properties,"required":required,"additionalProperties":false});
     let exclusive = match spec.name {
         "evm_get_function" => Some(vec!["id", "selector"]),
-        "dotnet_refs" => Some(vec!["token", "id", "string"]),
+        "dotnet_xref" => Some(vec!["token", "id", "string"]),
         "dex_member_by_index" => Some(vec!["method_index", "field_index"]),
-        "pyc_refs" => Some(vec!["name", "const_id"]),
+        "pyc_xref" => Some(vec!["name", "const_id"]),
         _ => None,
     };
     if let Some(selectors) = exclusive {
@@ -559,7 +559,7 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
             "exactly one EVM id or selector is required",
         ));
     }
-    if name == "dotnet_refs" {
+    if name == "dotnet_xref" {
         if ["token", "id", "string"]
             .iter()
             .filter(|key| arguments.get(**key).is_some())
@@ -575,7 +575,7 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
             return Err(QueryError::new("INVALID_QUERY", "semantic requires token"));
         }
     }
-    if name == "pyc_refs"
+    if name == "pyc_xref"
         && (arguments.get("name").is_some() == arguments.get("const_id").is_some())
     {
         return Err(QueryError::new(
@@ -599,7 +599,7 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
             "name and index are mutually exclusive",
         ));
     }
-    if matches!(name, "dex_findrefs" | "jar_findrefs") {
+    if matches!(name, "dex_xref" | "jar_xref") {
         let kind = arguments["kind"].as_str().unwrap();
         if matches!(kind, "string" | "type")
             && arguments
@@ -758,13 +758,13 @@ pub(super) fn argv(
     if matches!(name, "dex_get_class" | "jar_get_class") {
         positionals.push(arguments["class"].as_str().unwrap().into());
     }
-    let refs = matches!(name, "dex_findrefs" | "jar_findrefs");
+    let refs = matches!(name, "dex_xref" | "jar_xref");
 
     for field in spec.fields.split_whitespace() {
         let (key, kind) = field.split_once(':').unwrap();
         if key == "inputs"
             || (key == "kind" && refs)
-            || (key == "id" && name != "js_get" && name != "dotnet_refs" && name != "evm_refs")
+            || (key == "id" && name != "js_get" && name != "dotnet_xref" && name != "evm_xref")
             || key == "code_id"
             || (key == "class" && matches!(name, "dex_get_class" | "jar_get_class"))
         {
@@ -816,7 +816,7 @@ pub(super) fn argv(
             if matches!(name, "js_outline" | "js_find") {
                 bound("threads", b.threads);
             }
-            if matches!(name, "js_refs" | "js_symbols" | "js_get") {
+            if matches!(name, "js_xref" | "js_symbols" | "js_get") {
                 bound("max-semantic-nodes", b.semantic_nodes);
             }
         } else if backend == "html" {
@@ -830,7 +830,7 @@ pub(super) fn argv(
             bound("max-records", b.records);
             if matches!(
                 name,
-                "evm_outline" | "evm_strings" | "evm_refs" | "evm_get_block" | "evm_get_function"
+                "evm_outline" | "evm_strings" | "evm_xref" | "evm_get_block" | "evm_get_function"
             ) {
                 bound("max-work", b.work);
                 bound("max-states", b.states);
@@ -845,7 +845,7 @@ pub(super) fn argv(
             bound("max-entities", b.entities);
             bound("max-records", b.records);
             bound("max-work", b.work);
-            if backend != "pyc" || matches!(name, "pyc_refs" | "pyc_get_code") {
+            if backend != "pyc" || matches!(name, "pyc_xref" | "pyc_get_code") {
                 bound("max-instructions", b.instructions);
             }
         }

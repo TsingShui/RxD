@@ -9,7 +9,7 @@ fn type_id(path: &Path, name: &str) -> String {
     jsonl(&run("outline", path, &["--type", name]))
         .into_iter()
         .find(|row| row["record"] == "type" && row["detail"]["full_name"] == name)
-        .unwrap_or_else(|| panic!("missing type {name}"))["id"]
+        .unwrap_or_else(|| panic!("missing type {name}"))["at"]
         .as_str()
         .expect("type must have a FETCH ID")
         .to_owned()
@@ -23,13 +23,13 @@ fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_a
         .iter()
         .find(|row| row["record"] == "type" && row["detail"]["full_name"] == "Rxd.Sugar.Probe")
         .unwrap();
-    let id = root["id"].as_str().expect("type must have a FETCH ID");
-    let output = run("get-class", &path, &[id, "--il"]);
+    let id = root["at"].as_str().expect("type must have a FETCH ID");
+    let output = run("get-class", &path, &["--at", id, "--il"]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_fetch_protocol(&row, "get-class");
     assert_eq!(row["record"], "class_body");
-    assert_eq!(row["id"], id);
+    assert_eq!(row["at"], id);
     assert_eq!(row["detail"]["complete"], true);
     assert_eq!(row["detail"]["representation"], "il");
     assert_eq!(row["detail"]["decompiled"], false);
@@ -57,12 +57,13 @@ fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_a
             .unwrap();
         assert_eq!(method["detail"]["il_hex"], expected["il_hex"]);
         assert_eq!(method["detail"]["handlers"], expected["handlers"]);
-        assert_eq!(method["parent_id"], method["detail"]["method"]["parent_id"]);
-        assert!(method["parent_id"].as_str().unwrap().contains(":type:"));
+        assert_eq!(method["parent_at"], method["detail"]["method"]["parent_at"]);
+        assert!(method["parent_at"].as_str().unwrap().starts_with("0x"));
     }
     assert_eq!(
         row,
-        serde_json::from_slice::<Value>(&run("get-class", &path, &[id, "--il"]).stdout).unwrap()
+        serde_json::from_slice::<Value>(&run("get-class", &path, &["--at", id, "--il"]).stdout)
+            .unwrap()
     );
 }
 
@@ -84,7 +85,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
         "Rxd.Closure.Root`1+Nested+Deep",
     ] {
         let id = type_id(&path, name);
-        let output = run("get-class", &path, &[&id, "--il"]);
+        let output = run("get-class", &path, &["--at", &id, "--il"]);
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
         let types = row["detail"]["types"].as_array().unwrap();
@@ -213,7 +214,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
                     assert!(
                         methods
                             .iter()
-                            .any(|method| method["id"] == found["method_id"])
+                            .any(|method| method["at"] == found["method_id"])
                     );
                 }
             }
@@ -225,7 +226,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
 fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets() {
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
-    let raw = run("get-class", &path, &[&id, "--il"]);
+    let raw = run("get-class", &path, &["--at", &id, "--il"]);
     success(&raw);
     let row: Value = serde_json::from_slice(&raw.stdout).unwrap();
     let directory = tempfile::tempdir().unwrap();
@@ -234,7 +235,11 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
     assert_eq!(type_id(&copy, "Rxd.Closure.Root`1"), id);
     let destination = directory.path().join("class.json");
     let saved = destination.to_str().unwrap();
-    let output = run("get-class", &path, &[&id, "--il", "-o", saved, "--perf"]);
+    let output = run(
+        "get-class",
+        &path,
+        &["--at", &id, "--il", "-o", saved, "--perf"],
+    );
     success(&output);
     assert!(output.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), raw.stdout);
@@ -246,7 +251,7 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", "get-class"])
         .arg(&path)
-        .args([&id, "--il"])
+        .args(["--at", &id, "--il"])
         .env("RXD_DOTNET_NATIVE_LIBRARY", "/never/load/this")
         .output()
         .unwrap();
@@ -255,6 +260,7 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
     let fallback = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", "get-class"])
         .arg(&path)
+        .arg("--at")
         .arg(&id)
         .env(
             "RXD_DOTNET_NATIVE_LIBRARY",
@@ -270,24 +276,18 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
     let module = type_id(&path, "<Module>");
     let invalid = [
         module,
-        id.replace(":type:", ":method:"),
-        id.replace("dotnet:", "wasm:"),
-        id[..id.len() - 8].to_owned() + "06000001",
-        id[..id.len() - 8].to_owned() + "02000000",
-        id[..id.len() - 8].to_owned() + "02ffffff",
-        id.clone() + "0",
+        // a method token is not a type: the table byte decides
+        "0x06000001".to_owned(),
+        "0x02000000".to_owned(),
+        "0x020000040".to_owned(),
+        "02000002".to_owned() + "0",
+        "func:02000002".to_owned(),
     ];
     for invalid in invalid {
-        let output = run("get-class", &path, &[&invalid, "--il"]);
+        let output = run("get-class", &path, &["--at", &invalid, "--il"]);
         assert_eq!(output.status.code(), Some(2));
         rejected(output);
     }
-    let mut changed = fs::read(&path).unwrap();
-    changed[136] ^= 1;
-    fs::write(&copy, changed).unwrap();
-    let stale = run("get-class", &copy, &[&id, "--il"]);
-    assert_eq!(stale.status.code(), Some(2));
-    rejected(stale);
     for (flag, limit) in [
         ("--max-records", 1),
         ("--max-output-bytes", raw.stdout.len() - 1),
@@ -302,7 +302,7 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
         let output = run(
             "get-class",
             &path,
-            &[&id, "--il", flag, &limit, "-o", saved],
+            &["--at", &id, "--il", flag, &limit, "-o", saved],
         );
         assert_eq!(
             output.status.code(),
@@ -362,7 +362,13 @@ fn dotnet_class_fetch_rejects_corrupt_ownership_and_original_method_bodies_witho
         let output = run(
             "get-class",
             &malformed,
-            &[&modified_id, "--il", "-o", destination.to_str().unwrap()],
+            &[
+                "--at",
+                &modified_id,
+                "--il",
+                "-o",
+                destination.to_str().unwrap(),
+            ],
         );
         assert_eq!(
             output.status.code(),

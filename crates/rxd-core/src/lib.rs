@@ -19,6 +19,27 @@ impl Error {
             message: message.into(),
         }
     }
+
+    /// Build an error whose message may already start with its own code.
+    ///
+    /// Backend errors often carry the code inside the message (for example
+    /// `anyhow::Context::context("INVALID_QUERY: source mismatch")`) and the CLI
+    /// re-applies the code it detected. Display always prints `code: message`, so
+    /// leading repetitions of this error's own `code:` are folded away here; the
+    /// printed diagnostic carries the code exactly once.
+    pub fn coded(code: &'static str, message: impl Into<String>) -> Self {
+        let message = message.into();
+        let prefix = format!("{code}: ");
+        let mut rest = message.as_str();
+        while let Some(stripped) = rest.strip_prefix(prefix.as_str()) {
+            rest = stripped;
+        }
+        if rest.len() == message.len() {
+            Self::new(code, message)
+        } else {
+            Self::new(code, rest.to_string())
+        }
+    }
 }
 
 impl fmt::Display for Error {

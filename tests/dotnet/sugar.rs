@@ -19,7 +19,7 @@ fn expected() -> Value {
 fn recovered(name: &str) -> String {
     let path = input();
     let id = method_id(&path, name);
-    let output = run("get-method", &path, &[&id]);
+    let output = run("get-method", &path, &["--at", &id]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_fetch_protocol(&row, "get-method");
@@ -110,22 +110,19 @@ fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_an
             .iter()
             .find(|row| row["detail"]["token"] == token_number)
             .unwrap_or_else(|| panic!("missing method {token}: {method}"));
-        let id = format!(
-            "rxd1:dotnet:{}:method:{token_number:08x}",
-            expected["sha256"].as_str().unwrap()
-        );
-        assert_eq!(indexed["id"], id);
+        let id = format!("0x{token_number:08x}");
+        assert_eq!(indexed["at"], id);
         assert_eq!(indexed["detail"]["name"], method["name"]);
         assert_eq!(
             indexed["detail"]["declaring_type"],
             method["declaring_type"]
         );
         assert_eq!(indexed["detail"]["has_body"], true);
-        let output = run("get-method", &path, &[&id, "--il"]);
+        let output = run("get-method", &path, &["--at", &id, "--il"]);
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(row["detail"]["complete"], true);
-        assert_eq!(row["id"], id);
+        assert_eq!(row["at"], id);
         assert_eq!(row["source_id"], expected["sha256"]);
         assert_eq!(row["detail"]["method"]["detail"]["token"], token_number);
         assert_eq!(row["detail"]["representation"], "il");
@@ -156,7 +153,7 @@ fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_an
 }
 
 #[test]
-fn dotnet_sugar_method_identity_is_path_independent_and_rejects_changed_content() {
+fn dotnet_sugar_method_identity_is_path_independent() {
     let path = input();
     let directory = tempfile::tempdir().unwrap();
     let copy = directory.path().join("renamed.exe");
@@ -164,18 +161,10 @@ fn dotnet_sugar_method_identity_is_path_independent_and_rejects_changed_content(
     for name in ["AsyncAwait", "Iterator", "ClosureAndLocalFunction", "Linq"] {
         let id = method_id(&path, name);
         assert_eq!(method_id(&copy, name), id);
-        let original = run("get-method", &path, &[&id, "--il"]);
-        let renamed = run("get-method", &copy, &[&id, "--il"]);
+        let original = run("get-method", &path, &["--at", &id, "--il"]);
+        let renamed = run("get-method", &copy, &["--at", &id, "--il"]);
         success(&original);
         success(&renamed);
         assert_eq!(original.stdout, renamed.stdout);
     }
-    let id = method_id(&path, "AsyncAwait");
-    let mut bytes = fs::read(&path).unwrap();
-    *bytes.last_mut().unwrap() ^= 1; // Change PE padding, not any method or metadata.
-    fs::write(&copy, bytes).unwrap();
-    assert_ne!(method_id(&copy, "AsyncAwait"), id);
-    let output = run("get-method", &copy, &[&id, "--il"]);
-    assert_eq!(output.status.code(), Some(2));
-    rejected(output);
 }

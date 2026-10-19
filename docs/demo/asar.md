@@ -84,7 +84,7 @@ and bad targets are never silently skipped.
 ID=$(jq -r 'select(.record == "match" and (.parent_id | contains(":arrow_function:"))) | .parent_id' "$DEMO/find.jsonl" | head -n 1)
 "$RXD" js get "$DEMO/main.cjs" --id "$ID" -o "$DEMO/function.js"
 "$RXD" js symbols "$DEMO/main.cjs" -o "$DEMO/symbols.jsonl"
-"$RXD" js refs "$DEMO/main.cjs" --byte 43 -o "$DEMO/refs.jsonl"
+"$RXD" js xref "$DEMO/main.cjs" --byte 43 -o "$DEMO/xref.jsonl"
 "$RXD" js locate "$DEMO/main.cjs" --byte 100 -o "$DEMO/locate.json"
 ```
 

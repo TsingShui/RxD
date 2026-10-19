@@ -18,10 +18,10 @@ fn oracle(directory: &str) -> Value {
 }
 
 fn fetch(path: &Path, command: &str, id: &str) -> Value {
-    let output = run(command, path, &[id]);
+    let output = run(command, path, &["--at", id]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(row["id"], id);
+    assert_eq!(row["at"], id);
     assert_eq!(row["detail"]["complete"], true);
     if cfg!(feature = "csharp-decompiler") {
         assert_eq!(row["detail"]["decompiled"], true, "{row}");
@@ -53,7 +53,7 @@ fn assert_original_method(row: &Value, expected: &Value) {
 }
 
 fn navigate(path: &Path, hit: &Value, expected: &Value, class_name: &str) -> (Value, Value) {
-    let method = fetch(path, "get-method", hit["context_id"].as_str().unwrap());
+    let method = fetch(path, "get-method", hit["context_at"].as_str().unwrap());
     assert_original_method(&method, expected);
     let class = fetch(
         path,
@@ -66,7 +66,7 @@ fn navigate(path: &Path, hit: &Value, expected: &Value, class_name: &str) -> (Va
             .as_array()
             .unwrap()
             .iter()
-            .any(|row| row["id"] == method["id"])
+            .any(|row| row["at"] == method["at"])
     );
     let selected: Vec<_> = expected["methods"]
         .as_object()
@@ -107,9 +107,9 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
         .find(|row| row["record"] == "method")
         .unwrap();
     let refs = jsonl(&run(
-        "refs",
+        "xref",
         &copied,
-        &["--id", target["id"].as_str().unwrap()],
+        &["--at", target["at"].as_str().unwrap()],
     ));
     assert_eq!(refs[0]["schema_version"], 2);
     assert_eq!(refs.last().unwrap()["complete"], true);
@@ -117,9 +117,9 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
     assert_eq!(
         refs,
         jsonl(&run(
-            "refs",
+            "xref",
             &copied,
-            &["--id", target["id"].as_str().unwrap()]
+            &["--at", target["at"].as_str().unwrap()]
         ))
     );
     for (hit, (name, offset)) in refs[1..refs.len() - 1].iter().zip([
@@ -127,7 +127,7 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
         ("Initializers", 52),
         ("Lock", 23),
     ]) {
-        assert_eq!(hit["detail"]["canonical_target_id"], target["id"]);
+        assert_eq!(hit["detail"]["canonical_target_id"], target["at"]);
         assert_eq!(hit["detail"]["resolution_status"], "resolved");
         assert_eq!(hit["detail"]["name"], name);
         assert_eq!(hit["detail"]["il_offset"], offset);
@@ -166,18 +166,16 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
 }
 
 #[test]
-fn dotnet_navigation_rejects_changed_inputs_and_late_fetch_failures_without_partial_output() {
+fn dotnet_navigation_rejects_late_fetch_failures_without_partial_output() {
     let directory = tempfile::tempdir().unwrap();
     let path = fixture("closure");
     let copied = directory.path().join("same-content.dll");
     fs::copy(&path, &copied).unwrap();
     let strings = jsonl(&run("strings", &path, &["--contains", "deep λ"]));
     let hit = &strings[1];
-    let method_id = hit["context_id"].as_str().unwrap();
+    let method_id = hit["context_at"].as_str().unwrap();
     let type_id = hit["detail"]["declaring_type_id"].as_str().unwrap();
-    let original = run("get-method", &copied, &[method_id, "--il"]);
-    success(&original);
-    let original: Value = serde_json::from_slice(&original.stdout).unwrap();
+    success(&run("get-method", &copied, &["--at", method_id, "--il"]));
     let destination = directory.path().join("fetch.json");
     for (command, id) in [("get-method", method_id), ("get-class", type_id)] {
         fs::write(&destination, b"previous complete result").unwrap();
@@ -185,6 +183,7 @@ fn dotnet_navigation_rejects_changed_inputs_and_late_fetch_failures_without_part
             command,
             &copied,
             &[
+                "--at",
                 id,
                 "--max-output-bytes",
                 "32",
@@ -195,21 +194,6 @@ fn dotnet_navigation_rejects_changed_inputs_and_late_fetch_failures_without_part
         assert_eq!(output.status.code(), Some(1));
         assert!(output.stdout.is_empty());
         assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
-        assert_eq!(fs::read(&destination).unwrap(), b"previous complete result");
-    }
-    let mut bytes = fs::read(&copied).unwrap();
-    let offset = original["start"].as_u64().unwrap() as usize;
-    bytes[offset + 1] ^= 1;
-    fs::write(&copied, bytes).unwrap();
-    for (command, id) in [("get-method", method_id), ("get-class", type_id)] {
-        let output = run(
-            command,
-            &copied,
-            &[id, "--il", "-o", destination.to_str().unwrap()],
-        );
-        assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_QUERY"));
         assert_eq!(fs::read(&destination).unwrap(), b"previous complete result");
     }
 }

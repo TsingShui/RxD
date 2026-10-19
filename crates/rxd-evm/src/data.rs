@@ -419,8 +419,8 @@ impl DataInventory {
             let (start, end) = navigation.carrier.carrier_range(l.start, l.end);
             let id = self.id(navigation, l);
             let context = self.context(navigation, functions, route);
-            envelope::record("data_literal", RecordMeta { id: Some(&id), source_id: Some(&navigation.carrier.source_id),
-                context_id: context.as_deref(), start: Some(start), end: Some(end), ..RecordMeta::default() },
+            envelope::record("data_literal", RecordMeta { at: Some(&id), source_id: Some(&navigation.carrier.source_id),
+                context_at: context.as_deref(), start: Some(start), end: Some(end), ..RecordMeta::default() },
                 crate::navigation::object(json!({"literal_id":id,"literal_kind":"data_candidate","region_kind":l.kind,
                     "decoded_start":l.start,"decoded_end":l.end,"bytes_hex":hex(bytes),
                     "number_hex":(bytes.len() <= 32).then(|| format!("{:064x}",U256::from_be_slice(bytes))),
@@ -506,7 +506,7 @@ impl DataInventory {
             "data_reference",
             RecordMeta {
                 source_id: Some(&navigation.carrier.source_id),
-                context_id: Some(&context),
+                context_at: Some(&context),
                 start: Some(start),
                 end: Some(end),
                 ..RecordMeta::default()

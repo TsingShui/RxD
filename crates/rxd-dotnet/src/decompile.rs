@@ -9,6 +9,7 @@ pub(super) fn fallback(reason: impl Into<String>) -> Decompilation {
         representation: "il".to_owned(),
         decompiled: false,
         reason: Some(reason.into()),
+        warnings: vec![],
         code: None,
         mapping: vec![],
     }
@@ -19,6 +20,7 @@ pub(super) fn class_fallback(reason: impl Into<String>) -> ClassDecompilation {
         representation: "il".into(),
         decompiled: false,
         reason: Some(reason.into()),
+        warnings: vec![],
         code: None,
         mapping: vec![],
     }

@@ -1,5 +1,6 @@
 use super::BoundedOutput;
 use clap::Args;
+use rxd_core::envelope;
 use rxd_core::{Error, Result, perf::Perf};
 use rxd_pyc::static_analysis::{Analysis, Limits};
 use serde::Serialize;
@@ -95,10 +96,10 @@ pub(crate) struct Detail<'a> {
 #[derive(Serialize)]
 pub(crate) struct Record<'a> {
     record: &'static str,
-    id: String,
+    at: String,
     source_id: &'a str,
-    parent_id: Option<String>,
-    context_id: Option<&'a str>,
+    parent_at: Option<String>,
+    context_at: Option<&'a str>,
     start: usize,
     end: usize,
     pub(crate) detail: Detail<'a>,
@@ -179,10 +180,12 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
     let body_status = analysis.body_status(index);
     Ok(Record {
         record: "code",
-        id: analysis.code_id(index),
+        at: envelope::at_of(&analysis.code_id(index)).into_owned(),
         source_id: &analysis.source_id,
-        parent_id: entry.parent.map(|parent| analysis.code_id(parent)),
-        context_id: None,
+        parent_at: entry
+            .parent
+            .map(|parent| envelope::at_of(&analysis.code_id(parent)).into_owned()),
+        context_at: None,
         start: definition.span.start,
         end: definition.span.end,
         detail: Detail {

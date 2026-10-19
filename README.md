@@ -119,10 +119,10 @@ ordinary queries on 64–126 MB APKs take 1.9–62 ms.
 | `jar` | `strings` | 298.4 KB | 10.2 | 10.6 | 10.3 |
 | `js` | `outline` | 168.3 KB | 10.5 | 10.9 | 10.6 |
 | `jar` | `get-method` | 298.4 KB | 11.0 | 11.4 | 11.1 |
-| `dex` | `findrefs` | 64 MB | 12.3 | 13.1 | 12.5 |
+| `dex` | `xref` | 64 MB | 12.3 | 13.1 | 12.5 |
 | `asar` | `extract` | 9 MB | 12.5 | 14.0 | 12.8 |
 | `dex` | `strings` | 64 MB | 12.5 | 12.8 | 12.5 |
-| `jar` | `findrefs` | 298.4 KB | 14.2 | 14.7 | 14.2 |
+| `jar` | `xref` | 298.4 KB | 14.2 | 14.7 | 14.2 |
 | `jar` | `outline` | 298.4 KB | 14.5 | 15.1 | 14.5 |
 | `dex` | `classes` | 64 MB | 22.2 | 24.5 | 22.3 |
 | `dex` | `strings` | 126 MB | 24.5 | 25.2 | 24.5 |

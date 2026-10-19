@@ -60,10 +60,10 @@ fn assert_fetch_protocol(row: &Value, command: &str) {
         row,
         &[
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -108,11 +108,11 @@ fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             [
-                "context_id",
+                "at",
+                "context_at",
                 "detail",
                 "end",
-                "id",
-                "parent_id",
+                "parent_at",
                 "record",
                 "source_id",
                 "start"
@@ -120,14 +120,14 @@ fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
         );
         assert_eq!(row["source_id"], expected()["sha256"]);
         assert!(row["start"].is_null() && row["end"].is_null());
-        assert!(row["context_id"].is_null());
+        assert!(row["context_at"].is_null());
     }
     let method = rows.iter().find(|row| row["record"] == "method").unwrap();
     assert_eq!(method["detail"]["name"], "Add");
     let fetch = run(
         "get-method",
         &path,
-        &[method["id"].as_str().unwrap(), "--il"],
+        &["--at", method["at"].as_str().unwrap(), "--il"],
     );
     success(&fetch);
 }
@@ -141,16 +141,16 @@ fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_han
         let output = run(
             "get-method",
             &path,
-            &[method["id"].as_str().unwrap(), "--il"],
+            &["--at", method["at"].as_str().unwrap(), "--il"],
         );
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_fetch_protocol(&row, "get-method");
         assert_eq!(row["record"], "method_body");
-        assert_eq!(row["id"], method["id"]);
+        assert_eq!(row["at"], method["at"]);
         assert_eq!(row["source_id"], expected()["sha256"]);
-        assert!(row["context_id"].is_null());
-        assert_eq!(row["parent_id"], method["parent_id"]);
+        assert!(row["context_at"].is_null());
+        assert_eq!(row["parent_at"], method["parent_at"]);
         let detail = &row["detail"];
         assert_eq!(detail["complete"], true);
         assert_eq!(detail["method"], *method);
@@ -179,26 +179,26 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
     assert_eq!(strings[0]["schema_version"], 2);
     let literal = &strings[1];
     assert_eq!(literal["detail"]["value"], expected()["string"]);
-    for key in ["id", "parent_id", "context_id", "start", "end"] {
+    for key in ["at", "parent_at", "context_at", "start", "end"] {
         assert!(literal.as_object().unwrap().contains_key(key));
     }
-    assert!(literal["id"].is_null());
+    assert!(literal["at"].is_null());
     assert!(literal["start"].is_null());
     assert!(literal["end"].is_null());
     assert_eq!(literal["detail"]["status"], "referenced");
-    assert_eq!(literal["parent_id"], literal["detail"]["declaring_type_id"]);
-    assert!(literal["context_id"].as_str().unwrap().contains(":method:"));
-    let rows = jsonl(&run("refs", &path, &["--token", "0x70000001"]));
+    assert_eq!(literal["parent_at"], literal["detail"]["declaring_type_id"]);
+    assert!(literal["context_at"].as_str().unwrap().starts_with("0x"));
+    let rows = jsonl(&run("xref", &path, &["--at", "0x70000001"]));
     assert_eq!(rows[0]["schema_version"], 2);
     let hit = &rows[1];
-    assert!(hit["id"].is_null());
+    assert!(hit["at"].is_null());
     assert_eq!(hit["detail"]["target_token"], 0x70000001);
     assert_eq!(hit["detail"]["il_offset"], 0);
     assert_eq!(hit["detail"]["opcode"], "ldstr");
     let output = run(
         "get-method",
         &path,
-        &[hit["context_id"].as_str().unwrap(), "--il"],
+        &["--at", hit["context_at"].as_str().unwrap(), "--il"],
     );
     success(&output);
     let method: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -235,7 +235,7 @@ fn method_id(path: &Path, name: &str) -> String {
     jsonl(&run("outline", path, &["--method", name]))
         .into_iter()
         .find(|row| row["record"] == "method" && row["detail"]["name"] == name)
-        .unwrap_or_else(|| panic!("missing method {name}"))["id"]
+        .unwrap_or_else(|| panic!("missing method {name}"))["at"]
         .as_str()
         .unwrap()
         .to_owned()
@@ -245,9 +245,9 @@ fn get(name: &str, raw: bool) -> Value {
     let path = input();
     let id = method_id(&path, name);
     let args = if raw {
-        vec![id.as_str(), "--il"]
+        vec!["--at", id.as_str(), "--il"]
     } else {
-        vec![id.as_str()]
+        vec!["--at", id.as_str()]
     };
     let out = run("get-method", &path, &args);
     success(&out);
@@ -286,12 +286,10 @@ fn dotnet_outline_uses_deterministic_content_bound_ids_and_unicode_names() {
             expected()["methods"][row["detail"]["name"].as_str().unwrap()]["declaring_type"]
         );
         assert_eq!(row["detail"]["has_body"], true);
-        assert!(
-            row["id"]
-                .as_str()
-                .unwrap()
-                .contains(expected()["sha256"].as_str().unwrap())
-        );
+        // The handle is a copy-only coordinate; content binding lives in the stream
+        // header and each record's source_id, not inside the handle.
+        assert!(row["at"].as_str().unwrap().starts_with("0x"));
+        assert_eq!(row["source_id"], expected()["sha256"]);
     }
     let filtered = jsonl(&run(
         "outline",
@@ -482,19 +480,31 @@ fn dotnet_values_generics_arrays_and_prefixes_have_csharp_and_original_il() {
 }
 
 #[test]
-fn dotnet_unsupported_prefix_combination_degrades_without_partial_code() {
+fn dotnet_engine_warnings_keep_the_reconstruction_and_are_reported_per_member() {
     let row = get("VolatileAdd", false);
     original_il(&row, "VolatileAdd");
     assert_eq!(
         row["detail"]["handlers"],
         get("VolatileAdd", true)["detail"]["handlers"]
     );
-    assert_eq!(row["detail"]["decompiled"], false);
-    assert_eq!(row["detail"]["representation"], "il");
-    assert!(row["detail"]["code"].is_null());
-    assert!(row["detail"]["mapping"].as_array().unwrap().is_empty());
-    assert!(!row["detail"]["reason"].as_str().unwrap().is_empty());
-    if !cfg!(feature = "csharp-decompiler") {
+    if cfg!(feature = "csharp-decompiler") {
+        // ILSpy reconstructed the body: caveats are data, not a failure.
+        assert_eq!(row["detail"]["decompiled"], true, "{row}");
+        assert_eq!(row["detail"]["representation"], "csharp");
+        assert!(row["detail"]["reason"].is_null());
+        assert!(!row["detail"]["code"].as_str().unwrap().is_empty());
+        assert!(!row["detail"]["warnings"].as_array().unwrap().is_empty());
+        assert!(!row["detail"]["mapping"].as_array().unwrap().is_empty());
+        // Asking for IL explicitly still bypasses the engine entirely.
+        let raw = get("VolatileAdd", true);
+        assert_eq!(raw["detail"]["decompiled"], false);
+        assert!(raw["detail"]["warnings"].as_array().unwrap().is_empty());
+    } else {
+        assert_eq!(row["detail"]["decompiled"], false);
+        assert_eq!(row["detail"]["representation"], "il");
+        assert!(row["detail"]["code"].is_null());
+        assert!(row["detail"]["mapping"].as_array().unwrap().is_empty());
+        assert!(!row["detail"]["reason"].as_str().unwrap().is_empty());
         unavailable(&row);
     }
 }
@@ -514,7 +524,7 @@ fn dotnet_runtime_missing_engine_degrades_and_other_commands_are_unchanged() {
             .output()
             .unwrap()
     };
-    let out = invoke("get-method", &[&id]);
+    let out = invoke("get-method", &["--at", &id]);
     success(&out);
     let row: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(row["detail"]["complete"], true);
@@ -525,10 +535,10 @@ fn dotnet_runtime_missing_engine_degrades_and_other_commands_are_unchanged() {
         get("Finally", true)["detail"]["handlers"]
     );
     for (command, args) in [
-        ("get-method", vec![id.as_str(), "--il"]),
+        ("get-method", vec!["--at", id.as_str(), "--il"]),
         ("outline", vec![]),
         ("strings", vec![]),
-        ("refs", vec!["--token", "0x06000006"]),
+        ("xref", vec!["--at", "0x06000006"]),
     ] {
         let without_engine = invoke(command, &args);
         success(&without_engine);
@@ -551,7 +561,7 @@ fn dotnet_strings_and_explicit_call_references_preserve_unicode_and_offsets() {
         .find(|row| row["record"] == "string" && row["detail"]["value"].is_null())
         .unwrap();
     assert_eq!(unpaired["detail"]["utf16_units"], expected()["utf16_units"]);
-    let refs = jsonl(&run("refs", &input(), &["--token", "0x06000006"]));
+    let refs = jsonl(&run("xref", &input(), &["--at", "0x06000006"]));
     let refs: Vec<_> = refs
         .iter()
         .filter(|row| row["record"] == "reference")
@@ -561,21 +571,14 @@ fn dotnet_strings_and_explicit_call_references_preserve_unicode_and_offsets() {
 }
 
 #[test]
-fn dotnet_rejects_stale_identity_and_malformed_inputs_without_partial_stdout() {
+fn dotnet_rejects_malformed_inputs_without_partial_stdout() {
     let original = input();
-    let id = method_id(&original, "Add");
     let directory = tempfile::tempdir().unwrap();
-    let changed = directory.path().join("changed.dll");
-    let mut bytes = fs::read(&original).unwrap();
-    *bytes.last_mut().unwrap() ^= 1; // padding mutation keeps the assembly parsable.
-    fs::write(&changed, &bytes).unwrap();
-    let out = run("get-method", &changed, &[&id]);
-    assert_eq!(out.status.code(), Some(2));
-    rejected(out);
+    let bytes = fs::read(&original).unwrap();
     let malformed = directory.path().join("truncated.dll");
     fs::write(&malformed, &bytes[..100]).unwrap();
     rejected(run("outline", &malformed, &[]));
-    rejected(run("get-method", &original, &["not-a-member-id"]));
+    rejected(run("get-method", &original, &["--at", "not-a-member-id"]));
     let bad_il = directory.path().join("invalid-opcode.dll");
     let mut bytes = fs::read(&original).unwrap();
     // The original assembler places tiny Add in .text at RVA 0x2000 +
@@ -584,7 +587,183 @@ fn dotnet_rejects_stale_identity_and_malformed_inputs_without_partial_stdout() {
     bytes[512 + rva - 0x2000 + 1 + 2] = 0xff;
     fs::write(&bad_il, bytes).unwrap();
     let invalid_id = method_id(&bad_il, "Add");
-    rejected(run("get-method", &bad_il, &[&invalid_id, "--il"]));
+    rejected(run("get-method", &bad_il, &["--at", &invalid_id, "--il"]));
+}
+
+#[test]
+fn dotnet_records_explain_why_a_unit_is_not_csharp() {
+    let path = input();
+    let id = method_id(&path, "Add");
+
+    // An explicitly requested IL record is not a failure: neither reason field is set.
+    let il = run("get-method", &path, &["--at", &id, "--il"]);
+    success(&il);
+    let row: Value = serde_json::from_slice(&il.stdout).unwrap();
+    assert_eq!(row["detail"]["representation"], "il");
+    assert!(row["detail"]["reason"].is_null());
+    assert!(
+        row["detail"]["reason_detail"].is_null(),
+        "requested IL must not carry a failure explanation"
+    );
+
+    // An automatic request that could not deliver C# must explain itself.
+    let auto = get("Add", false);
+    if auto["detail"]["decompiled"] == false {
+        let reason = auto["detail"]["reason"].as_str().unwrap_or_default();
+        let detail = auto["detail"]["reason_detail"].as_str().unwrap_or_default();
+        assert!(!reason.is_empty(), "{auto}");
+        assert!(!detail.is_empty(), "a fallback must explain itself: {auto}");
+        assert!(detail.contains("IL"), "{detail}");
+    }
+
+    // Class members state that IL is the schema, not a failed reconstruction.
+    let outline = jsonl(&run("outline", &path, &[]));
+    let ty = outline
+        .iter()
+        .find(|row| {
+            row["record"] == "type" && row["at"].is_string() && row["detail"]["token"] != 33554433
+        })
+        .unwrap()["at"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let class = run("get-class", &path, &["--at", &ty]);
+    success(&class);
+    let class: Value = serde_json::from_slice(&class.stdout).unwrap();
+    for member in class["detail"]["methods"].as_array().unwrap() {
+        assert_eq!(member["detail"]["reason"], "member_inventory");
+        assert!(
+            member["detail"]["reason_detail"]
+                .as_str()
+                .unwrap()
+                .contains("get-method"),
+            "{member}"
+        );
+    }
+}
+
+#[test]
+fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
+    let path = input();
+    let at = method_id(&path, "Add");
+    assert!(at.starts_with("0x"), "{at}");
+    let outline = run("outline", &path, &["--method", "Add"]);
+    success(&outline);
+
+    let directory = tempfile::tempdir().unwrap();
+    let stream = directory.path().join("selector.jsonl");
+    fs::write(&stream, &outline.stdout).unwrap();
+    let fetched = run(
+        "get-method",
+        &path,
+        &["--from", stream.to_str().unwrap(), "--il"],
+    );
+    success(&fetched);
+    let row: Value = serde_json::from_slice(&fetched.stdout).unwrap();
+    assert_eq!(row["at"], at);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dotnet", "get-method"])
+        .arg(&path)
+        .args(["--from", "-", "--il"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(&outline.stdout)
+            .unwrap();
+    }
+    drop(child.stdin.take());
+    let piped = child.wait_with_output().unwrap();
+    success(&piped);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&piped.stdout).unwrap()["at"],
+        at
+    );
+
+    // A stream from another unit kind, or from another input, never fetches.
+    let other = run("strings", &path, &[]);
+    success(&other);
+    let wrong_unit = directory.path().join("strings.jsonl");
+    fs::write(&wrong_unit, &other.stdout).unwrap();
+    let refused = run(
+        "get-class",
+        &path,
+        &["--from", wrong_unit.to_str().unwrap()],
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    rejected(refused);
+
+    let foreign = directory.path().join("foreign.jsonl");
+    let expected_input = expected();
+    let sha = expected_input["sha256"].as_str().unwrap();
+    fs::write(
+        &foreign,
+        String::from_utf8_lossy(&outline.stdout).replace(sha, &"0".repeat(64)),
+    )
+    .unwrap();
+    let mismatched = run("get-method", &path, &["--from", foreign.to_str().unwrap()]);
+    assert_eq!(mismatched.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&mismatched.stderr).contains("different input"));
+    rejected(mismatched);
+}
+
+#[test]
+fn dotnet_coordinates_are_bare_metadata_tokens() {
+    let path = input();
+    for at in ["0x06000001", "06000001"] {
+        success(&run("get-method", &path, &["--at", at, "--il"]));
+    }
+    for at in ["0600001", "0x060000010", "0x601", "not-a-token"] {
+        let out = run("get-method", &path, &["--at", at, "--il"]);
+        assert_eq!(out.status.code(), Some(2), "{at}");
+        assert!(out.stdout.is_empty(), "{at} emitted partial stdout");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("INVALID_QUERY"),
+            "{at}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    // A leftover kind prefix is refused with the value that would work.
+    for at in ["method:06000001", "token:0x06000001"] {
+        let out = run("get-method", &path, &["--at", at, "--il"]);
+        assert_eq!(out.status.code(), Some(2), "{at}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("metadata token alone"), "{at}: {stderr}");
+        assert!(stderr.contains("06000001"), "{at}: {stderr}");
+    }
+}
+
+#[test]
+fn dotnet_outline_ends_a_closed_pipe_quietly() {
+    let path = input();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dotnet", "outline"])
+        .arg(&path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    {
+        use std::io::Read;
+        let mut first = [0u8; 1];
+        stdout.read_exact(&mut first).unwrap();
+    }
+    drop(stdout);
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.stderr.is_empty(),
+        "a closed pipe must not print a diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -600,9 +779,17 @@ fn dotnet_input_entity_work_instruction_and_output_budgets_fail_atomically() {
     ] {
         rejected(run("outline", &path, &[flag, "1"]));
     }
-    rejected(run("get-method", &path, &[&id, "--max-instructions", "2"]));
-    rejected(run("get-method", &path, &[&id, "--max-output-bytes", "1"]));
-    rejected(run("get-method", &path, &[&id, "--max-work", "1"]));
+    rejected(run(
+        "get-method",
+        &path,
+        &["--at", &id, "--max-instructions", "2"],
+    ));
+    rejected(run(
+        "get-method",
+        &path,
+        &["--at", &id, "--max-output-bytes", "1"],
+    ));
+    rejected(run("get-method", &path, &["--at", &id, "--max-work", "1"]));
     // Empty EH sections still consume work. A valid chain with 5,001 sections
     // must not bypass a 2,000-unit budget merely because most contain no clauses.
     let directory = tempfile::tempdir().unwrap();
@@ -612,7 +799,7 @@ fn dotnet_input_entity_work_instruction_and_output_budgets_fail_atomically() {
     rejected(run(
         "get-method",
         &chained,
-        &[&finally_id, "--il", "--max-work", "2000"],
+        &["--at", &finally_id, "--il", "--max-work", "2000"],
     ));
 }
 
@@ -624,7 +811,11 @@ fn dotnet_work_budget_counts_analysis_not_unreferenced_module_padding() {
     bytes.resize(1024 * 1024, 0);
     fs::write(&padded, bytes).unwrap();
     let id = method_id(&padded, "Add");
-    let output = run("get-method", &padded, &[&id, "--max-work", "100000"]);
+    let output = run(
+        "get-method",
+        &padded,
+        &["--at", &id, "--max-work", "100000"],
+    );
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     original_il(&row, "Add");
@@ -642,6 +833,7 @@ fn dotnet_output_files_are_atomic_and_perf_is_separate_from_results() {
         "get-method",
         &path,
         &[
+            "--at",
             &id,
             "-o",
             destination.to_str().unwrap(),
@@ -650,12 +842,12 @@ fn dotnet_output_files_are_atomic_and_perf_is_separate_from_results() {
         ],
     ));
     assert_eq!(fs::read(&destination).unwrap(), b"previous result");
-    let plain = run("get-method", &path, &[&id]);
+    let plain = run("get-method", &path, &["--at", &id]);
     success(&plain);
     let out = run(
         "get-method",
         &path,
-        &[&id, "-o", destination.to_str().unwrap(), "--perf"],
+        &["--at", &id, "-o", destination.to_str().unwrap(), "--perf"],
     );
     success(&out);
     assert!(out.stdout.is_empty());
@@ -729,7 +921,7 @@ fn dotnet_malformed_demand_parsed_generic_owner_fails_without_partial_output() {
     bytes[offsets[0] + 5] = 0xff;
     fs::write(&file, bytes).unwrap();
     let id = method_id(&file, "GenericOwnerField");
-    let output = run("get-method", &file, &[&id]);
+    let output = run("get-method", &file, &["--at", &id]);
     assert_eq!(output.status.code(), Some(1));
     rejected(output);
 }

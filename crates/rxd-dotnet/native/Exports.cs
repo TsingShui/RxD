@@ -100,12 +100,14 @@ public static unsafe class Exports
             using var resolver = new FrameworkResolver(file);
             var typeSystem = new DecompilerTypeSystem(file, resolver, settings);
             var decompiler = new CSharpDecompiler(typeSystem, settings);
-            // Check both the original IL and transformed functions, including nested lambdas.
-            decompiler.ILTransforms.Insert(0, new RejectInvalidIL());
-            decompiler.ILTransforms.Add(new RejectInvalidIL());
+            // Collect warning diagnostics from the original IL and the transformed functions,
+            // including nested lambdas, without discarding the reconstruction itself.
+            var diagnostics = new CollectDiagnostics();
+            decompiler.ILTransforms.Insert(0, diagnostics);
+            decompiler.ILTransforms.Add(diagnostics);
             var tree = token.HasValue ? decompiler.Decompile(handle) : decompiler.DecompileWholeModuleAsSingleFile();
             foreach (var function in tree.DescendantsAndSelf.SelectMany(node => node.Annotations.OfType<ILFunction>()))
-                RejectInvalidIL.Check(function);
+                diagnostics.Check(function);
             using var text = new BoundedCodeWriter();
             var writer = TokenWriter.CreateWriterThatSetsLocationsInAST(text);
             tree.AcceptVisitor(new CSharpOutputVisitor(writer, settings.CSharpFormattingOptions));
@@ -129,7 +131,7 @@ public static unsafe class Exports
                             mapping.Add((classScope ? MetadataTokens.GetToken(entry.Key.Method.MetadataToken) : 0, point.Offset, point.StartLine));
                 }
             }
-            return CopyOut(Payload(null, code, mapping), outLen);
+            return CopyOut(Payload(null, code, mapping, diagnostics.Messages), outLen);
         }
         catch (NativeFailure ex)
         {
@@ -153,7 +155,7 @@ public static unsafe class Exports
             SelectMethods(metadata, child, methods, types, depth + 1);
     }
 
-    private static byte[] Payload(string? reason, string? code, IEnumerable<(int MethodToken, int Offset, int Line)> mapping)
+    private static byte[] Payload(string? reason, string? code, IEnumerable<(int MethodToken, int Offset, int Line)> mapping, IEnumerable<string>? warnings = null)
     {
         using var stream = new BoundedPayloadStream();
         using (var json = new Utf8JsonWriter(stream))
@@ -162,6 +164,10 @@ public static unsafe class Exports
             json.WriteBoolean("ok", reason == null);
             json.WriteString("reason", reason);
             json.WriteString("code", code);
+            json.WriteStartArray("warnings");
+            foreach (var warning in warnings ?? Array.Empty<string>())
+                json.WriteStringValue(warning);
+            json.WriteEndArray();
             json.WriteStartArray("mapping");
             foreach (var (methodToken, offset, line) in mapping)
             {
@@ -245,21 +251,46 @@ internal sealed class BoundedPayloadStream : MemoryStream
     }
 }
 
-internal sealed class RejectInvalidIL : IILTransform
+// The engine's reconstruction is always returned as produced, with every caveat it
+// recorded. Nothing here aborts a body: a missing expression/branch is a diagnostic like
+// any other, because discarding the surrounding reconstruction loses usable code.
+internal sealed class CollectDiagnostics : IILTransform
 {
+    private readonly List<string> messages = new();
+    private readonly HashSet<string> seen = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<string> Messages => messages;
+
     public void Run(ILFunction function, ILTransformContext context) => Check(function);
 
-    internal static void Check(ILFunction function)
+    internal void Check(ILFunction function)
     {
+        string owner = string.IsNullOrWhiteSpace(function.Name) ? "body" : function.Name;
+        Observe(function);
         foreach (var instruction in function.Descendants)
         {
-            if (instruction is ILFunction nested && nested.Warnings.Count != 0)
-                throw new NativeFailure("il_warning");
             if (instruction is InvalidExpression || instruction is InvalidBranch)
-                throw new NativeFailure("invalid_il");
+                Add(owner + ": unreconstructed " + Kind(instruction) + " at IL_"
+                    + instruction.StartILOffset.ToString("x4"));
+            if (instruction is ILFunction nested)
+                Observe(nested);
         }
-        if (function.Warnings.Count != 0)
-            throw new NativeFailure("il_warning");
+    }
+
+    private static string Kind(ILInstruction instruction) =>
+        instruction is InvalidBranch ? "branch" : "expression";
+
+    private void Observe(ILFunction function)
+    {
+        string owner = string.IsNullOrWhiteSpace(function.Name) ? "body" : function.Name;
+        foreach (var warning in function.Warnings)
+            Add(owner + ": " + warning);
+    }
+
+    private void Add(string message)
+    {
+        if (seen.Add(message))
+            messages.Add(message);
     }
 }
 

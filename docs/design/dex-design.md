@@ -20,8 +20,8 @@ preserved; argument positions and exit-code semantics are.
 | `get-class INPUT CLASS` | Java decompilation text by dotted name or Dalvik descriptor; `--members` prints a field/method index table. |
 | `entries INPUT` | Archive entries in central-directory order with compression and sizes; duplicate names are preserved. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
-| `findrefs INPUT string\|type VALUE` | Literal string or type references, with referring member and matched target. |
-| `findrefs INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required. |
+| `xref INPUT string\|type VALUE` | Literal string or type references, with referring member and matched target. |
+| `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors, dotted names, package and simple names; `-f/--filter` is case-insensitive. |
 | `fields-plan --apk INPUT... --descriptor CLASS` | One class's `field_plan` JSON envelope, without header/summary. |
@@ -29,7 +29,7 @@ preserved; argument positions and exit-code semantics are.
 
 APK/DEX commands keep their original argument positions, `--threads` / `--thread`
 alias and supported range. The default thread count comes from
-`available_parallelism`; zero threads is an error. `findrefs -o` sits in the
+`available_parallelism`; zero threads is an error. `xref -o` sits in the
 string/type/method/field subcommand arguments. All diagnostics go to stderr. `--debug`
 is preserved; DEX adds no `--perf` flag.
 
@@ -70,7 +70,7 @@ checked with references/member data. Known radguard output limitations are track
 
 ## Envelope (schema_version=2)
 
-`classes`, `strings`, `findrefs`, `entries` and `member-by-index` use the shared
+`classes`, `strings`, `xref`, `entries` and `member-by-index` use the shared
 constructors and return header → zero or more records → summary; empty results still
 include header/summary. `member-by-index` emits zero records at exit 3 and all
 candidates at exit 4; `summary.complete=true` means candidate enumeration is complete,
@@ -82,7 +82,7 @@ The header contains `record, backend, command, source_id, input_bytes, schema_ve
 query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}`.
 `input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
 `query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
-`findrefs` string/type=`kind, value`, method/field=`kind, name, class, fuzzy_class`;
+`xref` string/type=`kind, value`, method/field=`kind, name, class, fuzzy_class`;
 `member-by-index`=`descriptor, method_index, field_index`, with descriptor normalized
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
@@ -91,7 +91,7 @@ Data records contain `record, id, source_id, parent_id, context_id, start, end,
 detail`. DEX deliberately does not rehash large archives, avoiding extra reads/hashing
 against the 150 ms budget; header/record `source_id` is null and all other navigation
 fields are null. Class identity and routing come from detail `descriptor`/`name` (and
-`entry`). `findrefs.class` is the referring member's Dalvik descriptor, directly usable
+`entry`). `xref.class` is the referring member's Dalvik descriptor, directly usable
 with `get-class`, not the matched target's class.
 
 Fixed detail fields:
@@ -100,7 +100,7 @@ Fixed detail fields:
 | --- | --- | --- |
 | class | classes | `entry, descriptor, name, package, simple_name` |
 | string | strings | `entry, index, value, class` |
-| reference | findrefs | `entry, class, member, matched` |
+| reference | xref | `entry, class, member, matched` |
 | entry | entries | `name, compression, compressed_size, uncompressed_size` |
 | field | member-by-index --field-index | `entry, class, name, type, access_flags, static, field_index, slot` |
 | method | member-by-index --method-index | `entry, class, name, access_flags, method_index` |
@@ -171,7 +171,7 @@ rasc schema-v1 byte comparisons are not used for the schema-v2 JSON protocol.
 
 ## MCP projection
 
-`dex_get_class/entries/strings/findrefs/manifest/classes/fields_plan/member_by_index`
+`dex_get_class/entries/strings/xref/manifest/classes/fields_plan/member_by_index`
 reuse existing parsing and result assembly in isolated workers. JSONL projects to
 header/records/summary; Java/XML is wrapped with representation/source/complete/
 source_id. Original null id/source_id semantics remain; a target only pins input and

@@ -76,7 +76,7 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
                 .filter(|r| r["record"] == "literal" || r["record"] == "data_literal")
             {
                 let refs = jsonl(&run(
-                    "refs",
+                    "xref",
                     &path,
                     encoding,
                     &["--id", literal["id"].as_str().unwrap()],
@@ -90,7 +90,7 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
             .take(10)
         {
             assert_stream_schema(&jsonl(&run(
-                "refs",
+                "xref",
                 &path,
                 encoding,
                 &["--id", unit["id"].as_str().unwrap()],
@@ -307,7 +307,7 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
                 })
                 .unwrap();
             let refs = jsonl(&run(
-                "refs",
+                "xref",
                 &path,
                 encoding,
                 &["--id", literal["id"].as_str().unwrap()],
@@ -337,7 +337,7 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 152)
             .unwrap();
         for target in [block["id"].as_str().unwrap(), add_id] {
-            let refs = jsonl(&run("refs", &path, encoding, &["--id", target]));
+            let refs = jsonl(&run("xref", &path, encoding, &["--id", target]));
             let reference = refs
                 .iter()
                 .find(|r| {
@@ -376,7 +376,7 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
             .find(|r| r["record"] == "data_literal" && r["detail"]["decoded_start"] == 492)
             .unwrap();
         let refs = jsonl(&run(
-            "refs",
+            "xref",
             &legacy,
             encoding,
             &["--id", data["id"].as_str().unwrap()],

@@ -29,7 +29,7 @@ isolated in a deterministic schema:
 
 ### 1. Three-part JSONL stream
 
-Enumeration/search/reference commands (`outline`, `find`, `strings`, `findrefs`, `refs`,
+Enumeration/search/reference commands (`outline`, `find`, `strings`, `xref`, `xref`,
 `symbols`, etc.) emit exactly one `header`, zero or more data records and exactly one
 `summary`. Success means exit 0 plus a summary with `complete: true`.
 
@@ -119,6 +119,32 @@ for (const m of methods) {
 ```
 
 The same glue works for JS/JVM/.NET/WASM outline; only `detail` differs.
+
+## Amendment: the FETCH handle is a coordinate, not a hash (in progress)
+
+The `id` key is being replaced by `at`, and `parent_id`/`context_id` by
+`parent_at`/`context_at`. Values are the backend's own coordinate
+(`0x06000003`, `func:42`, `1234..5678`) with the schema prefix
+`rxd1:<backend>:<sha256>:` stripped; the hash lives once in `header.source_id`.
+The value is the backend's own coordinate in the shape it prints, read back verbatim: a
+`.NET` coordinate is its ECMA-335 metadata token (`0x0a00001f`), which already encodes
+its table, so it carries no noun prefix; backends whose coordinates are not
+self-describing keep a prefix (`func:42`, `code:9`). A prefix that a backend does not
+use is refused with the value to use instead.
+
+Rationale: an Agent had to copy 80-103 character handles in which about 70% of the
+bytes were a hash repeated 1-4 times per record. Measured on a 168 KB production
+bundle, `id`/`source_id`/`parent_id`/`context_id` were 49% of an `outline` stream.
+
+Content binding moves to the paths where it can still fail closed: records keep
+`source_id`, and FETCH commands accept `--from <jsonl|->`, which re-reads the
+coordinate from the producing stream and rejects a mismatched `source_id`. The removed
+guarantee is that a handle alone identifies its input; a coordinate is deliberately
+file-scoped so the same coordinate can address the same metadata row in two versions
+of an input.
+
+`dotnet` is migrated (see `docs/design/dotnet-design.md`); JS/JVM/WASM/PYC/EVM/HTML and
+their tests still emit `id` until the same change lands there.
 
 ## Consequences
 

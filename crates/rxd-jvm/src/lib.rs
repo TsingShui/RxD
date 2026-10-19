@@ -7,7 +7,7 @@ mod types;
 
 pub use classfile::{ClassFile, Code, Field, Handler, Local, MemberKind, Method, Reference};
 pub use code::{Instruction, bytecode, decode_method};
-pub use input::{Input, InputClass};
+pub use input::{Input, InputClass, normalize_class_name};
 
 use radguard::backend::{
     BlockKind, ClassSpec, Constant, ConstantValue, FieldSpec, InvokeExpression, InvokeKind,

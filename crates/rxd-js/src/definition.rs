@@ -30,9 +30,9 @@ impl Symbol {
         crate::envelope::body(
             "binding",
             rxd_core::envelope::RecordMeta {
-                id: Some(&self.id),
+                at: Some(&self.id),
                 source_id: Some(source_id),
-                parent_id: Some(&self.location.entity_id),
+                parent_at: Some(&self.location.entity_id),
                 start: Some(self.location.start as usize),
                 end: Some(self.location.end as usize),
                 ..Default::default()

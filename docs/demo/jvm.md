@@ -39,10 +39,10 @@ Search cross-class references (string/type/method/field; method/field may use `-
 owner substring):
 
 ```sh
-target/release/rxd jar findrefs tests/corpus/jvm/gson-2.11.0.jar method toJson
-target/release/rxd jar findrefs tests/corpus/jvm/gson-2.11.0.jar type JsonReader
-target/release/rxd jar findrefs tests/corpus/jvm/gson-2.11.0.jar method append --class StringBuilder
-target/release/rxd jar findrefs tests/fixtures/jvm/flow-deflated.jar string hello
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar method toJson
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar type JsonReader
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar method append --class StringBuilder
+target/release/rxd jar xref tests/fixtures/jvm/flow-deflated.jar string hello
 ```
 
 Runnable returned-ID routing:

@@ -112,7 +112,7 @@ fn run_command(
     // other command either produced its payload or failed.
     let mut status = 0;
     match command {
-        Command::Findrefs(args) => {
+        Command::Xref(args) => {
             let query = args.query()?;
             let scan_started = Instant::now();
             let mut hits = apk::find_reference_hits_with_policy(
@@ -135,7 +135,7 @@ fn run_command(
             // than letting the String grow (macOS's allocator re-extends the large block in
             // place), so the length pass is not worth it.
             let mut payload = stream_header(
-                "findrefs",
+                "xref",
                 std::slice::from_ref(&args.apk_path),
                 args.query_json(),
             )?;
@@ -156,7 +156,7 @@ fn run_command(
             finish_stream(&mut payload, hits.len())?;
             if args.debug {
                 rxd_dex::diag::diagnose(format_args!(
-                    "[findrefs] rows={} scan={:.2} ms sort={:.2} ms assemble={:.2} ms payload={} MiB",
+                    "[xref] rows={} scan={:.2} ms sort={:.2} ms assemble={:.2} ms payload={} MiB",
                     payload.lines().count(),
                     scanned.as_secs_f64() * 1e3,
                     (sorted - scanned).as_secs_f64() * 1e3,

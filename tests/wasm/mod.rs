@@ -386,7 +386,7 @@ fn wasm_outline_filters_by_exact_func_index_and_name_label() {
 #[test]
 fn wasm_refs_finds_direct_call_and_ref_func_with_code_body_offsets() {
     let path = input();
-    let rows = wasm_jsonl(&run("refs", &path, &["--func", "1"]));
+    let rows = wasm_jsonl(&run("xref", &path, &["--func", "1"]));
     let refs = records_of(&rows, "reference");
     // `run` (index 2) references `sum` (index 1) via both ref.func and call.
     let opcodes: Vec<&str> = refs
@@ -467,7 +467,7 @@ fn wasm_get_output_file_matches_stdout_bytes() {
 fn wasm_invalid_func_index_query_is_rejected() {
     let path = input();
     // Index 0 is an imported function with no code body.
-    let imported = run("refs", &path, &["--func", "0"]);
+    let imported = run("xref", &path, &["--func", "0"]);
     success(&imported); // refs on an imported target is valid: it has callers potentially
     // Out-of-range function index for outline filter yields an empty function set.
     let rows = wasm_jsonl(&run("outline", &path, &["--func", "9999"]));
