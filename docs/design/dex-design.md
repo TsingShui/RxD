@@ -24,7 +24,6 @@ preserved; argument positions and exit-code semantics are.
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`, `--with-flags`. |
-| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`, `--with-flags`. |
 
 APK/DEX commands keep their original argument positions, `--threads` / `--thread`
 alias and supported range. The default thread count comes from
