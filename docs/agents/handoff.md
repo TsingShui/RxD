@@ -16,6 +16,29 @@ is `rxd_core::Budget`, and no backend exposes `--max-*`.
 - `-f/--filter` on every listing command of dex and jar; `--raw` is the one flag for
   original instructions.
 
+## Baseline: the uncommitted test changes are the target contract
+
+The working tree carries a scripted `id→at` migration in `tests/{evm,html,mcp,pyc,wasm}`
+plus tests/cli.rs. Full suite: 203 passed, 202 failed, grouped as evm 61, mcp 45, root
+40 (mostly js), pyc 33, wasm 12, html 8, wasm_wabt 4.
+
+Decision: **keep them**. They already encode the target contract - short `at`
+coordinates, `--at` selectors, `--max-*` gone - while the backends they exercise have
+not moved yet. Each failure group maps onto a pending step below, so the migration is
+finished by making the backend conform, not by reverting the tests:
+
+- `unexpected argument '--at'` (js get/locate, asar/html extract, wasm get-function):
+  the command still takes a positional id or `--id`.
+- `INVALID_ID` / `expected canonical content-bound ... ID` (evm): validation still wants
+  the long id while records print the short coordinate.
+- `starts_with("rxd1:js:...")` (js, wasm, identifiers): assertions still expect the
+  content-hash prefix that `at_of` strips.
+- js header key set gained `declaration`/`declaration_ids`/`resolution`/`selected`:
+  either the header or the assertion is stale - decide when js is touched.
+- mcp timeouts and the two benchmark failures: to be diagnosed with those steps.
+
+Nothing is reverted; the tree stays red only until each backend step lands.
+
 ## Pending, in order
 
 1. **dotnet split** (code was written and reverted to keep the tree green): replace
