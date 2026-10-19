@@ -181,7 +181,9 @@ impl InflatedDex<'_> {
     fn data(&self) -> Result<&[u8]> {
         if self.data.get().is_none() {
             let started = Instant::now();
-            let bytes = inflate_entry(self.source, self.entry, self.max_inflated)?;
+            let bytes = crate::profile::measure(crate::profile::Stage::Inflate, || {
+                inflate_entry(self.source, self.entry, self.max_inflated)
+            })?;
             let _ = self.data.set((bytes, started.elapsed()));
         }
         Ok(&self.data.get().expect("filled above").0)
@@ -228,12 +230,15 @@ fn map_dex_entries<T: Send>(
     if threads == 0 {
         bail!("worker count must be greater than zero");
     }
-    let archive = Archive::open(path)?;
-    let mut entries = parse_dex_entries(&archive)?;
-    match order {
+    let archive = crate::profile::measure(crate::profile::Stage::Map, || Archive::open(path))?;
+    let mut entries = crate::profile::measure(crate::profile::Stage::ZipIndex, || {
+        parse_dex_entries(&archive)
+    })?;
+    crate::profile::count(crate::profile::Counter::Entries, entries.len() as u64);
+    crate::profile::measure(crate::profile::Stage::Select, || match order {
         EntryOrder::Natural => {}
         EntryOrder::SmallestFirst => entries.sort_by_key(|entry| entry.compressed_size),
-    }
+    });
     // One entry, walked the same way whether the caller drives it in parallel or not.
     let max_inflated = policy.max_inflated_entry;
     let run_entry = |entry: &ZipEntry| -> Result<Vec<T>> {
@@ -386,7 +391,7 @@ pub fn list_classes_with_policy(
     let started = Instant::now();
     // One probe decides the prefix policy for the whole archive (see PrefixPolicy).
     let prefix_policy: OnceLock<PrefixPolicy> = OnceLock::new();
-    let mut classes = map_dex_entries(
+    let classes = map_dex_entries(
         path,
         policy,
         threads,
@@ -406,18 +411,11 @@ pub fn list_classes_with_policy(
         },
     )?;
     let extracted = started.elapsed();
-    // The comparator is the type's total order, so an unstable parallel sort produces
-    // exactly the order a stable sort would - the index has no ties to preserve.
-    classes.par_sort_unstable();
-    let sorted = started.elapsed();
-    classes.dedup_by(|left, right| left.descriptor == right.descriptor);
     if debug {
         crate::diag::diagnose(format_args!(
-            "[classes] entries={} extract={:.2} ms sort={:.2} ms dedup={:.2} ms",
+            "[classes] entries={} extract={:.2} ms",
             classes.len(),
-            extracted.as_secs_f64() * 1e3,
-            (sorted - extracted).as_secs_f64() * 1e3,
-            (started.elapsed() - sorted).as_secs_f64() * 1e3
+            extracted.as_secs_f64() * 1e3
         ));
     }
     Ok(classes)
@@ -1135,7 +1133,8 @@ pub fn read_entry(path: &Path, wanted: &str) -> Result<Vec<u8>> {
 }
 
 pub fn read_entry_with_policy(path: &Path, policy: ArchivePolicy, wanted: &str) -> Result<Vec<u8>> {
-    let archive = Archive::open(path)?;
+    use crate::profile::{Stage, measure};
+    let archive = measure(Stage::Map, || Archive::open(path))?;
     // CPython's `zipfile` resolves a name to the *last* central-directory record
     // carrying it, and the reference implementation reads the manifest through
     // it; matching that keeps a crafted archive with two AndroidManifest.xml

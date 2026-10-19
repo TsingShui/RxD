@@ -40,16 +40,9 @@ fn assert_keys(row: &Value, keys: &[&str]) {
 }
 
 fn assert_record(row: &Value) {
-    let mut keys = vec![
-        "record",
-        "id",
-        "source_id",
-        "parent_id",
-        "context_id",
-        "start",
-        "end",
-        "detail",
-    ];
+    // DEX units have no copy-only coordinate, so a data record is `record` + `detail`
+    // only; the stream header carries identity once instead of every row repeating it.
+    let mut keys = vec!["record", "detail"];
     if row["record"] == "field_plan" {
         keys.extend(["backend", "command", "schema_version"]);
         assert_eq!(row["backend"], "dex");
@@ -57,13 +50,10 @@ fn assert_record(row: &Value) {
         assert_eq!(row["schema_version"], 2);
     }
     assert_keys(row, &keys);
-    for key in ["id", "source_id", "parent_id", "context_id", "start", "end"] {
-        assert!(row[key].is_null(), "{key}: {row}");
-    }
     let fields: &[&str] = match row["record"].as_str().unwrap() {
-        "class" => &["entry", "descriptor", "name", "package", "simple_name"],
-        "string" => &["entry", "index", "value", "class"],
-        "reference" => &["entry", "class", "member", "matched"],
+        "class" => &["descriptor"],
+        "string" => &["entry", "index", "value"],
+        "reference" => &["entry", "member", "matched"],
         "entry" => &[
             "name",
             "compression",
@@ -149,7 +139,7 @@ fn dex_envelope_escapes_strings_entry_names_and_member_names_without_extra_rows(
     success(&out);
     assert_eq!(
         dex_records(&out)[0]["detail"],
-        json!({"entry":entry, "index":0, "value":value, "class":null})
+        json!({"entry":entry, "index":0, "value":value})
     );
     let header: Value = serde_json::from_str(text(&out).lines().next().unwrap()).unwrap();
     assert_eq!(header["command"], "strings");
@@ -162,7 +152,7 @@ fn dex_envelope_escapes_strings_entry_names_and_member_names_without_extra_rows(
     success(&out);
     assert_eq!(
         dex_records(&out)[0]["detail"],
-        json!({"entry":entry, "class":"LFixture0;", "member":"LFixture0;->|x", "matched":value})
+        json!({"entry":entry, "member":"LFixture0;->|x", "matched":value})
     );
     let out = invoke(&[
         "member-by-index",
@@ -181,8 +171,10 @@ fn dex_envelope_escapes_strings_entry_names_and_member_names_without_extra_rows(
 fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     let dex = const_string_dex(3);
     let (dir, bare) = fixture(&dex, "input.dex");
-    let expected_classes: Vec<_> = (0..3).map(|i| json!({"entry":"classes.dex", "descriptor":format!("LFixture{i};"), "name":format!("Fixture{i}"), "package":"", "simple_name":format!("Fixture{i}")})).collect();
-    let expected_refs: Vec<_> = (0..3).map(|i| json!({"entry":"classes.dex", "class":format!("LFixture{i};"), "member":format!("LFixture{i};->m{i}"), "matched":"Authorization"})).collect();
+    let expected_classes: Vec<_> = (0..3)
+        .map(|i| json!({"descriptor":format!("LFixture{i};")}))
+        .collect();
+    let expected_refs: Vec<_> = (0..3).map(|i| json!({"entry":"classes.dex", "member":format!("LFixture{i};->m{i}"), "matched":"Authorization"})).collect();
     for (name, bytes) in [
         ("stored.apk", stored_zip(&[("classes.dex", &dex)])),
         ("compressed.apk", deflated_zip(&[("classes.dex", &dex)])),
@@ -261,7 +253,7 @@ fn dex_strings_filter_pagination_and_output_file_keep_identical_bytes() {
     success(&output);
     assert_eq!(
         dex_records(&output)[0]["detail"],
-        json!({"entry":"classes.dex", "index":2, "value":"LFixture1;", "class":null})
+        json!({"entry":"classes.dex", "index":2, "value":"LFixture1;"})
     );
     assert_eq!(fs::read(output_file).unwrap(), output.stdout);
     for args in [&["--limit", "0"][..], &["--offset", "99"][..]] {
@@ -299,10 +291,16 @@ fn dex_entries_preserve_directory_order_duplicates_and_root_selection() {
     let output = query("classes", &path, &[]);
     success(&output);
     assert_eq!(dex_records(&output).len(), 2);
+    // A class row carries only its descriptor; which entry supplied it is covered by
+    // `entries` above (and by `also_in` when one descriptor comes from several entries).
     assert!(
         dex_records(&output)
             .iter()
-            .all(|r| r["detail"]["entry"] == "fallback.dex")
+            .all(|r| r["detail"]["descriptor"]
+                .as_str()
+                .is_some_and(|d| d.starts_with('L'))),
+        "{:?}",
+        dex_records(&output)
     );
 }
 
@@ -482,8 +480,14 @@ fn dex041_queries_keep_physical_entry_and_logical_member_names() {
         };
         let output = query(command, &path, args);
         success(&output);
-        assert!(text(&output).contains("classes.dex!classes1.dex"));
-        assert!(text(&output).contains("classes.dex!classes2.dex"));
+        // A class row names only its descriptor; the logical member name is carried by
+        // the records that locate code (`xref`) and by `entries`/`strings`.
+        if command == "xref" {
+            assert!(text(&output).contains("classes.dex!classes1.dex"));
+            assert!(text(&output).contains("classes.dex!classes2.dex"));
+        } else {
+            assert!(!dex_records(&output).is_empty());
+        }
     }
     // The legacy strings format names the physical entry even for logical members.
     let strings = query("strings", &path, &[]);

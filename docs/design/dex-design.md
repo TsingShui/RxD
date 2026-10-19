@@ -23,7 +23,7 @@ preserved; argument positions and exit-code semantics are.
 | `xref INPUT string\|type VALUE` | Literal string or type references, with referring member and matched target. |
 | `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
-| `classes INPUT` | Class descriptors, dotted names, package and simple names; `-f/--filter` is case-insensitive. |
+| `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
 | `fields-plan --apk INPUT... --descriptor CLASS` | One class's `field_plan` JSON envelope, without header/summary. |
 | `member-by-index --apk INPUT... --descriptor CLASS --method-index N\|--field-index N` | Resolve a runtime member index and retain all ambiguous candidates. |
 
@@ -32,6 +32,25 @@ alias and supported range. The default thread count comes from
 `available_parallelism`; zero threads is an error. `xref -o` sits in the
 string/type/method/field subcommand arguments. All diagnostics go to stderr. `--debug`
 is preserved; DEX adds no `--perf` flag.
+
+`--debug` also reports the library's own stage profile, one deterministic line each for
+stages, counters and wall time:
+
+```
+[dex] xref stages map=0.032 ms zip=0.641 ms select=0.004 ms inflate=1190.402 ms
+      header=0.002 ms members=24.363 ms scan=3200.269 ms render=28.176 ms
+      engine=0.000 ms emit=0.000 ms manifest=0.000 ms
+[dex] xref counters entries=97 dex=97 classes=928795 code_items=4939532 hits=108126
+      bytes=759818368 strings=0
+[dex] xref wall 459.417 ms
+```
+
+Stages are declared once (`crates/rxd-dex/src/profile.rs`) and always printed in that
+order, zero or not, so two reports are comparable line by line. Stage times are summed
+across the parallel workers (a 97-DEX archive reports inflate as the total of every
+worker's inflate work), while `wall` is the command's real elapsed time; counters are
+aggregated work units. With profiling off every call site costs one relaxed load and no
+clock read.
 
 `-o` writes the same bytes as stdout and still emits stdout. This differs from the
 JS/ASAR file-output contract: DEX keeps its original direct write and does not promise
@@ -87,19 +106,32 @@ query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 
-Data records contain `record, id, source_id, parent_id, context_id, start, end,
-detail`. DEX deliberately does not rehash large archives, avoiding extra reads/hashing
-against the 150 ms budget; header/record `source_id` is null and all other navigation
-fields are null. Class identity and routing come from detail `descriptor`/`name` (and
-`entry`). `xref.class` is the referring member's Dalvik descriptor, directly usable
-with `get-class`, not the matched target's class.
+Data records contain exactly `record` and `detail`. No DEX unit has a copy-only
+coordinate, so ADR 0003's six nullable navigation keys would be `null` on every row;
+DEX omits them instead of repeating them (39% of a class row). The header still carries
+backend/command/source_id once, and DEX deliberately does not rehash large archives,
+avoiding extra reads against the 150 ms budget. Class identity and routing come from
+detail `descriptor`/`name` (and `entry`); `xref.detail.member` carries the referring
+member's Dalvik descriptor, directly usable with `get-class`, and its declaring class is
+the part before `->` rather than a repeated field.
+
+Fields derivable from another field are not repeated: `package`/`simple_name` follow
+from `descriptor`/`name`, and `xref.class` follows from `member`. On a 928,795-class
+APK this halves the payload (`classes` 296.5 MB → 151.8 MB) and removes ~95 ms of JSON
+assembly; measured medians on that input: `classes` 500.7 → 406.1 ms.
 
 Fixed detail fields:
 
 | Record | Command | Detail |
 | --- | --- | --- |
-| class | classes | `entry, descriptor, name, package, simple_name` |
+| class | classes | `descriptor` |
 | string | strings | `entry, index, value, class` |
+Ordering: records follow the archive central-directory order, and inside one entry the
+`class_defs` (classes) or code-item (xref) order. No backend sorts by identity, so a class
+list is comparable with `js`/`jar` output and never depends on a global sort. A descriptor
+defined by more than one entry appears once per entry; duplicate detection is the caller's
+`uniq`, not a hidden merge.
+
 | reference | xref | `entry, class, member, matched` |
 | entry | entries | `name, compression, compressed_size, uncompressed_size` |
 | field | member-by-index --field-index | `entry, class, name, type, access_flags, static, field_index, slot` |

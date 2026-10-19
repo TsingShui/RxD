@@ -50,7 +50,11 @@ struct MemberId {
 }
 
 pub fn defines_class(data: &[u8], descriptor: &[u8]) -> Result<bool> {
-    let dex = Dex::parse(data)?;
+    use crate::profile::{Counter, Stage, count, measure};
+    count(Counter::DexFiles, 1);
+    count(Counter::Bytes, data.len() as u64);
+    let dex = measure(Stage::Header, || Dex::parse(data))?;
+    count(Counter::Classes, dex.header.classes_size as u64);
     // Resolve each class_def's own type id rather than looking up "the" type id
     // for the descriptor: a DEX may repeat a descriptor across several type ids
     // (the spec only requires them to be sorted, and crafted or merged files do
@@ -80,7 +84,11 @@ pub fn for_each_string(
     data: &[u8],
     mut visit: impl FnMut(usize, &[u8]) -> Result<bool>,
 ) -> Result<()> {
-    let dex = Dex::parse(data)?;
+    use crate::profile::{Counter, Stage, count, measure};
+    count(Counter::DexFiles, 1);
+    count(Counter::Bytes, data.len() as u64);
+    let dex = measure(Stage::Header, || Dex::parse(data))?;
+    count(Counter::Strings, dex.header.strings_size as u64);
     for index in 0..dex.header.strings_size {
         if !visit(index, dex.string_bytes(index)?)? {
             return Ok(());
@@ -95,7 +103,12 @@ pub fn decode_string(bytes: &[u8]) -> String {
 }
 
 pub fn class_names(data: &[u8]) -> Result<Vec<String>> {
-    Ok(class_definitions(data, 0, usize::MAX)?
+    use crate::profile::{Counter, Stage, count, measure};
+    count(Counter::DexFiles, 1);
+    count(Counter::Bytes, data.len() as u64);
+    let names = measure(Stage::Members, || class_definitions(data, 0, usize::MAX))?;
+    count(Counter::Classes, names.len() as u64);
+    Ok(names
         .into_iter()
         .map(|definition| definition.descriptor)
         .collect())
@@ -180,14 +193,19 @@ pub struct ReferenceRow {
 }
 
 pub fn find_references(data: &[u8], query: &Query) -> Result<Vec<ReferenceRow>> {
-    let dex = Dex::parse(data)?;
-    let (kind, targets) = dex.resolve_targets(query)?;
+    use crate::profile::{Counter, Stage, count, measure};
+    count(Counter::DexFiles, 1);
+    count(Counter::Bytes, data.len() as u64);
+    let dex = measure(Stage::Header, || Dex::parse(data))?;
+    let (kind, targets) = measure(Stage::Members, || dex.resolve_targets(query))?;
     if targets.is_empty() {
         return Ok(Vec::new());
     }
     let targets = Targets::new(targets);
-    let hits = dex.scan_all_classes(kind, &targets)?;
-    render_reference_rows(&dex, kind, &hits)
+    let hits = measure(Stage::Scan, || dex.scan_all_classes(kind, &targets))?;
+    let rows = measure(Stage::Render, || render_reference_rows(&dex, kind, &hits))?;
+    count(Counter::Hits, rows.len() as u64);
+    Ok(rows)
 }
 
 /// Visit reference rows in deterministic method-index order without retaining
@@ -671,6 +689,7 @@ impl<'a> Dex<'a> {
     fn scan_all_classes_sequential(&self, kind: RefKind, targets: &Targets) -> Result<Vec<Hit>> {
         let mut hits = Vec::new();
         for class_index in 0..self.header.classes_size {
+            crate::profile::count(crate::profile::Counter::Classes, 1);
             self.scan_class_index(class_index, kind, targets, &mut hits)?;
         }
         Ok(hits)
@@ -681,6 +700,7 @@ impl<'a> Dex<'a> {
             .into_par_iter()
             .with_min_len(PARALLEL_SCAN_MIN_CHUNK)
             .try_fold(Vec::new, |mut hits, class_index| {
+                crate::profile::count(crate::profile::Counter::Classes, 1);
                 self.scan_class_index(class_index, kind, targets, &mut hits)?;
                 Ok(hits)
             })
@@ -742,6 +762,7 @@ impl<'a> Dex<'a> {
                 read_uleb(self.data, &mut cursor)?;
                 let code_off = read_uleb(self.data, &mut cursor)? as usize;
                 if code_off != 0 {
+                    crate::profile::count(crate::profile::Counter::CodeItems, 1);
                     self.scan_code(method_idx, code_off, kind, targets, hits, max_hits)?;
                 }
             }

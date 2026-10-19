@@ -127,6 +127,9 @@ pub struct StringsArgs {
 pub struct EntriesArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+    /// Print phase timings on stderr.
+    #[arg(long)]
+    pub debug: bool,
     pub apk_path: PathBuf,
 }
 
@@ -134,6 +137,9 @@ pub struct EntriesArgs {
 pub struct ManifestArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+    /// Print phase timings on stderr.
+    #[arg(long)]
+    pub debug: bool,
     pub apk_path: PathBuf,
 }
 
@@ -254,6 +260,20 @@ impl MemberArgs {
 }
 
 impl Command {
+    /// Whether this invocation asked for `--debug` diagnostics.
+    pub(crate) fn debug(&self) -> bool {
+        match self {
+            Self::Getclass(args) => args.debug,
+            Self::Entries(args) => args.debug,
+            Self::Strings(args) => args.debug,
+            Self::Xref(args) => args.debug,
+            Self::Manifest(args) => args.debug,
+            Self::Classes(args) => args.debug,
+            Self::FieldsPlan(args) => args.debug,
+            Self::MemberByIndex(args) => args.debug,
+        }
+    }
+
     pub(crate) fn name(&self) -> &'static str {
         match self {
             Self::Getclass(_) => "get-class",

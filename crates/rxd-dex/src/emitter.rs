@@ -17,10 +17,15 @@ use anyhow::{Context, Result, bail};
 
 /// Render one class from the bytes of the DEX entry that defines it.
 pub fn render(data: &[u8], descriptor: &str) -> Result<String> {
-    let decompiler = radguard::Decompiler::parse(data).context("parse DEX for the Java emitter")?;
-    let rendered = decompiler
-        .decompile_class(descriptor)
-        .with_context(|| format!("could not decompile {descriptor}"))?;
+    use crate::profile::{Stage, measure};
+    let decompiler = measure(Stage::Engine, || {
+        radguard::Decompiler::parse(data).context("parse DEX for the Java emitter")
+    })?;
+    let rendered = measure(Stage::Emit, || {
+        decompiler
+            .decompile_class(descriptor)
+            .with_context(|| format!("could not decompile {descriptor}"))
+    })?;
     match rendered {
         Some(output) => Ok(output.source),
         None => bail!("class {descriptor} is not defined in this DEX"),

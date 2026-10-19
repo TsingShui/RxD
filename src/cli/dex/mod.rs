@@ -7,7 +7,7 @@
 mod args;
 mod output;
 use output::{emit, emit_rows};
-use rxd_core::envelope::{RecordMeta, SCHEMA_VERSION, header, record, summary};
+use rxd_core::envelope::{SCHEMA_VERSION, header, summary};
 use serde_json::{Map, Value, json};
 
 use anyhow::{Result, bail};
@@ -95,11 +95,8 @@ fn restore_default_sigpipe() {}
 
 /// This is the only place the CLI reports timing, so `--debug` reads the same
 /// for every subcommand.
-fn debug_timing(started: Instant) {
-    rxd_dex::diag::diagnose(format_args!(
-        "[DEBUG] Total Execution Time: {:.2} us",
-        started.elapsed().as_secs_f64() * 1_000_000.0
-    ));
+fn debug_timing(command: &'static str, started: Instant) {
+    rxd_dex::profile::report(command, started.elapsed());
 }
 
 /// Runs the parsed command.
@@ -108,6 +105,8 @@ fn run_command(
     archive_policy: apk::ArchivePolicy,
     started: Instant,
 ) -> Result<i32> {
+    rxd_dex::profile::enable(command.debug());
+    let command_name = command.name();
     // Only a member lookup has a verdict of its own (one hit, none, several); every
     // other command either produced its payload or failed.
     let mut status = 0;
@@ -115,7 +114,7 @@ fn run_command(
         Command::Xref(args) => {
             let query = args.query()?;
             let scan_started = Instant::now();
-            let mut hits = apk::find_reference_hits_with_policy(
+            let hits = apk::find_reference_hits_with_policy(
                 &args.apk_path,
                 archive_policy,
                 &query,
@@ -129,7 +128,6 @@ fn run_command(
             // what keeps it off the main thread.
             #[cfg(feature = "mcp")]
             crate::query::check_records(hits.len())?;
-            hits.par_sort_unstable();
             let sorted = scan_started.elapsed();
             // Assembling the payload line by line: a pre-sized buffer measured no faster
             // than letting the String grow (macOS's allocator re-extends the large block in
@@ -140,17 +138,14 @@ fn run_command(
                 args.query_json(),
             )?;
             for hit in &hits {
-                append_json(
+                push_record(
                     &mut payload,
-                    &data_record(
-                        "reference",
-                        json!({
-                            "entry":hit.dex_name,
-                            "class":hit.member.split_once("->").map(|(class, _)| class),
-                            "member":hit.member,
-                            "matched":hit.matched,
-                        }),
-                    ),
+                    "reference",
+                    &[
+                        ("entry", Field::Text(hit.dex_name.as_ref())),
+                        ("member", Field::Text(&hit.member)),
+                        ("matched", Field::Text(&hit.matched)),
+                    ],
                 )?;
             }
             finish_stream(&mut payload, hits.len())?;
@@ -165,9 +160,6 @@ fn run_command(
                 ));
             }
             emit(&payload, args.output_path())?;
-            if args.debug {
-                debug_timing(started);
-            }
         }
         Command::FieldsPlan(args) => {
             // Accept what a user types; the DEX carries descriptors.
@@ -204,9 +196,6 @@ fn run_command(
                 )?;
             }
             status = apk::lookup_status(lookup.definitions.len());
-            if args.debug {
-                debug_timing(started);
-            }
         }
         Command::MemberByIndex(args) => {
             let descriptor = query::format_class_name(&args.descriptor)?;
@@ -240,9 +229,6 @@ fn run_command(
             emit(&payload, args.output.as_deref())?;
             report_member_verdict(&lookup, name, index, &descriptor);
             status = apk::lookup_status(lookup.candidates.len());
-            if args.debug {
-                debug_timing(started);
-            }
         }
         Command::Classes(args) => {
             let filter = args.filter.as_deref().map(str::to_lowercase);
@@ -278,22 +264,34 @@ fn run_command(
             )?;
             // Keep the existing parallel, ordered chunk rendering for large class indexes.
             const RENDER_CHUNK: usize = 8192;
-            let pieces: Vec<(String, usize)> = classes.par_chunks(RENDER_CHUNK).map(|chunk| -> Result<_> {
-                let mut payload = String::with_capacity(chunk.len() * 256);
-                let mut records = 0;
-                for class in chunk {
-                    let name = class.java_name().replace('/', ".");
-                    if filter.as_ref().is_some_and(|pattern| !name.to_lowercase().contains(pattern)) {
-                        continue;
+            let pieces: Vec<(String, usize)> = classes
+                .par_chunks(RENDER_CHUNK)
+                .map(|chunk| -> Result<_> {
+                    let mut payload = String::with_capacity(chunk.len() * 256);
+                    let mut records = 0;
+                    // One reused buffer for the dotted name: the row itself carries only
+                    // the descriptor, so the dotted form is computed for `--filter` alone.
+                    let mut name = String::with_capacity(96);
+                    for class in chunk {
+                        if let Some(pattern) = filter.as_ref() {
+                            name.clear();
+                            for character in class.java_name().chars() {
+                                name.push(if character == '/' { '.' } else { character });
+                            }
+                            if !name.to_lowercase().contains(pattern) {
+                                continue;
+                            }
+                        }
+                        push_record(
+                            &mut payload,
+                            "class",
+                            &[("descriptor", Field::Text(&class.descriptor))],
+                        )?;
+                        records += 1;
                     }
-                    append_json(&mut payload, &data_record("class", json!({
-                        "entry":class.dex_name.as_ref(), "descriptor":class.descriptor,
-                        "name":name, "package":class.package(), "simple_name":class.simple_name(),
-                    })))?;
-                    records += 1;
-                }
-                Ok((payload, records))
-            }).collect::<Result<_>>()?;
+                    Ok((payload, records))
+                })
+                .collect::<Result<_>>()?;
             let records = pieces.iter().map(|(_, count)| count).sum();
             let mut summary = String::new();
             finish_stream(&mut summary, records)?;
@@ -333,21 +331,24 @@ fn run_command(
                 }),
             )?;
             for entry in &strings {
-                append_json(
+                push_record(
                     &mut payload,
-                    &data_record(
-                        "string",
-                        json!({
-                            "entry":entry.dex_name.as_ref(), "index":entry.index, "value":entry.value, "class":null,
-                        }),
-                    ),
+                    "string",
+                    &[
+                        ("entry", Field::Text(entry.dex_name.as_ref())),
+                        ("index", Field::Number(entry.index as u64)),
+                        ("value", Field::Text(&entry.value)),
+                    ],
                 )?;
             }
             finish_stream(&mut payload, strings.len())?;
             emit(&payload, args.output.as_deref())?;
         }
         Command::Entries(args) => {
-            let entries = apk::list_entries(&args.apk_path)?;
+            let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {
+                apk::list_entries(&args.apk_path)
+            })?;
+            rxd_dex::profile::count(rxd_dex::profile::Counter::Entries, entries.len() as u64);
             #[cfg(feature = "mcp")]
             crate::query::check_records(entries.len())?;
             let mut payload =
@@ -372,7 +373,9 @@ fn run_command(
         Command::Manifest(args) => {
             let data =
                 apk::read_entry_with_policy(&args.apk_path, archive_policy, "AndroidManifest.xml")?;
-            let xml = manifest::decode(&data)?;
+            let xml = rxd_dex::profile::measure(rxd_dex::profile::Stage::Manifest, || {
+                manifest::decode(&data)
+            })?;
             emit(&xml, args.output.as_deref())?;
         }
         Command::Getclass(args) => {
@@ -425,7 +428,6 @@ fn run_command(
                 };
                 if args.debug {
                     rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));
-                    debug_timing(started);
                     rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
                 }
                 let mut payload = String::with_capacity(source.len() + 256);
@@ -439,15 +441,69 @@ fn run_command(
             }
         }
     }
+    debug_timing(command_name, started);
     Ok(status)
 }
 
+/// A DEX data record. No DEX unit has a copy-only coordinate, so the envelope's six
+/// nullable navigation keys would be `null` on every row; they are omitted instead of
+/// repeated, and the header carries the stream identity once.
+/// One detail value written without a `serde_json::Value`.
+enum Field<'a> {
+    Text(&'a str),
+    Number(u64),
+}
+
+/// Append a JSON string literal, escaping exactly what JSON requires.
+fn push_json_string(out: &mut String, value: &str) {
+    out.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            control if (control as u32) < 0x20 => {
+                use std::fmt::Write as _;
+                let _ = write!(out, "\\u{:04x}", control as u32);
+            }
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+}
+
+/// Append one `{record, detail}` row straight into the payload. A large archive renders
+/// hundreds of thousands of rows, so building a `Value` per row only to serialize it is
+/// pure allocation; this writes the same bytes in place.
+fn push_record(payload: &mut String, kind: &str, fields: &[(&str, Field<'_>)]) -> Result<()> {
+    payload.push_str("{\"record\":");
+    push_json_string(payload, kind);
+    payload.push_str(",\"detail\":{");
+    for (index, (key, value)) in fields.iter().enumerate() {
+        if index > 0 {
+            payload.push(',');
+        }
+        push_json_string(payload, key);
+        payload.push(':');
+        match value {
+            Field::Text(text) => push_json_string(payload, text),
+            Field::Number(number) => payload.push_str(&number.to_string()),
+        }
+    }
+    payload.push_str("}}\n");
+    #[cfg(feature = "mcp")]
+    if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {
+        bail!("RESOURCE_LIMIT: query output byte budget exceeded");
+    }
+    Ok(())
+}
+
 fn data_record(kind: &str, detail: Value) -> Value {
-    record(
-        kind,
-        RecordMeta::default(),
-        detail.as_object().unwrap().clone(),
-    )
+    json!({"record": kind, "detail": detail})
 }
 
 fn append_json(payload: &mut String, value: &Value) -> Result<()> {
@@ -531,5 +587,79 @@ fn report_member_verdict(lookup: &apk::MemberLookup, kind: &str, index: u32, des
         count => eprintln!(
             "Error: {kind} index {index} of {descriptor} is declared {count} times; the rows above are the candidates"
         ),
+    }
+}
+
+#[cfg(test)]
+mod json_writer {
+    use super::*;
+
+    /// The hand-written writer must produce exactly the bytes `serde_json` would, for
+    /// every string a record can carry (entry names, descriptors, member names).
+    #[test]
+    fn json_string_writer_matches_serde_json() {
+        let mut cases = vec![
+            String::new(),
+            "plain".to_owned(),
+            "quote\"inside".to_owned(),
+            "back\\slash".to_owned(),
+            "tab\tnewline\ncr\r".to_owned(),
+            "bell\u{8}form\u{c}".to_owned(),
+            "low\u{1}controls\u{1f}".to_owned(),
+            "del\u{7f}keep".to_owned(),
+            "λ|🙂|世界".to_owned(),
+            "/slash/and;semicolon".to_owned(),
+            "line\u{2028}sep\u{2029}".to_owned(),
+            "classes|\"\n.dex".to_owned(),
+        ];
+        // Deterministic fuzz over the byte classes that matter for escaping.
+        let alphabet: Vec<char> = "\"\\/bfnrtu0123456789abcλ🙂\n\r\t\u{0}\u{1}\u{1f}\u{7f}\u{7e}"
+            .chars()
+            .collect();
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        for _ in 0..2_000 {
+            let mut next = || {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (seed >> 33) as usize
+            };
+            let len = next() % 24;
+            let mut value = String::new();
+            for _ in 0..len {
+                value.push(alphabet[next() % alphabet.len()]);
+            }
+            cases.push(value);
+        }
+        for case in cases {
+            let mut out = String::new();
+            push_json_string(&mut out, &case);
+            assert_eq!(
+                out,
+                serde_json::to_string(&case).unwrap(),
+                "escaped bytes differ for {case:?}"
+            );
+        }
+    }
+
+    /// A whole row parses back to the same JSON object the `Value` path produced.
+    #[test]
+    fn record_writer_matches_value_path() {
+        let mut out = String::new();
+        push_record(
+            &mut out,
+            "class",
+            &[
+                ("entry", Field::Text("classes|\"\n.dex")),
+                ("descriptor", Field::Text("La/a$a;")),
+                ("index", Field::Number(7)),
+            ],
+        )
+        .unwrap();
+        let row: Value = serde_json::from_str(out.trim_end()).unwrap();
+        let expected = data_record(
+            "class",
+            json!({"entry":"classes|\"\n.dex", "descriptor":"La/a$a;", "index":7}),
+        );
+        assert_eq!(row, expected);
+        assert_eq!(out.ends_with("}\n"), true);
     }
 }
