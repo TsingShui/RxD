@@ -1611,6 +1611,14 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
   font-size: 13px;
   line-height: 1.7;
 }
+.format-table a {
+  color: var(--ember-soft);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 90, 31, 0.6);
+}
+.format-table a:hover { color: var(--ember); text-decoration-color: var(--ember); }
 .format-table {
   width: 100%;
   margin-top: 24px;
