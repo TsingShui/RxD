@@ -1014,6 +1014,27 @@ h2 {
 }
 .page-hero h2 { margin-top: 26px; }
 .page-hero .lede { max-width: 66ch; }
+.showcase-slot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 44px;
+  padding: 26px 0;
+  border-block: 1px solid var(--ink-line);
+}
+.showcase-slot-label {
+  font: 400 10px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
+.showcase-slot-value {
+  font: 400 clamp(24px, 3vw, 38px)/1 var(--mono);
+  letter-spacing: -0.02em;
+  color: #777168;
+  text-align: right;
+}
 .page-hero .actions { margin-top: 28px; }
 .page-hero .hero-meta { margin-top: 26px; }
 .page-links {
@@ -1542,6 +1563,8 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
 
   .page-hero { padding: 56px 0 36px; }
   .page-hero h1 { font-size: clamp(34px, 8.6vw, 48px); }
+  .showcase-slot { flex-direction: column; gap: 12px; }
+  .showcase-slot-value { text-align: left; }
   .example-head { grid-template-columns: 40px minmax(0, 1fr); gap: 14px; }
   .example h2 { font-size: clamp(22px, 6.6vw, 30px); }
   .example-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; }
