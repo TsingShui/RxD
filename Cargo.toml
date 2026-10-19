@@ -10,7 +10,6 @@ publish = false
 [workspace]
 members = [
     "crates/rxd-core",
-    "crates/rxd-hook-gen",
     "crates/rxd-js",
     "crates/rxd-asar",
     "crates/rxd-html",
@@ -60,7 +59,7 @@ all-backends = [
 backend-js = ["dep:rxd-js", "dep:rayon"]
 backend-asar = ["dep:rxd-asar"]
 backend-html = ["dep:rxd-html"]
-backend-dex = ["dep:rxd-dex", "dep:rayon", "rxd-hook-gen/dex"]
+backend-dex = ["dep:rxd-dex", "dep:rayon"]
 backend-jvm = ["dep:rxd-jvm"]
 backend-dotnet = ["dep:rxd-dotnet"]
 backend-evm = ["dep:rxd-evm"]
@@ -69,11 +68,10 @@ backend-pyc = ["dep:rxd-pyc"]
 backend-kuna = []
 mcp = ["dep:rmcp", "dep:tokio", "dep:tokio-util", "dep:schemars", "dep:sha2", "dep:base64", "dep:rayon", "dep:toml_edit", "dep:windows-sys"]
 csharp-decompiler = ["backend-dotnet", "rxd-dotnet/csharp-decompiler"]
-bundled-kuna = ["backend-kuna", "rxd-core/runtime-bundle", "dep:rxd-kuna-cli", "rxd-hook-gen/kuna"]
+bundled-kuna = ["backend-kuna", "rxd-core/runtime-bundle", "dep:rxd-kuna-cli"]
 bundled-ilspy = ["backend-dotnet", "csharp-decompiler", "rxd-dotnet/bundled-ilspy"]
 
 [dependencies]
-rxd-hook-gen = { path = "crates/rxd-hook-gen", default-features = false, features = ["native", "web"] }
 toml_edit = { version = "=0.25.17", optional = true }
 rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"], optional = true }
 tokio = { version = "=1.53.2", features = ["rt-multi-thread", "io-std", "io-util", "sync", "process", "time", "signal"], optional = true }

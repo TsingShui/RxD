@@ -169,50 +169,6 @@ ordinary index/reference/manifest/member queries. Whole-class decompilation may 
 release measurements and approval; ordinary index/reference queries are not exempt.
 rasc schema-v1 byte comparisons are not used for the schema-v2 JSON protocol.
 
-## Offline Frida DEX hook
-
-`rxd hook-gen frida dex INPUT METHOD` accepts a full
-`Lpkg/Class;->name(PARAMS)RETURN`, or the mutually exclusive
-`INPUT --class CLASS --method-index N`. The index is the declaring class's DEX
-`method_ids` index, not a class-local ordinal or field slot. `--entry` selects an exact
-physical/DEX 041 logical entry. A separate immutable SHA-256 capture and bounded
-resolver are used; duplicate physical/logical/class definitions without a unique result
-exit 4 even if entries share a name, and not-found exits 3. Equivalent selectors
-generate identical source.
-
-Default JS has no import; `--lang ts` emits source with real bridge types; `--import`
-adds exactly one `import Java from "frida-java-bridge";` at the top and is ESM source,
-not an injectable compiled bundle. No bootstrap/API version is guessed. TS without an
-import uses an artifact-internal erased type-only module context and a mergeable
-ambient Java declaration; the body still uses lexical Java and can be combined with
-other fragments and a single caller import. It never loads a second bridge just for
-types. JS/TS expect the caller to provide a runtime Java environment.
-
-Real class/method names, exact parameter and return descriptors, static/instance/
-constructor, native-declared Java, arrays and Unicode/compiler names are preserved;
-abstract and `<clinit>` are explicitly unsupported. `$init` calls the captured original,
-not `$new`; static receivers use the class wrapper. Metadata filtering also checks the
-return type and fails on ambiguity instead of selecting an overload with the same
-arguments and a different return type. Leading-`$` aliases and the guarded `$find`
-factory for literal `class` are pinned to bridge 7.0.13; indistinguishable alias
-collisions exit 4, and a missing factory/dispatcher is an explicit setup failure. TS
-char/string/nullability, Int64 long, reference wrapper and bridge array mappings use
-actual declarations; long is not treated as a JS number.
-
-The template records schedule/wait, `Java.use`, overload and implementation
-begin/success separately; setup catch labels the stage and rethrows unchanged.
-Call/return/throw use non-throwing raw-value logging; receivers/results/exceptions are
-not converted or deeply expanded. Waiting does not mean `Java.use` started; process
-crashes cannot be caught by JS and logs are not guaranteed to arrive before a crash.
-The caller must verify class loader/bridge/ART hookability. A Java-layer native method
-does not imply JNI implementation discovery.
-
-Shared module E2E covers real DEX/APK selectors, duplicates, original names, types,
-budgets and immutable capture; offline JS/strict-TS/composition checks do not execute a
-hook. Shared limits and module-driver validation are in
-[devtools/hook-gen/README.md](../../devtools/hook-gen/README.md). This does not change
-existing `rxd dex` streaming output or claim a complete bytecode verifier.
-
 ## MCP projection
 
 `dex_get_class/entries/strings/findrefs/manifest/classes/fields_plan/member_by_index`

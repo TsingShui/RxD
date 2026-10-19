@@ -3354,7 +3354,6 @@ dependencies = [
  "rxd-dex",
  "rxd-dotnet",
  "rxd-evm",
- "rxd-hook-gen",
  "rxd-html",
  "rxd-js",
  "rxd-jvm",
@@ -3437,24 +3436,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
-]
-
-[[package]]
-name = "rxd-hook-gen"
-version = "0.1.0"
-dependencies = [
- "clap",
- "flate2",
- "libc",
- "object",
- "rxd-core",
- "rxd-dex",
- "rxd-kuna-cli",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "zip",
 ]
 
 [[package]]

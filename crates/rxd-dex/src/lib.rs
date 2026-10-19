@@ -3,7 +3,6 @@ pub mod apk;
 mod archive;
 mod bytes;
 mod dex;
-pub use dex::hooks;
 pub mod diag;
 mod emitter;
 pub mod manifest;

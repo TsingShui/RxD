@@ -702,59 +702,6 @@ conditions, trace an outer closure variable, and distinguish same-name bindings 
 different scopes, checking answers and evidence independently. Shorter output with
 lower task correctness is not acceptance.
 
-## Browser Web hook generation
-
-`rxd hook-gen web --target PATH` is separate from static `rxd js`/HTML analysis and
-does not need source or AST IDs. The selector is an explicit page-global property:
-ASCII identifier dot segments or JSON double-quoted bracket keys (Unicode/escapes
-supported). `window`/`self`/implicit global roots normalize to `globalThis`.
-`__proto__`/`constructor` are rejected; explicit `prototype` is allowed. Expressions,
-calls, eval, closures, ESM-private/private elements, guessing window bindings from
-same-name functions, and source/response rewriting are not accepted.
-
-Only JS is generated; default `--emit snippet` has no `--lang`/`--import`. `--emit
-extension` requires explicit repeatable `--match PATTERN` and `--out DIR`, producing a
-self-contained Manifest V3 extension with minimum Chrome/Chromium 111, static local
-JS, MAIN world, document_start, top frame/declared pages only, and no privileged API,
-background, UI or extra permissions. Match patterns support `<all_urls>` or
-http/https/file/ftp schemes, ASCII DNS/IPv4, `*`, `*.HOST`; file has an empty host.
-Ports, credentials, IPv6, Unicode hosts, whitespace and backslashes are rejected. No
-silent all-site request, install, signature, publication or browser launch.
-
-The descriptor-only path never executes getters to guess callability; the final target
-must be an own data callable property. Inherited final/accessor targets are
-unsupported. After descriptor/replacement checks it installs an apply-only Proxy with
-pre-captured `Reflect.apply`, preserving receiver/arguments; logging uses a
-pre-captured `console.log` to avoid recursion after hooking these APIs. It returns the
-raw result/Promise directly (not async, no then chain); catch logs and rethrows the
-original value; a logging-sink failure never replaces result/exception. There is no
-constructor trap: construction forwards but is not observed, and function identity is
-not guaranteed unchanged. Cached original references are not intercepted; snippets in
-separate local scopes may be composed, but repeated installation is not idempotent and
-there is no global registry.
-
-Lookup/replaceability/install have begin/success/failure phases. By default a missing
-target errors immediately; `--wait MS` only adds bounded generated polling with a
-monotonic deadline, success/error/timeout timer cleanup, no setter trap, and no promise
-that the first call after definition is captured. Generation validates only
-path/options; it cannot prove page presence, replaceability, site policy, intrinsics/
-Proxy assumptions or runtime Promise/exception semantics.
-
-Public generate returns complete artifacts with no write side effects. `publish_extension`
-re-validates the editable artifact's manifest subset, UTF-8 local JS references, names/
-permissions/budgets, then writes/syncs private sibling staging and performs an atomic
-no-clobber rename. Existing non-empty directories, files and final symlinks are not
-overwritten; a race winner is preserved. The parent must exist and be caller-controlled;
-parent symlinks are canonically resolved once (macOS `/tmp` supported), hostile
-ancestor renames are not defended, and power-loss durability is not guaranteed. Linux
-needs renameat2(RENAME_NOREPLACE), macOS renameatx_np(RENAME_EXCL), Windows
-no-replace MoveFileExW; other platforms fail explicitly. Publication revalidates
-structure/security, not arbitrary edited JS syntax/semantics; generated payloads are
-parsed separately by pinned Acorn offline E2E. Snippet stdout is only complete source;
-extension stdout is empty and stderr carries the receipt. Shared exit codes/budgets and
-strict MV3 gates are in [devtools/hook-gen/README.md](../../devtools/hook-gen/README.md).
-There is no browser/runtime hook execution evidence.
-
 ## MCP projection
 
 `js_outline/find/identifiers/calls/members/locate/refs/symbols/get` reuse existing

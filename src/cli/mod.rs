@@ -43,7 +43,6 @@ mod dex;
 mod dotnet;
 #[cfg(feature = "backend-evm")]
 mod evm;
-mod hook_gen;
 #[cfg(feature = "backend-html")]
 mod html;
 #[cfg(feature = "backend-js")]
@@ -71,11 +70,6 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Backend {
-    /// Generate offline Frida or browser hooks without executing inputs.
-    HookGen {
-        #[command(subcommand)]
-        command: hook_gen::Command,
-    },
     /// Install the embedded RxD skill for coding agents.
     Skill {
         #[command(subcommand)]
@@ -154,7 +148,6 @@ enum Backend {
 impl Cli {
     pub fn bypasses_worker(&self) -> bool {
         match self.backend {
-            Backend::HookGen { .. } => true,
             Backend::Skill { .. } => true,
             #[cfg(feature = "backend-dex")]
             Backend::Dex { .. } => true,
@@ -179,7 +172,6 @@ impl Cli {
         match &self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => false,
-            Backend::HookGen { .. } => false,
             Backend::Skill { .. } => false,
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => false,
@@ -207,7 +199,6 @@ impl Cli {
         match &self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => false,
-            Backend::HookGen { .. } => false,
             Backend::Skill { .. } => false,
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => false,
@@ -235,7 +226,6 @@ impl Cli {
         match self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => "mcp",
-            Backend::HookGen { .. } => "hook-gen",
             Backend::Skill { .. } => "skill",
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => "kuna",
@@ -263,7 +253,6 @@ impl Cli {
         match &self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => "mcp",
-            Backend::HookGen { .. } => "hook-gen",
             Backend::Skill { .. } => "skill",
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => "kuna",
@@ -290,20 +279,6 @@ impl Cli {
 }
 pub fn execute(cli: Cli) -> Result<i32> {
     match cli.backend {
-        Backend::HookGen { command } => {
-            match hook_gen::run(
-                command,
-                hook_specs,
-                &mut std::io::stdout().lock(),
-                &mut std::io::stderr().lock(),
-            ) {
-                Ok(()) => Ok(0),
-                Err(error) => {
-                    eprintln!("{error}");
-                    Ok(error.exit_code())
-                }
-            }
-        }
         #[cfg(feature = "mcp")]
         Backend::Mcp { command } => crate::mcp::execute(command).map(|()| 0),
         Backend::Skill { command } => skill::execute(command).map(|()| 0),
@@ -465,22 +440,4 @@ fn write_output(bytes: &[u8], destination: Option<&Path>) -> Result<()> {
         io::stdout().lock().write_all(bytes)?;
     }
     Ok(())
-}
-
-// Hook generation uses explicit resources, not Kuna CLI's global environment setup.
-fn hook_specs() -> rxd_hook_gen::Result<Option<std::path::PathBuf>> {
-    #[cfg(feature = "bundled-kuna")]
-    {
-        kuna::hook_specs().map(Some).map_err(|error| {
-            rxd_hook_gen::Diagnostic::new(
-                rxd_hook_gen::ErrorKind::EngineUnavailable,
-                rxd_hook_gen::Stage::Analysis,
-                error.to_string(),
-            )
-        })
-    }
-    #[cfg(not(feature = "bundled-kuna"))]
-    {
-        Ok(None)
-    }
 }

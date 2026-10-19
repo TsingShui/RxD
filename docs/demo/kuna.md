@@ -50,47 +50,6 @@ a specs cache; an explicitly selected external console keeps upstream handling.
 `scripts/check-kuna-latest.py` compares the gitlink with upstream formal tags, so a new
 tag requires an explicit reviewed upgrade rather than a build-time update.
 
-## Offline native Frida source
-
-```sh
-# Plain name or explicit hexadecimal static VMA; never a file offset/runtime pointer.
-target/release/rxd hook-gen frida native ./libexample.so observe --module libexample.so > target/native.js
-target/release/rxd hook-gen frida native ./app 0x402000 --main-module --lang ts > target/native.ts
-```
-
-Known entries support cheap JS/raw API-typed TS without Kuna. Only `bundled-kuna` enables
-linked discovery/selected TS semantic analysis; `backend-kuna` alone does not link it.
-The adapter lazily prepares explicit specs for discovery or linked TS; it never starts a
-Java bridge or another process. Missing required resources/engine fail explicitly rather
-than fabricating entry types. The default module is derived from the basename/main
-executable; verify it against the intended live module.
-
-Accepted mapping: linked little-endian ELF32/64, PE32/PE32+, thin Mach-O32/64 on
-ia32/x64/ARM32/arm64 with supported subtype/mapping; not every combination has an
-independent fixture. ELF uses header-backed PT_LOAD/load bias, PE image-base/RVA, and
-Mach-O actual segment coordinates; ARM/Thumb mode is retained. Relocatable, universal,
-big-endian and unsupported subtypes (including arm64e) are rejected. Structured signature
-information is debug-derived/inferred/unknown, never authoritative merely because it
-type-checks. Supported GP integers/pointers use real conversions; 64-bit stays
-Int64/UInt64, pointers are not dereferenced, and unsupported ABI/storage/float/vector/
-aggregate/variadic cases remain raw/unavailable. Module/target/attach logs and runtime
-guards do not prove live identity, ABI or attach success. No analyzed input/generated hook/
-Frida/device executes. Budgets are finite; bootstrap/listing checks are cooperative, not
-hard preemption or kernel RSS enforcement.
-
-Build the actual module driver with explicitly prepared resources:
-
-```sh
-cargo build --release -p rxd-hook-gen --no-default-features --features native,kuna --example module-driver
-RXD_HOOK_TEST_SPECS=/absolute/path/to/prepared/specs target/release/examples/module-driver \
-  frida native ./libexample.so observe --lang ts > target/native.ts
-node devtools/hook-gen/validate.mjs ts target/native.ts
-```
-
-This measures a fresh module-driver process, not product CLI startup or runtime hooks.
-See the [native design](../design/external-tools-design.md#offline-native-frida-hook) and
-[offline validation pins](../../devtools/hook-gen/README.md).
-
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full

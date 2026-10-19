@@ -66,40 +66,6 @@ null because a string need not belong to a class. `fields-plan` is one
 layout. The old rasc pipe-delimited output and `fields-plan/v1` label are removed.
 `get-class --members` comment tables, Java text and Manifest XML remain unchanged.
 
-## Offline Frida method template
-
-```sh
-# METHOD needs the declaring class and complete parameter/return descriptors.
-target/release/rxd hook-gen frida dex /path/to/app.apk \
-  'Lcom/example/Main;->check([ILjava/lang/String;)Z' > target/check.js
-
-# The equivalent index is the supplied DEX method_ids index, not a class-local slot.
-target/release/rxd hook-gen frida dex /path/to/app.apk \
-  --class com.example.Main --method-index 339 --entry classes.dex --lang ts --import > target/check.ts
-```
-
-Replace the example selector with a real member. Missing exits 3, ambiguity 4,
-arguments 2, input/resource/unsupported 1; failure emits no source. Default output has no
-runtime import; `--import` is DEX-only and emits ESM source, not a compiled/injected
-bundle. TS can be checked offline against pinned bridge/Gum declarations; no-import TS
-uses erased module/declarations without loading a bridge, and the caller supplies runtime
-Java. Constructors use `$init` (the original), not `$new`; abstract/`<clinit>` are
-rejected. Leading-`$` and literal `class` compatibility is pinned to bridge 7.0.13, with
-explicit alias-collision failures. Stage logs are generated statements and do not prove
-runtime class-loader/ART hookability or pre-crash delivery. Inputs, Frida, devices and
-hooks are never executed. Module development does not build the whole CLI:
-
-```sh
-npm ci --prefix devtools/hook-gen --offline --ignore-scripts --no-audit --no-fund
-cargo test -p rxd-hook-gen --no-default-features --features dex --test dex
-cargo run --release -p rxd-hook-gen --no-default-features --features dex --example module-driver -- \
-  frida dex /path/to/classes.dex 'Lcom/example/Main;->check()Z' --lang ts > target/check.ts
-node devtools/hook-gen/validate.mjs ts target/check.ts
-```
-
-The module driver shares the CLI argument layer but its process timing is not full CLI
-latency. See the [DEX hook contract](../design/dex-design.md#offline-frida-dex-hook).
-
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full

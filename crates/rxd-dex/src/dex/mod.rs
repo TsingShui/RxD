@@ -10,7 +10,6 @@
 
 pub(crate) mod container;
 mod filter;
-pub mod hooks;
 pub(crate) mod members;
 mod mutf8;
 mod opcodes;

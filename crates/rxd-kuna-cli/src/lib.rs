@@ -10,8 +10,6 @@
 
 include!(concat!(env!("OUT_DIR"), "/cli.rs"));
 
-pub mod hook;
-
 struct CapturedOutput {
     bytes: Vec<u8>,
     limit: Option<usize>,

@@ -1,8 +1,3 @@
-#[cfg(feature = "bundled-kuna")]
-pub(crate) fn hook_specs() -> rxd_core::bundle::Result<std::path::PathBuf> {
-    bundled::hook_specs()
-}
-
 #[cfg(all(feature = "mcp", feature = "bundled-kuna"))]
 pub(crate) fn run_mcp_captured(
     args: Vec<String>,
@@ -78,11 +73,6 @@ mod bundled {
         let mut argv = vec!["kuna".to_owned()];
         argv.extend(args);
         Ok(rxd_kuna_cli::run_captured_bounded(argv, limit)?)
-    }
-
-    pub(super) fn hook_specs() -> Result<std::path::PathBuf> {
-        let manifest: Manifest = serde_json::from_str(embed::MANIFEST)?;
-        Ok(materialize("rxd-kuna", embed::DATA, embed::TARGET, &manifest)?.join("specs"))
     }
 
     fn emit(bytes: &[u8]) -> Result<i32> {
