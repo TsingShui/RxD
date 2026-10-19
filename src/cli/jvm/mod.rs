@@ -23,6 +23,9 @@ pub enum Command {
     /// List the entries an archive holds, in central-directory order.
     Entries {
         input: PathBuf,
+        /// Case-insensitive substring over the entry name.
+        #[arg(short, long)]
+        filter: Option<String>,
         #[command(flatten)]
         options: Options,
     },
@@ -57,8 +60,9 @@ pub enum Command {
         /// `Lclass;->name(proto)`: the `at` a `methods` row prints.
         #[arg(long)]
         at: String,
+        /// Print the original instruction listing instead of reconstructed source.
         #[arg(long)]
-        bytecode: bool,
+        raw: bool,
         #[command(flatten)]
         options: Options,
     },
@@ -80,7 +84,7 @@ pub enum Command {
         #[arg(long)]
         class: Option<String>,
         /// Only strings containing this text, matched case-insensitively.
-        #[arg(long)]
+        #[arg(short, long)]
         filter: Option<String>,
         #[command(flatten)]
         options: Options,
@@ -376,7 +380,12 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
-    if let Command::Entries { input, options } = command {
+    if let Command::Entries {
+        input,
+        options,
+        filter,
+    } = command
+    {
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
         let mut output = Vec::new();
@@ -396,7 +405,14 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             limits.output_bytes,
         )?;
         let mut records = 0usize;
+        let pattern = filter.map(|value| value.to_lowercase());
         for entry in &input.entries {
+            if pattern
+                .as_ref()
+                .is_some_and(|pattern| !entry.name.to_lowercase().contains(pattern))
+            {
+                continue;
+            }
             let compression = match entry.compression {
                 0 => "stored",
                 8 => "deflated",
@@ -472,12 +488,12 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         Command::Get {
             input,
             at,
-            bytecode,
+            raw,
             options,
         } => (
             input,
             options,
-            Some((at, bytecode)),
+            Some((at, raw)),
             None,
             None,
             Listing::Classes,

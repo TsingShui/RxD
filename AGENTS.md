@@ -190,6 +190,18 @@ mandatory.
 correctness, identities and resource budgets; EVM measurements are
 informational unless a concrete regression is being investigated.
 
+## Query Surface
+
+Every listing command takes `-f/--filter`: a case-insensitive substring over the value
+the row is named by (class, method or field name, or the literal). Backend-specific
+exact selectors sit next to it and narrow the same listing (`--class`, `--type`,
+`--method`), and `--at` is the only way to select a row that already exists. Two
+spellings for the same question are a defect, not a preference.
+
+Original instructions versus reconstructed source is one flag, `--raw`, on every
+backend that can emit both; `--bytecode`, `--il` and future spellings are not separate
+flags.
+
 ## Coding Style & Naming Conventions
 
 Use `rustfmt`, four-space indentation, `snake_case` functions/modules, and

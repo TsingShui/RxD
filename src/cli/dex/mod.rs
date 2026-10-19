@@ -340,9 +340,21 @@ fn run_command(
             rxd_dex::profile::count(rxd_dex::profile::Counter::Entries, entries.len() as u64);
             #[cfg(feature = "mcp")]
             crate::query::check_records(entries.len())?;
-            let mut payload =
-                stream_header("entries", std::slice::from_ref(&args.apk_path), json!({}))?;
+            let mut payload = stream_header(
+                "entries",
+                std::slice::from_ref(&args.apk_path),
+                json!({"filter":args.filter}),
+            )?;
+            let pattern = args.filter.as_deref().map(str::to_lowercase);
+            let mut listed = 0usize;
             for entry in &entries {
+                if pattern
+                    .as_ref()
+                    .is_some_and(|pattern| !entry.name.to_lowercase().contains(pattern))
+                {
+                    continue;
+                }
+                listed += 1;
                 append_json(
                     &mut payload,
                     &data_record(
@@ -356,7 +368,7 @@ fn run_command(
                     ),
                 )?;
             }
-            finish_stream(&mut payload, entries.len())?;
+            finish_stream(&mut payload, listed)?;
             emit(&payload, args.output.as_deref())?;
         }
         Command::Manifest(args) => {

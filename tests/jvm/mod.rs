@@ -311,7 +311,7 @@ fn jvm_stored_and_deflated_jars_preserve_class_content_ids_and_original_bytecode
         java.stdout,
         b"public static int add(int left, int right)\n{\n    return (left + right);\n}\n"
     );
-    let raw = run(&["get-method", "--at", &id, "--bytecode"], &class);
+    let raw = run(&["get-method", "--at", &id, "--raw"], &class);
     success(&raw);
     let record: Value = serde_json::from_slice(&raw.stdout).unwrap();
     assert_record(&record);
@@ -362,7 +362,7 @@ fn jvm_stored_and_deflated_jars_preserve_class_content_ids_and_original_bytecode
             output.stdout,
             run(&["get-method", "--at", &id], &class).stdout
         );
-        let raw = run(&["get-method", "--at", &id, "--bytecode"], &path);
+        let raw = run(&["get-method", "--at", &id, "--raw"], &path);
         success(&raw);
         let jar: Value = serde_json::from_slice(&raw.stdout).unwrap();
         assert_record(&jar);
@@ -425,7 +425,7 @@ fn jvm_modern_dynamic_bytecode_remains_extractable_without_guessed_java() {
     let path = input("fixture/ModernFixture.class");
     for name in ["concat", "lambda"] {
         let id = method(&path, name);
-        let raw = run(&["get-method", "--at", &id, "--bytecode"], &path);
+        let raw = run(&["get-method", "--at", &id, "--raw"], &path);
         success(&raw);
         let record: Value = serde_json::from_slice(&raw.stdout).unwrap();
         assert!(
@@ -443,7 +443,7 @@ fn jvm_modern_dynamic_bytecode_remains_extractable_without_guessed_java() {
     }
     let path = input("fixture/InterfaceSuperFixture.class");
     let id = method(&path, "call");
-    success(&run(&["get-method", "--at", &id, "--bytecode"], &path));
+    success(&run(&["get-method", "--at", &id, "--raw"], &path));
     failure(
         run(&["get-method", "--at", &id], &path),
         1,

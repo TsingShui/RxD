@@ -80,6 +80,48 @@ pub const MAX_WORK_UNITS: usize = 1_000_000;
 /// Bytes one command may print or write: 32 MiB.
 pub const MAX_OUTPUT_BYTES: usize = 32 << 20;
 
+/// The resource budget every backend runs under.
+///
+/// One table for the whole tool: a backend projects it onto its own `Limits` type
+/// instead of restating the numbers, so a ceiling is changed in exactly one place.
+#[derive(Clone, Copy, Debug)]
+pub struct Budget {
+    /// One input file.
+    pub input_bytes: usize,
+    /// One archive entry (a DEX entry, a class file, an embedded resource).
+    pub entry_bytes: usize,
+    /// Decoded metadata one analysis may hold.
+    pub metadata_bytes: usize,
+    /// Physical archive entries.
+    pub entries: usize,
+    /// Entities one analysis may enumerate (types, methods, strings).
+    pub entities: usize,
+    /// Instructions one method may decode to.
+    pub instructions: usize,
+    /// Work units one query may spend.
+    pub work: usize,
+    /// Records one command may print.
+    pub records: usize,
+    /// Bytes one command may print or write.
+    pub output_bytes: usize,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self {
+            input_bytes: MAX_INPUT_BYTES,
+            entry_bytes: MAX_ENTRY_BYTES,
+            metadata_bytes: MAX_METADATA_BYTES,
+            entries: MAX_ARCHIVE_ENTRIES,
+            entities: 100_000,
+            instructions: 100_000,
+            work: MAX_WORK_UNITS,
+            records: 100_000,
+            output_bytes: MAX_OUTPUT_BYTES,
+        }
+    }
+}
+
 /// Content spans are 32-bit, so no backend can address an input at or above 4 GiB.
 /// This is a structural limit of the formats, not a policy budget.
 pub const MAX_SPAN_BYTES: usize = u32::MAX as usize;

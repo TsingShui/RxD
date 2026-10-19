@@ -3409,6 +3409,7 @@ dependencies = [
  "memmap2",
  "radguard",
  "rayon",
+ "rxd-core",
 ]
 
 [[package]]

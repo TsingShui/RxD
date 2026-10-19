@@ -378,15 +378,14 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
+        let budget = rxd_core::Budget::default();
         Self {
-            // The same shared ceilings DEX runs under, so one budget policy covers the
-            // formats instead of one per backend.
-            input_bytes: rxd_core::MAX_INPUT_BYTES,
-            class_bytes: rxd_core::MAX_ENTRY_BYTES,
-            expanded_bytes: rxd_core::MAX_METADATA_BYTES,
-            entries: rxd_core::MAX_ARCHIVE_ENTRIES,
-            work: rxd_core::MAX_WORK_UNITS,
-            output_bytes: rxd_core::MAX_OUTPUT_BYTES,
+            input_bytes: budget.input_bytes,
+            class_bytes: budget.entry_bytes,
+            expanded_bytes: budget.metadata_bytes,
+            entries: budget.entries,
+            work: budget.work,
+            output_bytes: budget.output_bytes,
         }
     }
 }

@@ -8,6 +8,7 @@ description = "Native APK and DEX analysis backend migrated from rasc"
 
 [dependencies]
 anyhow = "1.0"
+rxd-core = { path = "../rxd-core" }
 axmldecoder = "0.5"
 radguard = { path = "../../third_party/radguard" }
 memchr = "2.7"

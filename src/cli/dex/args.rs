@@ -140,7 +140,7 @@ pub struct MemberByIndexArgs {
 #[derive(Debug, Args)]
 pub struct StringsArgs {
     /// Only strings containing this text, ignoring case.
-    #[arg(long)]
+    #[arg(short, long)]
     pub filter: Option<String>,
     /// At most this many strings, counted in the order they are printed.
     #[arg(long)]
@@ -161,6 +161,9 @@ pub struct StringsArgs {
 
 #[derive(Debug, Args)]
 pub struct EntriesArgs {
+    /// Case-insensitive substring over the entry name.
+    #[arg(short, long)]
+    pub filter: Option<String>,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Print phase timings on stderr.
