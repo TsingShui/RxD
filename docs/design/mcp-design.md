@@ -128,6 +128,19 @@ success. `tools/list` exposes closed `inputSchema` and `outputSchema`, backend/c
 constraints. Catalog filtering uses CLI namespaces (`jar`, not `jvm`). Disabled tools
 cannot be called. Startup and catalog discovery do not load ILSpy or unpack Kuna specs.
 
+**The CLI is the single contract source.** A tool is exactly one analysis command:
+`<backend>_<command>`, and its schema and argv are reflected from the `clap` tree at
+runtime (`src/query/reflect.rs`), so a renamed or added flag cannot leave one surface
+behind. Only three things are MCP-specific: the path positional becomes `input`
+(`inputs` for `--apk` list commands), `-o/--output` becomes the artifact channel, and
+`--perf`/`--debug` are hidden. Every other flag appears verbatim with its help text as
+the property description: `dotnet_xref` takes `at`/`from`/`string`, `dex_get_class`
+takes `dalvik_class`, `dex_xref`/`jar_xref` take `kind` plus that kind's own arguments,
+and `--max-*` resource flags are ordinary arguments named after the flag. Naming is the
+flag spelling (`--max-input-bytes` → `max_input_bytes`), never a second vocabulary.
+Process-wide budgets still bound every call: a request may ask for a lower limit, never a
+higher one, and the server ceiling is applied to the argv it builds.
+
 | Backend | Analysis tools |
 | --- | --- |
 | js | outline, find, identifiers, calls, members, locate, xref, symbols, get |
@@ -197,9 +210,8 @@ HTML `html_list` captures one regular immutable file for a path or file target. 
 `lexical_naive_v1` records are not a DOM or browser-complete parse; no page code executes
 and no external resources load. Header/records/summary retain CLI values and order with
 logical paths restored (not byte-identical JSONL). Filters `kind/tag/attr/within/depth`
-map to CLI flags. Lower-only `input_bytes`, `records`, `output_bytes`, `ast_depth` map to
-`--max-input-bytes`, `--max-records`, `--max-output-bytes`, `--max-depth` (lexical
-nesting, distinct from selection `depth`). `html_extract` reuses backend validation,
+map to the CLI flags of the same name; resource flags are the CLI's own (`max_input_bytes`,
+`max_records`, `max_output_bytes`, `max_depth`). `html_extract` reuses backend validation,
 selection, receipt and artifact identity: it returns the original receipt with
 `detail.path: null` plus `child_target`; `include_bytes: true` adds `bytes_base64` and
 omission avoids the copy. The child owns the exact selected bytes independently of parent
@@ -217,14 +229,14 @@ Content/format checks, not entry extension, select the next backend.
 
 ## Structured results and errors
 
-Ordinary JSONL becomes `{header, records, summary}`. Recursive JS becomes
-`{files: [{header, records, summary}], scan_summary}` including zero-file scans. Single
-JSON stays its original object. Stable outer navigation fields remain required and
-nullable under schema version 2. Record detail schemas are closed and backend-specific.
-Original text is unchanged, including line endings; raw XML/Java is wrapped with
-`representation, source, complete, source_id` as appropriate. JS get uses its native
-source record (`detail.source`); instruction/C#/PYC results retain native fallback/
-completeness. JS isolated UTF-16 surrogate values project as
+Results are shaped generically from the captured stream, with no per-tool mapping:
+ordinary JSONL becomes `{header, records, summary}`, recursive JS becomes
+`{files: [{header, records, summary}], scan_summary}` including zero-file scans, a single
+JSON object is returned unchanged (a FETCH record or a whole-class document), and any
+other output (XML manifest, Java source, original text) is returned as `{text: "..."}`.
+Stable outer navigation fields remain required and nullable under schema version 2.
+Original text is unchanged, including line endings. JS get uses its native source record
+(`detail.source`); instruction/C#/PYC results retain native fallback/completeness. JS isolated UTF-16 surrogate values project as
 `{utf16_units: [integer, ...]}`; ordinary values remain strings. These code units preserve
 the original value without replacement.
 

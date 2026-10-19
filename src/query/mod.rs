@@ -9,6 +9,7 @@ mod kuna;
 #[cfg(feature = "bundled-kuna")]
 mod kuna_dto;
 mod lossless;
+mod reflect;
 mod schema;
 
 pub use catalog::{catalog, validate};
@@ -208,26 +209,6 @@ pub fn execute(
             ));
         }
     }
-    if let Some(limits) = arguments.get("limits").and_then(Value::as_object) {
-        for (key, limit) in [
-            ("input_bytes", &mut budgets.input_bytes),
-            ("output_bytes", &mut budgets.output_bytes),
-            ("records", &mut budgets.records),
-            ("entities", &mut budgets.entities),
-            ("work", &mut budgets.work),
-            ("instructions", &mut budgets.instructions),
-            ("ast_depth", &mut budgets.ast_depth),
-            ("semantic_nodes", &mut budgets.semantic_nodes),
-            ("states", &mut budgets.states),
-            ("stack_cells", &mut budgets.stack_cells),
-            ("reconstruction_work", &mut budgets.reconstruction_work),
-            ("values", &mut budgets.values),
-        ] {
-            if let Some(requested) = limits.get(key).and_then(Value::as_u64) {
-                *limit = (*limit).min(requested as usize);
-            }
-        }
-    }
     #[cfg(feature = "backend-evm")]
     if name.starts_with("evm_") {
         budgets.input_bytes = budgets.input_bytes.min(4 * 1024 * 1024);
@@ -315,7 +296,7 @@ pub fn execute(
         let mut candidates = if bytes.is_empty() {
             None
         } else {
-            Some(lift(name, &arguments, &bytes, budgets.records)?)
+            Some(reply(&bytes, budgets.records)?)
         };
         if let Some(candidates) = candidates.as_mut() {
             restore_paths(candidates, inputs);
@@ -342,7 +323,7 @@ pub fn execute(
             format!("analysis returned status {status}"),
         ));
     }
-    let mut structured = lift(name, &arguments, &bytes, budgets.records)?;
+    let mut structured = reply(&bytes, budgets.records)?;
     if structured.get("representation").is_some() {
         structured["source_id"] = inputs[0]
             .source_id
@@ -460,39 +441,21 @@ fn extract_asar(
     })
 }
 
-fn lift(
-    name: &str,
-    arguments: &Value,
-    bytes: &[u8],
-    record_limit: usize,
-) -> Result<Value, QueryError> {
-    if name == "dex_get_class"
-        && bytes.first() == Some(&b'{')
-        && let Ok(value) = lossless::parse(bytes)
-        && value.get("definitions").is_some()
+/// Shape a captured stdout stream without knowing which backend produced it: a stream
+/// keeps its header/records/summary rows, a single JSON result is returned unchanged,
+/// and source text (XML, Java) arrives as `text`.
+fn reply(bytes: &[u8], record_limit: usize) -> Result<Value, QueryError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| QueryError::new("INTERNAL_ERROR", error.to_string()))?;
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
+        return Ok(json!({"records": []}));
+    }
+    if trimmed.starts_with('{')
+        && let Ok(record) = lossless::parse(trimmed.as_bytes())
     {
-        return Ok(value);
-    }
-    if matches!(name, "dex_manifest" | "dex_get_class" | "jar_get_class") {
-        let source = std::str::from_utf8(bytes)
-            .map_err(|error| QueryError::new("INTERNAL_ERROR", error.to_string()))?;
-        return Ok(
-            json!({"representation": if name == "dex_manifest" { "xml" } else { "java" }, "source":source,"complete":true}),
-        );
-    }
-    if name == "jar_get_method" && !arguments["bytecode"].as_bool().unwrap_or(false) {
-        // Java FETCH can fall back to a complete instruction record.
-        if let Ok(record) = lossless::parse(bytes) {
-            return Ok(record);
-        }
-        let source = std::str::from_utf8(bytes)
-            .map_err(|error| QueryError::new("INTERNAL_ERROR", error.to_string()))?;
-        return Ok(json!({"representation":"java","source":source,"complete":true}));
-    }
-    if let Ok(record) = lossless::parse(bytes) {
-        if record["record"] == "scan_summary" {
-            return Ok(json!({"files":[],"scan_summary":record}));
-        }
+        // A single-object result (a FETCH record or a whole-class document) is returned
+        // unchanged; only multi-line streams need the header/records/summary shape.
         return Ok(record);
     }
     let mut rows = Vec::new();
@@ -501,12 +464,9 @@ fn lift(
         .split(|&byte| byte == b'\n')
         .filter(|line| !line.is_empty())
     {
-        let row: Value = lossless::parse(line).map_err(|error| {
-            QueryError::new(
-                "INTERNAL_ERROR",
-                format!("backend record is invalid: {error}"),
-            )
-        })?;
+        let Ok(row) = lossless::parse(line) else {
+            return Ok(json!({"text": text}));
+        };
         if !matches!(
             row["record"].as_str(),
             Some("header" | "summary" | "scan_summary")
@@ -544,10 +504,9 @@ fn lift(
         }
         return Ok(json!({"header":header,"records":rows,"summary":summary}));
     }
-    // Recursive JS scans end in a scan_summary after each file's full envelope.
     if let Some(scan_summary) = rows.pop_if(|row| row["record"] == "scan_summary") {
         let mut files = Vec::new();
-        let mut current = Vec::new();
+        let mut current: Vec<Value> = Vec::new();
         for row in rows {
             let ends = row["record"] == "summary";
             current.push(row);
@@ -559,13 +518,7 @@ fn lift(
         }
         return Ok(json!({"files":files,"scan_summary":scan_summary}));
     }
-    if bytes.is_empty() {
-        return Ok(json!({"candidates":[]}));
-    }
-    Err(QueryError::new(
-        "INTERNAL_ERROR",
-        "backend result does not match a complete declared query shape",
-    ))
+    Ok(json!({"records": rows}))
 }
 
 fn restore_paths(value: &mut Value, inputs: &[CapturedInput]) {
