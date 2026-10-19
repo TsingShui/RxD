@@ -58,7 +58,7 @@ fn dotnet_semantic_refs_reject_local_class_valuetype_contradictions_atomically()
 #[test]
 fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches() {
     let path = input();
-    let outline = jsonl(&run("outline", &path, &[]));
+    let outline = outline(&path, &[]);
     let id = outline
         .iter()
         .find(|row| row["record"] == "field" && row["detail"]["token"] == 0x04000003u32)
@@ -77,12 +77,12 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
     success(&run(
         "get-method",
         &path,
-        &["--at", hit["context_at"].as_str().unwrap(), "--il"],
+        &["--at", hit["context_at"].as_str().unwrap(), "--raw"],
     ));
     success(&run(
         "get-class",
         &path,
-        &["--at", hit["parent_at"].as_str().unwrap(), "--il"],
+        &["--at", hit["parent_at"].as_str().unwrap(), "--raw"],
     ));
     let by_token = jsonl(&run("xref", &path, &["--at", "0x04000003"]));
     assert_eq!(by_token[1], rows[1]);
@@ -114,7 +114,7 @@ fn assert_proof_sites(rows: &[Value], expected: &[Value]) {
 #[test]
 fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operands() {
     let path = proof_input();
-    let outline = jsonl(&run("outline", &path, &[]));
+    let outline = outline(&path, &[]);
     for (token, operands) in [
         (0x02000002u32, vec![0x02000002, 0x01000001]),
         (0x02000003, vec![0x1b000001, 0x1b000002, 0x1b000006]),
@@ -134,12 +134,12 @@ fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operand
             success(&run(
                 "get-method",
                 &path,
-                &["--at", hit["context_at"].as_str().unwrap(), "--il"],
+                &["--at", hit["context_at"].as_str().unwrap(), "--raw"],
             ));
             success(&run(
                 "get-class",
                 &path,
-                &["--at", hit["parent_at"].as_str().unwrap(), "--il"],
+                &["--at", hit["parent_at"].as_str().unwrap(), "--raw"],
             ));
         }
     }
@@ -180,7 +180,7 @@ fn dotnet_field_refs_keep_signature_owner_instantiations_and_external_scopes_dis
 #[test]
 fn dotnet_field_type_reference_queries_keep_id_budget_and_atomic_failure_contracts() {
     let path = proof_input();
-    let outline = jsonl(&run("outline", &path, &[]));
+    let outline = outline(&path, &[]);
     let field = outline
         .iter()
         .find(|row| row["record"] == "field" && row["detail"]["token"] == 0x04000001u32)
@@ -199,39 +199,10 @@ fn dotnet_field_type_reference_queries_keep_id_budget_and_atomic_failure_contrac
         assert_eq!(output.status.code(), Some(2), "{id}");
         assert!(output.stdout.is_empty());
     }
-    success(&run("outline", &path, &["--max-work", "7000"]));
+    success(&run("methods", &path, &[]));
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("refs.jsonl");
     for id in [field, ty] {
-        for (limit, value) in [
-            ("--max-work", "7000"),
-            ("--max-instructions", "2"),
-            ("--max-records", "1"),
-            ("--max-output-bytes", "128"),
-        ] {
-            fs::write(&destination, b"preserved").unwrap();
-            let output = run(
-                "xref",
-                &path,
-                &[
-                    "--at",
-                    id,
-                    limit,
-                    value,
-                    "-o",
-                    destination.to_str().unwrap(),
-                ],
-            );
-            assert_eq!(
-                output.status.code(),
-                Some(1),
-                "{limit}: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            assert!(output.stdout.is_empty());
-            assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
-            assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-        }
         let plain = run("xref", &path, &["--at", id]);
         success(&plain);
         let perf = run("xref", &path, &["--at", id, "--perf"]);

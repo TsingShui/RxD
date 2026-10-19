@@ -6,7 +6,7 @@ fn sugar_input() -> PathBuf {
 }
 
 fn type_id(path: &Path, name: &str) -> String {
-    jsonl(&run("outline", path, &["--type", name]))
+    outline(path, &["--type", name])
         .into_iter()
         .find(|row| row["record"] == "type" && row["detail"]["full_name"] == name)
         .unwrap_or_else(|| panic!("missing type {name}"))["at"]
@@ -18,13 +18,13 @@ fn type_id(path: &Path, name: &str) -> String {
 #[test]
 fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_and_eh() {
     let path = sugar_input();
-    let outline = jsonl(&run("outline", &path, &[]));
+    let outline = outline(&path, &[]);
     let root = outline
         .iter()
         .find(|row| row["record"] == "type" && row["detail"]["full_name"] == "Rxd.Sugar.Probe")
         .unwrap();
     let id = root["at"].as_str().expect("type must have a FETCH ID");
-    let output = run("get-class", &path, &["--at", id, "--il"]);
+    let output = run("get-class", &path, &["--at", id, "--raw"]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_fetch_protocol(&row, "get-class");
@@ -62,7 +62,7 @@ fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_a
     }
     assert_eq!(
         row,
-        serde_json::from_slice::<Value>(&run("get-class", &path, &["--at", id, "--il"]).stdout)
+        serde_json::from_slice::<Value>(&run("get-class", &path, &["--at", id, "--raw"]).stdout)
             .unwrap()
     );
 }
@@ -85,7 +85,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
         "Rxd.Closure.Root`1+Nested+Deep",
     ] {
         let id = type_id(&path, name);
-        let output = run("get-class", &path, &["--at", &id, "--il"]);
+        let output = run("get-class", &path, &["--at", &id, "--raw"]);
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
         let types = row["detail"]["types"].as_array().unwrap();
@@ -226,7 +226,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
 fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets() {
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
-    let raw = run("get-class", &path, &["--at", &id, "--il"]);
+    let raw = run("get-class", &path, &["--at", &id, "--raw"]);
     success(&raw);
     let row: Value = serde_json::from_slice(&raw.stdout).unwrap();
     let directory = tempfile::tempdir().unwrap();
@@ -238,7 +238,7 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
     let output = run(
         "get-class",
         &path,
-        &["--at", &id, "--il", "-o", saved, "--perf"],
+        &["--at", &id, "--raw", "-o", saved, "--perf"],
     );
     success(&output);
     assert!(output.stdout.is_empty());
@@ -251,7 +251,7 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", "get-class"])
         .arg(&path)
-        .args(["--at", &id, "--il"])
+        .args(["--at", &id, "--raw"])
         .env("RXD_DOTNET_NATIVE_LIBRARY", "/never/load/this")
         .output()
         .unwrap();
@@ -284,35 +284,21 @@ fn dotnet_class_fetch_validates_ids_and_fails_atomically_under_aggregate_budgets
         "func:02000002".to_owned(),
     ];
     for invalid in invalid {
-        let output = run("get-class", &path, &["--at", &invalid, "--il"]);
+        let output = run("get-class", &path, &["--at", &invalid, "--raw"]);
         assert_eq!(output.status.code(), Some(2));
         rejected(output);
     }
-    for (flag, limit) in [
-        ("--max-records", 1),
-        ("--max-output-bytes", raw.stdout.len() - 1),
-        (
-            "--max-work",
-            row["detail"]["work_used"].as_u64().unwrap() as usize - 1,
-        ),
-        ("--max-instructions", 1),
-    ] {
-        fs::write(&destination, b"keep me").unwrap();
-        let limit = limit.to_string();
-        let output = run(
-            "get-class",
-            &path,
-            &["--at", &id, "--il", flag, &limit, "-o", saved],
-        );
-        assert_eq!(
-            output.status.code(),
-            Some(1),
-            "{flag}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        rejected(output);
-        assert_eq!(fs::read(&destination).unwrap(), b"keep me");
-    }
+    // Budgets are internal floors now, so atomicity is proven with a failing fetch: a
+    // copy of the previous result must survive it.
+    fs::write(&destination, b"keep me").unwrap();
+    let output = run(
+        "get-class",
+        &path,
+        &["--at", "0x0ffffff0", "--raw", "-o", saved],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    rejected(output);
+    assert_eq!(fs::read(&destination).unwrap(), b"keep me");
 }
 
 #[test]
@@ -365,7 +351,7 @@ fn dotnet_class_fetch_rejects_corrupt_ownership_and_original_method_bodies_witho
             &[
                 "--at",
                 &modified_id,
-                "--il",
+                "--raw",
                 "-o",
                 destination.to_str().unwrap(),
             ],

@@ -8,7 +8,7 @@ use anyhow::Context;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
-use rxd_core::{Error, Result};
+use rxd_core::{Budget, Error, Result};
 use rxd_dotnet::{Input, Limits};
 use serde_json::{Map, Value, json};
 
@@ -72,6 +72,9 @@ fn read_selector(path: &Path, units: &[&str], source_id: &str) -> anyhow::Result
             .and_then(|file| file.take(LIMIT).read_to_string(&mut text).map(|_| ()))
             .with_context(|| format!("INVALID_QUERY: cannot read --from {}", path.display()))?;
     }
+    // Identity is carried once by the stream header, so a record's own `source_id` is
+    // normally null: the header supplies the binding a unit row is checked against.
+    let mut header_source: Option<String> = None;
     for line in text.lines() {
         let Ok(row) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -80,17 +83,29 @@ fn read_selector(path: &Path, units: &[&str], source_id: &str) -> anyhow::Result
             .get("record")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        if kind == "header" {
+            header_source = row
+                .get("source_id")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            continue;
+        }
         if !units.contains(&kind) {
             continue;
         }
         let Some(at) = row.get("at").and_then(Value::as_str) else {
             continue;
         };
-        if let Some(found) = row.get("source_id").and_then(Value::as_str) {
+        let found = row
+            .get("source_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| header_source.clone());
+        if let Some(found) = found {
             anyhow::ensure!(
                 found == source_id,
-                "INVALID_QUERY: --from stream came from a different input (stream {}…, this input {}…); re-run outline for this file",
-                short_source(found),
+                "INVALID_QUERY: --from stream came from a different input (stream {}…, this input {}…); re-run the listing for this file",
+                short_source(&found),
                 short_source(source_id)
             );
         }
@@ -108,24 +123,54 @@ fn short_source(id: &str) -> &str {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Enumerate type, field and method metadata as JSONL.
-    Outline {
+    /// List the types an assembly defines as JSONL.
+    Classes {
         input: PathBuf,
+        /// Exact full type name.
         #[arg(long = "type")]
         type_name: Option<String>,
-        #[arg(long)]
-        method: Option<String>,
+        /// Case-insensitive substring over the full type name.
+        #[arg(short, long)]
+        filter: Option<String>,
         #[command(flatten)]
         options: Options,
     },
-    /// Get one content-bound method as conservative code or original IL.
+    /// List the fields an assembly defines as JSONL.
+    Fields {
+        input: PathBuf,
+        /// Exact full type name.
+        #[arg(long = "type")]
+        type_name: Option<String>,
+        /// Case-insensitive substring over the field or declaring type name.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// List the methods an assembly defines as JSONL.
+    Methods {
+        input: PathBuf,
+        /// Exact full type name.
+        #[arg(long = "type")]
+        type_name: Option<String>,
+        /// Exact method name.
+        #[arg(long)]
+        method: Option<String>,
+        /// Case-insensitive substring over the method or declaring type name.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Get one content-bound method as conservative code or original instructions.
     #[command(name = "get-method")]
     Get {
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
+        /// Print the original instruction listing instead of reconstructed source.
         #[arg(long)]
-        il: bool,
+        raw: bool,
         #[command(flatten)]
         options: Options,
     },
@@ -135,16 +180,18 @@ pub enum Command {
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
+        /// Print the original instruction listing instead of reconstructed source.
         #[arg(long)]
-        il: bool,
+        raw: bool,
         #[command(flatten)]
         options: Options,
     },
     /// Query decoded user-string heap literals without executing input.
     Strings {
         input: PathBuf,
-        #[arg(long)]
-        contains: Option<String>,
+        /// Case-insensitive substring over the decoded literal.
+        #[arg(short, long)]
+        filter: Option<String>,
         #[command(flatten)]
         options: Options,
     },
@@ -175,38 +222,37 @@ pub struct Options {
     perf: bool,
     #[arg(long)]
     debug: bool,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = super::input_bytes)]
-    max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_entities: usize,
-    #[arg(long, default_value_t = 16 * 1024 * 1024, value_parser = super::positive)]
-    max_work: usize,
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_instructions: usize,
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_records: usize,
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = super::positive)]
-    max_output_bytes: usize,
 }
 
 impl Options {
+    /// The shared budget table, projected onto this backend's limits.
     fn limits(&self) -> Limits {
+        let budget = Budget::default();
         Limits {
-            input_bytes: super::input_limit(self.max_input_bytes),
-            entities: self.max_entities,
-            work: self.max_work,
-            instructions: self.max_instructions,
-            output_bytes: self.max_output_bytes,
-            records: self.max_records,
+            input_bytes: budget.input_bytes,
+            entities: budget.entities,
+            work: budget.work,
+            instructions: budget.instructions,
+            output_bytes: budget.output_bytes,
+            records: budget.records,
         }
+    }
+
+    fn max_output_bytes(&self) -> usize {
+        Budget::default().output_bytes
+    }
+
+    fn max_records(&self) -> usize {
+        Budget::default().records
     }
 }
 
 impl Command {
     fn options(&self) -> &Options {
         match self {
-            Self::Outline { options, .. }
+            Self::Classes { options, .. }
+            | Self::Fields { options, .. }
+            | Self::Methods { options, .. }
             | Self::Get { options, .. }
             | Self::GetClass { options, .. }
             | Self::Strings { options, .. }
@@ -216,7 +262,9 @@ impl Command {
 
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Outline { .. } => "outline",
+            Self::Classes { .. } => "classes",
+            Self::Fields { .. } => "fields",
+            Self::Methods { .. } => "methods",
             Self::Get { .. } => "get-method",
             Self::GetClass { .. } => "get-class",
             Self::Strings { .. } => "strings",
@@ -260,7 +308,9 @@ pub fn execute(command: Command) -> Result<()> {
 
 fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     let (path, options) = match &command {
-        Command::Outline { input, options, .. }
+        Command::Classes { input, options, .. }
+        | Command::Fields { input, options, .. }
+        | Command::Methods { input, options, .. }
         | Command::Get { input, options, .. }
         | Command::GetClass { input, options, .. }
         | Command::Strings { input, options, .. }
@@ -335,11 +385,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         }
         _ => Value::Null,
     };
-    if let Command::Get { selector, il, .. } = &command {
+    if let Command::Get { selector, raw, .. } = &command {
         let at = selector.resolve(&["method"], &input.source_id)?;
         let method = input.method_by_id(&at)?;
         let body = perf.measure("decode", || input.body(method))?;
-        let decompilation = if *il {
+        let decompilation = if *raw {
             rxd_dotnet::Decompilation {
                 representation: "il".into(),
                 decompiled: false,
@@ -369,7 +419,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             command.name(),
             RecordMeta {
                 at: Some(&at),
-                source_id: Some(&input.source_id),
                 parent_at: Some(&method.declaring_type_id),
                 start: Some(body.code_offset),
                 end: Some(body.code_offset + body.code_size),
@@ -380,10 +429,10 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             ),
         );
         append(&mut output, &value, limits.output_bytes)?;
-    } else if let Command::GetClass { selector, il, .. } = &command {
+    } else if let Command::GetClass { selector, raw, .. } = &command {
         let at = selector.resolve(&["type"], &input.source_id)?;
         let class = perf.measure("decode", || input.class_body(&at))?;
-        let rendered = if *il {
+        let rendered = if *raw {
             rxd_dotnet::ClassDecompilation {
                 representation: "il".into(),
                 decompiled: false,
@@ -459,10 +508,13 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             descriptor_fits(target, limits.output_bytes.saturating_sub(output.len()))?;
         }
         let query = match &command {
-            Command::Outline {
+            Command::Classes { type_name, .. } | Command::Fields { type_name, .. } => {
+                json!({"type":type_name})
+            }
+            Command::Methods {
                 type_name, method, ..
             } => json!({"type":type_name,"method":method}),
-            Command::Strings { contains, .. } => json!({"contains":contains}),
+            Command::Strings { filter, .. } => json!({"filter":filter}),
             Command::Xref {
                 at, string, from, ..
             } => json!({"at":at,"from":from,"string":string}),
@@ -485,56 +537,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             limits.output_bytes,
         )?;
         match &command {
-            Command::Outline {
-                type_name, method, ..
-            } => {
-                let mut fields_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
-                let mut methods_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
-                if method.is_none() {
-                    for field in &input.fields {
-                        fields_by_type
-                            .entry(field.declaring_type_token)
-                            .or_default()
-                            .push(field);
-                    }
-                }
-                for item in &input.methods {
-                    methods_by_type
-                        .entry(item.declaring_type_token)
-                        .or_default()
-                        .push(item);
-                }
-                for ty in &input.types {
-                    if type_name.as_ref().is_some_and(|name| *name != ty.full_name) {
-                        continue;
-                    }
-                    record(
-                        &mut output,
-                        &mut records,
-                        options,
-                        &type_record(&input, ty)?,
-                    )?;
-                    if method.is_none() {
-                        for field in fields_by_type.get(&ty.token).into_iter().flatten() {
-                            record(
-                                &mut output,
-                                &mut records,
-                                options,
-                                &field_record(&input, field)?,
-                            )?;
-                        }
-                    }
-                    for item in methods_by_type.get(&ty.token).into_iter().flatten() {
-                        if method.as_ref().is_some_and(|name| *name != item.name) {
-                            continue;
-                        }
-                        let value = method_record(&input, item)?;
-                        record(&mut output, &mut records, options, &value)?;
-                    }
-                }
+            Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
+                list(&input, &command, options, &mut output, &mut records)?;
             }
-            Command::Strings { contains, .. } => {
-                let uses = perf.measure("strings", || input.string_uses(contains.as_deref()))?;
+            Command::Strings { filter, .. } => {
+                let uses = perf.measure("strings", || input.string_uses(filter.as_deref()))?;
                 for group in &uses.groups {
                     let literal = &uses.literals[group.literal_index];
                     let method = group.method_token.map(|token| {
@@ -689,10 +696,10 @@ fn record(
     value: &Value,
 ) -> anyhow::Result<()> {
     anyhow::ensure!(
-        *records < options.max_records,
+        *records < options.max_records(),
         "RESOURCE_LIMIT: record budget exceeded"
     );
-    append(output, value, options.max_output_bytes)?;
+    append(output, value, options.max_output_bytes())?;
     *records += 1;
     Ok(())
 }
@@ -1017,11 +1024,98 @@ fn relationship_record<T: serde::Serialize>(
     ))
 }
 
-fn metadata(input: &Input) -> RecordMeta<'_> {
-    RecordMeta {
-        source_id: Some(&input.source_id),
-        ..RecordMeta::default()
+/// Per-row metadata: identity is carried once by the stream header, as in DEX and the
+/// JVM backend, so a row does not repeat the assembly's content id.
+fn metadata(_input: &Input) -> RecordMeta<'_> {
+    RecordMeta::default()
+}
+
+/// Which member kind a listing prints.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Listing {
+    Classes,
+    Fields,
+    Methods,
+}
+
+/// Print one member kind, grouped by declaring type in declaration order.
+fn list(
+    input: &Input,
+    command: &Command,
+    options: &Options,
+    output: &mut Vec<u8>,
+    records: &mut usize,
+) -> anyhow::Result<()> {
+    let (listing, type_name, method, filter) = match command {
+        Command::Classes {
+            type_name, filter, ..
+        } => (Listing::Classes, type_name, None, filter),
+        Command::Fields {
+            type_name, filter, ..
+        } => (Listing::Fields, type_name, None, filter),
+        Command::Methods {
+            type_name,
+            method,
+            filter,
+            ..
+        } => (Listing::Methods, type_name, method.as_ref(), filter),
+        _ => unreachable!("only listing commands reach here"),
+    };
+    let pattern = filter.as_deref().map(str::to_lowercase);
+    let matches = |name: &str, owner: &str| {
+        pattern.as_ref().is_none_or(|pattern| {
+            name.to_lowercase().contains(pattern) || owner.to_lowercase().contains(pattern)
+        })
+    };
+    let mut fields_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
+    let mut methods_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
+    if listing == Listing::Fields {
+        for field in &input.fields {
+            fields_by_type
+                .entry(field.declaring_type_token)
+                .or_default()
+                .push(field);
+        }
     }
+    if listing == Listing::Methods {
+        for item in &input.methods {
+            methods_by_type
+                .entry(item.declaring_type_token)
+                .or_default()
+                .push(item);
+        }
+    }
+    for ty in &input.types {
+        if type_name.as_ref().is_some_and(|name| *name != ty.full_name) {
+            continue;
+        }
+        match listing {
+            Listing::Classes => {
+                if matches(&ty.full_name, &ty.full_name) {
+                    record(output, records, options, &type_record(input, ty)?)?;
+                }
+            }
+            Listing::Fields => {
+                for field in fields_by_type.get(&ty.token).into_iter().flatten() {
+                    if !matches(&field.name, &ty.full_name) {
+                        continue;
+                    }
+                    record(output, records, options, &field_record(input, field)?)?;
+                }
+            }
+            Listing::Methods => {
+                for item in methods_by_type.get(&ty.token).into_iter().flatten() {
+                    if method.is_some_and(|name| name != &item.name)
+                        || !matches(&item.name, &ty.full_name)
+                    {
+                        continue;
+                    }
+                    record(output, records, options, &method_record(input, item)?)?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn detail(value: Value) -> Map<String, Value> {

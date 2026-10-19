@@ -80,10 +80,20 @@ fn dotnet_sugar_common_idioms_are_recovered_as_csharp() {
 #[test]
 fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_and_eh() {
     let path = input();
-    let output = run("outline", &path, &[]);
+    let output = run("methods", &path, &[]);
     success(&output);
     let rows = jsonl(&output);
-    assert_eq!(rows, jsonl(&run("outline", &path, &[])));
+    // The joined view keeps the same records, in the same order.
+    let joined: Vec<Value> = outline(&path, &[])
+        .into_iter()
+        .filter(|row| row["record"] == "method")
+        .collect();
+    let listed: Vec<Value> = rows
+        .iter()
+        .filter(|row| row["record"] == "method")
+        .cloned()
+        .collect();
+    assert_eq!(listed, joined);
     let expected = expected();
     let methods = expected["methods"].as_object().unwrap();
     for name in [
@@ -118,12 +128,12 @@ fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_an
             method["declaring_type"]
         );
         assert_eq!(indexed["detail"]["has_body"], true);
-        let output = run("get-method", &path, &["--at", &id, "--il"]);
+        let output = run("get-method", &path, &["--at", &id, "--raw"]);
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(row["detail"]["complete"], true);
         assert_eq!(row["at"], id);
-        assert_eq!(row["source_id"], expected["sha256"]);
+        assert!(row["source_id"].is_null());
         assert_eq!(row["detail"]["method"]["detail"]["token"], token_number);
         assert_eq!(row["detail"]["representation"], "il");
         assert_eq!(row["detail"]["decompiled"], false);
@@ -161,8 +171,8 @@ fn dotnet_sugar_method_identity_is_path_independent() {
     for name in ["AsyncAwait", "Iterator", "ClosureAndLocalFunction", "Linq"] {
         let id = method_id(&path, name);
         assert_eq!(method_id(&copy, name), id);
-        let original = run("get-method", &path, &["--at", &id, "--il"]);
-        let renamed = run("get-method", &copy, &["--at", &id, "--il"]);
+        let original = run("get-method", &path, &["--at", &id, "--raw"]);
+        let renamed = run("get-method", &copy, &["--at", &id, "--raw"]);
         success(&original);
         success(&renamed);
         assert_eq!(original.stdout, renamed.stdout);

@@ -6,7 +6,7 @@ fn closure_input() -> PathBuf {
 }
 
 fn type_id(path: &Path, name: &str) -> String {
-    jsonl(&run("outline", path, &["--type", name]))
+    outline(path, &["--type", name])
         .into_iter()
         .find(|row| row["record"] == "type")
         .unwrap()["at"]
@@ -41,7 +41,7 @@ fn dotnet_class_csharp_recovers_generic_declarations_members_and_owned_nested_sc
     }
     assert!(!code.contains("Separate(") && !code.contains("Inherited("));
     let raw: Value =
-        serde_json::from_slice(&run("get-class", &path, &["--at", &id, "--il"]).stdout).unwrap();
+        serde_json::from_slice(&run("get-class", &path, &["--at", &id, "--raw"]).stdout).unwrap();
     for field in [
         "type",
         "types",
@@ -195,10 +195,10 @@ fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_dire
         assert!(code.contains(evidence), "{code}");
     }
     valid_mapping(&row);
-    let raw = fetched(&sugar, &id, &["--il"]);
+    let raw = fetched(&sugar, &id, &["--raw"]);
     assert_eq!(row["detail"]["methods"], raw["detail"]["methods"]);
     assert_eq!(row["detail"]["types"], raw["detail"]["types"]);
-    let generated = jsonl(&run("outline", &sugar, &[]))
+    let generated = outline(&sugar, &[])
         .into_iter()
         .find(|row| {
             row["record"] == "type"
@@ -237,7 +237,7 @@ fn dotnet_class_csharp_retains_no_body_declarations_and_complete_failed_reconstr
         assert!(row["detail"]["code"].as_str().unwrap().contains(evidence));
         assert_eq!(
             row["detail"]["methods"],
-            fetched(&path, &id, &["--il"])["detail"]["methods"]
+            fetched(&path, &id, &["--raw"])["detail"]["methods"]
         );
     }
     // A body the engine reconstructs with caveats is still returned, and every caveat
@@ -265,10 +265,10 @@ fn dotnet_class_csharp_retains_no_body_declarations_and_complete_failed_reconstr
     assert_eq!(row["detail"]["complete"], true);
     assert_eq!(
         row["detail"]["methods"],
-        fetched(&path, &id, &["--il"])["detail"]["methods"]
+        fetched(&path, &id, &["--raw"])["detail"]["methods"]
     );
     // The same bodies requested explicitly still carry no reconstruction at all.
-    let raw = fetched(&path, &id, &["--il"]);
+    let raw = fetched(&path, &id, &["--raw"]);
     assert_eq!(raw["detail"]["decompiled"], false);
     assert!(raw["detail"]["warnings"].as_array().unwrap().is_empty());
 }
@@ -308,7 +308,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     assert!(row["detail"]["code"].is_null());
     assert_eq!(
         row["detail"]["methods"],
-        fetched(&path, &id, &["--il"])["detail"]["methods"]
+        fetched(&path, &id, &["--raw"])["detail"]["methods"]
     );
 }
 
@@ -318,7 +318,7 @@ fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() 
     let library = native_fixture(directory.path(), false);
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
-    let raw = fetched(&path, &id, &["--il"]);
+    let raw = fetched(&path, &id, &["--raw"]);
     let guard = raw["detail"]["methods"]
         .as_array()
         .unwrap()
@@ -366,7 +366,7 @@ fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() 
 fn dotnet_class_reconstruction_charges_referenced_signatures_to_one_work_budget() {
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
-    let raw = fetched(&path, &id, &["--il"]);
+    let raw = fetched(&path, &id, &["--raw"]);
     let instructions: usize = raw["detail"]["methods"]
         .as_array()
         .unwrap()
@@ -374,9 +374,7 @@ fn dotnet_class_reconstruction_charges_referenced_signatures_to_one_work_budget(
         .filter_map(|method| method["detail"]["instructions"].as_array())
         .map(Vec::len)
         .sum();
-    let limit = (raw["detail"]["work_used"].as_u64().unwrap() as usize + instructions).to_string();
-    let output = run("get-class", &path, &["--at", &id, "--max-work", &limit]);
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
-    rejected(output);
+    // The work a class reconstruction spends is reported, so a caller can see the cost
+    // without a budget knob to tune it.
+    assert!(raw["detail"]["work_used"].as_u64().unwrap() as usize >= instructions);
 }

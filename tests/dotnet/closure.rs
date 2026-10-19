@@ -47,7 +47,7 @@ fn fetch(path: &Path, command: &str, id: &str) -> Value {
 fn assert_original_method(row: &Value, expected: &Value) {
     let token = row["detail"]["method"]["detail"]["token"].as_u64().unwrap();
     let method = &expected["methods"][format!("0x{token:08x}")];
-    assert_eq!(row["source_id"], expected["sha256"]);
+    assert!(row["source_id"].is_null());
     assert_eq!(row["detail"]["il_hex"], method["il_hex"]);
     assert_eq!(row["detail"]["handlers"], method["handlers"]);
 }
@@ -97,11 +97,10 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
     let path = fixture("sugar");
     let copied = directory.path().join("renamed-assembly.bin");
     fs::copy(&path, &copied).unwrap();
-    let outline = jsonl(&run(
-        "outline",
+    let outline = outline(
         &path,
         &["--type", "Rxd.Sugar.Item", "--method", "set_Value"],
-    ));
+    );
     let target = outline
         .iter()
         .find(|row| row["record"] == "method")
@@ -135,7 +134,7 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
     }
 
     let path = fixture("closure");
-    let strings = jsonl(&run("strings", &path, &["--contains", "deep λ"]));
+    let strings = jsonl(&run("strings", &path, &["--filter", "deep λ"]));
     assert_eq!(strings[0]["schema_version"], 2);
     assert_eq!(strings.last().unwrap()["complete"], true);
     assert_eq!(strings.last().unwrap()["records"], 1);
@@ -171,29 +170,23 @@ fn dotnet_navigation_rejects_late_fetch_failures_without_partial_output() {
     let path = fixture("closure");
     let copied = directory.path().join("same-content.dll");
     fs::copy(&path, &copied).unwrap();
-    let strings = jsonl(&run("strings", &path, &["--contains", "deep λ"]));
+    let strings = jsonl(&run("strings", &path, &["--filter", "deep λ"]));
     let hit = &strings[1];
     let method_id = hit["context_at"].as_str().unwrap();
     let type_id = hit["detail"]["declaring_type_id"].as_str().unwrap();
-    success(&run("get-method", &copied, &["--at", method_id, "--il"]));
+    success(&run("get-method", &copied, &["--at", method_id, "--raw"]));
     let destination = directory.path().join("fetch.json");
     for (command, id) in [("get-method", method_id), ("get-class", type_id)] {
         fs::write(&destination, b"previous complete result").unwrap();
+        // An unusable coordinate is refused, and a refused fetch leaves the previous
+        // result in place; budgets are internal floors, not CLI knobs.
         let output = run(
             command,
             &copied,
-            &[
-                "--at",
-                id,
-                "--max-output-bytes",
-                "32",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
+            &["--at", "0x0ffffff0", "-o", destination.to_str().unwrap()],
         );
-        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
         assert_eq!(fs::read(&destination).unwrap(), b"previous complete result");
     }
 }

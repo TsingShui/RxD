@@ -80,7 +80,7 @@ fn assert_fetch_protocol(row: &Value, command: &str) {
 #[test]
 fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
     let path = input();
-    let rows = jsonl(&run("outline", &path, &["--method", "Add"]));
+    let rows = outline(&path, &["--method", "Add"]);
     assert_eq!(rows[0]["schema_version"], 2);
     let header = rows[0].as_object().unwrap();
     assert_eq!(
@@ -118,7 +118,7 @@ fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
                 "start"
             ]
         );
-        assert_eq!(row["source_id"], expected()["sha256"]);
+        assert!(row["source_id"].is_null());
         assert!(row["start"].is_null() && row["end"].is_null());
         assert!(row["context_at"].is_null());
     }
@@ -127,7 +127,7 @@ fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
     let fetch = run(
         "get-method",
         &path,
-        &["--at", method["at"].as_str().unwrap(), "--il"],
+        &["--at", method["at"].as_str().unwrap(), "--raw"],
     );
     success(&fetch);
 }
@@ -136,19 +136,19 @@ fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
 fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_handlers() {
     let path = input();
     for name in ["Add", "Finally"] {
-        let rows = jsonl(&run("outline", &path, &["--method", name]));
+        let rows = outline(&path, &["--method", name]);
         let method = rows.iter().find(|row| row["record"] == "method").unwrap();
         let output = run(
             "get-method",
             &path,
-            &["--at", method["at"].as_str().unwrap(), "--il"],
+            &["--at", method["at"].as_str().unwrap(), "--raw"],
         );
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_fetch_protocol(&row, "get-method");
         assert_eq!(row["record"], "method_body");
         assert_eq!(row["at"], method["at"]);
-        assert_eq!(row["source_id"], expected()["sha256"]);
+        assert!(row["source_id"].is_null());
         assert!(row["context_at"].is_null());
         assert_eq!(row["parent_at"], method["parent_at"]);
         let detail = &row["detail"];
@@ -175,7 +175,7 @@ fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_han
 #[test]
 fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_methods() {
     let path = input();
-    let strings = jsonl(&run("strings", &path, &["--contains", "世界"]));
+    let strings = jsonl(&run("strings", &path, &["--filter", "世界"]));
     assert_eq!(strings[0]["schema_version"], 2);
     let literal = &strings[1];
     assert_eq!(literal["detail"]["value"], expected()["string"]);
@@ -198,7 +198,7 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
     let output = run(
         "get-method",
         &path,
-        &["--at", hit["context_at"].as_str().unwrap(), "--il"],
+        &["--at", hit["context_at"].as_str().unwrap(), "--raw"],
     );
     success(&output);
     let method: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -208,7 +208,7 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
         hit["end"].as_u64().unwrap() - hit["start"].as_u64().unwrap(),
         5
     );
-    let zero = jsonl(&run("strings", &path, &["--contains", "absent-literal"]));
+    let zero = jsonl(&run("strings", &path, &["--filter", "absent-literal"]));
     assert_eq!(zero.len(), 2);
     assert_eq!(zero[1]["records"], 0);
     assert_eq!(zero[1]["complete"], true);
@@ -222,6 +222,46 @@ fn expected() -> Value {
     serde_json::from_str(include_str!("../fixtures/dotnet/expected.json")).unwrap()
 }
 
+/// The per-object listings as one stream, the view `outline` used to print.
+///
+/// Tests assert on the members an assembly holds, not on which command produced a row,
+/// so this keeps them readable after the listing was split into three commands.
+fn outline(path: &Path, args: &[&str]) -> Vec<Value> {
+    let mut head: Vec<&str> = Vec::new();
+    let mut skip = false;
+    for arg in args {
+        if skip {
+            skip = false;
+            continue;
+        }
+        if *arg == "--method" {
+            skip = true;
+            continue;
+        }
+        head.push(arg);
+    }
+    // One header and one summary for the joined stream; each listing contributes its
+    // records only, in declaration order.
+    let mut rows = Vec::new();
+    let mut summary = Value::Null;
+    for (index, sub) in ["classes", "fields", "methods"].iter().enumerate() {
+        let sub_args: &[&str] = if *sub == "methods" { args } else { &head };
+        let mut listing = jsonl(&run(sub, path, sub_args));
+        summary = listing.pop().unwrap_or(Value::Null);
+        let header = listing.remove(0);
+        if index == 0 {
+            rows.push(header);
+        }
+        rows.append(&mut listing);
+    }
+    let total = rows.len() - 1;
+    if summary.is_object() {
+        summary["records"] = serde_json::json!(total);
+    }
+    rows.push(summary);
+    rows
+}
+
 fn run(command: &str, path: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", command])
@@ -232,7 +272,7 @@ fn run(command: &str, path: &Path, args: &[&str]) -> Output {
 }
 
 fn method_id(path: &Path, name: &str) -> String {
-    jsonl(&run("outline", path, &["--method", name]))
+    outline(path, &["--method", name])
         .into_iter()
         .find(|row| row["record"] == "method" && row["detail"]["name"] == name)
         .unwrap_or_else(|| panic!("missing method {name}"))["at"]
@@ -245,7 +285,7 @@ fn get(name: &str, raw: bool) -> Value {
     let path = input();
     let id = method_id(&path, name);
     let args = if raw {
-        vec!["--at", id.as_str(), "--il"]
+        vec!["--at", id.as_str(), "--raw"]
     } else {
         vec!["--at", id.as_str()]
     };
@@ -273,8 +313,8 @@ fn rejected(output: Output) {
 #[test]
 fn dotnet_outline_uses_deterministic_content_bound_ids_and_unicode_names() {
     let path = input();
-    let rows = jsonl(&run("outline", &path, &[]));
-    assert_eq!(rows, jsonl(&run("outline", &path, &[])));
+    let rows = outline(&path, &[]);
+    assert_eq!(rows, outline(&path, &[]));
     let methods: Vec<_> = rows.iter().filter(|v| v["record"] == "method").collect();
     assert_eq!(
         methods.len(),
@@ -287,21 +327,23 @@ fn dotnet_outline_uses_deterministic_content_bound_ids_and_unicode_names() {
         );
         assert_eq!(row["detail"]["has_body"], true);
         // The handle is a copy-only coordinate; content binding lives in the stream
-        // header and each record's source_id, not inside the handle.
+        // header, so a row does not repeat it.
         assert!(row["at"].as_str().unwrap().starts_with("0x"));
-        assert_eq!(row["source_id"], expected()["sha256"]);
+        assert!(row["source_id"].is_null());
     }
-    let filtered = jsonl(&run(
-        "outline",
-        &path,
-        &["--type", "Rxd.测试.Probe", "--method", "Add"],
-    ));
+    let filtered = outline(&path, &["--type", "Rxd.测试.Probe", "--method", "Add"]);
     assert_eq!(
         filtered.iter().filter(|v| v["record"] == "method").count(),
         1
     );
     assert_eq!(filtered[0]["query"]["type"], "Rxd.测试.Probe");
-    assert_eq!(filtered[0]["query"]["method"], "Add");
+    // The method filter only reaches the methods listing, so it shows up there.
+    let methods_only = jsonl(&run(
+        "methods",
+        &path,
+        &["--type", "Rxd.测试.Probe", "--method", "Add"],
+    ));
+    assert_eq!(methods_only[0]["query"]["method"], "Add");
     let directory = tempfile::tempdir().unwrap();
     let copy = directory.path().join("same-bytes.exe");
     fs::copy(&path, &copy).unwrap();
@@ -535,8 +577,8 @@ fn dotnet_runtime_missing_engine_degrades_and_other_commands_are_unchanged() {
         get("Finally", true)["detail"]["handlers"]
     );
     for (command, args) in [
-        ("get-method", vec!["--at", id.as_str(), "--il"]),
-        ("outline", vec![]),
+        ("get-method", vec!["--at", id.as_str(), "--raw"]),
+        ("methods", vec![]),
         ("strings", vec![]),
         ("xref", vec!["--at", "0x06000006"]),
     ] {
@@ -548,7 +590,7 @@ fn dotnet_runtime_missing_engine_degrades_and_other_commands_are_unchanged() {
 
 #[test]
 fn dotnet_strings_and_explicit_call_references_preserve_unicode_and_offsets() {
-    let strings = jsonl(&run("strings", &input(), &["--contains", "世界"]));
+    let strings = jsonl(&run("strings", &input(), &["--filter", "世界"]));
     let strings: Vec<_> = strings
         .iter()
         .filter(|row| row["record"] == "string")
@@ -577,7 +619,7 @@ fn dotnet_rejects_malformed_inputs_without_partial_stdout() {
     let bytes = fs::read(&original).unwrap();
     let malformed = directory.path().join("truncated.dll");
     fs::write(&malformed, &bytes[..100]).unwrap();
-    rejected(run("outline", &malformed, &[]));
+    rejected(run("methods", &malformed, &[]));
     rejected(run("get-method", &original, &["--at", "not-a-member-id"]));
     let bad_il = directory.path().join("invalid-opcode.dll");
     let mut bytes = fs::read(&original).unwrap();
@@ -587,7 +629,7 @@ fn dotnet_rejects_malformed_inputs_without_partial_stdout() {
     bytes[512 + rva - 0x2000 + 1 + 2] = 0xff;
     fs::write(&bad_il, bytes).unwrap();
     let invalid_id = method_id(&bad_il, "Add");
-    rejected(run("get-method", &bad_il, &["--at", &invalid_id, "--il"]));
+    rejected(run("get-method", &bad_il, &["--at", &invalid_id, "--raw"]));
 }
 
 #[test]
@@ -596,7 +638,7 @@ fn dotnet_records_explain_why_a_unit_is_not_csharp() {
     let id = method_id(&path, "Add");
 
     // An explicitly requested IL record is not a failure: neither reason field is set.
-    let il = run("get-method", &path, &["--at", &id, "--il"]);
+    let il = run("get-method", &path, &["--at", &id, "--raw"]);
     success(&il);
     let row: Value = serde_json::from_slice(&il.stdout).unwrap();
     assert_eq!(row["detail"]["representation"], "il");
@@ -617,7 +659,7 @@ fn dotnet_records_explain_why_a_unit_is_not_csharp() {
     }
 
     // Class members state that IL is the schema, not a failed reconstruction.
-    let outline = jsonl(&run("outline", &path, &[]));
+    let outline = outline(&path, &[]);
     let ty = outline
         .iter()
         .find(|row| {
@@ -647,7 +689,7 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
     let path = input();
     let at = method_id(&path, "Add");
     assert!(at.starts_with("0x"), "{at}");
-    let outline = run("outline", &path, &["--method", "Add"]);
+    let outline = run("methods", &path, &["--method", "Add"]);
     success(&outline);
 
     let directory = tempfile::tempdir().unwrap();
@@ -656,7 +698,7 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
     let fetched = run(
         "get-method",
         &path,
-        &["--from", stream.to_str().unwrap(), "--il"],
+        &["--from", stream.to_str().unwrap(), "--raw"],
     );
     success(&fetched);
     let row: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -665,7 +707,7 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["dotnet", "get-method"])
         .arg(&path)
-        .args(["--from", "-", "--il"])
+        .args(["--from", "-", "--raw"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -719,10 +761,10 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
 fn dotnet_coordinates_are_bare_metadata_tokens() {
     let path = input();
     for at in ["0x06000001", "06000001"] {
-        success(&run("get-method", &path, &["--at", at, "--il"]));
+        success(&run("get-method", &path, &["--at", at, "--raw"]));
     }
     for at in ["0600001", "0x060000010", "0x601", "not-a-token"] {
-        let out = run("get-method", &path, &["--at", at, "--il"]);
+        let out = run("get-method", &path, &["--at", at, "--raw"]);
         assert_eq!(out.status.code(), Some(2), "{at}");
         assert!(out.stdout.is_empty(), "{at} emitted partial stdout");
         assert!(
@@ -733,7 +775,7 @@ fn dotnet_coordinates_are_bare_metadata_tokens() {
     }
     // A leftover kind prefix is refused with the value that would work.
     for at in ["method:06000001", "token:0x06000001"] {
-        let out = run("get-method", &path, &["--at", at, "--il"]);
+        let out = run("get-method", &path, &["--at", at, "--raw"]);
         assert_eq!(out.status.code(), Some(2), "{at}");
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(stderr.contains("metadata token alone"), "{at}: {stderr}");
@@ -745,7 +787,7 @@ fn dotnet_coordinates_are_bare_metadata_tokens() {
 fn dotnet_outline_ends_a_closed_pipe_quietly() {
     let path = input();
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "outline"])
+        .args(["dotnet", "methods"])
         .arg(&path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -767,39 +809,35 @@ fn dotnet_outline_ends_a_closed_pipe_quietly() {
 }
 
 #[test]
-fn dotnet_input_entity_work_instruction_and_output_budgets_fail_atomically() {
+fn dotnet_budgets_are_internal_floors_not_cli_knobs() {
     let path = input();
-    let id = method_id(&path, "Effect");
+    // One budget table lives in rxd-core; no backend exposes a knob for it.
     for flag in [
         "--max-input-bytes",
         "--max-entities",
         "--max-work",
         "--max-records",
         "--max-output-bytes",
+        "--max-instructions",
     ] {
-        rejected(run("outline", &path, &[flag, "1"]));
+        let output = run("methods", &path, &[flag, "1"]);
+        assert_eq!(output.status.code(), Some(2), "{flag}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("unexpected argument"),
+            "{flag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
-    rejected(run(
-        "get-method",
-        &path,
-        &["--at", &id, "--max-instructions", "2"],
-    ));
-    rejected(run(
-        "get-method",
-        &path,
-        &["--at", &id, "--max-output-bytes", "1"],
-    ));
-    rejected(run("get-method", &path, &["--at", &id, "--max-work", "1"]));
-    // Empty EH sections still consume work. A valid chain with 5,001 sections
-    // must not bypass a 2,000-unit budget merely because most contain no clauses.
+    // Empty EH sections still cost work, which the internal budget accounts for: a valid
+    // chain of 5,000 sections is analysed instead of being rejected for its shape.
     let directory = tempfile::tempdir().unwrap();
     let chained = directory.path().join("empty-eh-chain.dll");
     fs::write(&chained, empty_exception_sections(5_000)).unwrap();
     let finally_id = method_id(&chained, "Finally");
-    rejected(run(
+    success(&run(
         "get-method",
         &chained,
-        &["--at", &finally_id, "--il", "--max-work", "2000"],
+        &["--at", &finally_id, "--raw"],
     ));
 }
 
@@ -811,11 +849,7 @@ fn dotnet_work_budget_counts_analysis_not_unreferenced_module_padding() {
     bytes.resize(1024 * 1024, 0);
     fs::write(&padded, bytes).unwrap();
     let id = method_id(&padded, "Add");
-    let output = run(
-        "get-method",
-        &padded,
-        &["--at", &id, "--max-work", "100000"],
-    );
+    let output = run("get-method", &padded, &["--at", &id]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     original_il(&row, "Add");
@@ -898,7 +932,7 @@ fn empty_exception_sections(count: usize) -> Vec<u8> {
 fn dotnet_repeated_attribute_targets_do_not_hide_an_invalid_parent_reference() {
     let bad =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/InvalidReference.dll");
-    let output = run("outline", &bad, &["--method", "Add"]);
+    let output = run("methods", &bad, &["--method", "Add"]);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));

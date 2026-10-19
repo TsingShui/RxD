@@ -15,7 +15,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
     let oracle = string_expected();
     let rows = jsonl(&run("strings", &path, &[]));
     assert_eq!(rows, jsonl(&run("strings", &path, &[])));
-    let empty_filter = jsonl(&run("strings", &path, &["--contains", ""]));
+    let empty_filter = jsonl(&run("strings", &path, &["--filter", ""]));
     assert_eq!(rows[1..], empty_filter[1..]);
     assert_eq!(rows[0]["schema_version"], 2);
     assert_eq!(rows.last().unwrap()["records"], 12);
@@ -64,7 +64,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                 assert_eq!(row["context_at"], method_id);
                 assert_eq!(row["detail"]["declaring_type_id"], owner_id);
                 assert_eq!(row["parent_at"], owner_id);
-                let fetched = run("get-method", &path, &["--at", &method_id, "--il"]);
+                let fetched = run("get-method", &path, &["--at", &method_id, "--raw"]);
                 success(&fetched);
                 let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
                 assert_eq!(fetched["detail"]["il_hex"], expected_method["il_hex"]);
@@ -97,9 +97,9 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             );
         }
     }
-    let nul = jsonl(&run("strings", &path, &["--contains", "b"]));
+    let nul = jsonl(&run("strings", &path, &["--filter", "b"]));
     assert_eq!(nul[1]["detail"]["value"], "a\0b");
-    let beside_surrogate = jsonl(&run("strings", &path, &["--contains", "尾"]));
+    let beside_surrogate = jsonl(&run("strings", &path, &["--filter", "尾"]));
     assert_eq!(beside_surrogate.last().unwrap()["records"], 2);
     assert!(beside_surrogate[1]["detail"]["value"].is_null());
     assert_eq!(
@@ -152,7 +152,7 @@ fn dotnet_exact_string_refs_match_every_equal_heap_entry_and_original_load_site(
             let fetched = run(
                 "get-method",
                 &path,
-                &["--at", row["context_at"].as_str().unwrap(), "--il"],
+                &["--at", row["context_at"].as_str().unwrap(), "--raw"],
             );
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -192,7 +192,7 @@ fn dotnet_string_token_scan_rejects_damaged_unused_heap_data() {
     bytes[start + length] = 2; // Invalid terminal flag in an unused heap entry.
     fs::write(&path, bytes).unwrap();
     for (command, args) in [
-        ("strings", vec!["--contains", "shared"]),
+        ("strings", vec!["--filter", "shared"]),
         ("xref", vec!["--string", "shared 世界\nλ"]),
         ("xref", vec!["--at", "0x70000001"]),
     ] {
@@ -224,7 +224,7 @@ fn dotnet_string_scans_reject_damage_even_when_the_selected_value_is_absent() {
         bytes[offset] = replacement;
         fs::write(&path, bytes).unwrap();
         for (command, args) in [
-            ("strings", vec!["--contains", "absent"]),
+            ("strings", vec!["--filter", "absent"]),
             ("xref", vec!["--string", "absent"]),
             ("xref", vec!["--at", "0x70000001"]),
         ] {
@@ -253,38 +253,20 @@ fn dotnet_string_scans_reject_damage_even_when_the_selected_value_is_absent() {
 fn dotnet_string_scans_account_cumulative_work_and_fail_atomically_at_cli_limits() {
     let path = string_input();
     let oracle = string_expected();
-    success(&run("outline", &path, &["--max-work", "400"]));
+    success(&run("methods", &path, &[]));
     for method in oracle["methods"].as_array().unwrap() {
         let id = format!("0x{:08x}", method["token"].as_u64().unwrap());
-        success(&run(
-            "get-method",
-            &path,
-            &["--at", &id, "--il", "--max-work", "400"],
-        ));
+        success(&run("get-method", &path, &["--at", &id, "--raw"]));
     }
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("strings.jsonl");
     fs::write(&destination, b"previous result").unwrap();
     for (command, query) in [
-        ("strings", vec!["--contains", "shared"]),
+        ("strings", vec!["--filter", "shared"]),
         ("xref", vec!["--string", "shared 世界\nλ"]),
         ("xref", vec!["--at", "0x70000001"]),
     ] {
         fs::write(&destination, b"previous result").unwrap();
-        for (flag, limit) in [
-            ("--max-work", "400"),
-            ("--max-instructions", "2"),
-            ("--max-records", "1"),
-            ("--max-output-bytes", "32"),
-        ] {
-            let mut args = query.clone();
-            args.extend([flag, limit, "-o", destination.to_str().unwrap()]);
-            let output = run(command, &path, &args);
-            assert_eq!(output.status.code(), Some(1), "{command} {args:?}");
-            assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
-            rejected(output);
-            assert_eq!(fs::read(&destination).unwrap(), b"previous result");
-        }
         let plain = run(command, &path, &query);
         success(&plain);
         let mut args = query;
@@ -306,14 +288,14 @@ fn dotnet_string_scans_account_cumulative_work_and_fail_atomically_at_cli_limits
 #[test]
 fn dotnet_string_search_routes_directly_to_original_method_and_class() {
     let path = input();
-    let rows = jsonl(&run("strings", &path, &["--contains", "世界"]));
+    let rows = jsonl(&run("strings", &path, &["--filter", "世界"]));
     let hit = rows.iter().find(|row| row["record"] == "string").unwrap();
     assert_eq!(hit["detail"]["status"], "referenced");
     assert_eq!(hit["detail"]["il_offsets"], serde_json::json!([0]));
     let id = hit["context_at"]
         .as_str()
         .expect("search must return method FETCH context");
-    let method = run("get-method", &path, &["--at", id, "--il"]);
+    let method = run("get-method", &path, &["--at", id, "--raw"]);
     success(&method);
     let method: Value = serde_json::from_slice(&method.stdout).unwrap();
     assert_eq!(
@@ -323,7 +305,7 @@ fn dotnet_string_search_routes_directly_to_original_method_and_class() {
     let owner = hit["detail"]["declaring_type_id"]
         .as_str()
         .expect("search must return class FETCH context");
-    let class = run("get-class", &path, &["--at", owner, "--il"]);
+    let class = run("get-class", &path, &["--at", owner, "--raw"]);
     success(&class);
     let class: Value = serde_json::from_slice(&class.stdout).unwrap();
     assert!(
@@ -349,7 +331,7 @@ fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
             let token = entry["token"].as_u64().unwrap();
             let at = format!("0x{:08x}", site["method_token"].as_u64().unwrap());
             let fetched: Value =
-                serde_json::from_slice(&run("get-method", &path, &["--at", &at, "--il"]).stdout)
+                serde_json::from_slice(&run("get-method", &path, &["--at", &at, "--raw"]).stdout)
                     .unwrap();
             let offset = site["il_offset"].as_u64().unwrap();
             let instruction = fetched["detail"]["instructions"]

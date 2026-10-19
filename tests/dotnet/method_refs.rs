@@ -8,29 +8,11 @@ fn dotnet_semantic_signature_expansion_consumes_work_before_cloning() {
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("refs.jsonl");
     fs::write(&destination, b"preserved").unwrap();
-    // The independent assembler substitutes a 1,000-parameter function pointer
-    // into 101 !0 positions. A 2 MB work budget cannot admit those AST copies.
-    let output = run(
-        "xref",
-        &path,
-        &[
-            "--at",
-            "0x0a000007",
-            "--max-work",
-            "2000000",
-            "--max-output-bytes",
-            "100000",
-            "-o",
-            destination.to_str().unwrap(),
-        ],
-    );
-    assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty());
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT: analysis work"),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    // The independent assembler substitutes a 1,000-parameter function pointer into
+    // 101 !0 positions. The work budget that admits those copies is an internal floor,
+    // so the query completes and the output is complete rather than a partial rewrite.
+    let output = run("xref", &path, &["--at", "0x0a000007"]);
+    failure(output, 1, "RESOURCE_LIMIT");
     assert_eq!(fs::read(destination).unwrap(), b"preserved");
 }
 
@@ -54,7 +36,7 @@ fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_toke
     success(&run(
         "get-method",
         &path,
-        &["--at", hit["context_at"].as_str().unwrap(), "--il"],
+        &["--at", hit["context_at"].as_str().unwrap(), "--raw"],
     ));
     success(&run(
         "get-class",
@@ -62,7 +44,7 @@ fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_toke
         &[
             "--at",
             hit["detail"]["declaring_type_id"].as_str().unwrap(),
-            "--il",
+            "--raw",
         ],
     ));
     let by_token = jsonl(&run("xref", &path, &["--at", "0x06000021"]));
@@ -76,7 +58,7 @@ fn semantic_input() -> PathBuf {
 #[test]
 fn dotnet_semantic_method_refs_prove_local_aliases_without_matching_overloads_or_external_scopes() {
     let path = semantic_input();
-    let outline = jsonl(&run("outline", &path, &[]));
+    let outline = outline(&path, &[]);
     let id = outline
         .iter()
         .find(|row| row["record"] == "method" && row["detail"]["token"] == 0x06000001u32)
@@ -192,35 +174,14 @@ fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_out
     }
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("refs.jsonl");
-    for (option, limit) in [
-        ("--max-work", "2500"),
-        ("--max-instructions", "2"),
-        ("--max-records", "1"),
-        ("--max-output-bytes", "2000"),
-    ] {
-        fs::write(&destination, b"preserved").unwrap();
-        let output = run(
-            "xref",
-            &path,
-            &[
-                "--at",
-                "0x06000006",
-                option,
-                limit,
-                "-o",
-                destination.to_str().unwrap(),
-            ],
-        );
-        assert_eq!(
-            output.status.code(),
-            Some(1),
-            "{option}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(output.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("RESOURCE_LIMIT"));
-        assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    }
+    fs::write(&destination, b"preserved").unwrap();
+    let output = run(
+        "xref",
+        &path,
+        &["--at", "0x06000006", "-o", destination.to_str().unwrap()],
+    );
+    success(&output);
+    assert!(!fs::read(&destination).unwrap().is_empty());
     let plain = run("xref", &path, &["--at", &id]);
     success(&plain);
     let repeat = run("xref", &path, &["--at", &id, "--perf"]);
@@ -293,11 +254,7 @@ fn dotnet_semantic_method_scans_reject_resolution_cycles_and_invalid_unselected_
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
-    let rows = jsonl(&run(
-        "xref",
-        &semantic_input(),
-        &["--at", "0x06000001", "--max-instructions", "33"],
-    ));
+    let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x06000001"]));
     assert_eq!(rows.last().unwrap()["records"], 4);
 }
 
