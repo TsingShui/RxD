@@ -43,10 +43,9 @@
     <div class="arxd-hero-grid">
       <div>
         <p class="kicker">ANDROID HOST</p>
-        <h1>RxD on the phone.</h1>
+        <h1>RxD on Android.</h1>
         <p class="lede">Arxd is an Android Agent workspace: Expo 58 + Pi-durable + an embedded ARM64 rxd. Conversations, files, skills, MCP and optional on-device models share one device.</p>
-        <p><a class="btn btn-primary" href="https://github.com/TsingShui/RxD/blob/main/apps/arxd/README.md">Build guide <span aria-hidden="true">↗</span></a>
-        <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD/blob/main/docs/design/arxd-design.md">Design <span aria-hidden="true">↗</span></a></p>
+        <p><a class="btn btn-primary" href="https://github.com/TsingShui/RxD/releases/latest">Download APK <span aria-hidden="true">↗</span></a></p>
       </div>
       <div class="arxd-mark">
         <img src="assets/arxd-light-1024.png" alt="Arxd light app icon" width="320" height="320">
@@ -68,41 +67,22 @@
     </div>
   </section>
 
-  <section class="section">
-    <h2>Three layers, clear boundaries.</h2>
-    <table class="format-table">
-      <thead><tr><th>Layer</th><th>Responsibility</th></tr></thead>
-      <tbody>
-        <tr><td>Arxd host</td><td>Native screens, theme, document picker, sharing and process management. Not a WebView.</td></tr>
-        <tr><td>Pi-durable</td><td>Conversations, tool rounds, context compaction, persistence and recovery.</td></tr>
-        <tr><td>RxD</td><td>Parsing and decompilation in shared Rust backends; identities, budgets and output contracts unchanged.</td></tr>
-      </tbody>
-    </table>
-    <p class="section-lede">An on-device model is optional and never changes analysis identity. The same file queried from the CLI or Arxd gets the same input-hash/byte-range IDs.</p>
-  </section>
 
   <section class="section">
     <h2>Capability and limits.</h2>
-    <p class="section-lede">Arxd is an Android host, not a complete product guarantee. These limits are part of the design.</p>
+    <p class="section-lede">Arxd is an Android host. These limits are part of the product.</p>
     <div class="feature-grid">
-      <article><h3>Android ARM64 only</h3><p>Build from source following <code>apps/arxd/README.md</code>. Device evidence and host checks are recorded separately; there is no published APK yet.</p></article>
+      <article><h3>Android arm64</h3><p>Arxd targets arm64-v8a Android devices.</p></article>
       <article><h3>The on-device model is not a sandbox</h3><p>The 2B CPU path differs in capability and latency from cloud models. The shell tool does not provide network isolation; untrusted input should still be isolated outside the device.</p></article>
       <article><h3>Imports are explicit</h3><p>Skill and model imports are disabled by default; enable only workflows you trust. Model files are not embedded in the APK, and imports must pass hash, template and tool-parser probes.</p></article>
     </div>
   </section>
 
+
   <section class="section">
-    <h2>Build and verify.</h2>
-    <p class="section-lede">Arxd lives in the same repository as RxD and needs the Android SDK/NDK. Model files, APKs and device evidence are not committed. See the README for exact prerequisites and verification boundaries.</p>
-    <pre><code>git submodule update --init third_party/kuna
-cd apps/arxd
-npm ci --ignore-scripts
-npm run build:rxd
-python3 scripts/build-preload.py
-npx expo prebuild --platform android --no-install
-cd android && ./gradlew :app:assembleRelease --max-workers=2 -PreactNativeArchitectures=arm64-v8a</code></pre>
-    <p><a class="btn btn-primary" href="https://github.com/TsingShui/RxD/blob/main/apps/arxd/README.md">Read the build guide <span aria-hidden="true">↗</span></a>
-    <a class="btn btn-ghost" href="examples.html">ShowCase <span aria-hidden="true">→</span></a></p>
+    <h2>Download Arxd.</h2>
+    <p class="section-lede">Android arm64. The APK is distributed through GitHub Releases.</p>
+    <p><a class="btn btn-primary" href="https://github.com/TsingShui/RxD/releases/latest">Download APK <span aria-hidden="true">↗</span></a></p>
   </section>
 </main>
 
