@@ -382,6 +382,44 @@ pub fn list_classes(path: &Path, threads: usize, debug: bool) -> Result<Vec<Clas
     list_classes_with_policy(path, ArchivePolicy::default(), threads, debug)
 }
 
+/// Split `Lx/y;->name(proto)` into its class, name and prototype.
+pub fn parse_method_coordinate(coordinate: &str) -> Result<(String, String, String)> {
+    let (class, rest) = coordinate
+        .split_once("->")
+        .with_context(|| format!("{coordinate} is not 'Lclass;->name(proto)'"))?;
+    let open = rest
+        .find('(')
+        .with_context(|| format!("{coordinate} has no method prototype"))?;
+    let (name, prototype) = rest.split_at(open);
+    if class.is_empty() || name.is_empty() || !prototype.ends_with(')') && !prototype.contains(')')
+    {
+        bail!("{coordinate} is not 'Lclass;->name(proto)'");
+    }
+    Ok((class.to_owned(), name.to_owned(), prototype.to_owned()))
+}
+
+/// Render one method as Java source, from the entry that declares its class.
+///
+/// Uses the same first-hit walk as `get-class`: an entry that cannot define the class is
+/// rejected from its prefix without inflating the code section, and the walk stops as
+/// soon as one entry answers.
+pub fn decompile_method_with_policy(
+    path: &Path,
+    policy: ArchivePolicy,
+    class: &str,
+    name: &str,
+    prototype: &str,
+    threads: usize,
+    debug: bool,
+) -> Result<String> {
+    let hit = map_class_hit(path, policy, class, threads, debug, |data| {
+        crate::emitter::render_method(data, class, name, prototype)?
+            .with_context(|| format!("{class} does not declare {name}{prototype}"))
+    })?;
+    hit.map(|(_, source)| source)
+        .with_context(|| format!("no DEX in {} defines {class}", path.display()))
+}
+
 /// Which methods a `functions`-style listing reports.
 pub use crate::dex::methods::Selector as MethodSelector;
 

@@ -208,6 +208,26 @@ fn dex_strings_filter_pagination_and_output_file_keep_identical_bytes() {
 }
 
 #[test]
+fn dex_get_method_renders_one_method_from_its_methods_coordinate() {
+    let dex = const_string_dex(1);
+    let (_dir, path) = fixture(stored_zip(&[("classes.dex", &dex)]), "getmethod.apk");
+    let listed = query("methods", &path, &["--class", "Fixture0"]);
+    success(&listed);
+    let coordinate = dex_records(&listed)[0]["detail"]["descriptor"]
+        .as_str()
+        .expect("a methods row names its descriptor")
+        .to_owned();
+    // The coordinate a `methods` row prints is exactly what `--at` takes back.
+    let rendered = query("get-method", &path, &["--at", &coordinate]);
+    success(&rendered);
+    assert!(!text(&rendered).trim().is_empty(), "{coordinate}");
+    let missing = query("get-method", &path, &["--at", "LNo/Such;->f()V"]);
+    assert_ne!(missing.status.code(), Some(0));
+    let malformed = query("get-method", &path, &["--at", "not-a-coordinate"]);
+    assert_ne!(malformed.status.code(), Some(0));
+}
+
+#[test]
 fn dex_methods_lists_definitions_and_honours_class_and_name_filters() {
     let dex = const_string_dex(1);
     let (_dir, path) = fixture(stored_zip(&[("classes.dex", &dex)]), "methods.apk");

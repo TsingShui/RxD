@@ -31,3 +31,24 @@ pub fn render(data: &[u8], descriptor: &str) -> Result<String> {
         None => bail!("class {descriptor} is not defined in this DEX"),
     }
 }
+
+/// Render one method from the bytes of the DEX entry that declares it.
+pub fn render_method(
+    data: &[u8],
+    descriptor: &str,
+    name: &str,
+    prototype: &str,
+) -> Result<Option<String>> {
+    use crate::profile::{Stage, measure};
+    let decompiler = measure(Stage::Engine, || {
+        radguard::Decompiler::parse(data).context("parse DEX for the Java emitter")
+    })?;
+    let rendered = measure(Stage::Emit, || {
+        decompiler
+            .decompile_method(descriptor, name, prototype)
+            .with_context(|| format!("could not decompile {descriptor}->{name}{prototype}"))
+    })?;
+    // Keep the coordinate above the method: it is the identity `--at` takes, and a
+    // rendered method alone no longer shows which prototype it belonged to.
+    Ok(rendered.map(|output| format!("// {descriptor}->{name}{prototype}\n{}", output.source)))
+}

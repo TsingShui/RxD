@@ -275,6 +275,19 @@ fn run_command(
             finish_stream(&mut payload, strings.len())?;
             emit(&payload, args.output.as_deref())?;
         }
+        Command::GetMethod(args) => {
+            let (class, name, prototype) = apk::parse_method_coordinate(&args.at)?;
+            let source = apk::decompile_method_with_policy(
+                &args.apk_path,
+                archive_policy,
+                &class,
+                &name,
+                &prototype,
+                args.threads,
+                args.debug,
+            )?;
+            emit(&source, args.output.as_deref())?;
+        }
         Command::Methods(args) => {
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),

@@ -19,11 +19,32 @@ pub enum Command {
     Manifest(ManifestArgs),
     /// List classes defined across every DEX in an APK.
     Classes(ClassesArgs),
+    /// Decompile one method as Java source.
+    ///
+    /// `--at` takes the coordinate a `methods` row prints (`Lx/y;->name(proto)`), so a
+    /// method found by `methods` or reported by `xref` renders without pulling its class.
+    #[command(name = "get-method")]
+    GetMethod(GetMethodArgs),
     /// List every method the archive's DEX files define.
     ///
     /// A method is reported once per definition; `method_ids` entries that are only
     /// referenced are not listed.
     Methods(MethodsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct GetMethodArgs {
+    pub apk_path: PathBuf,
+    /// `Lx/y;->name(proto)`: the `descriptor` of a `methods` row.
+    #[arg(long)]
+    pub at: String,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    pub threads: usize,
+    /// Print phase timings on stderr.
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Debug, Args)]
@@ -255,6 +276,7 @@ impl Command {
             Self::Manifest(args) => args.debug,
             Self::Classes(args) => args.debug,
             Self::Methods(args) => args.debug,
+            Self::GetMethod(args) => args.debug,
         }
     }
 
@@ -267,6 +289,7 @@ impl Command {
             Self::Manifest(_) => "manifest",
             Self::Classes(_) => "classes",
             Self::Methods(_) => "methods",
+            Self::GetMethod(_) => "get-method",
         }
     }
 }

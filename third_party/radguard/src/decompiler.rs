@@ -60,6 +60,38 @@ impl<'a> Decompiler<'a> {
         self.write_class(class).map(Some)
     }
 
+    /// Renders one method of one class as Java-like source.
+    ///
+    /// Matching is by name and prototype because that pair is the method's identity
+    /// inside its class; a class or method the DEX does not define answers `Ok(None)`.
+    pub fn decompile_method(
+        &self,
+        dalvik_class: &str,
+        name: &str,
+        prototype: &str,
+    ) -> Result<Option<SourceOutput>> {
+        let Some(class) = self.dex.class(dalvik_class) else {
+            return Ok(None);
+        };
+        let descriptor = self.dex.class_descriptor(class)?;
+        let (_, class_name) = class_parts(descriptor);
+        for method in class.methods() {
+            let resolved = self.dex.method(method.method_idx)?;
+            if resolved.name == name && resolved.descriptor == prototype {
+                return self
+                    .write_method(
+                        SourceOutput::default(),
+                        descriptor,
+                        &class_name,
+                        method,
+                        &[],
+                    )
+                    .map(Some);
+            }
+        }
+        Ok(None)
+    }
+
     pub fn decompile_all(&self) -> Result<Vec<(String, SourceOutput)>> {
         self.dex
             .classes()
