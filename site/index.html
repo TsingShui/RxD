@@ -84,21 +84,48 @@
         <p class="kicker">PROVENANCE</p>
         <h2>Where the decompilers come from.</h2>
       </div>
-      <table class="format-table">
-        <thead><tr><th>Backend</th><th>Source / engine</th><th>License</th></tr></thead>
-        <tbody>
-          <tr><td>Native</td><td><a href="https://github.com/Noelo-Lab/kuna">Kuna CLI</a> + RxD linked adapter</td><td>Apache-2.0 (Kuna)</td></tr>
-          <tr><td>JavaScript</td><td><a href="https://github.com/oxc-project/oxc">Oxc parser</a> + RxD structure/refs</td><td>MIT (Oxc)</td></tr>
-          <tr><td>ASAR</td><td>RxD index/extract</td><td>Apache-2.0</td></tr>
-          <tr><td>HTML</td><td>RxD lexical container</td><td>Apache-2.0</td></tr>
-          <tr><td>Android APK/DEX</td><td>RxD DEX frontend + <a href="https://github.com/MG1937/rust_ASC">rust_ASC</a></td><td>Apache-2.0</td></tr>
-          <tr><td>JVM</td><td>RxD JVM frontend + <a href="https://github.com/MG1937/radguard">radguard IR</a></td><td>Apache-2.0</td></tr>
-          <tr><td>.NET IL</td><td>RxD metadata/IL frontend + <a href="https://github.com/icsharpcode/ILSpy">ILSpy v11 NativeAOT</a></td><td>MIT (ILSpy)</td></tr>
-          <tr><td>WebAssembly</td><td><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser">wasmparser</a> + RxD decode/decompile</td><td>Apache-2.0 / MIT / LLVM-exception</td></tr>
-          <tr><td>CPython bytecode</td><td>RxD bytecode frontend + pycdc fork</td><td>MIT (pycdc)</td></tr>
-          <tr><td>EVM bytecode</td><td><a href="https://github.com/cdump/evmole">EVMole 0.9.4</a> + RxD query projection</td><td>MIT (EVMole)</td></tr>
-        </tbody>
-      </table>
+      <div class="prov-grid">
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">01</span><h3>Native</h3><span class="prov-license">Apache-2.0 (Kuna)</span></div>
+          <p class="prov-source"><a href="https://github.com/Noelo-Lab/kuna">Kuna CLI</a> + RxD linked adapter</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">02</span><h3>JavaScript</h3><span class="prov-license">MIT (Oxc)</span></div>
+          <p class="prov-source"><a href="https://github.com/oxc-project/oxc">Oxc parser</a> + RxD structure/refs</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">03</span><h3>ASAR</h3><span class="prov-license">Apache-2.0</span></div>
+          <p class="prov-source">RxD index/extract</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">04</span><h3>HTML</h3><span class="prov-license">Apache-2.0</span></div>
+          <p class="prov-source">RxD lexical container</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">05</span><h3>Android APK/DEX</h3><span class="prov-license">Apache-2.0</span></div>
+          <p class="prov-source">RxD DEX frontend + <a href="https://github.com/MG1937/rust_ASC">rust_ASC</a></p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">06</span><h3>JVM</h3><span class="prov-license">Apache-2.0</span></div>
+          <p class="prov-source">RxD JVM frontend + <a href="https://github.com/MG1937/radguard">radguard IR</a></p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">07</span><h3>.NET IL</h3><span class="prov-license">MIT (ILSpy)</span></div>
+          <p class="prov-source">RxD metadata/IL frontend + <a href="https://github.com/icsharpcode/ILSpy">ILSpy v11 NativeAOT</a></p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">08</span><h3>WebAssembly</h3><span class="prov-license">Apache-2.0 / MIT / LLVM-exception</span></div>
+          <p class="prov-source"><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser">wasmparser</a> + RxD decode/decompile</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">09</span><h3>CPython bytecode</h3><span class="prov-license">MIT (pycdc)</span></div>
+          <p class="prov-source">RxD bytecode frontend + pycdc fork</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">10</span><h3>EVM bytecode</h3><span class="prov-license">MIT (EVMole)</span></div>
+          <p class="prov-source"><a href="https://github.com/cdump/evmole">EVMole 0.9.4</a> + RxD query projection</p>
+        </article>
+      </div>
     </div>
   </section>
 

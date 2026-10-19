@@ -1636,6 +1636,58 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
   font-size: 13px;
   line-height: 1.7;
 }
+.prov-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 36px;
+  background: var(--ink-line);
+  border: 1px solid var(--ink-line);
+}
+.prov-card {
+  padding: 22px 26px;
+  background: var(--ink);
+}
+.prov-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+.prov-num {
+  font: 400 9px/1 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--ember);
+}
+.prov-head h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--bone);
+}
+.prov-license {
+  margin-left: auto;
+  font: 400 9.5px/1.5 var(--mono);
+  letter-spacing: 0.02em;
+  color: #837d74;
+  text-align: right;
+}
+.prov-source {
+  margin-top: 10px;
+  max-width: 54ch;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #a29c92;
+}
+.prov-source a {
+  color: var(--ember-soft);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 90, 31, 0.6);
+}
+.prov-source a:hover { color: var(--ember); }
+
 .format-table a {
   color: var(--ember-soft);
   text-decoration: underline;
@@ -1672,6 +1724,8 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
 }
 @media (max-width: 720px) {
   .feature-grid { grid-template-columns: 1fr; }
+  .prov-grid { grid-template-columns: 1fr; }
+  .prov-card { padding: 20px 18px; }
   .format-table th,
   .format-table td { padding: 10px 8px; }
 }
