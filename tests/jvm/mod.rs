@@ -71,14 +71,7 @@ fn assert_record(row: &Value) {
             "has_code",
         ],
         "string" => &["class", "index", "value", "utf16"],
-        "reference" => &[
-            "class",
-            "method",
-            "method_descriptor",
-            "byte_offset",
-            "mnemonic",
-            "target",
-        ],
+        "reference" => &["target"],
         "bytecode" => &[
             "representation",
             "class",
@@ -736,8 +729,8 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         .filter(|v| v["record"] == "reference")
         .collect();
     assert_eq!(refs.len(), 1);
-    assert_eq!(refs[0]["detail"]["class"], "fixture/FlowFixture");
-    assert_eq!(refs[0]["detail"]["method"], "text");
+    // One coordinate and one target: the caller is not re-spelled inside detail.
+    assert_keys(&refs[0]["detail"], &["target"]);
     assert_eq!(refs[0]["context_at"], method(&path, "text"));
     success(&run(
         &[
@@ -747,7 +740,6 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         ],
         &path,
     ));
-    assert_eq!(refs[0]["detail"]["mnemonic"], "ldc");
     assert!(
         refs[0]["detail"]["target"]
             .as_str()
@@ -766,8 +758,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         .collect();
     assert!(!method_refs.is_empty());
     assert!(method_refs.iter().all(|v| {
-        v["detail"]["class"].is_string()
-            && v["detail"]["method"].is_string()
+        v["context_at"].as_str().unwrap().contains("->")
             && v["detail"]["target"].as_str().unwrap().contains("toJson")
     }));
 

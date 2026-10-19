@@ -138,15 +138,7 @@ fn run_command(
                 args.query_json(),
             )?;
             for hit in &hits {
-                push_record(
-                    &mut payload,
-                    "reference",
-                    &[
-                        ("entry", Field::Text(hit.dex_name.as_ref())),
-                        ("member", Field::Text(&hit.member)),
-                        ("matched", Field::Text(&hit.matched)),
-                    ],
-                )?;
+                push_reference(&mut payload, &hit.member, &hit.matched)?;
             }
             finish_stream(&mut payload, hits.len())?;
             if args.debug {
@@ -418,6 +410,22 @@ enum Field<'a> {
 }
 
 /// Append a JSON string literal, escaping exactly what JSON requires.
+/// Append a reference row: the caller's coordinate plus the matched target.
+///
+/// An offset and a mnemonic were considered and dropped: nothing that consumes a hit
+/// acts on the instruction itself, only on which method references what.
+fn push_reference(payload: &mut String, caller: &str, matched: &str) -> Result<()> {
+    payload.push_str("{\"record\":\"reference\",\"context_at\":");
+    push_json_string(payload, caller);
+    payload.push_str(",\"detail\":{\"target\":");
+    push_json_string(payload, matched);
+    payload.push_str("}}\n");
+    #[cfg(feature = "mcp")]
+    if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {
+        bail!("RESOURCE_LIMIT: query output byte budget exceeded");
+    }
+    Ok(())
+}
 fn push_json_string(out: &mut String, value: &str) {
     out.push('"');
     for character in value.chars() {

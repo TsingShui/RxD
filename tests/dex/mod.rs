@@ -43,16 +43,18 @@ fn assert_record(row: &Value) {
     // DEX units have no copy-only coordinate, so a data record is `record` + `detail`
     // only; the stream header carries identity once instead of every row repeating it.
     // `at` is present only on records that name a selectable object (class/method/field).
-    let keys = if row["at"].is_null() {
-        vec!["record", "detail"]
-    } else {
+    let keys = if !row["at"].is_null() {
         vec!["record", "detail", "at"]
+    } else if !row["context_at"].is_null() {
+        vec!["record", "detail", "context_at"]
+    } else {
+        vec!["record", "detail"]
     };
     assert_keys(row, &keys);
     let fields: &[&str] = match row["record"].as_str().unwrap() {
         "class" => &[],
         "string" => &["entry", "index", "value"],
-        "reference" => &["entry", "member", "matched"],
+        "reference" => &["target"],
         "entry" => &[
             "name",
             "compression",
@@ -115,7 +117,10 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     let dex = const_string_dex(3);
     let (dir, bare) = fixture(&dex, "input.dex");
     let expected_classes: Vec<_> = (0..3).map(|i| json!({})).collect();
-    let expected_refs: Vec<_> = (0..3).map(|i| json!({"entry":"classes.dex", "member":format!("LFixture{i};->m{i}"), "matched":"Authorization"})).collect();
+    // A hit is the caller's coordinate plus the target it references.
+    let expected_refs: Vec<(String, String)> = (0..3)
+        .map(|i| (format!("LFixture{i};->m{i}"), "Authorization".to_owned()))
+        .collect();
     for (name, bytes) in [
         ("stored.apk", stored_zip(&[("classes.dex", &dex)])),
         ("compressed.apk", deflated_zip(&[("classes.dex", &dex)])),
@@ -150,13 +155,16 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
                 &["--thread", threads, "string", "Authorization"],
             );
             success(&output);
-            assert_eq!(
-                dex_records(&output)
-                    .iter()
-                    .map(|r| r["detail"].clone())
-                    .collect::<Vec<_>>(),
-                expected_refs
-            );
+            let hits: Vec<(String, String)> = dex_records(&output)
+                .iter()
+                .map(|row| {
+                    (
+                        row["context_at"].as_str().unwrap().to_owned(),
+                        row["detail"]["target"].as_str().unwrap().to_owned(),
+                    )
+                })
+                .collect();
+            assert_eq!(hits, expected_refs);
         }
     }
     let output = query("classes", &bare, &["-f", "fIxTuRe1"]);

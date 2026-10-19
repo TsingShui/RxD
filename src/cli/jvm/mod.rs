@@ -371,11 +371,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                         ..RecordMeta::default()
                     },
                     json!({
-                        "class":hit.class,
-                        "method":hit.method,
-                        "method_descriptor":hit.method_descriptor,
-                        "byte_offset":hit.byte_offset,
-                        "mnemonic":hit.mnemonic,
                         "target":hit.target,
                     })
                     .as_object()
