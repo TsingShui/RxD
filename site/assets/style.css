@@ -309,6 +309,22 @@ h1 {
 }
 .lede strong { color: var(--bone); font-weight: 600; }
 
+.hero-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-top: 20px;
+  font: 400 15px/1.5 var(--mono);
+  letter-spacing: 0.01em;
+  color: #b3ada3;
+}
+.hero-platforms span {
+  color: var(--ember);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
 .actions {
   display: flex;
   flex-wrap: wrap;
