@@ -1012,6 +1012,7 @@ h2 {
   letter-spacing: -0.03em;
   max-width: 920px;
 }
+.page-hero h2 { margin-top: 26px; }
 .page-hero .lede { max-width: 66ch; }
 .page-hero .actions { margin-top: 28px; }
 .page-hero .hero-meta { margin-top: 26px; }
