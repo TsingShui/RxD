@@ -187,8 +187,8 @@ whole-class Java output are not yet promised.
 Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
 4 GiB); class raw bytes and decoded metadata each 16 MiB; selected-entry expanded total
 and archive metadata each 128 MiB; 10,000 archive physical entries; data-flow work
-1,000,000; output 32 MiB. Controls are `--max-input-bytes`, `--max-class-bytes`,
-`--max-expanded-bytes`, `--max-entries`, `--max-work`, `--max-output-bytes`. Work
+1,000,000; output 32 MiB. These are internal floors (`Limits::default`), not flags: the
+CLI exposes no per-backend budget knobs, matching DEX. Work
 covers frontend state copies, type representation and queue transfer, not every backend
 pipeline operation. Code is limited to 1–65,535 bytes by the specification; descriptors
 to 4,096 bytes, array dimensions to 255, parameters to 255 words (including `this` for
