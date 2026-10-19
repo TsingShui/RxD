@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arxd — One APK for the rest of us</title>
-<meta name="description" content="Arxd is an open-source personal Agent built for RxD. Anyone can get started quickly and have fun. Core built on pi-durable, termux-exec and rxd.">
+<meta name="description" content="Arxd is an open-source personal Agent built for RxD. Anyone can get started quickly and have fun. Built on Pi-durable, Termux and React Native.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/arxd.html">
 <link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/arxd.html">
@@ -45,7 +45,6 @@
         <p class="kicker">ANDROID HOST</p>
         <h1>One APK.<br>For the rest of us.</h1>
         <p class="lede">Arxd is an open-source personal Agent built for RxD. Anyone can get started quickly and have fun.</p>
-        <p class="hero-platforms"><span>Core</span> pi-durable · termux-exec · rxd</p>
         <div class="actions">
           <a class="btn btn-primary" href="https://github.com/TsingShui/RxD/releases/latest">Download APK <span aria-hidden="true">↗</span></a>
         </div>
@@ -66,13 +65,19 @@
         <h2>A workspace, not a wrapper.</h2>
         <p class="section-lede">Native screens handle interaction, Pi-durable runs the Agent loop, and RxD performs analysis. Keeping the layers separate lets one real query finish on the device.</p>
       </div>
-      <div class="feature-grid">
-        <article><h3>On-device models</h3><p>Download the pinned Qwen3.5-2B Q4_K_M (1.28 GB) or import a GGUF. llama.rn runs text inference on CPU, up to 8k context and a 1,024-token reply. Thinking is opt-in. Models are not embedded in the APK; imports are SHA-256 bound and must pass a real-engine probe.</p></article>
-        <article><h3>Model connections</h3><p>OpenAI Completions/Responses, Anthropic Messages and Google Generative AI through Pi AI. Named connections, model settings and device credentials; credentials use Android Keystore/SecureStore. Local HTTP endpoints are supported with an explicit unencrypted warning.</p></article>
-        <article><h3>Real analysis</h3><p>The embedded ARM64 rxd covers JS, ASAR, HTML, APK/DEX, JVM, .NET, WASM, EVM, PYC and Kuna. <code>rxd_file_outline</code> is a bounded JS fast path; other formats use <code>$ARXD_RXD</code> in the shell.</p></article>
-        <article><h3>Durable workspace</h3><p>Pi-durable handles conversations, tool rounds and persistence. SQLite keeps history, archives, attachments and reports. Deleting a conversation does not delete files from the library.</p></article>
-        <article><h3>Files and skills</h3><p>Browse, edit, copy, share and attach files. Import <code>SKILL.md</code>, a directory or a workspace skill; imports are disabled by default. The Agent loads admitted skills on demand.</p></article>
-        <article><h3>MCP and processes</h3><p>Save stdio launch definitions or HTTP(S) endpoints, connect and discover tools. Long-running process instances are visible and stopped explicitly. Plain HTTP is loopback-only on Android.</p></article>
+      <ol class="why-list">
+        <li><h3>On-device models</h3><p>Download the pinned Qwen3.5-2B Q4_K_M (1.28 GB) or import a GGUF. llama.rn runs text inference on CPU, up to 8k context and a 1,024-token reply. Thinking is opt-in. Models are not embedded in the APK; imports are SHA-256 bound and must pass a real-engine probe.</p></li>
+        <li><h3>Model connections</h3><p>OpenAI Completions/Responses, Anthropic Messages and Google Generative AI through Pi AI. Named connections, model settings and device credentials; credentials use Android Keystore/SecureStore. Local HTTP endpoints are supported with an explicit unencrypted warning.</p></li>
+        <li><h3>Real analysis</h3><p>The embedded ARM64 rxd covers JS, ASAR, HTML, APK/DEX, JVM, .NET, WASM, EVM, PYC and Kuna. <code>rxd_file_outline</code> is a bounded JS fast path; other formats use <code>$ARXD_RXD</code> in the shell.</p></li>
+        <li><h3>Durable workspace</h3><p>Pi-durable handles conversations, tool rounds and persistence. SQLite keeps history, archives, attachments and reports. Deleting a conversation does not delete files from the library.</p></li>
+        <li><h3>Files and skills</h3><p>Browse, edit, copy, share and attach files. Import <code>SKILL.md</code>, a directory or a workspace skill; imports are disabled by default. The Agent loads admitted skills on demand.</p></li>
+        <li><h3>MCP and processes</h3><p>Save stdio launch definitions or HTTP(S) endpoints, connect and discover tools. Long-running process instances are visible and stopped explicitly. Plain HTTP is loopback-only on Android.</p></li>
+      </ol>
+      <div class="arxd-stack">
+        <span>Built on</span>
+        <b>Pi-durable</b>
+        <b>Termux</b>
+        <b>React Native</b>
       </div>
     </div>
   </section>

@@ -1171,6 +1171,24 @@ h2 {
   text-transform: uppercase;
   color: #7b766e;
 }
+.arxd-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 22px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--ink-line);
+  font: 400 14px/1.5 var(--mono);
+  color: var(--bone-dim);
+}
+.arxd-stack span {
+  color: var(--ember);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.arxd-stack b { font-weight: 500; color: var(--bone); }
 .arxd-status {
   display: flex;
   flex-wrap: wrap;
