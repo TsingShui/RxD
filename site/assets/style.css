@@ -1171,6 +1171,28 @@ h2 {
   text-transform: uppercase;
   color: #7b766e;
 }
+.feature-groups li { padding-top: 26px; padding-bottom: 28px; }
+.feature-groups h3 { font-size: 24px; }
+.feature-groups p { font-size: 14px; }
+.feature-groups li::before { font-size: 12px; top: 28px; }
+.feature-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.feature-tags span {
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 90, 31, 0.38);
+  border-radius: 4px;
+  background: rgba(255, 90, 31, 0.06);
+  color: var(--ember-soft);
+  font: 400 10px/1.4 var(--mono);
+  letter-spacing: 0.03em;
+}
+@media (max-width: 720px) {
+  .feature-groups h3 { font-size: 20px; }
+}
 .arxd-status {
   display: flex;
   flex-wrap: wrap;
