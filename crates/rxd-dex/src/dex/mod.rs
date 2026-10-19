@@ -259,7 +259,7 @@ pub(crate) fn for_each_reference(
             if member_bound > max_scratch_bytes {
                 return Err(ReferenceScratchLimit.into());
             }
-            let member = dex.member_name(method.class_idx as usize, method.name_idx as usize)?;
+            let member = dex.member_name(method_idx as usize)?;
             let mut matched = String::new();
             for &(_, index) in &hits[start..at] {
                 let separator = usize::from(!matched.is_empty()) * 2;
@@ -299,7 +299,6 @@ fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<V
         while at < hits.len() && hits[at].0 == method_idx {
             at += 1;
         }
-        let method = dex.method(method_idx as usize)?;
         let mut matched_names = String::new();
         for &(_, index) in &hits[start..at] {
             if !matched_names.is_empty() {
@@ -309,7 +308,7 @@ fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<V
         }
         rows.push(ReferenceRow {
             method_index: method_idx,
-            member: dex.member_name(method.class_idx as usize, method.name_idx as usize)?,
+            member: dex.member_name(method_idx as usize)?,
             matched: matched_names,
         });
     }
@@ -424,14 +423,20 @@ impl<'a> Dex<'a> {
         Ok(self.u32(self.header.types_off + index * 4)? as usize)
     }
 
-    /// `Lcom/foo/Main;->name` in one allocation; see [`ReferenceRow::member`].
-    fn member_name(&self, class_idx: usize, name_idx: usize) -> Result<String> {
-        let class = self.string_bytes(self.type_string_idx(class_idx)?)?;
-        let name = self.string_bytes(name_idx)?;
-        let mut out = String::with_capacity(class.len() + name.len() + 2);
+    /// `Lcom/foo/Main;->name(II)V` in one allocation; see [`ReferenceRow::member`].
+    ///
+    /// The prototype is part of the coordinate: without it an overloaded name cannot be
+    /// told apart, and the value could not be handed back to `--at`.
+    fn member_name(&self, method_idx: usize) -> Result<String> {
+        let method = self.method(method_idx)?;
+        let class = self.string_bytes(self.type_string_idx(method.class_idx as usize)?)?;
+        let name = self.string_bytes(method.name_idx as usize)?;
+        let proto_idx = read_u16(self.data, self.header.methods_off + method_idx * 8 + 2)? as usize;
+        let mut out = String::with_capacity(class.len() + name.len() + 24);
         mutf8::push_decoded(&mut out, class);
         out.push_str("->");
         mutf8::push_decoded(&mut out, name);
+        out.push_str(&self.proto(proto_idx)?);
         Ok(out)
     }
 

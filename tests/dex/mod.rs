@@ -119,7 +119,7 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     let expected_classes: Vec<_> = (0..3).map(|i| json!({})).collect();
     // A hit is the caller's coordinate plus the target it references.
     let expected_refs: Vec<(String, String)> = (0..3)
-        .map(|i| (format!("LFixture{i};->m{i}"), "Authorization".to_owned()))
+        .map(|i| (format!("LFixture{i};->m{i}()V"), "Authorization".to_owned()))
         .collect();
     for (name, bytes) in [
         ("stored.apk", stored_zip(&[("classes.dex", &dex)])),
