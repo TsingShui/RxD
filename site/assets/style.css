@@ -325,6 +325,14 @@ h1 {
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+.hero-platforms a {
+  color: var(--bone);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 90, 31, 0.6);
+}
+.hero-platforms a:hover { color: var(--ember); }
 .actions {
   display: flex;
   flex-wrap: wrap;
