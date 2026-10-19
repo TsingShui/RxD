@@ -7,7 +7,7 @@
 mod args;
 mod output;
 use output::{emit, emit_rows};
-use rxd_core::envelope::{SCHEMA_VERSION, header, summary};
+use rxd_core::envelope::{header, summary};
 use serde_json::{Map, Value, json};
 
 use anyhow::{Result, bail};
@@ -160,75 +160,6 @@ fn run_command(
                 ));
             }
             emit(&payload, args.output_path())?;
-        }
-        Command::FieldsPlan(args) => {
-            // Accept what a user types; the DEX carries descriptors.
-            let descriptor = query::format_class_name(&args.descriptor)?;
-            let lookup =
-                apk::field_plan_with_policy(&args.apk, archive_policy, &descriptor, args.threads)?;
-            match &lookup.plan {
-                Some(plan) => {
-                    let mut detail: Value = serde_json::from_str(plan)?;
-                    detail.as_object_mut().unwrap().remove("schema");
-                    let mut result = data_record("field_plan", detail);
-                    result["backend"] = json!("dex");
-                    result["command"] = json!("fields-plan");
-                    result["schema_version"] = json!(SCHEMA_VERSION);
-                    emit(
-                        &format!("{}\n", serde_json::to_string(&result)?),
-                        args.output.as_deref(),
-                    )?;
-                }
-                None if lookup.definitions.is_empty() => {
-                    eprintln!("Error: {descriptor} is not defined in the supplied code inputs");
-                }
-                None => eprintln!(
-                    "Error: {descriptor} is defined {} times ({}); a plan must name one definition",
-                    lookup.definitions.len(),
-                    lookup.definitions.join(", ")
-                ),
-            }
-            #[cfg(feature = "mcp")]
-            if lookup.plan.is_none() && crate::query::is_capturing() {
-                emit(
-                    &format!("{}\n", json!({"definitions":lookup.definitions})),
-                    None,
-                )?;
-            }
-            status = apk::lookup_status(lookup.definitions.len());
-        }
-        Command::MemberByIndex(args) => {
-            let descriptor = query::format_class_name(&args.descriptor)?;
-            // clap's group already rejects both or neither; this keeps the arm total.
-            let (kind, index, name) = match (args.method_index, args.field_index) {
-                (Some(index), None) => (apk::MemberKind::Method, index, "method"),
-                (None, Some(index)) => (apk::MemberKind::Field, index, "field"),
-                _ => bail!("pass exactly one of --method-index or --field-index"),
-            };
-            let lookup = apk::member_by_index_with_policy(
-                &args.apk,
-                archive_policy,
-                &descriptor,
-                index,
-                kind,
-                args.threads,
-            )?;
-            #[cfg(feature = "mcp")]
-            crate::query::check_records(lookup.candidates.len())?;
-            let mut payload = stream_header(
-                "member-by-index",
-                &args.apk,
-                json!({
-                    "descriptor":descriptor, "method_index":args.method_index, "field_index":args.field_index,
-                }),
-            )?;
-            for candidate in &lookup.candidates {
-                append_json(&mut payload, &member_record(candidate))?;
-            }
-            finish_stream(&mut payload, lookup.candidates.len())?;
-            emit(&payload, args.output.as_deref())?;
-            report_member_verdict(&lookup, name, index, &descriptor);
-            status = apk::lookup_status(lookup.candidates.len());
         }
         Command::Classes(args) => {
             let filter = args.filter.as_deref().map(str::to_lowercase);
@@ -538,56 +469,6 @@ fn stream_header(command: &str, inputs: &[std::path::PathBuf], query: Value) -> 
 
 fn finish_stream(payload: &mut String, records: usize) -> Result<()> {
     append_json(payload, &summary(records, true, Map::new()))
-}
-
-fn member_record(candidate: &apk::MemberCandidate) -> Value {
-    match candidate {
-        apk::MemberCandidate::Field {
-            entry,
-            class,
-            name,
-            type_descriptor,
-            access_flags,
-            is_static,
-            field_index,
-            slot,
-        } => data_record(
-            "field",
-            json!({
-                "entry":entry, "class":class, "name":name, "type":type_descriptor,
-                "access_flags":access_flags, "static":is_static, "field_index":field_index, "slot":slot,
-            }),
-        ),
-        apk::MemberCandidate::Method {
-            entry,
-            class,
-            name,
-            access_flags,
-            method_index,
-        } => data_record(
-            "method",
-            json!({
-                "entry":entry, "class":class, "name":name, "access_flags":access_flags, "method_index":method_index,
-            }),
-        ),
-    }
-}
-
-/// Says why a lookup that did not end in exactly one hit did not.
-///
-/// The rows are already on stdout; this is the explanation, and it goes to stderr so a
-/// caller reading the payload never has to filter it out.
-fn report_member_verdict(lookup: &apk::MemberLookup, kind: &str, index: u32, descriptor: &str) {
-    match lookup.candidates.len() {
-        0 if lookup.definitions == 0 => {
-            eprintln!("Error: {descriptor} is not defined in the supplied code inputs");
-        }
-        0 => eprintln!("Error: no {kind} index {index} is declared by {descriptor}"),
-        1 => {}
-        count => eprintln!(
-            "Error: {kind} index {index} of {descriptor} is declared {count} times; the rows above are the candidates"
-        ),
-    }
 }
 
 #[cfg(test)]

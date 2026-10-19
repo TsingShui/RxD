@@ -16,9 +16,6 @@ target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example --fu
 target/release/rxd dex get-class /path/to/app.apk com.example.Main
 target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' --members -o target/Main.java
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
-target/release/rxd dex fields-plan --apk /path/to/app.apk --descriptor com.example.Main
-target/release/rxd dex member-by-index --apk /path/to/app.apk --descriptor com.example.Main --method-index 339
-target/release/rxd dex member-by-index --apk /path/to/app.apk --descriptor com.example.Main --field-index 3
 target/release/rxd dex classes /path/to/classes.dex --threads 2
 ```
 
@@ -35,7 +32,6 @@ The second writes `target/skills/rxd/SKILL.md`; see the
 `-o` writes the same bytes while still emitting stdout; diagnostics and `--debug` go to
 stderr. Multi-input index commands may repeat `--apk` or supply multiple files. Method
 indices, field_ids and field slots use the actual input's indices. Exit 3 means no index
-result and 4 means ambiguity; `member-by-index` still returns candidate JSON at 4.
 
 ```sh
 RASC_MAX_INFLATED_ENTRY=1048576 target/release/rxd dex manifest /path/to/app.apk
@@ -47,7 +43,6 @@ The old rasc MCP transport is not imported; the shared stdio entry is in the
 
 ## Consuming schema v2
 
-`classes/strings/xref/entries/member-by-index` return header → records → summary
 JSONL even for zero results; success requires exit 0 and `summary.complete=true`.
 Navigation fields are always present but null; FETCH IDs are never constructed from
 indices. Route from `xref.detail.class` or `classes.detail.descriptor` to
@@ -60,10 +55,7 @@ target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' > target/
 ```
 
 `strings.detail.value/index` use the global DEX string table; `detail.class` is always
-null because a string need not belong to a class. `fields-plan` is one
-`record=field_plan` envelope with `backend=dex`, `command=fields-plan`,
 `schema_version=2`; read layout from `detail.instance_fields` etc. Exits 3/4 emit no
-layout. The old rasc pipe-delimited output and `fields-plan/v1` label are removed.
 `get-class --members` comment tables, Java text and Manifest XML remain unchanged.
 
 ## MCP

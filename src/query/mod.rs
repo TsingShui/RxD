@@ -181,10 +181,10 @@ pub fn execute(
             "query requires a captured input",
         ));
     }
-    if inputs.len() != 1 && !matches!(name, "dex_fields_plan" | "dex_member_by_index") {
+    if inputs.len() != 1 {
         return Err(QueryError::new(
             "INVALID_QUERY",
-            "this tool requires exactly one captured input; use DEX resolution tools for ordered bundles",
+            "this tool requires exactly one captured input",
         ));
     }
     for limit in [

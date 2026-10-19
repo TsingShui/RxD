@@ -24,8 +24,6 @@ preserved; argument positions and exit-code semantics are.
 | `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
-| `fields-plan --apk INPUT... --descriptor CLASS` | One class's `field_plan` JSON envelope, without header/summary. |
-| `member-by-index --apk INPUT... --descriptor CLASS --method-index N\|--field-index N` | Resolve a runtime member index and retain all ambiguous candidates. |
 
 APK/DEX commands keep their original argument positions, `--threads` / `--thread`
 alias and supported range. The default thread count comes from
@@ -57,9 +55,7 @@ JS/ASAR file-output contract: DEX keeps its original direct write and does not p
 atomic rollback on failure. Input and output must be different files.
 
 Normal queries exit 0 (including zero references or results); input/analysis/write
-errors exit 1; argument errors exit 2. `fields-plan`, `member-by-index` and
 `get-class --members` preserve ambiguity semantics: 3 means no result, 4 means
-ambiguous. `member-by-index` still prints all candidates at 4, while `fields-plan` and
 `get-class --members` refuse to select a definition. A missing class for `get-class`
 is still exit 1. Consumers must not assume that a non-zero exit implies empty stdout.
 
@@ -89,12 +85,9 @@ checked with references/member data. Known radguard output limitations are track
 
 ## Envelope (schema_version=2)
 
-`classes`, `strings`, `xref`, `entries` and `member-by-index` use the shared
 constructors and return header → zero or more records → summary; empty results still
-include header/summary. `member-by-index` emits zero records at exit 3 and all
 candidates at exit 4; `summary.complete=true` means candidate enumeration is complete,
 not that resolution is unique. General success requires exit 0 and `complete=true`.
-`fields-plan` emits one `field_plan` object only for a unique class definition; exits
 3/4 produce no stdout.
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
@@ -102,7 +95,6 @@ query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}
 `input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
 `query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
 `xref` string/type=`kind, value`, method/field=`kind, name, class, fuzzy_class`;
-`member-by-index`=`descriptor, method_index, field_index`, with descriptor normalized
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 
@@ -134,9 +126,6 @@ defined by more than one entry appears once per entry; duplicate detection is th
 
 | reference | xref | `entry, class, member, matched` |
 | entry | entries | `name, compression, compressed_size, uncompressed_size` |
-| field | member-by-index --field-index | `entry, class, name, type, access_flags, static, field_index, slot` |
-| method | member-by-index --method-index | `entry, class, name, access_flags, method_index` |
-| field_plan | fields-plan | `descriptor, dex_class_def_idx, dex_type_idx, class_access_flags, instance_fields, static_fields, counts, instance_ref_mask` |
 
 `class.name` is dotted; `package` keeps DEX slash separators. `string.index` is the
 DEX `string_ids` index and `value` is decoded text. `strings` enumerates the global
@@ -147,12 +136,6 @@ references within one member are listed once; ordering is preserved.
 `entry.compression` is stored/deflated/other; sizes are bytes. `field.slot` is the
 instance-first runtime slot, `field_index` is the DEX `field_ids` index, and
 `method_index` is the DEX `method_ids` index. `access_flags` is an integer.
-
-`field_plan` is one JSON object without header/summary, with
-`backend="dex"`, `command="fields-plan"`, `schema_version=2`. Instance/static field
-entries contain `field_index, name, type, access_flags`; `counts` contains `instance,
-static`; `instance_ref_mask` is a hex string where bit j corresponds to instance slot
-j, up to 64 bits.
 
 `get-class` Java and `get-class --members` text (including the member comment table)
 and Manifest XML stay outside the envelope and are byte-stable; JSON and Java are never
@@ -203,14 +186,11 @@ rasc schema-v1 byte comparisons are not used for the schema-v2 JSON protocol.
 
 ## MCP projection
 
-`dex_get_class/entries/strings/xref/manifest/classes/fields_plan/member_by_index`
-reuse existing parsing and result assembly in isolated workers. JSONL projects to
-header/records/summary; Java/XML is wrapped with representation/source/complete/
-source_id. Original null id/source_id semantics remain; a target only pins input and
-does not claim entity closure. `fields_plan`/`member_by_index` accept a mutually
-exclusive input or ordered inputs, preserve duplicates and complete ambiguous
-candidates, and report NOT_FOUND/AMBIGUOUS separately. Only these two native
-multi-input operations can use an open DEX bundle.
+`dex_get_class/entries/strings/xref/manifest/classes` reuse existing parsing and
+result assembly in isolated workers. JSONL projects to header/records/summary;
+Java/XML is wrapped with representation/source/complete/source_id. Original null
+id/source_id semantics remain; a target only pins input and does not claim entity
+closure.
 
 Shared snapshot, quota, cancellation and complete-response rules are in the
 [MCP design](mcp-design.md); the decision is [ADR 0007](../adr/0007-typed-mcp-service.md).

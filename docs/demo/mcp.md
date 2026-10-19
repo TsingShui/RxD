@@ -88,9 +88,8 @@ try {
 }
 ```
 
-Directory targets require `backend: "js"`; ordered DEX bundles use `paths` with `backend:
-"dex"`, then only `dex_fields_plan` / `dex_member_by_index`. A complete ambiguous candidate
-result is a domain error, not one arbitrarily chosen definition. EVM always requires explicit
+Directory targets require `backend: "js"`. A complete ambiguous candidate result is a
+domain error, not one arbitrarily chosen definition. EVM always requires explicit
 `encoding: "raw"` or `"hex"`. Kuna functions/decompile are available only in linked builds.
 No result creates new DEX/EVM entity IDs or guarantees decompiled semantic equivalence.
 

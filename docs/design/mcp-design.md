@@ -146,7 +146,7 @@ higher one, and the server ceiling is applied to the argv it builds.
 | js | outline, find, identifiers, calls, members, locate, xref, symbols, get |
 | asar | list, extract |
 | html | list, extract |
-| dex | get_class, entries, strings, xref, manifest, classes, fields_plan, member_by_index |
+| dex | get_class, entries, strings, xref, manifest, classes |
 | jar | outline, strings, xref, get_method, get_class |
 | dotnet | outline, strings, xref, get_method, get_class |
 | wasm | outline, strings, xref, get_function |
@@ -201,10 +201,8 @@ bounded. Windows DOS device names, alternate streams, control/invalid characters
 trailing dots/spaces are explicitly unsupported for physical snapshot names; accepted
 logical labels are preserved. `--max-snapshot-depth` accepts 1–256, default 64.
 
-DEX `fields_plan` and `member_by_index` accept exactly one `input` (file or open bundle)
-or `inputs` (ordered path/target references). Order and duplicate definitions are
-preserved. All other tools require one captured file; a bundle passed to a single-input
-operation fails.
+Every DEX tool requires one captured file; a bundle passed to a single-input operation
+fails.
 
 HTML `html_list` captures one regular immutable file for a path or file target. Its
 `lexical_naive_v1` records are not a DOM or browser-complete parse; no page code executes

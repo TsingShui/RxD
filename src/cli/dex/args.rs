@@ -19,23 +19,6 @@ pub enum Command {
     Manifest(ManifestArgs),
     /// List classes defined across every DEX in an APK.
     Classes(ClassesArgs),
-    /// Print one class's DEX field layout as one JSON record.
-    ///
-    /// Exit status: 0 = exactly one definition of the class; 3 = no input defines it;
-    /// 4 = more than one does (nothing is printed, and stderr names them). A plan decides
-    /// which instance slots a collector may dereference, so an ambiguous one is refused
-    /// rather than resolved by taking the first.
-    FieldsPlan(FieldsPlanArgs),
-    /// Resolve a runtime index - field or method - to the DEX member behind it.
-    ///
-    /// Exactly one index is taken. `--method-index N` is the `method_ids` index a runtime
-    /// stores; `--field-index N` is the position a field probe reports, instance fields
-    /// first and then statics, which is *not* the `field_ids` index (the row prints that
-    /// one too, so the two can be told apart).
-    ///
-    /// Exit status: 0 = one hit; 3 = the class is not defined, or declares no member with
-    /// that index; 4 = more than one input defines the class (all candidates are printed).
-    MemberByIndex(MemberByIndexArgs),
 }
 
 #[derive(Debug, Args)]
@@ -51,23 +34,6 @@ pub struct ClassesArgs {
     #[arg(long)]
     pub debug: bool,
     pub apk_path: PathBuf,
-}
-
-#[derive(Debug, Args)]
-pub struct FieldsPlanArgs {
-    /// One or more code inputs - an APK, or bare DEX files - tried in this order.
-    #[arg(long = "apk", required = true, num_args = 1.., value_name = "FILE")]
-    pub apk: Vec<PathBuf>,
-    /// Class to plan: `Lcom/foo/Bar;` or `com.foo.Bar`.
-    #[arg(long)]
-    pub descriptor: String,
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
-    pub threads: usize,
-    /// Print phase timings on stderr.
-    #[arg(long)]
-    pub debug: bool,
 }
 
 #[derive(Debug, Args)]
@@ -269,8 +235,6 @@ impl Command {
             Self::Xref(args) => args.debug,
             Self::Manifest(args) => args.debug,
             Self::Classes(args) => args.debug,
-            Self::FieldsPlan(args) => args.debug,
-            Self::MemberByIndex(args) => args.debug,
         }
     }
 
@@ -282,8 +246,6 @@ impl Command {
             Self::Xref(_) => "xref",
             Self::Manifest(_) => "manifest",
             Self::Classes(_) => "classes",
-            Self::FieldsPlan(_) => "fields-plan",
-            Self::MemberByIndex(_) => "member-by-index",
         }
     }
 }
