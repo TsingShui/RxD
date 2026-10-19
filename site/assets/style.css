@@ -237,6 +237,29 @@ ul, ol { padding: 0; list-style: none; }
   mask-image: radial-gradient(90% 80% at 26% 38%, #000 0%, transparent 78%);
 }
 
+.hero-mark {
+  justify-self: end;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.hero-mark img {
+  width: 100%;
+  height: auto;
+  border-radius: 92px;
+  transform: rotate(-3deg);
+  box-shadow: 0 50px 110px -40px rgba(0, 0, 0, 0.95);
+}
+.hero-mark figcaption {
+  font: 400 9px/1.6 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7b766e;
+  text-align: center;
+}
+
 .hero-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
@@ -1400,6 +1423,8 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
   h1 { font-size: clamp(42px, 6vw, 58px); }
   .hero-grid { grid-template-columns: 1fr; gap: 48px; }
   .hero-copy { max-width: 660px; }
+  .hero-mark { justify-self: start; width: min(280px, 72vw); }
+  .hero-mark img { border-radius: 62px; }
   .console { justify-self: start; max-width: 640px; }
   .nav-links {
     position: absolute;
@@ -1443,6 +1468,8 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
   h1 { font-size: clamp(30px, 9.2vw, 54px); }
   h2 { font-size: clamp(28px, 7vw, 38px); }
   .hero { padding-top: 44px; }
+  .hero-mark { width: min(220px, 62vw); }
+  .hero-mark img { border-radius: 48px; }
   .eyebrow { font-size: 9px; letter-spacing: 0.12em; }
   .lede { font-size: 15px; }
   .actions .btn { flex: 1 1 auto; }
