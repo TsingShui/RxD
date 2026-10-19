@@ -39,6 +39,67 @@ finished by making the backend conform, not by reverting the tests:
 
 Nothing is reverted; the tree stays red only until each backend step lands.
 
+## What the js attempt taught us (read this before retrying)
+
+The split was implemented and reverted: `entities` (every structural kind except the
+program record) plus `functions`/`classes`/`methods` grouped commands, driven by
+`Query::Outline { group: Option<&'static str>, contains: Option<String> }` in
+`crates/rxd-js`, with `group_kinds()` owning the closed kind sets and
+`JsString::contains_ci` for the filter. `normalize_id(source, id)` prefixes a short
+`kind:start:end` coordinate with `rxd1:js:<source id>:` so `get --at` and `--within`
+accept what a row prints, and a `program` id means "whole file" (`is_program_id`).
+
+Three test-side obstacles made it far more than a rename:
+
+1. **Budget-driven tests.** 17 functions in `tests/cli.rs` pass `--max-*` and assert an
+   exit-1 `RESOURCE_LIMIT`: `budgets_reject_results_without_partial_output`,
+   `deep_and_wide_inputs_are_controlled_failures`,
+   `get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_structure_get`,
+   `symbols_is_bounded_atomic_single_file_and_rejects_invalid_*`,
+   `refs_is_single_file_bounded_atomic_and_semantic_only_on_demand`,
+   `recursive_budgets_and_late_errors_leave_output_untouched`,
+   `local_context_ids_are_content_bound_parser_only_bounded_and_atomic`,
+   `perf_reports_failed_stages_without_partial_stdout`,
+   `benchmark_saves_failed_budget_results_and_returns_nonzero`,
+   `asar_selected_reads_survive_bloat_and_preserve_atomic_outputs`, plus single-flag
+   assertions in the ts/typed/recursive tests. They must become "the flag is unknown
+   (exit 2)" or lose the budget half of the test; the atomicity half can use a failing
+   selector instead.
+2. **The program record.** Ten assertions count entities or index rows assuming the
+   program record is present (for example `outline_entities_have_exact_spans`,
+   `empty_files_zero_matches_and_invalid_offsets`, `filtering_preserves_absolute_depth`,
+   `asar_extracted_production_sources_match_independent_acorn`). Each needs one less.
+3. **Command naming.** `Query::Refs` reports `name() == "refs"` while the CLI command is
+   `xref`; `assert_js_stream` only extended the header keys for `"xref"`, so refs streams
+   failed the key assertion. Accept both names (or fix `name()` to `xref`).
+
+## asar and html
+
+Both `extract` take a positional `id` (`src/cli/html/args.rs:54`), while their rows print
+a short `at` such as `doctype:0:15`; the tests already pass `--at` and the short value, so
+the failures are "unexpected argument '--at'" plus `INVALID_ID: malformed HTML record ID`.
+Give both a `--at` selector that accepts the short coordinate (prefix the input's content
+id, exactly like `normalize_id` in js), rename `list` to `entries`, and add `-f/--filter`.
+
+## pyc
+
+`outline` becomes `codes`. `strings` still exposes `--contains` (pyc-specific) and
+`--contains-hex`; rename the former to `-f/--filter`, keep the hex form. The 33 pyc
+failures are the unmigrated `id→at` assertions plus `--contains`.
+
+## evm
+
+61 failures, all `INVALID_ID: expected a canonical content-bound EVM block ID`: the CLI
+still validates the long id while rows print the short coordinate. Do the walk before the
+rename: accept the short form, then `--id` → `--at`, drop `outline` (duplicate of
+`basic-blocks`), and add `-f/--filter`.
+
+## mcp
+
+45 timeouts, not assertion failures: the MCP server stops answering. Diagnose with a
+single `mcp::` test after the backend surfaces settle - the server forwards CLI argv, so a
+removed flag can make a tool fail before it answers.
+
 ## Pending, in order
 
 1. **dotnet split** (code was written and reverted to keep the tree green): replace
