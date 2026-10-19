@@ -62,6 +62,24 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// is 64-bit, and `--max-input-bytes` may only lower this value.
 pub const MAX_INPUT_BYTES: usize = 8 << 30;
 
+/// One archive entry: 256 MiB. DEX applies this to a single inflated entry and the JVM
+/// backend to one class file, so the ceiling is a property of the format family, not of
+/// a backend.
+pub const MAX_ENTRY_BYTES: usize = 256 << 20;
+
+/// Physical archive entries: one million. A production APK or fat JAR stays far below
+/// it, and the cap exists so a crafted directory cannot make the reader allocate.
+pub const MAX_ARCHIVE_ENTRIES: usize = 1 << 20;
+
+/// Decoded metadata a single analysis may hold: 128 MiB.
+pub const MAX_METADATA_BYTES: usize = 128 << 20;
+
+/// Work units one query may spend: one million.
+pub const MAX_WORK_UNITS: usize = 1_000_000;
+
+/// Bytes one command may print or write: 32 MiB.
+pub const MAX_OUTPUT_BYTES: usize = 32 << 20;
+
 /// Content spans are 32-bit, so no backend can address an input at or above 4 GiB.
 /// This is a structural limit of the formats, not a policy budget.
 pub const MAX_SPAN_BYTES: usize = u32::MAX as usize;

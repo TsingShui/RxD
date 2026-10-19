@@ -172,6 +172,8 @@ pub(crate) fn parse_zip_entries_bounded<S: BytesSource + ?Sized>(
 /// failure.
 /// Real DEX entries are tens of MiB - the largest in the 343 MiB sample APK is 11.4 MiB - so
 /// this is far above any legitimate archive while keeping the worst case survivable.
+/// 256 MiB: the shared one-entry ceiling (rxd_core::MAX_ENTRY_BYTES), which the JVM
+/// backend applies to a single class file as well.
 pub(crate) const DEFAULT_MAX_INFLATED_ENTRY: usize = 256 << 20;
 
 /// The message for an entry that needs more room than the ceiling allows.
