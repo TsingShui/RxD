@@ -1,0 +1,12 @@
+[package]
+name = "rxd-pyc"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+pycdc = { path = "../../third_party/pycdc" }
+rxd-core.workspace = true
+sha2 = "0.10"
+serde.workspace = true

@@ -1,0 +1,120 @@
+[package]
+name = "rxd"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Agent-oriented JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML analysis CLI"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+members = [
+    "crates/rxd-core",
+    "crates/rxd-hook-gen",
+    "crates/rxd-js",
+    "crates/rxd-asar",
+    "crates/rxd-html",
+    "crates/rxd-dex",
+    "crates/rxd-jvm",
+    "crates/rxd-dotnet",
+    "crates/rxd-kuna-cli",
+    "crates/rxd-wasm",
+    "crates/rxd-evm",
+    "crates/rxd-pyc",
+    "third_party/radguard",
+]
+exclude = ["third_party/axmldecoder", "third_party/pycdc", "third_party/kuna"]
+resolver = "3"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["raw_value"] }
+oxc_allocator = "=0.153.0"
+oxc_ast = "=0.153.0"
+oxc_ast_visit = "=0.153.0"
+oxc_parser = "=0.153.0"
+oxc_semantic = { version = "=0.153.0", default-features = false }
+oxc_span = "=0.153.0"
+oxc_syntax = "=0.153.0"
+rxd-core = { path = "crates/rxd-core" }
+rxd-js = { path = "crates/rxd-js" }
+rxd-asar = { path = "crates/rxd-asar" }
+rxd-html = { path = "crates/rxd-html" }
+rxd-pyc = { path = "crates/rxd-pyc" }
+
+[features]
+default = ["all-feature"]
+all-feature = ["all-backends", "mcp", "bundled-ilspy"]
+all-backends = [
+    "backend-js",
+    "backend-asar",
+    "backend-html",
+    "backend-dex",
+    "backend-jvm",
+    "backend-dotnet",
+    "backend-evm",
+    "backend-wasm",
+    "backend-pyc",
+    "backend-kuna",
+]
+backend-js = ["dep:rxd-js", "dep:rayon"]
+backend-asar = ["dep:rxd-asar"]
+backend-html = ["dep:rxd-html"]
+backend-dex = ["dep:rxd-dex", "dep:rayon", "rxd-hook-gen/dex"]
+backend-jvm = ["dep:rxd-jvm"]
+backend-dotnet = ["dep:rxd-dotnet"]
+backend-evm = ["dep:rxd-evm"]
+backend-wasm = ["dep:rxd-wasm"]
+backend-pyc = ["dep:rxd-pyc"]
+backend-kuna = []
+mcp = ["dep:rmcp", "dep:tokio", "dep:tokio-util", "dep:schemars", "dep:sha2", "dep:base64", "dep:rayon", "dep:toml_edit", "dep:windows-sys"]
+csharp-decompiler = ["backend-dotnet", "rxd-dotnet/csharp-decompiler"]
+bundled-kuna = ["backend-kuna", "rxd-core/runtime-bundle", "dep:rxd-kuna-cli", "rxd-hook-gen/kuna"]
+bundled-ilspy = ["backend-dotnet", "csharp-decompiler", "rxd-dotnet/bundled-ilspy"]
+
+[dependencies]
+rxd-hook-gen = { path = "crates/rxd-hook-gen", default-features = false, features = ["native", "web"] }
+toml_edit = { version = "=0.25.17", optional = true }
+rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"], optional = true }
+tokio = { version = "=1.53.2", features = ["rt-multi-thread", "io-std", "io-util", "sync", "process", "time", "signal"], optional = true }
+tokio-util = { version = "0.7", optional = true }
+schemars = { version = "=1.2.3", optional = true }
+sha2 = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
+rxd-kuna-cli = { path = "crates/rxd-kuna-cli", optional = true }
+anyhow = "1.0"
+rayon = { version = "1.12", optional = true }
+rxd-dex = { path = "crates/rxd-dex", optional = true }
+rxd-jvm = { path = "crates/rxd-jvm", optional = true }
+rxd-dotnet = { path = "crates/rxd-dotnet", optional = true }
+rxd-wasm = { path = "crates/rxd-wasm", optional = true }
+rxd-evm = { path = "crates/rxd-evm", optional = true }
+clap = { version = "4.6", features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3.27"
+rxd-core.workspace = true
+rxd-js = { workspace = true, optional = true }
+rxd-asar = { workspace = true, optional = true }
+rxd-html = { workspace = true, optional = true }
+rxd-pyc = { workspace = true, optional = true }
+
+[dev-dependencies]
+toml = "=1.1.8"
+zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
+flate2 = { version = "1", default-features = false, features = ["zlib"] }
+sha2 = "0.10"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[patch.crates-io]
+axmldecoder = { path = "third_party/axmldecoder" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"], optional = true }
