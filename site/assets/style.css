@@ -1171,7 +1171,9 @@ h2 {
   text-transform: uppercase;
   color: #7b766e;
 }
+.why-list.feature-groups { counter-reset: why -1; }
 .feature-groups li { padding-top: 26px; padding-bottom: 28px; }
+.why-list.feature-groups li::before { content: counter(why, decimal-leading-zero); }
 .feature-groups h3 { font-size: 24px; }
 .feature-groups p { font-size: 14px; }
 .feature-groups li::before { font-size: 12px; top: 28px; }
