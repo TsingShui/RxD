@@ -1,0 +1,69 @@
+{
+  "analyzed_modules_imported_or_executed": false,
+  "artifacts": {
+    "refs.hash-checked.pyc": {
+      "bytes": 2700,
+      "sha256": "02664c9f74667266e41e3d79c0be81cdacc731854a033ef2c242db00ea25309f"
+    },
+    "refs.hash-unchecked.pyc": {
+      "bytes": 2700,
+      "sha256": "18f53b2305c9bed62ca8cb46f4ba43e3cb1d59240fe6659442c1e45fd220dd80"
+    },
+    "refs.marshal": {
+      "bytes": 2684,
+      "sha256": "d9146ef9a770104d755c400de2dfe1c84677c75549cf7ae9d8e914034053e021"
+    },
+    "refs.oracle.json": {
+      "bytes": 197278,
+      "sha256": "12244e2429a9c25e35c2966dd9dec2532232f08a88bb43981b3dc44e56257ead"
+    },
+    "refs.py": {
+      "bytes": 983,
+      "sha256": "054f7dd6b6dcaa04a62b07b1df0f4f76acb8b734dc348cc45b70c3f450a8b66a"
+    },
+    "refs.timestamp.pyc": {
+      "bytes": 2700,
+      "sha256": "45107a09692777ab5b4006612690a9bb3c6b0810e56cc89a8ce37960b246621d"
+    }
+  },
+  "binary_sha256": "ac60cfe0268614638d0ffa35f3b0284fc7b3a11482723793455e17eeb278509e",
+  "compile_only": true,
+  "generator_sha256": "37a28725f7b637cfa91bc677ce06e0c7d94a700b83caeefac0347850051e22f8",
+  "helper_sha256": "f7f1bb9212f6a3688b53fdd3680773106564f8af3f3e807fa5ad767ce65655aa",
+  "input": {
+    "code_count": 14,
+    "files": [
+      {
+        "bytes": 2700,
+        "file": "refs.timestamp.pyc",
+        "header_mode": "timestamp",
+        "sha256": "45107a09692777ab5b4006612690a9bb3c6b0810e56cc89a8ce37960b246621d"
+      },
+      {
+        "bytes": 2700,
+        "file": "refs.hash-unchecked.pyc",
+        "header_mode": "hash-unchecked",
+        "sha256": "18f53b2305c9bed62ca8cb46f4ba43e3cb1d59240fe6659442c1e45fd220dd80"
+      },
+      {
+        "bytes": 2700,
+        "file": "refs.hash-checked.pyc",
+        "header_mode": "hash-checked",
+        "sha256": "02664c9f74667266e41e3d79c0be81cdacc731854a033ef2c242db00ea25309f"
+      }
+    ],
+    "label": "refs",
+    "marshal_bytes": 2684,
+    "marshal_sha256": "d9146ef9a770104d755c400de2dfe1c84677c75549cf7ae9d8e914034053e021",
+    "source_bytes": 983,
+    "source_sha256": "054f7dd6b6dcaa04a62b07b1df0f4f76acb8b734dc348cc45b70c3f450a8b66a"
+  },
+  "interpreter": "/opt/uv/python/cpython-3.12.14-macos-aarch64-none/bin/python3.12",
+  "version_info": [
+    3,
+    12,
+    14,
+    "final",
+    0
+  ]
+}

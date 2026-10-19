@@ -1,0 +1,30 @@
+[package]
+name = "rxd-kuna-cli"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97"
+license = "Apache-2.0"
+publish = false
+description = "Build-time library adapter for the unchanged pinned Kuna CLI"
+
+[lib]
+test = false
+doctest = false
+
+[features]
+# The rxd adapter distributes specs through its own verified runtime bundle.
+# Declaring the upstream feature keeps included source cfg checks valid without
+# enabling the upstream build-time embedding path.
+embed-specs = []
+
+[dependencies]
+kuna-decomp = { path = "../../third_party/kuna/decompiler/crates/kuna-decomp" }
+kuna-base = { path = "../../third_party/kuna/decompiler/crates/kuna-base" }
+kuna-console = { path = "../../third_party/kuna/decompiler/crates/kuna-console" }
+kuna-analysis = { path = "../../third_party/kuna/decompiler/crates/kuna-analysis" }
+kuna-sleigh = { path = "../../third_party/kuna/decompiler/crates/kuna-sleigh" }
+object = { version = "0.39", default-features = false, features = ["read_core", "elf", "pe", "macho", "coff", "std", "archive"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+tempfile = "3.27"

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RxD — one binary for most static analysis</title>
+<meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats. One binary, content-bound IDs, no input execution.">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="canonical" href="https://tsingshui.github.io/RxD/">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
+<link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
+<link rel="stylesheet" href="assets/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" data-nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="./" aria-label="RxD home">
+      <img class="brand-icon" src="assets/arxd-light-128.png" alt="" width="26" height="26">
+      RxD<span class="brand-dot">.</span>
+      <span class="brand-sub">Rust × Decompiler</span>
+    </a>
+    <nav class="nav-links" aria-label="Site">
+      <a href="./" aria-current="page">RxD</a>
+      <a href="examples.html">Examples</a>
+      <a href="arxd.html">Arxd</a>
+    </nav>
+    <a class="nav-gh" href="https://github.com/TsingShui/RxD">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="kicker">RUST × DECOMPILER / AGENT-FIRST ANALYSIS CLI</p>
+        <h1>One binary.<br>Most static analysis.</h1>
+        <p class="lede">Native, APK, JAR, JavaScript, .NET, WASM, PYC and EVM — locate a clue, find references, and fetch the original unit. Content-bound IDs, deterministic records, and input that is never executed.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#install">Get started <span aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD">GitHub repository <span aria-hidden="true">↗</span></a>
+        </div>
+        <ul class="hero-meta">
+          <li>Single executable</li>
+          <li>Apache-2.0</li>
+          <li>Inputs never run</li>
+        </ul>
+      </div>
+      <figure class="console" aria-label="RxD command examples">
+        <pre><code><span class="prompt">$</span> rxd dex strings app.apk --filter Authorization
+<span class="prompt">$</span> rxd dex findrefs app.apk string Authorization
+<span class="prompt">$</span> rxd dex get-class app.apk 'Lcom/example/Main;'
+<span class="prompt">$</span> rxd js find bundle.js --string '/api/login'
+<span class="prompt">$</span> rxd js get bundle.js --id '&lt;id&gt;'
+<span class="prompt">$</span> rxd dotnet get-method app.dll '&lt;id&gt;' --il
+<span class="prompt">$</span> rxd wasm get-function module.wasm '&lt;id&gt;'
+<span class="prompt">$</span> rxd pyc outline module.pyc</code></pre>
+      </figure>
+    </div>
+  </section>
+
+  <div class="rail" aria-label="Supported formats">
+    <div class="wrap rail-inner">
+      <span class="rail-label">FORMATS</span>
+      <span>Native</span><i>/</i><span>APK</span><i>/</i><span>JAR</span><i>/</i>
+      <span>JavaScript</span><i>/</i><span>.NET</span><i>/</i><span>WASM</span><i>/</i>
+      <span>PYC</span><i>/</i><span>EVM</span><i>/</i><span>ASAR</span><i>/</i><span>HTML</span>
+    </div>
+  </div>
+
+  <section class="section" id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">START</p>
+        <h2>Build once. Query anything.</h2>
+        <p class="section-lede">Release binaries are published from the Build RxD workflow. From source, initialize the Kuna path dependency and build the default all-feature profile.</p>
+      </div>
+      <pre><code>git submodule update --init third_party/kuna
+cargo build --release
+target/release/rxd --version
+target/release/rxd skill install -a pi</code></pre>
+      <p class="section-lede">Reduced builds are explicit: <code>--no-default-features --features backend-js</code>. See the <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/demo/install.md">installation guide</a>.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">WHY RXD</p>
+        <h2>Fast primitives, not one heavy call.</h2>
+      </div>
+      <div class="feature-grid">
+        <article><h3>Content-bound identity</h3><p>Every ID binds the input hash and a real byte range. Extraction returns original bytes, never a reconstruction of the address.</p></article>
+        <article><h3>Agent-first output</h3><p>Stable JSONL envelopes: header, records and summary. Detail is a closed per-record schema. Raw source stays byte-exact.</p></article>
+        <article><h3>No execution</h3><p>Parsers read fixed buffers. Inputs and recovered modules are never executed; budgets and atomic failures are explicit.</p></article>
+        <article><h3>Honest degradation</h3><p>When a decompiler cannot recover a unit, the full original IL/bytecode/instructions and a reason remain. Partial guesses are not returned.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">BACKENDS</p>
+        <h2>One namespace per format.</h2>
+        <p class="section-lede">Each backend exposes the capability loop that fits its format: enumerate, search, cross-reference and fetch.</p>
+      </div>
+      <table class="format-table">
+        <thead><tr><th>Backend</th><th>Entry</th><th>Capability</th></tr></thead>
+        <tbody>
+          <tr><td>Native (Kuna)</td><td><code>rxd kuna</code></td><td>ELF/PE/Mach-O functions, single-function and project decompilation</td></tr>
+          <tr><td>JavaScript</td><td><code>rxd js</code></td><td>Structures, decoded literals, lexical references, original source</td></tr>
+          <tr><td>ASAR</td><td><code>rxd asar</code></td><td>Archive entries and raw extraction</td></tr>
+          <tr><td>HTML</td><td><code>rxd html</code></td><td>Lexical container records and node extraction</td></tr>
+          <tr><td>Android APK/DEX</td><td><code>rxd dex</code></td><td>Classes, strings, references, Manifest, field layout</td></tr>
+          <tr><td>JVM</td><td><code>rxd jar</code></td><td>Class metadata, strings, references, Java decompilation</td></tr>
+          <tr><td>.NET IL</td><td><code>rxd dotnet</code></td><td>Metadata, strings, semantic XREF, original IL or C#</td></tr>
+          <tr><td>WebAssembly</td><td><code>rxd wasm</code></td><td>Module structure, instructions, references, C-like output</td></tr>
+          <tr><td>CPython bytecode</td><td><code>rxd pyc</code></td><td>3.8–3.13 navigation, original instructions, source recovery</td></tr>
+          <tr><td>EVM bytecode</td><td><code>rxd evm</code></td><td>EVMole analysis, static navigation, bounded pseudocode</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">NEXT</p>
+        <h2>Use it from an Agent.</h2>
+        <p class="section-lede">Register only the roots you intend to analyze. Preview first; writing configuration is not a live session.</p>
+      </div>
+      <pre><code>rxd mcp install -a pi --root /absolute/path/to/inputs --preview
+rxd mcp install -a pi --root /absolute/path/to/inputs
+rxd mcp serve --base /workspace --root /workspace</code></pre>
+      <p class="section-lede"><a class="text-link" href="examples.html">Query examples</a> · <a class="text-link" href="https://github.com/TsingShui/RxD/tree/main/docs/design">Design docs</a> · <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/demo/mcp.md">MCP guide</a></p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>RxD is Apache-2.0 licensed. Component notices are in the repository NOTICE file.</p>
+    <nav class="footer-col" aria-label="Project">
+      <span>Project</span>
+      <a href="https://github.com/TsingShui/RxD">GitHub</a>
+      <a href="https://github.com/TsingShui/RxD/blob/main/README.md">README</a>
+      <a href="https://github.com/TsingShui/RxD/blob/main/AGENTS.md">Design principles</a>
+    </nav>
+    <nav class="footer-col" aria-label="Docs">
+      <span>Docs</span>
+      <a href="examples.html">Examples</a>
+      <a href="https://github.com/TsingShui/RxD/tree/main/docs/demo">Command examples</a>
+      <a href="https://github.com/TsingShui/RxD/tree/main/docs/design">Backend design</a>
+      <a href="https://github.com/TsingShui/RxD/tree/main/docs/adr">ADR</a>
+    </nav>
+    <nav class="footer-col" aria-label="License">
+      <span>License</span>
+      <a href="https://github.com/TsingShui/RxD/blob/main/LICENSE">Apache-2.0</a>
+      <a href="https://github.com/TsingShui/RxD/blob/main/NOTICE">NOTICE</a>
+      <a href="https://github.com/TsingShui/RxD/blob/main/SECURITY.md">Security</a>
+    </nav>
+    <a href="#top">Back to top ↑</a>
+  </div>
+</footer>
+<script src="assets/main.js"></script>
+</body>
+</html>

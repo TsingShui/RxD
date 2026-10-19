@@ -1,0 +1,6251 @@
+{
+  "sample": "authored-navigation",
+  "compiler": "0.8.26+commit.8a97fa7a.Emscripten.clang",
+  "method_identifiers": {
+    "addSeven(uint256)": "1ba64846",
+    "choose(uint256)": "0bb0b13a",
+    "marker()": "3acddfc1",
+    "message()": "e21f37ce",
+    "readValue()": "82da2e57",
+    "storeAndRead(uint256)": "ae3da75a",
+    "sum(uint256)": "188b85b4",
+    "transientValue(uint256)": "e48c8755"
+  },
+  "dispatch": [
+    {
+      "signature": "addSeven(uint256)",
+      "selector": "1ba64846",
+      "occurrences": [
+        {
+          "push_offset": 49,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 514,
+          "jumpi_offset": 58
+        }
+      ]
+    },
+    {
+      "signature": "choose(uint256)",
+      "selector": "0bb0b13a",
+      "occurrences": [
+        {
+          "push_offset": 26,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 601,
+          "jumpi_offset": 35
+        }
+      ]
+    },
+    {
+      "signature": "marker()",
+      "selector": "3acddfc1",
+      "occurrences": [
+        {
+          "push_offset": 60,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 462,
+          "jumpi_offset": 69
+        }
+      ]
+    },
+    {
+      "signature": "message()",
+      "selector": "e21f37ce",
+      "occurrences": [
+        {
+          "push_offset": 93,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 156,
+          "jumpi_offset": 102
+        }
+      ]
+    },
+    {
+      "signature": "readValue()",
+      "selector": "82da2e57",
+      "occurrences": [
+        {
+          "push_offset": 71,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 434,
+          "jumpi_offset": 80
+        }
+      ]
+    },
+    {
+      "signature": "storeAndRead(uint256)",
+      "selector": "ae3da75a",
+      "occurrences": [
+        {
+          "push_offset": 82,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 398,
+          "jumpi_offset": 91
+        }
+      ]
+    },
+    {
+      "signature": "sum(uint256)",
+      "selector": "188b85b4",
+      "occurrences": [
+        {
+          "push_offset": 38,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 546,
+          "jumpi_offset": 47
+        }
+      ]
+    },
+    {
+      "signature": "transientValue(uint256)",
+      "selector": "e48c8755",
+      "occurrences": [
+        {
+          "push_offset": 103,
+          "pattern": [
+            "PUSH4",
+            "EQ",
+            "PUSH2",
+            "JUMPI"
+          ],
+          "entry_offset": 116,
+          "jumpi_offset": 112
+        }
+      ]
+    }
+  ],
+  "storage_layout": {
+    "storage": [
+      {
+        "astId": 4,
+        "contract": "NavigationCorpus.sol:NavigationCorpus",
+        "label": "value",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_uint256"
+      }
+    ],
+    "types": {
+      "t_uint256": {
+        "encoding": "inplace",
+        "label": "uint256",
+        "numberOfBytes": "32"
+      }
+    }
+  },
+  "function_debug_data": {},
+  "source_map_instruction_count": 363,
+  "restricted_static_regions": [
+    {
+      "signature": "addSeven(uint256)",
+      "selector": "1ba64846",
+      "entry_offset": 514,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 514,
+          "end": 520,
+          "successors": [
+            152,
+            520
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 520,
+          "end": 532,
+          "successors": [
+            152,
+            532
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 532,
+          "end": 546,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "choose(uint256)",
+      "selector": "0bb0b13a",
+      "entry_offset": 601,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 601,
+          "end": 607,
+          "successors": [
+            152,
+            607
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 607,
+          "end": 619,
+          "successors": [
+            152,
+            619
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 619,
+          "end": 634,
+          "successors": [
+            640,
+            634
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 634,
+          "end": 640,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 640,
+          "end": 648,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "marker()",
+      "selector": "3acddfc1",
+      "entry_offset": 462,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 462,
+          "end": 468,
+          "successors": [
+            152,
+            468
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 468,
+          "end": 479,
+          "successors": [
+            152,
+            479
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 479,
+          "end": 514,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "message()",
+      "selector": "e21f37ce",
+      "entry_offset": 156,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 156,
+          "end": 162,
+          "successors": [
+            152,
+            162
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 162,
+          "end": 173,
+          "successors": [
+            152,
+            173
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 173,
+          "end": 199,
+          "successors": [
+            378,
+            199
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 199,
+          "end": 378,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 378,
+          "end": 398,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "readValue()",
+      "selector": "82da2e57",
+      "entry_offset": 434,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 434,
+          "end": 440,
+          "successors": [
+            152,
+            440
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 440,
+          "end": 451,
+          "successors": [
+            152,
+            451
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 451,
+          "end": 462,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "storeAndRead(uint256)",
+      "selector": "ae3da75a",
+      "entry_offset": 398,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 398,
+          "end": 404,
+          "successors": [
+            152,
+            404
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 404,
+          "end": 416,
+          "successors": [
+            152,
+            416
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 416,
+          "end": 434,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "sum(uint256)",
+      "selector": "188b85b4",
+      "entry_offset": 546,
+      "blocks": [
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 546,
+          "end": 552,
+          "successors": [
+            152,
+            552
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 552,
+          "end": 564,
+          "successors": [
+            152,
+            564
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 564,
+          "end": 569,
+          "successors": [
+            569
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 569,
+          "end": 577,
+          "successors": [
+            587,
+            577
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 577,
+          "end": 587,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 587,
+          "end": 601,
+          "successors": [
+            569
+          ],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    },
+    {
+      "signature": "transientValue(uint256)",
+      "selector": "e48c8755",
+      "entry_offset": 116,
+      "blocks": [
+        {
+          "start": 116,
+          "end": 122,
+          "successors": [
+            152,
+            122
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 122,
+          "end": 134,
+          "successors": [
+            152,
+            134
+          ],
+          "unknown_jump": false
+        },
+        {
+          "start": 134,
+          "end": 152,
+          "successors": [],
+          "unknown_jump": false
+        },
+        {
+          "start": 152,
+          "end": 156,
+          "successors": [],
+          "unknown_jump": false
+        }
+      ],
+      "has_unresolved_jump": false
+    }
+  ],
+  "compiler_data": [],
+  "metadata": {
+    "start": 649,
+    "end": 702,
+    "cbor_length": 51,
+    "hex": "a2646970667358221220b8a82fb7ed654b399f3a9727c598cb01c0458c70270eae6ea5072cf4e738a14d64736f6c634300081a0033"
+  },
+  "functions": [
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 17,
+      "name": "addSeven",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "pure",
+      "start": 199,
+      "length": 104,
+      "body_start": 260,
+      "body_length": 43,
+      "body_instruction_offsets": [
+        537
+      ],
+      "control": [
+        {
+          "kind": "Return",
+          "start": 282,
+          "length": 12,
+          "snippet": "return x + 7"
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 44,
+      "name": "choose",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "pure",
+      "start": 309,
+      "length": 184,
+      "body_start": 375,
+      "body_length": 118,
+      "body_instruction_offsets": [
+        625,
+        627,
+        628,
+        629,
+        630,
+        633,
+        634,
+        640
+      ],
+      "control": [
+        {
+          "kind": "IfStatement",
+          "start": 409,
+          "length": 68,
+          "snippet": "if (x < 10) { result = x + 7; }\n            else { result = x - 3; }"
+        },
+        {
+          "kind": "Assignment",
+          "start": 460,
+          "length": 14,
+          "snippet": "result = x - 3"
+        },
+        {
+          "kind": "Assignment",
+          "start": 423,
+          "length": 14,
+          "snippet": "result = x + 7"
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 69,
+      "name": "sum",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "pure",
+      "start": 499,
+      "length": 161,
+      "body_start": 562,
+      "body_length": 98,
+      "body_instruction_offsets": [
+        569,
+        570,
+        571,
+        572,
+        573,
+        576,
+        587,
+        597,
+        600
+      ],
+      "control": [
+        {
+          "kind": "ForStatement",
+          "start": 596,
+          "length": 48,
+          "snippet": "for (uint256 i = 0; i < n; ++i) { result += i; }"
+        },
+        {
+          "kind": "Assignment",
+          "start": 630,
+          "length": 11,
+          "snippet": "result += i"
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 86,
+      "name": "storeAndRead",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "nonpayable",
+      "start": 666,
+      "length": 126,
+      "body_start": 726,
+      "body_length": 66,
+      "body_instruction_offsets": [],
+      "control": [
+        {
+          "kind": "Assignment",
+          "start": 736,
+          "length": 9,
+          "snippet": "value = x"
+        },
+        {
+          "kind": "Return",
+          "start": 767,
+          "length": 16,
+          "snippet": "return value + 1"
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 94,
+      "name": "readValue",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "view",
+      "start": 798,
+      "length": 82,
+      "body_start": 851,
+      "body_length": 29,
+      "body_instruction_offsets": [],
+      "control": [
+        {
+          "kind": "Return",
+          "start": 861,
+          "length": 12,
+          "snippet": "return value"
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 103,
+      "name": "transientValue",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "nonpayable",
+      "start": 886,
+      "length": 167,
+      "body_start": 955,
+      "body_length": 98,
+      "body_instruction_offsets": [
+        137,
+        139,
+        142,
+        144
+      ],
+      "control": [
+        {
+          "kind": "InlineAssembly",
+          "start": 965,
+          "length": 82,
+          "snippet": "assembly {\n            tstore(0x42, x)\n            result := tload(0x42)\n        }"
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 111,
+      "name": "marker",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "pure",
+      "start": 1059,
+      "length": 98,
+      "body_start": 1109,
+      "body_length": 48,
+      "body_instruction_offsets": [],
+      "control": [
+        {
+          "kind": "Return",
+          "start": 1119,
+          "length": 31,
+          "snippet": "return \"RXD_LITERAL_NAVIGATION\""
+        }
+      ]
+    },
+    {
+      "source": "NavigationCorpus.sol",
+      "source_id": 0,
+      "ast_id": 119,
+      "name": "message",
+      "kind": "function",
+      "visibility": "external",
+      "mutability": "pure",
+      "start": 1163,
+      "length": 183,
+      "body_start": 1220,
+      "body_length": 126,
+      "body_instruction_offsets": [],
+      "control": [
+        {
+          "kind": "Return",
+          "start": 1230,
+          "length": 109,
+          "snippet": "return \"RXD_DATA_NAVIGATION: trusted authored compiler corpus with a long readable literal and no execution.\""
+        }
+      ]
+    }
+  ],
+  "instructions": [
+    {
+      "offset": 0,
+      "end": 2,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6080",
+      "immediate": "80",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 2,
+      "end": 3,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 3,
+      "end": 5,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 5,
+      "end": 6,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 6,
+      "end": 8,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 8,
+      "end": 9,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 9,
+      "end": 10,
+      "opcode": 16,
+      "nm": "LT",
+      "raw": "10",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 10,
+      "end": 11,
+      "opcode": 21,
+      "nm": "ISZERO",
+      "raw": "15",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 11,
+      "end": 14,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610012",
+      "immediate": "0012",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 14,
+      "end": 15,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 15,
+      "end": 16,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 16,
+      "end": 17,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 17,
+      "end": 18,
+      "opcode": 253,
+      "nm": "REVERT",
+      "raw": "fd",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 18,
+      "end": 19,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 19,
+      "end": 20,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 20,
+      "end": 21,
+      "opcode": 53,
+      "nm": "CALLDATALOAD",
+      "raw": "35",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 21,
+      "end": 23,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "60e0",
+      "immediate": "e0",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 23,
+      "end": 24,
+      "opcode": 28,
+      "nm": "SHR",
+      "raw": "1c",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 24,
+      "end": 25,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 25,
+      "end": 26,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 26,
+      "end": 31,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "630bb0b13a",
+      "immediate": "0bb0b13a",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 31,
+      "end": 32,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 32,
+      "end": 35,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610259",
+      "immediate": "0259",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 35,
+      "end": 36,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 36,
+      "end": 37,
+      "opcode": 80,
+      "nm": "POP",
+      "raw": "50",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 37,
+      "end": 38,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 38,
+      "end": 43,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "63188b85b4",
+      "immediate": "188b85b4",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 43,
+      "end": 44,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 44,
+      "end": 47,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610222",
+      "immediate": "0222",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 47,
+      "end": 48,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 48,
+      "end": 49,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 49,
+      "end": 54,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "631ba64846",
+      "immediate": "1ba64846",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 54,
+      "end": 55,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 55,
+      "end": 58,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610202",
+      "immediate": "0202",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 58,
+      "end": 59,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 59,
+      "end": 60,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 60,
+      "end": 65,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "633acddfc1",
+      "immediate": "3acddfc1",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 65,
+      "end": 66,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 66,
+      "end": 69,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "6101ce",
+      "immediate": "01ce",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 69,
+      "end": 70,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 70,
+      "end": 71,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 71,
+      "end": 76,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "6382da2e57",
+      "immediate": "82da2e57",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 76,
+      "end": 77,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 77,
+      "end": 80,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "6101b2",
+      "immediate": "01b2",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 80,
+      "end": 81,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 81,
+      "end": 82,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 82,
+      "end": 87,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "63ae3da75a",
+      "immediate": "ae3da75a",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 87,
+      "end": 88,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 88,
+      "end": 91,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "61018e",
+      "immediate": "018e",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 91,
+      "end": 92,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 92,
+      "end": 93,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 93,
+      "end": 98,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "63e21f37ce",
+      "immediate": "e21f37ce",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 98,
+      "end": 99,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 99,
+      "end": 102,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "61009c",
+      "immediate": "009c",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 102,
+      "end": 103,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 103,
+      "end": 108,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "63e48c8755",
+      "immediate": "e48c8755",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 108,
+      "end": 109,
+      "opcode": 20,
+      "nm": "EQ",
+      "raw": "14",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 109,
+      "end": 112,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610074",
+      "immediate": "0074",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 112,
+      "end": 113,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 113,
+      "end": 114,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 114,
+      "end": 115,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 115,
+      "end": 116,
+      "opcode": 253,
+      "nm": "REVERT",
+      "raw": "fd",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 116,
+      "end": 117,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 117,
+      "end": 118,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 118,
+      "end": 121,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 121,
+      "end": 122,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 122,
+      "end": 124,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 124,
+      "end": 125,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 125,
+      "end": 127,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 127,
+      "end": 128,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 128,
+      "end": 129,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 129,
+      "end": 130,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 130,
+      "end": 133,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 133,
+      "end": 134,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 134,
+      "end": 136,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 136,
+      "end": 137,
+      "opcode": 53,
+      "nm": "CALLDATALOAD",
+      "raw": "35",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 137,
+      "end": 139,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6042",
+      "immediate": "42",
+      "truncated": false,
+      "source": {
+        "start": 965,
+        "length": 82,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 139,
+      "end": 140,
+      "opcode": 93,
+      "nm": "TSTORE",
+      "raw": "5d",
+      "source": {
+        "start": 965,
+        "length": 82,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 140,
+      "end": 142,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 142,
+      "end": 144,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6042",
+      "immediate": "42",
+      "truncated": false,
+      "source": {
+        "start": 965,
+        "length": 82,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 144,
+      "end": 145,
+      "opcode": 92,
+      "nm": "TLOAD",
+      "raw": "5c",
+      "source": {
+        "start": 965,
+        "length": 82,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 145,
+      "end": 147,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 147,
+      "end": 148,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 148,
+      "end": 149,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 149,
+      "end": 150,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 150,
+      "end": 151,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 151,
+      "end": 152,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 152,
+      "end": 153,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 153,
+      "end": 154,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 154,
+      "end": 155,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 155,
+      "end": 156,
+      "opcode": 253,
+      "nm": "REVERT",
+      "raw": "fd",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 156,
+      "end": 157,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 157,
+      "end": 158,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 158,
+      "end": 161,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 161,
+      "end": 162,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 162,
+      "end": 163,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 163,
+      "end": 164,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 164,
+      "end": 166,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 166,
+      "end": 167,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 167,
+      "end": 168,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 168,
+      "end": 169,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 169,
+      "end": 172,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 172,
+      "end": 173,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 173,
+      "end": 175,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 175,
+      "end": 176,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 176,
+      "end": 178,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "60a0",
+      "immediate": "a0",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 178,
+      "end": 179,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 179,
+      "end": 180,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 180,
+      "end": 181,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 181,
+      "end": 182,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 182,
+      "end": 183,
+      "opcode": 16,
+      "nm": "LT",
+      "raw": "10",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 183,
+      "end": 192,
+      "opcode": 103,
+      "nm": "PUSH8",
+      "raw": "67ffffffffffffffff",
+      "immediate": "ffffffffffffffff",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 192,
+      "end": 193,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 193,
+      "end": 194,
+      "opcode": 17,
+      "nm": "GT",
+      "raw": "11",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 194,
+      "end": 195,
+      "opcode": 23,
+      "nm": "OR",
+      "raw": "17",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 195,
+      "end": 198,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "61017a",
+      "immediate": "017a",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 198,
+      "end": 199,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 199,
+      "end": 201,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 201,
+      "end": 202,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 202,
+      "end": 204,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6064",
+      "immediate": "64",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 204,
+      "end": 205,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 205,
+      "end": 206,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 206,
+      "end": 208,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 208,
+      "end": 210,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 210,
+      "end": 211,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 211,
+      "end": 212,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 212,
+      "end": 213,
+      "opcode": 145,
+      "nm": "SWAP2",
+      "raw": "91",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 213,
+      "end": 246,
+      "opcode": 127,
+      "nm": "PUSH32",
+      "raw": "7f5258445f444154415f4e415649474154494f4e3a207472757374656420617574",
+      "immediate": "5258445f444154415f4e415649474154494f4e3a207472757374656420617574",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 246,
+      "end": 247,
+      "opcode": 131,
+      "nm": "DUP4",
+      "raw": "83",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 247,
+      "end": 248,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 248,
+      "end": 281,
+      "opcode": 127,
+      "nm": "PUSH32",
+      "raw": "7f686f72656420636f6d70696c657220636f7270757320776974682061206c6f6e",
+      "immediate": "686f72656420636f6d70696c657220636f7270757320776974682061206c6f6e",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 281,
+      "end": 282,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 282,
+      "end": 283,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 283,
+      "end": 284,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 284,
+      "end": 285,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 285,
+      "end": 318,
+      "opcode": 127,
+      "nm": "PUSH32",
+      "raw": "7f67207265616461626c65206c69746572616c20616e64206e6f20657865637574",
+      "immediate": "67207265616461626c65206c69746572616c20616e64206e6f20657865637574",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 318,
+      "end": 320,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6060",
+      "immediate": "60",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 320,
+      "end": 321,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 321,
+      "end": 322,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 322,
+      "end": 323,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 323,
+      "end": 328,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "6334b7b717",
+      "immediate": "34b7b717",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 328,
+      "end": 330,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "60e1",
+      "immediate": "e1",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 330,
+      "end": 331,
+      "opcode": 27,
+      "nm": "SHL",
+      "raw": "1b",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 331,
+      "end": 333,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6080",
+      "immediate": "80",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 333,
+      "end": 334,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 334,
+      "end": 335,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 335,
+      "end": 336,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 336,
+      "end": 337,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 337,
+      "end": 338,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 338,
+      "end": 339,
+      "opcode": 146,
+      "nm": "SWAP3",
+      "raw": "92",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 339,
+      "end": 340,
+      "opcode": 131,
+      "nm": "DUP4",
+      "raw": "83",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 340,
+      "end": 341,
+      "opcode": 145,
+      "nm": "SWAP2",
+      "raw": "91",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 341,
+      "end": 343,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 343,
+      "end": 344,
+      "opcode": 131,
+      "nm": "DUP4",
+      "raw": "83",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 344,
+      "end": 345,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 345,
+      "end": 346,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 346,
+      "end": 347,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 347,
+      "end": 348,
+      "opcode": 145,
+      "nm": "SWAP2",
+      "raw": "91",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 348,
+      "end": 349,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 349,
+      "end": 351,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 351,
+      "end": 352,
+      "opcode": 133,
+      "nm": "DUP6",
+      "raw": "85",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 352,
+      "end": 353,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 353,
+      "end": 354,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 354,
+      "end": 355,
+      "opcode": 132,
+      "nm": "DUP5",
+      "raw": "84",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 355,
+      "end": 356,
+      "opcode": 132,
+      "nm": "DUP5",
+      "raw": "84",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 356,
+      "end": 357,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 357,
+      "end": 358,
+      "opcode": 94,
+      "nm": "MCOPY",
+      "raw": "5e",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 358,
+      "end": 359,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 359,
+      "end": 360,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 360,
+      "end": 361,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 361,
+      "end": 362,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 362,
+      "end": 363,
+      "opcode": 132,
+      "nm": "DUP5",
+      "raw": "84",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 363,
+      "end": 364,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 364,
+      "end": 365,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 365,
+      "end": 367,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "601f",
+      "immediate": "1f",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 367,
+      "end": 368,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 368,
+      "end": 370,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "601f",
+      "immediate": "1f",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 370,
+      "end": 371,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 371,
+      "end": 372,
+      "opcode": 22,
+      "nm": "AND",
+      "raw": "16",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 372,
+      "end": 373,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 373,
+      "end": 374,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 374,
+      "end": 375,
+      "opcode": 3,
+      "nm": "SUB",
+      "raw": "03",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 375,
+      "end": 376,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 376,
+      "end": 377,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 377,
+      "end": 378,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 378,
+      "end": 379,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 379,
+      "end": 384,
+      "opcode": 99,
+      "nm": "PUSH4",
+      "raw": "634e487b71",
+      "immediate": "4e487b71",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 384,
+      "end": 386,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "60e0",
+      "immediate": "e0",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 386,
+      "end": 387,
+      "opcode": 27,
+      "nm": "SHL",
+      "raw": "1b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 387,
+      "end": 388,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 388,
+      "end": 389,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 389,
+      "end": 391,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6041",
+      "immediate": "41",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 391,
+      "end": 393,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 393,
+      "end": 394,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 394,
+      "end": 396,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6024",
+      "immediate": "24",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 396,
+      "end": 397,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 397,
+      "end": 398,
+      "opcode": 253,
+      "nm": "REVERT",
+      "raw": "fd",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 398,
+      "end": 399,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 399,
+      "end": 400,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 400,
+      "end": 403,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 403,
+      "end": 404,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 404,
+      "end": 406,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 406,
+      "end": 407,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 407,
+      "end": 409,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 409,
+      "end": 410,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 410,
+      "end": 411,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 411,
+      "end": 412,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 412,
+      "end": 415,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 415,
+      "end": 416,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 416,
+      "end": 418,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 418,
+      "end": 420,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 420,
+      "end": 421,
+      "opcode": 53,
+      "nm": "CALLDATALOAD",
+      "raw": "35",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 421,
+      "end": 422,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 422,
+      "end": 423,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 423,
+      "end": 424,
+      "opcode": 85,
+      "nm": "SSTORE",
+      "raw": "55",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 424,
+      "end": 426,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6001",
+      "immediate": "01",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 426,
+      "end": 428,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 428,
+      "end": 429,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 429,
+      "end": 430,
+      "opcode": 145,
+      "nm": "SWAP2",
+      "raw": "91",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 430,
+      "end": 431,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 431,
+      "end": 432,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 432,
+      "end": 433,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 433,
+      "end": 434,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 434,
+      "end": 435,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 435,
+      "end": 436,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 436,
+      "end": 439,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 439,
+      "end": 440,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 440,
+      "end": 441,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 441,
+      "end": 442,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 442,
+      "end": 444,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 444,
+      "end": 445,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 445,
+      "end": 446,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 446,
+      "end": 447,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 447,
+      "end": 450,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 450,
+      "end": 451,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 451,
+      "end": 453,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 453,
+      "end": 454,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 454,
+      "end": 455,
+      "opcode": 84,
+      "nm": "SLOAD",
+      "raw": "54",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 455,
+      "end": 457,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 457,
+      "end": 458,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 458,
+      "end": 459,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 459,
+      "end": 460,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 460,
+      "end": 461,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 461,
+      "end": 462,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 462,
+      "end": 463,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 463,
+      "end": 464,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 464,
+      "end": 467,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 467,
+      "end": 468,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 468,
+      "end": 469,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 469,
+      "end": 470,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 470,
+      "end": 472,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 472,
+      "end": 473,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 473,
+      "end": 474,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 474,
+      "end": 475,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 475,
+      "end": 478,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 478,
+      "end": 479,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 479,
+      "end": 481,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 481,
+      "end": 482,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 482,
+      "end": 505,
+      "opcode": 117,
+      "nm": "PUSH22",
+      "raw": "75292c222fa624aa22a920a62fa720ab24a3a0aa24a7a7",
+      "immediate": "292c222fa624aa22a920a62fa720ab24a3a0aa24a7a7",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 505,
+      "end": 507,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6051",
+      "immediate": "51",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 507,
+      "end": 508,
+      "opcode": 27,
+      "nm": "SHL",
+      "raw": "1b",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 508,
+      "end": 509,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 509,
+      "end": 510,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 510,
+      "end": 512,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 512,
+      "end": 513,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 513,
+      "end": 514,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 514,
+      "end": 515,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 515,
+      "end": 516,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 516,
+      "end": 519,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 519,
+      "end": 520,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 520,
+      "end": 522,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 522,
+      "end": 523,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 523,
+      "end": 525,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 525,
+      "end": 526,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 526,
+      "end": 527,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 527,
+      "end": 528,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 528,
+      "end": 531,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 531,
+      "end": 532,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 532,
+      "end": 534,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 534,
+      "end": 536,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 536,
+      "end": 537,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 537,
+      "end": 539,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6007",
+      "immediate": "07",
+      "truncated": false,
+      "source": {
+        "start": 293,
+        "length": 1,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 539,
+      "end": 541,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 541,
+      "end": 542,
+      "opcode": 53,
+      "nm": "CALLDATALOAD",
+      "raw": "35",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 542,
+      "end": 543,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 543,
+      "end": 544,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 544,
+      "end": 545,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 545,
+      "end": 546,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 546,
+      "end": 547,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 547,
+      "end": 548,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 548,
+      "end": 551,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 551,
+      "end": 552,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 552,
+      "end": 554,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 554,
+      "end": 555,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 555,
+      "end": 557,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 557,
+      "end": 558,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 558,
+      "end": 559,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 559,
+      "end": 560,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 560,
+      "end": 563,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 563,
+      "end": 564,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 564,
+      "end": 565,
+      "opcode": 95,
+      "nm": "PUSH0",
+      "raw": "5f",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 565,
+      "end": 566,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 566,
+      "end": 568,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 568,
+      "end": 569,
+      "opcode": 53,
+      "nm": "CALLDATALOAD",
+      "raw": "35",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 569,
+      "end": 570,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 616,
+        "length": 5,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 570,
+      "end": 571,
+      "opcode": 128,
+      "nm": "DUP1",
+      "raw": "80",
+      "source": {
+        "start": 616,
+        "length": 5,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 571,
+      "end": 572,
+      "opcode": 131,
+      "nm": "DUP4",
+      "raw": "83",
+      "source": {
+        "start": 616,
+        "length": 5,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 572,
+      "end": 573,
+      "opcode": 16,
+      "nm": "LT",
+      "raw": "10",
+      "source": {
+        "start": 616,
+        "length": 5,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 573,
+      "end": 576,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "61024b",
+      "immediate": "024b",
+      "truncated": false,
+      "source": {
+        "start": 616,
+        "length": 5,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 576,
+      "end": 577,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 616,
+        "length": 5,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 577,
+      "end": 579,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 579,
+      "end": 580,
+      "opcode": 130,
+      "nm": "DUP3",
+      "raw": "82",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 580,
+      "end": 582,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6040",
+      "immediate": "40",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 582,
+      "end": 583,
+      "opcode": 81,
+      "nm": "MLOAD",
+      "raw": "51",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 583,
+      "end": 584,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 584,
+      "end": 585,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 585,
+      "end": 586,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 586,
+      "end": 587,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 587,
+      "end": 588,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 623,
+        "length": 3,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 588,
+      "end": 590,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6001",
+      "immediate": "01",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 590,
+      "end": 591,
+      "opcode": 131,
+      "nm": "DUP4",
+      "raw": "83",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 591,
+      "end": 592,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 592,
+      "end": 593,
+      "opcode": 146,
+      "nm": "SWAP3",
+      "raw": "92",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 593,
+      "end": 594,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 594,
+      "end": 595,
+      "opcode": 145,
+      "nm": "SWAP2",
+      "raw": "91",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 595,
+      "end": 596,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 596,
+      "end": 597,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 597,
+      "end": 600,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610239",
+      "immediate": "0239",
+      "truncated": false,
+      "source": {
+        "start": 601,
+        "length": 13,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 600,
+      "end": 601,
+      "opcode": 86,
+      "nm": "JUMP",
+      "raw": "56",
+      "source": {
+        "start": 601,
+        "length": 13,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 601,
+      "end": 602,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 602,
+      "end": 603,
+      "opcode": 52,
+      "nm": "CALLVALUE",
+      "raw": "34",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 603,
+      "end": 606,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 606,
+      "end": 607,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 607,
+      "end": 609,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 609,
+      "end": 610,
+      "opcode": 54,
+      "nm": "CALLDATASIZE",
+      "raw": "36",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 610,
+      "end": 612,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6003",
+      "immediate": "03",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 612,
+      "end": 613,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 613,
+      "end": 614,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 614,
+      "end": 615,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 615,
+      "end": 618,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610098",
+      "immediate": "0098",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 618,
+      "end": 619,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 619,
+      "end": 621,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6020",
+      "immediate": "20",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 621,
+      "end": 622,
+      "opcode": 144,
+      "nm": "SWAP1",
+      "raw": "90",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 622,
+      "end": 624,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6004",
+      "immediate": "04",
+      "truncated": false,
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 624,
+      "end": 625,
+      "opcode": 53,
+      "nm": "CALLDATALOAD",
+      "raw": "35",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 625,
+      "end": 627,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "600a",
+      "immediate": "0a",
+      "truncated": false,
+      "source": {
+        "start": 417,
+        "length": 2,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 627,
+      "end": 628,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 413,
+        "length": 6,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 628,
+      "end": 629,
+      "opcode": 16,
+      "nm": "LT",
+      "raw": "10",
+      "source": {
+        "start": 413,
+        "length": 6,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 629,
+      "end": 630,
+      "opcode": 21,
+      "nm": "ISZERO",
+      "raw": "15",
+      "source": {
+        "start": 417,
+        "length": 2,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 630,
+      "end": 633,
+      "opcode": 97,
+      "nm": "PUSH2",
+      "raw": "610280",
+      "immediate": "0280",
+      "truncated": false,
+      "source": {
+        "start": 417,
+        "length": 2,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 633,
+      "end": 634,
+      "opcode": 87,
+      "nm": "JUMPI",
+      "raw": "57",
+      "source": {
+        "start": 417,
+        "length": 2,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 634,
+      "end": 636,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6007",
+      "immediate": "07",
+      "truncated": false,
+      "source": {
+        "start": 436,
+        "length": 1,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 636,
+      "end": 637,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 637,
+      "end": 638,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 638,
+      "end": 639,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 639,
+      "end": 640,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 640,
+      "end": 641,
+      "opcode": 91,
+      "nm": "JUMPDEST",
+      "raw": "5b",
+      "source": {
+        "start": 409,
+        "length": 68,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 641,
+      "end": 643,
+      "opcode": 96,
+      "nm": "PUSH1",
+      "raw": "6002",
+      "immediate": "02",
+      "truncated": false,
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 643,
+      "end": 644,
+      "opcode": 25,
+      "nm": "NOT",
+      "raw": "19",
+      "source": {
+        "start": -1,
+        "length": -1,
+        "source_id": -1,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 644,
+      "end": 645,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 645,
+      "end": 646,
+      "opcode": 129,
+      "nm": "DUP2",
+      "raw": "81",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 646,
+      "end": 647,
+      "opcode": 82,
+      "nm": "MSTORE",
+      "raw": "52",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 647,
+      "end": 648,
+      "opcode": 243,
+      "nm": "RETURN",
+      "raw": "f3",
+      "source": {
+        "start": 139,
+        "length": 1209,
+        "source_id": 0,
+        "jump": "-",
+        "modifier_depth": 0
+      }
+    },
+    {
+      "offset": 648,
+      "end": 649,
+      "opcode": 254,
+      "nm": "INVALID",
+      "raw": "fe"
+    },
+    {
+      "offset": 649,
+      "end": 650,
+      "opcode": 162,
+      "nm": "LOG2",
+      "raw": "a2"
+    },
+    {
+      "offset": 650,
+      "end": 656,
+      "opcode": 100,
+      "nm": "PUSH5",
+      "raw": "646970667358",
+      "immediate": "6970667358",
+      "truncated": false
+    },
+    {
+      "offset": 656,
+      "end": 657,
+      "opcode": 34,
+      "nm": "UNDEFINED",
+      "raw": "22"
+    },
+    {
+      "offset": 657,
+      "end": 658,
+      "opcode": 18,
+      "nm": "SLT",
+      "raw": "12"
+    },
+    {
+      "offset": 658,
+      "end": 659,
+      "opcode": 32,
+      "nm": "KECCAK256",
+      "raw": "20"
+    },
+    {
+      "offset": 659,
+      "end": 660,
+      "opcode": 184,
+      "nm": "UNDEFINED",
+      "raw": "b8"
+    },
+    {
+      "offset": 660,
+      "end": 661,
+      "opcode": 168,
+      "nm": "UNDEFINED",
+      "raw": "a8"
+    },
+    {
+      "offset": 661,
+      "end": 662,
+      "opcode": 47,
+      "nm": "UNDEFINED",
+      "raw": "2f"
+    },
+    {
+      "offset": 662,
+      "end": 663,
+      "opcode": 183,
+      "nm": "UNDEFINED",
+      "raw": "b7"
+    },
+    {
+      "offset": 663,
+      "end": 664,
+      "opcode": 237,
+      "nm": "UNDEFINED",
+      "raw": "ed"
+    },
+    {
+      "offset": 664,
+      "end": 671,
+      "opcode": 101,
+      "nm": "PUSH6",
+      "raw": "654b399f3a9727",
+      "immediate": "4b399f3a9727",
+      "truncated": false
+    },
+    {
+      "offset": 671,
+      "end": 672,
+      "opcode": 197,
+      "nm": "UNDEFINED",
+      "raw": "c5"
+    },
+    {
+      "offset": 672,
+      "end": 673,
+      "opcode": 152,
+      "nm": "SWAP9",
+      "raw": "98"
+    },
+    {
+      "offset": 673,
+      "end": 674,
+      "opcode": 203,
+      "nm": "UNDEFINED",
+      "raw": "cb"
+    },
+    {
+      "offset": 674,
+      "end": 675,
+      "opcode": 1,
+      "nm": "ADD",
+      "raw": "01"
+    },
+    {
+      "offset": 675,
+      "end": 676,
+      "opcode": 192,
+      "nm": "UNDEFINED",
+      "raw": "c0"
+    },
+    {
+      "offset": 676,
+      "end": 677,
+      "opcode": 69,
+      "nm": "GASLIMIT",
+      "raw": "45"
+    },
+    {
+      "offset": 677,
+      "end": 678,
+      "opcode": 140,
+      "nm": "DUP13",
+      "raw": "8c"
+    },
+    {
+      "offset": 678,
+      "end": 696,
+      "opcode": 112,
+      "nm": "PUSH17",
+      "raw": "70270eae6ea5072cf4e738a14d64736f6c63",
+      "immediate": "270eae6ea5072cf4e738a14d64736f6c63",
+      "truncated": false
+    },
+    {
+      "offset": 696,
+      "end": 697,
+      "opcode": 67,
+      "nm": "NUMBER",
+      "raw": "43"
+    },
+    {
+      "offset": 697,
+      "end": 698,
+      "opcode": 0,
+      "nm": "STOP",
+      "raw": "00"
+    },
+    {
+      "offset": 698,
+      "end": 699,
+      "opcode": 8,
+      "nm": "ADDMOD",
+      "raw": "08"
+    },
+    {
+      "offset": 699,
+      "end": 700,
+      "opcode": 26,
+      "nm": "BYTE",
+      "raw": "1a"
+    },
+    {
+      "offset": 700,
+      "end": 701,
+      "opcode": 0,
+      "nm": "STOP",
+      "raw": "00"
+    },
+    {
+      "offset": 701,
+      "end": 702,
+      "opcode": 51,
+      "nm": "CALLER",
+      "raw": "33"
+    }
+  ]
+}

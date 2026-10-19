@@ -1,0 +1,17 @@
+[package]
+name = "rxd-dex"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "Native APK and DEX analysis backend migrated from rasc"
+
+[dependencies]
+anyhow = "1.0"
+axmldecoder = "0.5"
+radguard = { path = "../../third_party/radguard" }
+memchr = "2.7"
+memmap2 = "0.9"
+rayon = "1.12"
+libdeflater = "1.26"
+flate2 = { version = "1", default-features = false, features = ["zlib"] }

@@ -1,0 +1,177 @@
+{
+  "sha256": "30882b4349a2116bafa1e259ca88ad32dd2212ea5fec6128d80d17a149e30b70",
+  "bytes": 1536,
+  "us_file_offset": 1104,
+  "entries": [
+    {
+      "label": "shared",
+      "offset": 1,
+      "token": 1879048193,
+      "value": "shared 世界\nλ",
+      "utf16_units": null,
+      "uses": [
+        {
+          "method_token": 100663297,
+          "il_offset": 0
+        },
+        {
+          "method_token": 100663297,
+          "il_offset": 6
+        },
+        {
+          "method_token": 100663299,
+          "il_offset": 0
+        }
+      ]
+    },
+    {
+      "label": "duplicate",
+      "offset": 25,
+      "token": 1879048217,
+      "value": "shared 世界\nλ",
+      "utf16_units": null,
+      "uses": [
+        {
+          "method_token": 100663297,
+          "il_offset": 12
+        },
+        {
+          "method_token": 100663299,
+          "il_offset": 6
+        }
+      ]
+    },
+    {
+      "label": "unused",
+      "offset": 49,
+      "token": 1879048241,
+      "value": "unused inventory",
+      "utf16_units": null,
+      "uses": []
+    },
+    {
+      "label": "empty",
+      "offset": 83,
+      "token": 1879048275,
+      "value": "",
+      "utf16_units": null,
+      "uses": [
+        {
+          "method_token": 100663297,
+          "il_offset": 18
+        }
+      ]
+    },
+    {
+      "label": "unicode",
+      "offset": 85,
+      "token": 1879048277,
+      "value": "🙂世界",
+      "utf16_units": null,
+      "uses": [
+        {
+          "method_token": 100663298,
+          "il_offset": 0
+        }
+      ]
+    },
+    {
+      "label": "nul",
+      "offset": 95,
+      "token": 1879048287,
+      "value": "a\u0000b",
+      "utf16_units": null,
+      "uses": [
+        {
+          "method_token": 100663297,
+          "il_offset": 24
+        }
+      ]
+    },
+    {
+      "label": "high",
+      "offset": 103,
+      "token": 1879048295,
+      "value": null,
+      "utf16_units": [
+        55296
+      ],
+      "uses": [
+        {
+          "method_token": 100663297,
+          "il_offset": 30
+        }
+      ]
+    },
+    {
+      "label": "low",
+      "offset": 107,
+      "token": 1879048299,
+      "value": null,
+      "utf16_units": [
+        56320
+      ],
+      "uses": [
+        {
+          "method_token": 100663298,
+          "il_offset": 6
+        }
+      ]
+    },
+    {
+      "label": "tail",
+      "offset": 111,
+      "token": 1879048303,
+      "value": null,
+      "utf16_units": [
+        112,
+        114,
+        101,
+        102,
+        105,
+        120,
+        55296,
+        23614
+      ],
+      "uses": [
+        {
+          "method_token": 100663298,
+          "il_offset": 12
+        },
+        {
+          "method_token": 100663299,
+          "il_offset": 12
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "token": 100663297,
+      "name": "Repeated",
+      "declaring_type": "Rxd.Strings.Alpha",
+      "declaring_type_token": 33554434,
+      "file_offset": 584,
+      "code_offset": 585,
+      "il_hex": "720100007026720100007026721900007026725300007026725f000070267267000070262a"
+    },
+    {
+      "token": 100663298,
+      "name": "Unicode",
+      "declaring_type": "Rxd.Strings.Alpha",
+      "declaring_type_token": 33554434,
+      "file_offset": 624,
+      "code_offset": 625,
+      "il_hex": "725500007026726b00007026726f000070262a"
+    },
+    {
+      "token": 100663299,
+      "name": "Shared",
+      "declaring_type": "Rxd.Strings.Beta",
+      "declaring_type_token": 33554435,
+      "file_offset": 644,
+      "code_offset": 645,
+      "il_hex": "720100007026721900007026726f000070262a"
+    }
+  ]
+}

@@ -1,0 +1,2434 @@
+# 1 classes, 3013 bytes
+
+== class fixture/FlowFixture ==
+package fixture;
+public class FlowFixture {
+    private int value;
+
+    public FlowFixture(int value)
+    {
+        this.value = value;
+        return;
+    }
+
+    public static int add(int left, int right)
+    {
+        return (left + right);
+    }
+
+    public static int absolute(int value)
+    {
+        int v10_1;
+        if (value >= 0) {
+            v10_1 = value;
+        } else {
+            v10_1 = (- value);
+        }
+        return v10_1;
+    }
+
+    public static int sum(int count)
+    {
+        int result = 0;
+        int i = 0;
+        while (i < count) {
+            result += i;
+            i++;
+        }
+        return result;
+    }
+
+    public static long wide(long value, double scale)
+    {
+        return (value + (long scale));
+    }
+
+    public static String text()
+    {
+        return "\u524d\u7aef\u0000\u1f600";
+    }
+
+    public static int length(int[] values)
+    {
+        return values.length;
+    }
+
+    public static int choose(int value)
+    {
+        switch (value) {
+            case 2:
+                return 20;
+            case 100:
+                return 30;
+            default:
+                return 40;
+        }
+    }
+
+    public static int dense(int value)
+    {
+        switch (value) {
+            case 0:
+                return 20;
+            case 1:
+                return 30;
+            case 2:
+                return 40;
+            default:
+                return 50;
+        }
+    }
+
+    public static int guarded(String text)
+    {
+        try {
+        } catch (RuntimeException v10) {
+            return -1;
+        }
+        return text.length();
+    }
+
+    public static int[] array(int count)
+    {
+        Object v11 = new int[count];
+        return v11;
+    }
+
+    public static int element(int[] values, int index)
+    {
+        return values[index];
+    }
+
+    public static boolean flag(boolean[] values, int index)
+    {
+        return values[index];
+    }
+
+    public static int narrowBranch(int value)
+    {
+        int v10_1;
+        if (value <= 0) {
+            v10_1 = value;
+        } else {
+            v10_1 = (byte value);
+        }
+        return v10_1;
+    }
+
+    public static double root(double value)
+    {
+        return Math.sqrt(value);
+    }
+
+    public static Object merged(boolean flag)
+    {
+        Object v12;
+        if (!flag) {
+            v12 = new Object();
+        } else {
+            v12 = "text";
+        }
+        return v12;
+    }
+
+    public static boolean same(Object left, Object right)
+    {
+        int v15;
+        if (left != right) {
+            v15 = 0;
+        } else {
+            v15 = 1;
+        }
+        return v15;
+    }
+
+    public static Object create(int value)
+    {
+        return new fixture.FlowFixture(value);
+    }
+
+    public int increment()
+    {
+        int vtmp2 = this.value;
+        int v16 = vtmp2;
+        this.value = (vtmp2 + 1);
+        return v16;
+    }
+
+    public static void discard(String text)
+    {
+        text.length();
+        return;
+    }
+
+    public static synchronized int locked(int value)
+    {
+        return (value + 1);
+    }
+
+    public static int block(Object lock, int value)
+    {
+        synchronized(lock) {
+            int v17_1 = (value + 2);
+        }
+        return v17_1;
+    }
+}
+
+== method 0 <init> (I)V ==
+public FlowFixture(int value)
+{
+    this.value = value;
+    return;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 183,
+        mnemonic: "invokespecial",
+        bytes: [
+            183,
+            0,
+            1,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            1,
+        ),
+        reference: Some(
+            "java/lang/Object.<init>()V",
+        ),
+        operation: 183,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 181,
+        mnemonic: "putfield",
+        bytes: [
+            181,
+            0,
+            7,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            7,
+        ),
+        reference: Some(
+            "fixture/FlowFixture.valueI",
+        ),
+        operation: 181,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 177,
+        mnemonic: "return",
+        bytes: [
+            177,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 177,
+    },
+]
+
+== method 1 add (II)I ==
+public static int add(int left, int right)
+{
+    return (left + right);
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 96,
+        mnemonic: "iadd",
+        bytes: [
+            96,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 96,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 2 absolute (I)I ==
+public static int absolute(int value)
+{
+    int v10_1;
+    if (value >= 0) {
+        v10_1 = value;
+    } else {
+        v10_1 = (- value);
+    }
+    return v10_1;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 156,
+        mnemonic: "ifge",
+        bytes: [
+            156,
+            0,
+            8,
+        ],
+        operands: [
+            8,
+        ],
+        targets: [
+            9,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 156,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 116,
+        mnemonic: "ineg",
+        bytes: [
+            116,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 116,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 167,
+        mnemonic: "goto",
+        bytes: [
+            167,
+            0,
+            4,
+        ],
+        operands: [
+            4,
+        ],
+        targets: [
+            10,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 167,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 10,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 3 sum (I)I ==
+public static int sum(int count)
+{
+    int result = 0;
+    int i = 0;
+    while (i < count) {
+        result += i;
+        i++;
+    }
+    return result;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 3,
+        mnemonic: "iconst_0",
+        bytes: [
+            3,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 3,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 60,
+        mnemonic: "istore_1",
+        bytes: [
+            60,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 60,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 3,
+        mnemonic: "iconst_0",
+        bytes: [
+            3,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 3,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 61,
+        mnemonic: "istore_2",
+        bytes: [
+            61,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 61,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 28,
+        mnemonic: "iload_2",
+        bytes: [
+            28,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 28,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 162,
+        mnemonic: "if_icmpge",
+        bytes: [
+            162,
+            0,
+            13,
+        ],
+        operands: [
+            13,
+        ],
+        targets: [
+            19,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 162,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 10,
+        opcode: 28,
+        mnemonic: "iload_2",
+        bytes: [
+            28,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 28,
+    },
+    Instruction {
+        byte_offset: 11,
+        opcode: 96,
+        mnemonic: "iadd",
+        bytes: [
+            96,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 96,
+    },
+    Instruction {
+        byte_offset: 12,
+        opcode: 60,
+        mnemonic: "istore_1",
+        bytes: [
+            60,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 60,
+    },
+    Instruction {
+        byte_offset: 13,
+        opcode: 132,
+        mnemonic: "iinc",
+        bytes: [
+            132,
+            2,
+            1,
+        ],
+        operands: [
+            2,
+            1,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 132,
+    },
+    Instruction {
+        byte_offset: 16,
+        opcode: 167,
+        mnemonic: "goto",
+        bytes: [
+            167,
+            255,
+            244,
+        ],
+        operands: [
+            -12,
+        ],
+        targets: [
+            4,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 167,
+    },
+    Instruction {
+        byte_offset: 19,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 20,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 4 wide (JD)J ==
+public static long wide(long value, double scale)
+{
+    return (value + (long scale));
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 30,
+        mnemonic: "lload_0",
+        bytes: [
+            30,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 30,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 40,
+        mnemonic: "dload_2",
+        bytes: [
+            40,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 40,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 143,
+        mnemonic: "d2l",
+        bytes: [
+            143,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 143,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 97,
+        mnemonic: "ladd",
+        bytes: [
+            97,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 97,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 173,
+        mnemonic: "lreturn",
+        bytes: [
+            173,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 173,
+    },
+]
+
+== method 5 text ()Ljava/lang/String; ==
+public static String text()
+{
+    return "\u524d\u7aef\u0000\u1f600";
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 18,
+        mnemonic: "ldc",
+        bytes: [
+            18,
+            13,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            13,
+        ),
+        reference: None,
+        operation: 18,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 176,
+        mnemonic: "areturn",
+        bytes: [
+            176,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 176,
+    },
+]
+
+== method 6 length ([I)I ==
+public static int length(int[] values)
+{
+    return values.length;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 190,
+        mnemonic: "arraylength",
+        bytes: [
+            190,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 190,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 7 choose (I)I ==
+public static int choose(int value)
+{
+    switch (value) {
+        case 2:
+            return 20;
+        case 100:
+            return 30;
+        default:
+            return 40;
+    }
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 171,
+        mnemonic: "lookupswitch",
+        bytes: [
+            171,
+            0,
+            0,
+            0,
+            0,
+            0,
+            33,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            27,
+            0,
+            0,
+            0,
+            100,
+            0,
+            0,
+            0,
+            30,
+        ],
+        operands: [
+            2,
+            100,
+        ],
+        targets: [
+            34,
+            28,
+            31,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 171,
+    },
+    Instruction {
+        byte_offset: 28,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            20,
+        ],
+        operands: [
+            20,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 30,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 31,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            30,
+        ],
+        operands: [
+            30,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 33,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 34,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            40,
+        ],
+        operands: [
+            40,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 36,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 8 dense (I)I ==
+public static int dense(int value)
+{
+    switch (value) {
+        case 0:
+            return 20;
+        case 1:
+            return 30;
+        case 2:
+            return 40;
+        default:
+            return 50;
+    }
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 170,
+        mnemonic: "tableswitch",
+        bytes: [
+            170,
+            0,
+            0,
+            0,
+            0,
+            0,
+            36,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            27,
+            0,
+            0,
+            0,
+            30,
+            0,
+            0,
+            0,
+            33,
+        ],
+        operands: [
+            0,
+            1,
+            2,
+        ],
+        targets: [
+            37,
+            28,
+            31,
+            34,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 170,
+    },
+    Instruction {
+        byte_offset: 28,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            20,
+        ],
+        operands: [
+            20,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 30,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 31,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            30,
+        ],
+        operands: [
+            30,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 33,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 34,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            40,
+        ],
+        operands: [
+            40,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 36,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 37,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            50,
+        ],
+        operands: [
+            50,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 39,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 9 guarded (Ljava/lang/String;)I ==
+public static int guarded(String text)
+{
+    try {
+    } catch (RuntimeException v10) {
+        return -1;
+    }
+    return text.length();
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 182,
+        mnemonic: "invokevirtual",
+        bytes: [
+            182,
+            0,
+            15,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            15,
+        ),
+        reference: Some(
+            "java/lang/String.length()I",
+        ),
+        operation: 182,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 76,
+        mnemonic: "astore_1",
+        bytes: [
+            76,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 76,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 2,
+        mnemonic: "iconst_m1",
+        bytes: [
+            2,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 2,
+    },
+    Instruction {
+        byte_offset: 7,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 10 array (I)[I ==
+public static int[] array(int count)
+{
+    Object v11 = new int[count];
+    return v11;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 188,
+        mnemonic: "newarray",
+        bytes: [
+            188,
+            10,
+        ],
+        operands: [
+            10,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 188,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 176,
+        mnemonic: "areturn",
+        bytes: [
+            176,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 176,
+    },
+]
+
+== method 11 element ([II)I ==
+public static int element(int[] values, int index)
+{
+    return values[index];
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 46,
+        mnemonic: "iaload",
+        bytes: [
+            46,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 46,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 12 flag ([ZI)Z ==
+public static boolean flag(boolean[] values, int index)
+{
+    return values[index];
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 51,
+        mnemonic: "baload",
+        bytes: [
+            51,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 51,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 13 narrowBranch (I)I ==
+public static int narrowBranch(int value)
+{
+    int v10_1;
+    if (value <= 0) {
+        v10_1 = value;
+    } else {
+        v10_1 = (byte value);
+    }
+    return v10_1;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 158,
+        mnemonic: "ifle",
+        bytes: [
+            158,
+            0,
+            8,
+        ],
+        operands: [
+            8,
+        ],
+        targets: [
+            9,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 158,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 145,
+        mnemonic: "i2b",
+        bytes: [
+            145,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 145,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 167,
+        mnemonic: "goto",
+        bytes: [
+            167,
+            0,
+            4,
+        ],
+        operands: [
+            4,
+        ],
+        targets: [
+            10,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 167,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 10,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 14 root (D)D ==
+public static double root(double value)
+{
+    return Math.sqrt(value);
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 38,
+        mnemonic: "dload_0",
+        bytes: [
+            38,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 38,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 184,
+        mnemonic: "invokestatic",
+        bytes: [
+            184,
+            0,
+            23,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            23,
+        ),
+        reference: Some(
+            "java/lang/Math.sqrt(D)D",
+        ),
+        operation: 184,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 175,
+        mnemonic: "dreturn",
+        bytes: [
+            175,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 175,
+    },
+]
+
+== method 15 merged (Z)Ljava/lang/Object; ==
+public static Object merged(boolean flag)
+{
+    Object v12;
+    if (!flag) {
+        v12 = new Object();
+    } else {
+        v12 = "text";
+    }
+    return v12;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 153,
+        mnemonic: "ifeq",
+        bytes: [
+            153,
+            0,
+            8,
+        ],
+        operands: [
+            8,
+        ],
+        targets: [
+            9,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 153,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 18,
+        mnemonic: "ldc",
+        bytes: [
+            18,
+            29,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            29,
+        ),
+        reference: None,
+        operation: 18,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 167,
+        mnemonic: "goto",
+        bytes: [
+            167,
+            0,
+            10,
+        ],
+        operands: [
+            10,
+        ],
+        targets: [
+            16,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 167,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 187,
+        mnemonic: "new",
+        bytes: [
+            187,
+            0,
+            2,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            2,
+        ),
+        reference: Some(
+            "Ljava/lang/Object;",
+        ),
+        operation: 187,
+    },
+    Instruction {
+        byte_offset: 12,
+        opcode: 89,
+        mnemonic: "dup",
+        bytes: [
+            89,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 89,
+    },
+    Instruction {
+        byte_offset: 13,
+        opcode: 183,
+        mnemonic: "invokespecial",
+        bytes: [
+            183,
+            0,
+            1,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            1,
+        ),
+        reference: Some(
+            "java/lang/Object.<init>()V",
+        ),
+        operation: 183,
+    },
+    Instruction {
+        byte_offset: 16,
+        opcode: 176,
+        mnemonic: "areturn",
+        bytes: [
+            176,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 176,
+    },
+]
+
+== method 16 same (Ljava/lang/Object;Ljava/lang/Object;)Z ==
+public static boolean same(Object left, Object right)
+{
+    int v15;
+    if (left != right) {
+        v15 = 0;
+    } else {
+        v15 = 1;
+    }
+    return v15;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 43,
+        mnemonic: "aload_1",
+        bytes: [
+            43,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 43,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 166,
+        mnemonic: "if_acmpne",
+        bytes: [
+            166,
+            0,
+            7,
+        ],
+        operands: [
+            7,
+        ],
+        targets: [
+            9,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 166,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 4,
+        mnemonic: "iconst_1",
+        bytes: [
+            4,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 4,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 167,
+        mnemonic: "goto",
+        bytes: [
+            167,
+            0,
+            4,
+        ],
+        operands: [
+            4,
+        ],
+        targets: [
+            10,
+        ],
+        constant_index: None,
+        reference: None,
+        operation: 167,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 3,
+        mnemonic: "iconst_0",
+        bytes: [
+            3,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 3,
+    },
+    Instruction {
+        byte_offset: 10,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 17 create (I)Ljava/lang/Object; ==
+public static Object create(int value)
+{
+    return new fixture.FlowFixture(value);
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 187,
+        mnemonic: "new",
+        bytes: [
+            187,
+            0,
+            8,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            8,
+        ),
+        reference: Some(
+            "Lfixture/FlowFixture;",
+        ),
+        operation: 187,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 89,
+        mnemonic: "dup",
+        bytes: [
+            89,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 89,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 183,
+        mnemonic: "invokespecial",
+        bytes: [
+            183,
+            0,
+            31,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            31,
+        ),
+        reference: Some(
+            "fixture/FlowFixture.<init>(I)V",
+        ),
+        operation: 183,
+    },
+    Instruction {
+        byte_offset: 8,
+        opcode: 176,
+        mnemonic: "areturn",
+        bytes: [
+            176,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 176,
+    },
+]
+
+== method 18 increment ()I ==
+public int increment()
+{
+    int vtmp2 = this.value;
+    int v16 = vtmp2;
+    this.value = (vtmp2 + 1);
+    return v16;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 89,
+        mnemonic: "dup",
+        bytes: [
+            89,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 89,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 180,
+        mnemonic: "getfield",
+        bytes: [
+            180,
+            0,
+            7,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            7,
+        ),
+        reference: Some(
+            "fixture/FlowFixture.valueI",
+        ),
+        operation: 180,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 90,
+        mnemonic: "dup_x1",
+        bytes: [
+            90,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 90,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 4,
+        mnemonic: "iconst_1",
+        bytes: [
+            4,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 4,
+    },
+    Instruction {
+        byte_offset: 7,
+        opcode: 96,
+        mnemonic: "iadd",
+        bytes: [
+            96,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 96,
+    },
+    Instruction {
+        byte_offset: 8,
+        opcode: 181,
+        mnemonic: "putfield",
+        bytes: [
+            181,
+            0,
+            7,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            7,
+        ),
+        reference: Some(
+            "fixture/FlowFixture.valueI",
+        ),
+        operation: 181,
+    },
+    Instruction {
+        byte_offset: 11,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 19 discard (Ljava/lang/String;)V ==
+public static void discard(String text)
+{
+    text.length();
+    return;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 182,
+        mnemonic: "invokevirtual",
+        bytes: [
+            182,
+            0,
+            15,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            15,
+        ),
+        reference: Some(
+            "java/lang/String.length()I",
+        ),
+        operation: 182,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 87,
+        mnemonic: "pop",
+        bytes: [
+            87,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 87,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 177,
+        mnemonic: "return",
+        bytes: [
+            177,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 177,
+    },
+]
+
+== method 20 locked (I)I ==
+public static synchronized int locked(int value)
+{
+    return (value + 1);
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 4,
+        mnemonic: "iconst_1",
+        bytes: [
+            4,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 4,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 96,
+        mnemonic: "iadd",
+        bytes: [
+            96,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 96,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]
+
+== method 21 block (Ljava/lang/Object;I)I ==
+public static int block(Object lock, int value)
+{
+    synchronized(lock) {
+        int v17_1 = (value + 2);
+    }
+    return v17_1;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 89,
+        mnemonic: "dup",
+        bytes: [
+            89,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 89,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 77,
+        mnemonic: "astore_2",
+        bytes: [
+            77,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 77,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 194,
+        mnemonic: "monitorenter",
+        bytes: [
+            194,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 194,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 27,
+        mnemonic: "iload_1",
+        bytes: [
+            27,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 27,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 5,
+        mnemonic: "iconst_2",
+        bytes: [
+            5,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 5,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 96,
+        mnemonic: "iadd",
+        bytes: [
+            96,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 96,
+    },
+    Instruction {
+        byte_offset: 7,
+        opcode: 44,
+        mnemonic: "aload_2",
+        bytes: [
+            44,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 44,
+    },
+    Instruction {
+        byte_offset: 8,
+        opcode: 195,
+        mnemonic: "monitorexit",
+        bytes: [
+            195,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 195,
+    },
+    Instruction {
+        byte_offset: 9,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+    Instruction {
+        byte_offset: 10,
+        opcode: 78,
+        mnemonic: "astore_3",
+        bytes: [
+            78,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 78,
+    },
+    Instruction {
+        byte_offset: 11,
+        opcode: 44,
+        mnemonic: "aload_2",
+        bytes: [
+            44,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 44,
+    },
+    Instruction {
+        byte_offset: 12,
+        opcode: 195,
+        mnemonic: "monitorexit",
+        bytes: [
+            195,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 195,
+    },
+    Instruction {
+        byte_offset: 13,
+        opcode: 45,
+        mnemonic: "aload_3",
+        bytes: [
+            45,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 45,
+    },
+    Instruction {
+        byte_offset: 14,
+        opcode: 191,
+        mnemonic: "athrow",
+        bytes: [
+            191,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 191,
+    },
+]

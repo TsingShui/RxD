@@ -1,0 +1,269 @@
+{
+  "sha256": "1d2434ff68815cd9f377a4f707623fb889165037eca03592e5cae3b09813842e",
+  "bytes": 4096,
+  "type": "Rxd.测试.Probe",
+  "string": "世界\nλ",
+  "utf16_units": [
+    55296
+  ],
+  "methods": {
+    "Add": {
+      "token": "0x06000001",
+      "il_hex": "0203582a",
+      "rva": 8264,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Checked": {
+      "token": "0x06000002",
+      "il_hex": "0203d62a",
+      "rva": 8272,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "UnsignedGreater": {
+      "token": "0x06000003",
+      "il_hex": "0203fe032a",
+      "rva": 8280,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "RefRead": {
+      "token": "0x06000004",
+      "il_hex": "024a2a",
+      "rva": 8288,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "VolatileRef": {
+      "token": "0x06000005",
+      "il_hex": "02fe134a2a",
+      "rva": 8292,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Effect": {
+      "token": "0x06000006",
+      "il_hex": "7e01000004175880010000041d2a",
+      "rva": 8300,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Discard": {
+      "token": "0x06000007",
+      "il_hex": "280600000626162a",
+      "rva": 8316,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Duplicate": {
+      "token": "0x06000008",
+      "il_hex": "280600000625582a",
+      "rva": 8328,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Merge": {
+      "token": "0x06000009",
+      "il_hex": "022c03172b01182a",
+      "rva": 8340,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Finally": {
+      "token": "0x0600000a",
+      "il_hex": "170ade03180adc062a",
+      "rva": 8352,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Unicode": {
+      "token": "0x0600000b",
+      "il_hex": "72010000702a",
+      "rva": 8392,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "UnpairedUnicode": {
+      "token": "0x0600000c",
+      "il_hex": "720b0000702a",
+      "rva": 8400,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "NestedFinally": {
+      "token": "0x0600000d",
+      "il_hex": "170ade06180adc190adc062a",
+      "rva": 8408,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "SharedFinally": {
+      "token": "0x0600000e",
+      "il_hex": "022c04170ade07180ade05190adc062a0617582a",
+      "rva": 8460,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "AliasedFinally": {
+      "token": "0x0600000f",
+      "il_hex": "170ade0512001854dc062a",
+      "rva": 8508,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Fault": {
+      "token": "0x06000010",
+      "il_hex": "170ade03180adc062a",
+      "rva": 8548,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Catch": {
+      "token": "0x06000011",
+      "il_hex": "147a26180ade00062a",
+      "rva": 8588,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Filter": {
+      "token": "0x06000012",
+      "il_hex": "147a267e010000041758800100000417fe1126180ade00062a",
+      "rva": 8628,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "Rethrow": {
+      "token": "0x06000013",
+      "il_hex": "147a26fe1a26180ade00062a",
+      "rva": 8684,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "FinallySkip": {
+      "token": "0x06000014",
+      "il_hex": "170a2b03180adc062a",
+      "rva": 8736,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueCopy": {
+      "token": "0x06000015",
+      "il_hex": "022a",
+      "rva": 8776,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueField": {
+      "token": "0x06000016",
+      "il_hex": "027b020000042a",
+      "rva": 8780,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueInit": {
+      "token": "0x06000017",
+      "il_hex": "02fe15030000022a",
+      "rva": 8788,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueLoad": {
+      "token": "0x06000018",
+      "il_hex": "0271030000022a",
+      "rva": 8800,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueStore": {
+      "token": "0x06000019",
+      "il_hex": "020381030000022a",
+      "rva": 8808,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueCopyAddress": {
+      "token": "0x0600001a",
+      "il_hex": "020370030000022a",
+      "rva": 8820,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueUnbox": {
+      "token": "0x0600001b",
+      "il_hex": "02a5030000022a",
+      "rva": 8832,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "NewArray": {
+      "token": "0x0600001c",
+      "il_hex": "028d010000012a",
+      "rva": 8840,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueArrayRead": {
+      "token": "0x0600001d",
+      "il_hex": "0203a3030000022a",
+      "rva": 8848,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ReadonlyAddress": {
+      "token": "0x0600001e",
+      "il_hex": "0203fe1e8f030000022a",
+      "rva": 8860,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "UnalignedRef": {
+      "token": "0x0600001f",
+      "il_hex": "02fe1201fe134a2a",
+      "rva": 8872,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "VolatileAdd": {
+      "token": "0x06000020",
+      "il_hex": "0203fe13582a",
+      "rva": 8884,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "GenericIdentity": {
+      "token": "0x06000021",
+      "il_hex": "022a",
+      "rva": 8892,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "GenericCaller": {
+      "token": "0x06000022",
+      "il_hex": "02280100002b2a",
+      "rva": 8896,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "GenericOwnerField": {
+      "token": "0x06000023",
+      "il_hex": "027b0200000a2a",
+      "rva": 8904,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "GenericMixedCaller": {
+      "token": "0x06000024",
+      "il_hex": "02280200002b2a",
+      "rva": 8912,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "GenericExternalCall": {
+      "token": "0x06000025",
+      "il_hex": "02280100000a2a",
+      "rva": 8920,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueCall": {
+      "token": "0x06000026",
+      "il_hex": "0228280000062a",
+      "rva": 8928,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "ValueNew": {
+      "token": "0x06000027",
+      "il_hex": "0273290000062a",
+      "rva": 8936,
+      "declaring_type": "Rxd.测试.Probe"
+    },
+    "GetValue": {
+      "token": "0x06000028",
+      "il_hex": "027b020000042a",
+      "rva": 8944,
+      "declaring_type": "Rxd.测试.Value"
+    },
+    ".ctor": {
+      "token": "0x06000029",
+      "il_hex": "02037d020000042a",
+      "rva": 8952,
+      "declaring_type": "Rxd.测试.Value"
+    },
+    "Select": {
+      "token": "0x0600002a",
+      "il_hex": "14a50200001b2a",
+      "rva": 8964,
+      "declaring_type": "Rxd.测试.GenericBox`1"
+    },
+    "AliasClassValue": {
+      "token": "0x0600002b",
+      "il_hex": "027b040000042a",
+      "rva": 8972,
+      "declaring_type": "Rxd.测试.EnumLikeClass"
+    }
+  }
+}

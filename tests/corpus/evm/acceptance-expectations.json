@@ -1,0 +1,801 @@
+{
+  "provenance": "Independent solc 0.8.26 methodIdentifiers + source/ASM inspection + byte decoder. No rxd output, IDs, or pseudocode snapshots.",
+  "samples": [
+    {
+      "sample": "authored-navigation",
+      "runtime_sha256": "57b5cd6175ac081a520fbb9cae66f5700b5cc09ea8d60802f54a4de12bdb4602",
+      "functions": [
+        {
+          "signature": "addSeven(uint256)",
+          "selector": "1ba64846",
+          "entry_offset": 514,
+          "source_behavior": "Returns calldata word at byte 4 plus 7 modulo 2^256.",
+          "expected_static_blocks": [
+            {
+              "start": 152,
+              "end": 156,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 514,
+              "end": 520,
+              "raw_hex": "5b3461009857"
+            },
+            {
+              "start": 520,
+              "end": 532,
+              "raw_hex": "602036600319011261009857"
+            },
+            {
+              "start": 532,
+              "end": 546,
+              "raw_hex": "60206040516007600435018152f3"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 537,
+              "end": 539,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6007",
+              "immediate": "07"
+            },
+            {
+              "offset": 539,
+              "end": 541,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6004",
+              "immediate": "04"
+            },
+            {
+              "offset": 541,
+              "end": 542,
+              "opcode": 53,
+              "nm": "CALLDATALOAD",
+              "raw": "35"
+            },
+            {
+              "offset": 542,
+              "end": 543,
+              "opcode": 1,
+              "nm": "ADD",
+              "raw": "01"
+            },
+            {
+              "offset": 544,
+              "end": 545,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 545,
+              "end": 546,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        },
+        {
+          "signature": "choose(uint256)",
+          "selector": "0bb0b13a",
+          "entry_offset": 601,
+          "source_behavior": "If calldata word 4 is less than 10, returns x+7; otherwise returns x-3, modulo 2^256.",
+          "expected_static_blocks": [
+            {
+              "start": 152,
+              "end": 156,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 601,
+              "end": 607,
+              "raw_hex": "5b3461009857"
+            },
+            {
+              "start": 607,
+              "end": 619,
+              "raw_hex": "602036600319011261009857"
+            },
+            {
+              "start": 619,
+              "end": 634,
+              "raw_hex": "602090600435600a81101561028057"
+            },
+            {
+              "start": 634,
+              "end": 640,
+              "raw_hex": "6007018152f3"
+            },
+            {
+              "start": 640,
+              "end": 648,
+              "raw_hex": "5b600219018152f3"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 622,
+              "end": 624,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6004",
+              "immediate": "04"
+            },
+            {
+              "offset": 624,
+              "end": 625,
+              "opcode": 53,
+              "nm": "CALLDATALOAD",
+              "raw": "35"
+            },
+            {
+              "offset": 625,
+              "end": 627,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "600a",
+              "immediate": "0a"
+            },
+            {
+              "offset": 628,
+              "end": 629,
+              "opcode": 16,
+              "nm": "LT",
+              "raw": "10"
+            },
+            {
+              "offset": 629,
+              "end": 630,
+              "opcode": 21,
+              "nm": "ISZERO",
+              "raw": "15"
+            },
+            {
+              "offset": 630,
+              "end": 633,
+              "opcode": 97,
+              "nm": "PUSH2",
+              "raw": "610280",
+              "immediate": "0280"
+            },
+            {
+              "offset": 633,
+              "end": 634,
+              "opcode": 87,
+              "nm": "JUMPI",
+              "raw": "57"
+            },
+            {
+              "offset": 634,
+              "end": 636,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6007",
+              "immediate": "07"
+            },
+            {
+              "offset": 636,
+              "end": 637,
+              "opcode": 1,
+              "nm": "ADD",
+              "raw": "01"
+            },
+            {
+              "offset": 638,
+              "end": 639,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 639,
+              "end": 640,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            },
+            {
+              "offset": 640,
+              "end": 641,
+              "opcode": 91,
+              "nm": "JUMPDEST",
+              "raw": "5b"
+            },
+            {
+              "offset": 641,
+              "end": 643,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6002",
+              "immediate": "02"
+            },
+            {
+              "offset": 643,
+              "end": 644,
+              "opcode": 25,
+              "nm": "NOT",
+              "raw": "19"
+            },
+            {
+              "offset": 644,
+              "end": 645,
+              "opcode": 1,
+              "nm": "ADD",
+              "raw": "01"
+            },
+            {
+              "offset": 646,
+              "end": 647,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 647,
+              "end": 648,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        },
+        {
+          "signature": "sum(uint256)",
+          "selector": "188b85b4",
+          "entry_offset": 546,
+          "source_behavior": "Loop i=0 while i<n: result+=i and increment i, all modulo 2^256; returns result.",
+          "expected_static_blocks": [
+            {
+              "start": 152,
+              "end": 156,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 546,
+              "end": 552,
+              "raw_hex": "5b3461009857"
+            },
+            {
+              "start": 552,
+              "end": 564,
+              "raw_hex": "602036600319011261009857"
+            },
+            {
+              "start": 564,
+              "end": 569,
+              "raw_hex": "5f80600435"
+            },
+            {
+              "start": 569,
+              "end": 577,
+              "raw_hex": "5b80831061024b57"
+            },
+            {
+              "start": 577,
+              "end": 587,
+              "raw_hex": "602082604051908152f3"
+            },
+            {
+              "start": 587,
+              "end": 601,
+              "raw_hex": "5b60018301929091019061023956"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 568,
+              "end": 569,
+              "opcode": 53,
+              "nm": "CALLDATALOAD",
+              "raw": "35"
+            },
+            {
+              "offset": 569,
+              "end": 570,
+              "opcode": 91,
+              "nm": "JUMPDEST",
+              "raw": "5b"
+            },
+            {
+              "offset": 572,
+              "end": 573,
+              "opcode": 16,
+              "nm": "LT",
+              "raw": "10"
+            },
+            {
+              "offset": 573,
+              "end": 576,
+              "opcode": 97,
+              "nm": "PUSH2",
+              "raw": "61024b",
+              "immediate": "024b"
+            },
+            {
+              "offset": 576,
+              "end": 577,
+              "opcode": 87,
+              "nm": "JUMPI",
+              "raw": "57"
+            },
+            {
+              "offset": 586,
+              "end": 587,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            },
+            {
+              "offset": 587,
+              "end": 588,
+              "opcode": 91,
+              "nm": "JUMPDEST",
+              "raw": "5b"
+            },
+            {
+              "offset": 588,
+              "end": 590,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6001",
+              "immediate": "01"
+            },
+            {
+              "offset": 591,
+              "end": 592,
+              "opcode": 1,
+              "nm": "ADD",
+              "raw": "01"
+            },
+            {
+              "offset": 595,
+              "end": 596,
+              "opcode": 1,
+              "nm": "ADD",
+              "raw": "01"
+            },
+            {
+              "offset": 597,
+              "end": 600,
+              "opcode": 97,
+              "nm": "PUSH2",
+              "raw": "610239",
+              "immediate": "0239"
+            },
+            {
+              "offset": 600,
+              "end": 601,
+              "opcode": 86,
+              "nm": "JUMP",
+              "raw": "56"
+            }
+          ]
+        },
+        {
+          "signature": "storeAndRead(uint256)",
+          "selector": "ae3da75a",
+          "entry_offset": 398,
+          "source_behavior": "Stores calldata word 4 into persistent slot 0; forwards that value and returns x+1 modulo 2^256 without a second SLOAD.",
+          "expected_static_blocks": [
+            {
+              "start": 152,
+              "end": 156,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 398,
+              "end": 404,
+              "raw_hex": "5b3461009857"
+            },
+            {
+              "start": 404,
+              "end": 416,
+              "raw_hex": "602036600319011261009857"
+            },
+            {
+              "start": 416,
+              "end": 434,
+              "raw_hex": "6020600435805f55600160405191018152f3"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 418,
+              "end": 420,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6004",
+              "immediate": "04"
+            },
+            {
+              "offset": 420,
+              "end": 421,
+              "opcode": 53,
+              "nm": "CALLDATALOAD",
+              "raw": "35"
+            },
+            {
+              "offset": 422,
+              "end": 423,
+              "opcode": 95,
+              "nm": "PUSH0",
+              "raw": "5f"
+            },
+            {
+              "offset": 423,
+              "end": 424,
+              "opcode": 85,
+              "nm": "SSTORE",
+              "raw": "55"
+            },
+            {
+              "offset": 424,
+              "end": 426,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6001",
+              "immediate": "01"
+            },
+            {
+              "offset": 430,
+              "end": 431,
+              "opcode": 1,
+              "nm": "ADD",
+              "raw": "01"
+            },
+            {
+              "offset": 432,
+              "end": 433,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 433,
+              "end": 434,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        },
+        {
+          "signature": "readValue()",
+          "selector": "82da2e57",
+          "entry_offset": 434,
+          "source_behavior": "Loads persistent storage slot 0 and returns its word.",
+          "expected_static_blocks": [
+            {
+              "start": 152,
+              "end": 156,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 434,
+              "end": 440,
+              "raw_hex": "5b3461009857"
+            },
+            {
+              "start": 440,
+              "end": 451,
+              "raw_hex": "5f36600319011261009857"
+            },
+            {
+              "start": 451,
+              "end": 462,
+              "raw_hex": "60205f54604051908152f3"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 453,
+              "end": 454,
+              "opcode": 95,
+              "nm": "PUSH0",
+              "raw": "5f"
+            },
+            {
+              "offset": 454,
+              "end": 455,
+              "opcode": 84,
+              "nm": "SLOAD",
+              "raw": "54"
+            },
+            {
+              "offset": 460,
+              "end": 461,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 461,
+              "end": 462,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        },
+        {
+          "signature": "transientValue(uint256)",
+          "selector": "e48c8755",
+          "entry_offset": 116,
+          "source_behavior": "Stores calldata word 4 into transient slot 0x42, then loads/returns it.",
+          "expected_static_blocks": [
+            {
+              "start": 116,
+              "end": 122,
+              "raw_hex": "5b3461009857"
+            },
+            {
+              "start": 122,
+              "end": 134,
+              "raw_hex": "602036600319011261009857"
+            },
+            {
+              "start": 134,
+              "end": 152,
+              "raw_hex": "60043560425d602060425c604051908152f3"
+            },
+            {
+              "start": 152,
+              "end": 156,
+              "raw_hex": "5b5f80fd"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 134,
+              "end": 136,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6004",
+              "immediate": "04"
+            },
+            {
+              "offset": 136,
+              "end": 137,
+              "opcode": 53,
+              "nm": "CALLDATALOAD",
+              "raw": "35"
+            },
+            {
+              "offset": 137,
+              "end": 139,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6042",
+              "immediate": "42"
+            },
+            {
+              "offset": 139,
+              "end": 140,
+              "opcode": 93,
+              "nm": "TSTORE",
+              "raw": "5d"
+            },
+            {
+              "offset": 142,
+              "end": 144,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6042",
+              "immediate": "42"
+            },
+            {
+              "offset": 144,
+              "end": 145,
+              "opcode": 92,
+              "nm": "TLOAD",
+              "raw": "5c"
+            },
+            {
+              "offset": 150,
+              "end": 151,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 151,
+              "end": 152,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "start": 649,
+        "end": 702,
+        "cbor_length": 51,
+        "hex": "a2646970667358221220b8a82fb7ed654b399f3a9727c598cb01c0458c70270eae6ea5072cf4e738a14d64736f6c634300081a0033"
+      },
+      "immediate_literal": {
+        "selector": "e21f37ce",
+        "opcode_offset": 213,
+        "start": 214,
+        "end": 246,
+        "raw_hex": "5258445f444154415f4e415649474154494f4e3a207472757374656420617574",
+        "utf8": "RXD_DATA_NAVIGATION: trusted aut",
+        "search_prefix": "RXD_DATA_NAVIGATION"
+      },
+      "shared_block": {
+        "start": 152,
+        "end": 156,
+        "raw_hex": "5b5f80fd",
+        "source_fact": "All eight selector-dispatched wrappers branch to the same empty revert block."
+      }
+    },
+    {
+      "sample": "openzeppelin-erc20",
+      "runtime_sha256": "f97737bf244a5b86fd9be5b75f157dac8cce2b511543e19f14045e06c6f0a8b6",
+      "functions": [
+        {
+          "signature": "decimals()",
+          "selector": "313ce567",
+          "entry_offset": 598,
+          "source_behavior": "Returns 18 from the unmodified ERC20 source; no state access in this target.",
+          "expected_static_blocks": [
+            {
+              "start": 207,
+              "end": 211,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 598,
+              "end": 604,
+              "raw_hex": "5b346100cf57"
+            },
+            {
+              "start": 604,
+              "end": 615,
+              "raw_hex": "5f3660031901126100cf57"
+            },
+            {
+              "start": 615,
+              "end": 625,
+              "raw_hex": "602060405160128152f3"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 620,
+              "end": 622,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6012",
+              "immediate": "12"
+            },
+            {
+              "offset": 623,
+              "end": 624,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 624,
+              "end": 625,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        },
+        {
+          "signature": "totalSupply()",
+          "selector": "18160ddd",
+          "entry_offset": 849,
+          "source_behavior": "Loads persistent slot 2, independently identified by Solidity storageLayout as _totalSupply, and returns it.",
+          "expected_static_blocks": [
+            {
+              "start": 207,
+              "end": 211,
+              "raw_hex": "5b5f80fd"
+            },
+            {
+              "start": 849,
+              "end": 855,
+              "raw_hex": "5b346100cf57"
+            },
+            {
+              "start": 855,
+              "end": 866,
+              "raw_hex": "5f3660031901126100cf57"
+            },
+            {
+              "start": 866,
+              "end": 878,
+              "raw_hex": "6020600254604051908152f3"
+            }
+          ],
+          "has_unresolved_jump": false,
+          "instruction_facts": [
+            {
+              "offset": 868,
+              "end": 870,
+              "opcode": 96,
+              "nm": "PUSH1",
+              "raw": "6002",
+              "immediate": "02"
+            },
+            {
+              "offset": 870,
+              "end": 871,
+              "opcode": 84,
+              "nm": "SLOAD",
+              "raw": "54"
+            },
+            {
+              "offset": 876,
+              "end": 877,
+              "opcode": 82,
+              "nm": "MSTORE",
+              "raw": "52"
+            },
+            {
+              "offset": 877,
+              "end": 878,
+              "opcode": 243,
+              "nm": "RETURN",
+              "raw": "f3"
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "start": 1491,
+        "end": 1544,
+        "cbor_length": 51,
+        "hex": "a2646970667358221220c8c7a96197d525f814d46e6a6dfeeb552445105684daefbcb30f3a4b9059812f64736f6c634300081a0033"
+      }
+    },
+    {
+      "sample": "authored-navigation-legacy",
+      "runtime_sha256": "fc0f4428d92aba39de3177f3f6fcd2a7cd82ab3eaa3d879dfea6c962cd06cdb1",
+      "data_literal": {
+        "compiler_label": "2F7CD3D1BFB52C59F5ACD3412F8F9DCB26E65F30B105D919454067742AC4DE64",
+        "hex": "5258445f444154415f4e415649474154494f4e3a207472757374656420617574686f72656420636f6d70696c657220636f7270757320776974682061206c6f6e67207265616461626c65206c69746572616c20616e64206e6f20657865637574696f6e2e",
+        "utf8": "RXD_DATA_NAVIGATION: trusted authored compiler corpus with a long readable literal and no execution.",
+        "ranges": [
+          {
+            "start": 492,
+            "end": 592
+          }
+        ]
+      },
+      "copy_evidence": {
+        "opcode_offset": 397,
+        "offset_push": 391,
+        "size_push": 394,
+        "source_start": 492,
+        "source_end": 592,
+        "copy_size": 100,
+        "block_start": 370,
+        "unresolved_return_jump": 401,
+        "selected_function_selector": "e21f37ce",
+        "selected_function_entry": 276
+      },
+      "metadata": {
+        "start": 592,
+        "end": 645,
+        "cbor_length": 51,
+        "hex": "a264697066735822122052ed3ef0247c002269de7706c40ad40d98a50c9028ceb6f83cb94c4a6f77da8564736f6c634300081a0033"
+      }
+    }
+  ]
+}

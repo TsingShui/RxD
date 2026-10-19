@@ -1,0 +1,17 @@
+{
+  "input": {
+    "corpus": "dotscope upstream dotnet_10.0/System.Private.CoreLib.dll",
+    "bytes": 15767040,
+    "sha256": "a6acd5d87523255556bc17d964779aae71da1809623710aa4c6d091061b3246a"
+  },
+  "workloads": [
+    "corelib_get_Abs_int32",
+    "corelib_outline",
+    "corelib_get_il",
+    "corelib_get_file"
+  ],
+  "upper_bound_ms": 300,
+  "retain_over_150_counts": true,
+  "acceptance_still_requires_complete_correct_output": true,
+  "note": "Scoped large-input performance bound; no global size-based exception."
+}

@@ -1,0 +1,20 @@
+Source: pycdc commit 25ed1ab2 (pycdc 0.6.0, MIT). See LICENSE for the MIT license.
+
+The rxd copy disables upstream standalone binaries in Cargo.toml; rxd invokes the
+library directly. The marshal reader adds depth/object budgets and bounds collection
+reservations against input bytes before parsing untrusted input. The source printer and
+JSON serializer enforce output budgets before appending beyond the limit. Version
+overrides reuse the cached magic table. Nested lambda/annotation/type-parameter
+decompilation propagates detected incompleteness to the enclosing result.
+
+Local changes also bound reference-expanded object counts/depth, aggregate marshal byte
+copies, quadratic integer conversion work and code-header counts; add strict
+instruction/prefix/cache/exception validation; and provide bounded static code/constant/
+reference evidence. No analyzed code is executed, and worker isolation is not an OS
+sandbox. The imported Rust files are formatted with this workspace's rustfmt version so
+`cargo fmt --all -- --check` passes. The upstream library opts out of the workspace Clippy
+gate; rxd-pyc and the CLI adapter remain gated.
+
+Upstream attribution and licensing remain unchanged. Any later local change belongs in
+this vendored copy and should be documented here. Tests and corpus provenance are in
+`tests/corpus/pyc/README.md` and `tests/fixtures/pyc/README.md`.

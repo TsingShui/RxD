@@ -1,0 +1,1306 @@
+{
+  "provenance": {
+    "package": "Newtonsoft.Json",
+    "version": "13.0.3",
+    "source_url": "https://api.nuget.org/v3-flatcontainer/newtonsoft.json/13.0.3/newtonsoft.json.13.0.3.nupkg",
+    "package_sha256": "872fc189e638ab1056555b03aaa38f68bcb54286e221aa646eb1129babf63c77",
+    "archive_entry": "lib/net6.0/Newtonsoft.Json.dll",
+    "dll_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+    "dll_bytes": 712464,
+    "license": "MIT",
+    "license_url": "https://github.com/JamesNK/Newtonsoft.Json/blob/13.0.3/LICENSE.md",
+    "analysis_only": true,
+    "input_executed": false
+  },
+  "oracle": "System.Reflection.Metadata PEReader + trusted runtime OpCodes operand descriptors; target never loaded",
+  "oracle_file_sha256": "a4ba15d03f87a2020efe8676da23f881e83a39c2f82a667dbfb53c1a66929b3e",
+  "workloads": [
+    {
+      "name": "Newtonsoft.Json.JsonReader",
+      "token": 33554465,
+      "type_tokens": [
+        33554465,
+        33554705,
+        33554706,
+        33554707,
+        33554708,
+        33554709,
+        33554710
+      ],
+      "field_tokens": [
+        67108956,
+        67108957,
+        67108958,
+        67108959,
+        67108960,
+        67108961,
+        67108962,
+        67108963,
+        67108964,
+        67108965,
+        67108966,
+        67108967,
+        67108968,
+        67108969,
+        67108970,
+        67110014,
+        67110015,
+        67110016,
+        67110017,
+        67110018,
+        67110019,
+        67110020,
+        67110021,
+        67110022,
+        67110023,
+        67110024,
+        67110025,
+        67110026,
+        67110027,
+        67110028,
+        67110029,
+        67110030,
+        67110031,
+        67110032,
+        67110033,
+        67110034,
+        67110035,
+        67110036,
+        67110037,
+        67110038,
+        67110039,
+        67110040,
+        67110041,
+        67110042,
+        67110043,
+        67110044,
+        67110045,
+        67110046,
+        67110047,
+        67110048,
+        67110049,
+        67110050,
+        67110051,
+        67110052,
+        67110053,
+        67110054
+      ],
+      "methods": {
+        "0x060000cd": {
+          "name": "System.IAsyncDisposable.DisposeAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "1c59c9c19a2f04c4bdd0abe448faf75b0ec9b16db29619add2b0cf708d7ad2e7",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 0,
+              "try_length": 19,
+              "handler_offset": 19,
+              "handler_length": 8,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x060000ce": {
+          "name": "ReadAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "f21ced3889d8b5330a0b313bfd2f90d15e2db9ebe606634d510e9aaf30b80597",
+          "handlers": []
+        },
+        "0x060000cf": {
+          "name": "SkipAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "5952fa36780380c14f17e7c96658000396f0d37757ad4c2e4bbc82f49197cb6d",
+          "handlers": []
+        },
+        "0x060000d0": {
+          "name": "ReaderReadAndAssertAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "a1dda60e91ab4e6ec3b040546c18818a0d73bb250c10afa8aa0fbcc815f1fef9",
+          "handlers": []
+        },
+        "0x060000d1": {
+          "name": "ReadAsBooleanAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "5025315fa39502fb4aa22abe198b5252880be45e29cfda1ce76a2f765dd5fe46",
+          "handlers": []
+        },
+        "0x060000d2": {
+          "name": "ReadAsBytesAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "28d205c6b26e980b4ab39d9bb5508a6eb931d0b626669810bcbb9a8cfb995c6c",
+          "handlers": []
+        },
+        "0x060000d3": {
+          "name": "ReadArrayIntoByteArrayAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "4b961889af8c3dbb6710cec5d86a7d669e1094c7acca902a83e795c9ce784b70",
+          "handlers": []
+        },
+        "0x060000d4": {
+          "name": "ReadAsDateTimeAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "e9d52c7cb8f3b3f1c3bfddfe334a7a0ec687539f44627b96802349864d305085",
+          "handlers": []
+        },
+        "0x060000d5": {
+          "name": "ReadAsDateTimeOffsetAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "53c52c7fe5953b8f26254ca53992caecdd45ebb6509117df2a66ade896e417a1",
+          "handlers": []
+        },
+        "0x060000d6": {
+          "name": "ReadAsDecimalAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "fc90438f240c29db872774182f1aa98e157e6f88f434a08d27f3d0cb5c89a0b0",
+          "handlers": []
+        },
+        "0x060000d7": {
+          "name": "ReadAsDoubleAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "87e66c51e8e6894c40f36db0e13551cbf808336936ffbd0a8f62739524a97d72",
+          "handlers": []
+        },
+        "0x060000d8": {
+          "name": "ReadAsInt32Async",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "57bc88c56394bda7f68ac1377a982e5ed5fd3b4459438e5720f0f0045a1eb19d",
+          "handlers": []
+        },
+        "0x060000d9": {
+          "name": "ReadAsStringAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "014d62b7194799a3e4b4e1711a6806eede6b4b16c23b450d1181dd8c91fc722b",
+          "handlers": []
+        },
+        "0x060000da": {
+          "name": "ReadAndMoveToContentAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "99a5118202ab1b515c8ae0e77d7384a42ddc2dff3ef37335a5b0de86e1eb51e1",
+          "handlers": []
+        },
+        "0x060000db": {
+          "name": "MoveToContentAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "d57e1fc3dc3ab9911633d5e29ef2f7240de90c42bd03ad4de1941449abb3e4cd",
+          "handlers": []
+        },
+        "0x060000dc": {
+          "name": "MoveToContentFromNonContentAsync",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "43752c2f6c9fb3fc719d85b0c0708677948ba565087803a43d6ee4af17090fa0",
+          "handlers": []
+        },
+        "0x060000dd": {
+          "name": "get_CurrentState",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "5e2a6f058b32ca2b5ae56e3f1c4252129c5364d45087d8110a4e379bfff1ed41",
+          "handlers": []
+        },
+        "0x060000de": {
+          "name": "get_CloseInput",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "49115073943631b87ba28ab69ddb66cb18754518d0f0553b2cd5a2e0c92db043",
+          "handlers": []
+        },
+        "0x060000df": {
+          "name": "set_CloseInput",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "53fc6a9cfc13f248cc7181a9e3ca24324030ee64dace1b542e99891db39a8ad6",
+          "handlers": []
+        },
+        "0x060000e0": {
+          "name": "get_SupportMultipleContent",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0661e376d301025b1b7ffa969b47f2484238d07a5a6ea5ac46795d1b6d408cf5",
+          "handlers": []
+        },
+        "0x060000e1": {
+          "name": "set_SupportMultipleContent",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "1393ad30bdaffe64fa3d00a5efc14177d9e7aba5d46f1910f4441f940acdab2d",
+          "handlers": []
+        },
+        "0x060000e2": {
+          "name": "get_QuoteChar",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "175fad01b608bd108bdf45a877a05284461f6329c7972336b16c4b2561d78762",
+          "handlers": []
+        },
+        "0x060000e3": {
+          "name": "set_QuoteChar",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "fa34a3c94f24be514a5917a3935edd9bb07f4edc489bea34f218a5191a3aa987",
+          "handlers": []
+        },
+        "0x060000e4": {
+          "name": "get_DateTimeZoneHandling",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "2bef66ab4d0078dddb0a9b241e77080f3d8e59cdcafb0b014981c11b7aba7b0d",
+          "handlers": []
+        },
+        "0x060000e5": {
+          "name": "set_DateTimeZoneHandling",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "93b35c5a5ef0ea15b16c81d0a7dc2053c645d47e42bf7377a1692a9fa316a4ee",
+          "handlers": []
+        },
+        "0x060000e6": {
+          "name": "get_DateParseHandling",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "afcd922df8c4d830554ca53c7b8e031cf695efacbe0004e7eacd2d22b059c19d",
+          "handlers": []
+        },
+        "0x060000e7": {
+          "name": "set_DateParseHandling",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "712a87976d44cbee9b0fc06e67de13011d07261f6f7c230ea500461b6551dfb1",
+          "handlers": []
+        },
+        "0x060000e8": {
+          "name": "get_FloatParseHandling",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0f1575c8585e0730e1244baf3dc1f3cc7c6b9fdce11b60a4c13c431ade88557d",
+          "handlers": []
+        },
+        "0x060000e9": {
+          "name": "set_FloatParseHandling",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "781e016416c00da5927834b544bd9d8f78346dcb7b61d93ca43aa757239f6a7f",
+          "handlers": []
+        },
+        "0x060000ea": {
+          "name": "get_DateFormatString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "06ee1d399950967243a980df5f207adcbca8bbcf82fb5de2a04b233ffd88a627",
+          "handlers": []
+        },
+        "0x060000eb": {
+          "name": "set_DateFormatString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "f9905214bb1b63e57c35e6c869f5a3d23ca8c2b731e6dfed52c3887c35a62fba",
+          "handlers": []
+        },
+        "0x060000ec": {
+          "name": "get_MaxDepth",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "4621341e718b78337269a1e2baeda3d21e12f833f83ad9c3528337dd972715ce",
+          "handlers": []
+        },
+        "0x060000ed": {
+          "name": "set_MaxDepth",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "4e6ce03f58c69a7e425687dd2eb5aa069ffd0290d1341af8d54b382b5f439c4c",
+          "handlers": []
+        },
+        "0x060000ee": {
+          "name": "get_TokenType",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "ab03af7ee5b507da59e043a3b3987d70dc9ba101bd051726f3465f916ba1e97f",
+          "handlers": []
+        },
+        "0x060000ef": {
+          "name": "get_Value",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "f58380d7976a30cb566b66836c1d071ff63159d5cdcbca52218d5562780f74b9",
+          "handlers": []
+        },
+        "0x060000f0": {
+          "name": "get_ValueType",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "778b5e532b63f073ed87e0c4a1f606cf3d0774d9417573f78a240ca5c5b9eddb",
+          "handlers": []
+        },
+        "0x060000f1": {
+          "name": "get_Depth",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0f8683db20a1e850920cf7782f99f6741632991c748eb54917c0d4a932cfe8f4",
+          "handlers": []
+        },
+        "0x060000f2": {
+          "name": "get_Path",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "50ad323ba7ae9ec760877055ef96a14ad8b1a59f0a5f881d0aa5428afe6d9400",
+          "handlers": []
+        },
+        "0x060000f3": {
+          "name": "get_Culture",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "9b76968e9401e57837194fdfe771dc25d2d994f352428d0e602a225caceeb1c2",
+          "handlers": []
+        },
+        "0x060000f4": {
+          "name": "set_Culture",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "3853e72764c685e371f88bf6f0e78910cbb7e909330a53fe7d90fe8b790cdbec",
+          "handlers": []
+        },
+        "0x060000f5": {
+          "name": "GetPosition",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "09db2edfdcc029572f84737daa5e70c2e0fedc6f7b61255eac46b21cd103c131",
+          "handlers": []
+        },
+        "0x060000f6": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "f3469b0a8e119e735065f94c4e565410065ebac838f13ff828b0f51b04d481a2",
+          "handlers": []
+        },
+        "0x060000f7": {
+          "name": "Push",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "7e64a4d81f7b1474990546d50a18fbde11e770a2e6c826f17d1014ea18858e0a",
+          "handlers": []
+        },
+        "0x060000f8": {
+          "name": "Pop",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "195c7755d416743c89a4b83ccb13b8524c0fa5de0f43d48a3f697f382fd0f548",
+          "handlers": []
+        },
+        "0x060000f9": {
+          "name": "Peek",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0b01a5c87c0fe93cfdaa9b97bf0b8de0f562403abdb0eb99cf9faeb1f04def7e",
+          "handlers": []
+        },
+        "0x060000fa": {
+          "name": "Read",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": true,
+          "il_sha256": null,
+          "handlers": []
+        },
+        "0x060000fb": {
+          "name": "ReadAsInt32",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "85a75bb25c7a041ab192f3312dc861fce4faecc2608d9f89aabae1954d974af8",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 120,
+              "try_length": 14,
+              "handler_offset": 134,
+              "handler_length": 27,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x060000fc": {
+          "name": "ReadInt32String",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "b77600c073e5202e59fa90eedd457428b668e265275d2a6ac521c5336357cd5c",
+          "handlers": []
+        },
+        "0x060000fd": {
+          "name": "ReadAsString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "c231c0ff18dac2f271956844e0b3837b2bfb66b578eadb9c08fd0de50f79ba25",
+          "handlers": []
+        },
+        "0x060000fe": {
+          "name": "ReadAsBytes",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "5efc57e77462ce0929583f8dc639fbc182bdfe23a4dcd4813bba2413216822df",
+          "handlers": []
+        },
+        "0x060000ff": {
+          "name": "ReadArrayIntoByteArray",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "4716a4978f2999910889e67802c5d02acfcceb5858c2ae17079c21d3739703b7",
+          "handlers": []
+        },
+        "0x06000100": {
+          "name": "ReadArrayElementIntoByteArrayReportDone",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "6c69375e06f336446dcd2205070257082ba502cd394981b511f75695a8fdeba5",
+          "handlers": []
+        },
+        "0x06000101": {
+          "name": "ReadAsDouble",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "ebfa2761ed6e3a280aecd8600ef38955fc551a280af724d2d70a8a964d7d43c1",
+          "handlers": []
+        },
+        "0x06000102": {
+          "name": "ReadDoubleString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "3cd756b0e1c6630772565416942cc73b241814250e1697037c13f169ff96d391",
+          "handlers": []
+        },
+        "0x06000103": {
+          "name": "ReadAsBoolean",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "683bc128905219e57a711078006f13746b7ebac0c58c8f779a1d48cd8a5eeb6f",
+          "handlers": []
+        },
+        "0x06000104": {
+          "name": "ReadBooleanString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "68ecf80f6f137df584fdd48f248f754a8c6c7737321171628340caf12312790c",
+          "handlers": []
+        },
+        "0x06000105": {
+          "name": "ReadAsDecimal",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "15d51d754ea28f5eb955ca86dbc461febb0e2131ef7dfbf279a4f1cb0aa7f7e1",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 120,
+              "try_length": 14,
+              "handler_offset": 134,
+              "handler_length": 27,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x06000106": {
+          "name": "ReadDecimalString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "8516241cc9a0c874fcb86b5ab9fa117ec089bd056c72802b6e83909f5c014127",
+          "handlers": []
+        },
+        "0x06000107": {
+          "name": "ReadAsDateTime",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "e1a06cf6ad30f9898ac8ff4f4fd69e93f9d3540aab99666cca98874988bc3d2b",
+          "handlers": []
+        },
+        "0x06000108": {
+          "name": "ReadDateTimeString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "908ac57278e5c97462b878ad4d52c303ef5463cdc3c06d8d0b7094844d5f83ad",
+          "handlers": []
+        },
+        "0x06000109": {
+          "name": "ReadAsDateTimeOffset",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "142c2bb3905c14079f05179eabe59be136054229b6e173fcb51e457428c0462b",
+          "handlers": []
+        },
+        "0x0600010a": {
+          "name": "ReadDateTimeOffsetString",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "12f40871eee791b26d7a500a923269e594d43ebd808b1f70c874f0f8a2ba6c8c",
+          "handlers": []
+        },
+        "0x0600010b": {
+          "name": "ReaderReadAndAssert",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "54b30925ceb4af6782e861560e86cfea42a707ae30813b778d7c0e3babc97cd6",
+          "handlers": []
+        },
+        "0x0600010c": {
+          "name": "CreateUnexpectedEndException",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "a3366f8fd8196a6c6778bbddb956c00cabf20f2c6efa06893fb2c5edcd4e8951",
+          "handlers": []
+        },
+        "0x0600010d": {
+          "name": "ReadIntoWrappedTypeObject",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "40f784eef88c1ca9cd4567fc501af2728ef1709b0adfa058e5cc241a6a2d2849",
+          "handlers": []
+        },
+        "0x0600010e": {
+          "name": "Skip",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0909ef49b6e956d7fa2aed4fb2cfc5b9f4a69a7ee9b5feab24294b49ed55d492",
+          "handlers": []
+        },
+        "0x0600010f": {
+          "name": "SetToken",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "241995d92844eefdbf086881022b10ca3d3cb441da9c333e8eac84ae1a5b6aa5",
+          "handlers": []
+        },
+        "0x06000110": {
+          "name": "SetToken",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "b746273cd55276bd8b3fbad4c90ebb634048bf5d9a05a7f3d386b78eb212bfa0",
+          "handlers": []
+        },
+        "0x06000111": {
+          "name": "SetToken",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "a0d2e4a77d44947599d0aaf26004f03821af0d3ecaca3a0342ad7c4819626b68",
+          "handlers": []
+        },
+        "0x06000112": {
+          "name": "SetPostValueState",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "f3cfff15ca626f4616deb71ee6ecf02ecacae42975c1dcdce5af937014997414",
+          "handlers": []
+        },
+        "0x06000113": {
+          "name": "UpdateScopeWithFinishedValue",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "c04738d3f46445c1c83578436813e1a0c5c6a6357165c2c287c6ea222ff0da0f",
+          "handlers": []
+        },
+        "0x06000114": {
+          "name": "ValidateEnd",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "5737f98390049c852fcda858980182fc8e52f49d5ff27a4c6fa8dc6810607b7b",
+          "handlers": []
+        },
+        "0x06000115": {
+          "name": "SetStateBasedOnCurrent",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "b24bc87e6d0d78cba079ab3b621c0a36b697fed2f3a4946d0abb577578d47721",
+          "handlers": []
+        },
+        "0x06000116": {
+          "name": "SetFinished",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "31a8413245f4893317a9fa9d0ba50b04153a79ed87949fcba48cfc6aff3f630f",
+          "handlers": []
+        },
+        "0x06000117": {
+          "name": "GetTypeForCloseToken",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "a3a4bdeb32a43943aee1bb126490577eecfe0755657419abfe7d9b3215ebb389",
+          "handlers": []
+        },
+        "0x06000118": {
+          "name": "System.IDisposable.Dispose",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0c14fb49b575b2af638cdbcdbffbc58e0158a485db88984a4f3f4b94d3a93a59",
+          "handlers": []
+        },
+        "0x06000119": {
+          "name": "Dispose",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0844806152203dd3522b532afe87818e3f1825f8624f29ce2afcc5d08aa81436",
+          "handlers": []
+        },
+        "0x0600011a": {
+          "name": "Close",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "0943e9dda49c48394e8777d21f9cde9bed3aada0cb71a3b51a2e9b8ffbf076e7",
+          "handlers": []
+        },
+        "0x0600011b": {
+          "name": "ReadAndAssert",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "68fa984d32778f4f0fb8a9adc0eeaf455abb30c0f85b3347afa1a29cf09e2263",
+          "handlers": []
+        },
+        "0x0600011c": {
+          "name": "ReadForTypeAndAssert",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "3381f94850dce46d487f2fc0d14257c555a4d87e23ab2abc67663bd338566365",
+          "handlers": []
+        },
+        "0x0600011d": {
+          "name": "ReadForType",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "f192d8dd22f5c1bd8bc05e912e6e3dbfee713f84cf262761843cb436dc146db6",
+          "handlers": []
+        },
+        "0x0600011e": {
+          "name": "ReadAndMoveToContent",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "224b1743f04a26188c990317daf148b9945f56fddc7740fcd03df9b0d1a613b4",
+          "handlers": []
+        },
+        "0x0600011f": {
+          "name": "MoveToContent",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "c4741266dc7484edfb800f9830b916c61b8f82b5975df5b055971102b779c775",
+          "handlers": []
+        },
+        "0x06000120": {
+          "name": "GetContentToken",
+          "owner": "Newtonsoft.Json.JsonReader",
+          "no_body": false,
+          "il_sha256": "512abe39acd23fdceb83474d264da719f553fbf9af391bcc2a6276ba9cfc09fd",
+          "handlers": []
+        },
+        "0x06000dee": {
+          "name": "MoveNext",
+          "owner": "Newtonsoft.Json.JsonReader+<MoveToContentFromNonContentAsync>d__15",
+          "no_body": false,
+          "il_sha256": "bed8db1eeca6f85e9e15384ebeb248ea31eaefd5dd3a564607240c4b4c0e80f8",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 14,
+              "try_length": 134,
+              "handler_offset": 148,
+              "handler_length": 25,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x06000def": {
+          "name": "SetStateMachine",
+          "owner": "Newtonsoft.Json.JsonReader+<MoveToContentFromNonContentAsync>d__15",
+          "no_body": false,
+          "il_sha256": "736cdd82a58e0c88d613fbeae6b61e451aeefb699e595d2afe84f94ec570f477",
+          "handlers": []
+        },
+        "0x06000df0": {
+          "name": "MoveNext",
+          "owner": "Newtonsoft.Json.JsonReader+<ReadAndMoveToContentAsync>d__13",
+          "no_body": false,
+          "il_sha256": "962f4c1a6cd45d13549392df3b64d2a024949fd597e8f64f90aff4e16e0ecb67",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 14,
+              "try_length": 236,
+              "handler_offset": 250,
+              "handler_length": 25,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x06000df1": {
+          "name": "SetStateMachine",
+          "owner": "Newtonsoft.Json.JsonReader+<ReadAndMoveToContentAsync>d__13",
+          "no_body": false,
+          "il_sha256": "6a1dc93f8b6e927a6866620669cce94e6d3ff592e8e7f6d0990c384010eb5b23",
+          "handlers": []
+        },
+        "0x06000df2": {
+          "name": "MoveNext",
+          "owner": "Newtonsoft.Json.JsonReader+<ReadArrayIntoByteArrayAsync>d__6",
+          "no_body": false,
+          "il_sha256": "8c02c63b9de0ba5fae76d5728fd8bf91a46af78ea1ce71bf8a65d2bfdcc20529",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 14,
+              "try_length": 176,
+              "handler_offset": 190,
+              "handler_length": 32,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x06000df3": {
+          "name": "SetStateMachine",
+          "owner": "Newtonsoft.Json.JsonReader+<ReadArrayIntoByteArrayAsync>d__6",
+          "no_body": false,
+          "il_sha256": "ec0a4d49865134f14885b50bb7d2ec7022cd266bbb1f5ec2ef653e2c3d0d8d2b",
+          "handlers": []
+        },
+        "0x06000df4": {
+          "name": "MoveNext",
+          "owner": "Newtonsoft.Json.JsonReader+<ReaderReadAndAssertAsync>d__3",
+          "no_body": false,
+          "il_sha256": "c4db52975684dbdb1daf4732c6f499b328b9b5bf7f02dd2a025591a9f42fe145",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 14,
+              "try_length": 117,
+              "handler_offset": 131,
+              "handler_length": 25,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x06000df5": {
+          "name": "SetStateMachine",
+          "owner": "Newtonsoft.Json.JsonReader+<ReaderReadAndAssertAsync>d__3",
+          "no_body": false,
+          "il_sha256": "1a7153c09a3f13f8b6dc3e6d231b1b18b9fde22d508f80302c2f8d2355f77a81",
+          "handlers": []
+        },
+        "0x06000df6": {
+          "name": "MoveNext",
+          "owner": "Newtonsoft.Json.JsonReader+<SkipAsync>d__2",
+          "no_body": false,
+          "il_sha256": "a5a974509e0a183d2353d6adee15d47b577f70b80f4e60b294a6e9d6c701d8d8",
+          "handlers": [
+            {
+              "kind": "catch",
+              "try_offset": 14,
+              "try_length": 275,
+              "handler_offset": 289,
+              "handler_length": 25,
+              "class_token": 16777264,
+              "filter_offset": null
+            }
+          ]
+        },
+        "0x06000df7": {
+          "name": "SetStateMachine",
+          "owner": "Newtonsoft.Json.JsonReader+<SkipAsync>d__2",
+          "no_body": false,
+          "il_sha256": "3002faa2ed5b07efba7af04bf9eb9114ff099f2f213f5ff982370ebfd57a1c40",
+          "handlers": []
+        }
+      }
+    },
+    {
+      "name": "Newtonsoft.Json.Linq.JValue",
+      "token": 33554630,
+      "type_tokens": [
+        33554630,
+        33554896
+      ],
+      "field_tokens": [
+        67109822,
+        67109823
+      ],
+      "methods": {
+        "0x06000bad": {
+          "name": "WriteToAsync",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "638fcbf53345cafdfef77e200d1e114194d41e47d3934bc1483635e6573a7d67",
+          "handlers": []
+        },
+        "0x06000bae": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "eb9e12fae56f179f5d8c1e7825afae2b00968fb9fb427eb254e92bbd8db78c2d",
+          "handlers": []
+        },
+        "0x06000baf": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "79680c8b5d894a2634505722ece4b68fc9a51a142ffda0ed2abe7a35a1af38ee",
+          "handlers": []
+        },
+        "0x06000bb0": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "d53a57163f196194495307cef4cbd3fa1d11ff135fa5b2aaf3c318a784885e70",
+          "handlers": []
+        },
+        "0x06000bb1": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "c666a24b19a6f20f996746566137c203e59bdc6f7bd8955daf74969c1736b15d",
+          "handlers": []
+        },
+        "0x06000bb2": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "cc787db3b8af9827ff13fdbb1d949f3aab2e2e5b1c8d3c7ba4c22d5158442208",
+          "handlers": []
+        },
+        "0x06000bb3": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "7ed3b897247d5d0ca39dc12a180bd42cc0c65e1c41bff66346032ee8bd794dda",
+          "handlers": []
+        },
+        "0x06000bb4": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "ebca888085138ec1587f2749c02e7923e86d866dca40b7bf8a28ae85b0bb16d6",
+          "handlers": []
+        },
+        "0x06000bb5": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "fab36aaa78a7ba90bcb147b23d93827cb8703d767e7160f7cc1a1cc04a4b7df6",
+          "handlers": []
+        },
+        "0x06000bb6": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "ef31d67d3554f06c563ebd55521c4db337eceeb08da67bfe5b0ab3e96333eccd",
+          "handlers": []
+        },
+        "0x06000bb7": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "49506c4a277c15455fc00337bbc1134475bdcc70a298cabea272e550006bd2aa",
+          "handlers": []
+        },
+        "0x06000bb8": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "769be62999945def4c563a3578c80bb6c88a3da38067960cbe0aeea0114c6170",
+          "handlers": []
+        },
+        "0x06000bb9": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "aca68f73f98082b3e382321a4e3dd5a66564440450778efa60e7f553ab2080bb",
+          "handlers": []
+        },
+        "0x06000bba": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "0e183acbee518b4608c822e459eb21fef42294fb97e390c31a8b19efca80a61e",
+          "handlers": []
+        },
+        "0x06000bbb": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "bedb240221244de882923806b50a0466006807bfcfa4b22d22058e35ab280640",
+          "handlers": []
+        },
+        "0x06000bbc": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "15001e033efa383fa45f4ac8bb6e6dd4513cbc7212d794cb7dfa4f8c3d9f6698",
+          "handlers": []
+        },
+        "0x06000bbd": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "0d929bbd62f9eb3b0140ff1ce92c9021e1c46a73f62315e580a2e87eca2d8a9c",
+          "handlers": []
+        },
+        "0x06000bbe": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "b6601ae0a47dc7b4caf7e245e599311fa88612edca071bf138e2571d2490cc35",
+          "handlers": []
+        },
+        "0x06000bbf": {
+          "name": "DeepEquals",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "7e03df0d1de3509214c3205f57aa3261de3352150d4238a83ba18d53beb8f776",
+          "handlers": []
+        },
+        "0x06000bc0": {
+          "name": "get_HasValues",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "84a0936ff1fba6d2811d094757231685673447aed2170738872305076026a316",
+          "handlers": []
+        },
+        "0x06000bc1": {
+          "name": "CompareBigInteger",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "5ed52d380eec09b95dc380418cab149fffd37b5f7fcd44f78978d1edd3cd7d15",
+          "handlers": []
+        },
+        "0x06000bc2": {
+          "name": "Compare",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "d2253a849d98d260acbf1db02176c119b66db726a17b2ab2f41f2f544b716f53",
+          "handlers": []
+        },
+        "0x06000bc3": {
+          "name": "CompareFloat",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "28479d7da7904e298bf7b1a321cdec96def819cbe9d9e05cda503e65028d5dc5",
+          "handlers": []
+        },
+        "0x06000bc4": {
+          "name": "Operation",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "94efde6a3c23d8cd139dfd2d110931c8544c3976419584d6304c650504e75bb1",
+          "handlers": []
+        },
+        "0x06000bc5": {
+          "name": "CloneToken",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "9d5801feeb60bef2da0a5a0cd7b60dd4a5d053671fd61688986844a9d9fbbe57",
+          "handlers": []
+        },
+        "0x06000bc6": {
+          "name": "CreateComment",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "698d9b336a419c446b9bd599b6c089326df6d5811bd00f964db29a3c6138319c",
+          "handlers": []
+        },
+        "0x06000bc7": {
+          "name": "CreateString",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "13cfeeb3b29d3b487d2c548dcceceb9d0da6a73ccd858653819f26782540fe98",
+          "handlers": []
+        },
+        "0x06000bc8": {
+          "name": "CreateNull",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "3cbf3a050a115b0a9e82a54b802ba2ab54b64d672540546b59076ba4e418f7e1",
+          "handlers": []
+        },
+        "0x06000bc9": {
+          "name": "CreateUndefined",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "f019dbb9fba9bde39f7e3ff3dfd51be8731bd4d7f49c524593615073e60ad789",
+          "handlers": []
+        },
+        "0x06000bca": {
+          "name": "GetValueType",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "f06472239913d9a76a70a2ca516e94d453e06c645e04f70b04b2b8385eb51eac",
+          "handlers": []
+        },
+        "0x06000bcb": {
+          "name": "GetStringValueType",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "fa09ab01798f1483a2348da797e9addef2b93d1148ad8f01ddb6f9adff8f3d28",
+          "handlers": []
+        },
+        "0x06000bcc": {
+          "name": "get_Type",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "d97890fec9b5e85c2ed8b0e361d8eea0447cad707c8cee96868422d5e2de9d73",
+          "handlers": []
+        },
+        "0x06000bcd": {
+          "name": "get_Value",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "271a6640f6414f61cd4f4a363a7d90451ac41d134e8dec5f3bd6bdf82f7f5781",
+          "handlers": []
+        },
+        "0x06000bce": {
+          "name": "set_Value",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "0fa2a065b52cadbb723dbff91251ef5cd3ea114cedfd17b6550d71bc512bee94",
+          "handlers": []
+        },
+        "0x06000bcf": {
+          "name": "WriteTo",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "2885324a2fd6b33a5ede7cb9a0a2325c3a1ccb6c286a3049cf89f3d4665c43f9",
+          "handlers": []
+        },
+        "0x06000bd0": {
+          "name": "GetDeepHashCode",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "05a19bba68910bfd8fbecce76a3a09192a29b7b082d95e129a0901cd6d67b636",
+          "handlers": []
+        },
+        "0x06000bd1": {
+          "name": "ValuesEquals",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "6bd8c226a5920b9dbc86b1840b2a759feb8077540714a3849eed88fdb1a43d54",
+          "handlers": []
+        },
+        "0x06000bd2": {
+          "name": "Equals",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "6b0a44b045a685aa8b8e72b004763e179d07d956f53f85fb5364553f6b444925",
+          "handlers": []
+        },
+        "0x06000bd3": {
+          "name": "Equals",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "3975fc080040ecc47aecd5e20e9c7bd47c76e34b2584e3f221479d6562948ffa",
+          "handlers": []
+        },
+        "0x06000bd4": {
+          "name": "GetHashCode",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "5070f9c1157a864045d6098c3a95f45211af7bdd7fc654fc6c9e70a9a8e23a6b",
+          "handlers": []
+        },
+        "0x06000bd5": {
+          "name": "ToString",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "98ce3ecc6a88de55b4206d5c8c65ad43c14c83a7fbbcf24bd4042f1997a726e1",
+          "handlers": []
+        },
+        "0x06000bd6": {
+          "name": "ToString",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "e3211b3eccafccdcbc2b4ae2de1548cfa88db13bbc37c3c6cb17e4b6accf60f4",
+          "handlers": []
+        },
+        "0x06000bd7": {
+          "name": "ToString",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "3686d2ca70e0990f65bdc31b76f68ffaac97553b8e1995bc59a531cf7bc5164f",
+          "handlers": []
+        },
+        "0x06000bd8": {
+          "name": "ToString",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "c0a365b53c9bc1443b9ab2d51480cf7263fd520d9c389ff6a3c1806a01329f59",
+          "handlers": []
+        },
+        "0x06000bd9": {
+          "name": "GetMetaObject",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "eb0b4e5ac8ff57c988c488e69c7d0d6b46ff5806de5d49d014e2f59730816452",
+          "handlers": []
+        },
+        "0x06000bda": {
+          "name": "System.IComparable.CompareTo",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "6bd387581cb78d85382916e3394a07d08a4731f8eb4bcb98d840e92a362cfa14",
+          "handlers": []
+        },
+        "0x06000bdb": {
+          "name": "CompareTo",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "77f67dcfbdf0a5a96e8c595d10d08ca7344c95b6e117552cad280169b6ca40f5",
+          "handlers": []
+        },
+        "0x06000bdc": {
+          "name": "System.IConvertible.GetTypeCode",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "948f78e01ff2920ad7bb4fd314662094a60137764b491ef209f4a9f150081a0f",
+          "handlers": []
+        },
+        "0x06000bdd": {
+          "name": "System.IConvertible.ToBoolean",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "712f3e64350f27214af72cc481eb14dd8d61c36344cbb788ccd0f262264142b7",
+          "handlers": []
+        },
+        "0x06000bde": {
+          "name": "System.IConvertible.ToChar",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "dc22c8c6c5276ff807c12c83feeb2a72f2119ae7e813e44dc3628e00dcf4e13a",
+          "handlers": []
+        },
+        "0x06000bdf": {
+          "name": "System.IConvertible.ToSByte",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "50f114761a27d186c104640381fc85573b2edda0520fd8ce82563e1b48457219",
+          "handlers": []
+        },
+        "0x06000be0": {
+          "name": "System.IConvertible.ToByte",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "7adc789fe513a0535791efdc0ec74da1420dda2b7b732e428ad4dd21c86c8d8b",
+          "handlers": []
+        },
+        "0x06000be1": {
+          "name": "System.IConvertible.ToInt16",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "ef02721549a21256d2cfebe568e3c99a7e2a767bab37c970bc223e5519f83b07",
+          "handlers": []
+        },
+        "0x06000be2": {
+          "name": "System.IConvertible.ToUInt16",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "6c15ab6bf54123cb0e222f6b147db8164d05914498f9fcd22f62a8c8d814dc82",
+          "handlers": []
+        },
+        "0x06000be3": {
+          "name": "System.IConvertible.ToInt32",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "fc9319626e3369337a4c1069c125b372ab7c6e23d445f17acd6b8cdd164b5b80",
+          "handlers": []
+        },
+        "0x06000be4": {
+          "name": "System.IConvertible.ToUInt32",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "fd292390e3e4a88508576b58cd8789d9cced8d164dcad57242ff7e5e0cf9176f",
+          "handlers": []
+        },
+        "0x06000be5": {
+          "name": "System.IConvertible.ToInt64",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "ba14731c132311435fd2c52f286fa01c04d4ab7c960ed5c19c8841b1dca4deb6",
+          "handlers": []
+        },
+        "0x06000be6": {
+          "name": "System.IConvertible.ToUInt64",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "2672676c1d48312a907b634dc588e72288822840affd79214dba8eb261e3032d",
+          "handlers": []
+        },
+        "0x06000be7": {
+          "name": "System.IConvertible.ToSingle",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "45254facb5e5dff3387d158d4085ee83e0822432e8898dc9618dccd451796f5a",
+          "handlers": []
+        },
+        "0x06000be8": {
+          "name": "System.IConvertible.ToDouble",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "5596f132940907daa45e6a38e495855545f332a21ee3a817a2836d28b34e4501",
+          "handlers": []
+        },
+        "0x06000be9": {
+          "name": "System.IConvertible.ToDecimal",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "bb611e2d67ead8de737d5a69bb408c253cfb7b36483e5381ed0c3b35cda66525",
+          "handlers": []
+        },
+        "0x06000bea": {
+          "name": "System.IConvertible.ToDateTime",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "270d0772e0e32e4b79a6e175c51d1ddcb0f37fc845291fe9d229c0c16a9521b1",
+          "handlers": []
+        },
+        "0x06000beb": {
+          "name": "System.IConvertible.ToType",
+          "owner": "Newtonsoft.Json.Linq.JValue",
+          "no_body": false,
+          "il_sha256": "9724da33d535c42867b9c0bcff7e5ac1267e349774cf287176ef420eed1043ab",
+          "handlers": []
+        },
+        "0x06000ff5": {
+          "name": "TryConvert",
+          "owner": "Newtonsoft.Json.Linq.JValue+JValueDynamicProxy",
+          "no_body": false,
+          "il_sha256": "564ae01bf84820c5f5f3590db0e67bd6273a81efe1c1c240575368b4b9f3b935",
+          "handlers": []
+        },
+        "0x06000ff6": {
+          "name": "TryBinaryOperation",
+          "owner": "Newtonsoft.Json.Linq.JValue+JValueDynamicProxy",
+          "no_body": false,
+          "il_sha256": "c42bcd68ee6d821171afb7309595fb7ae82550109a62ff2c99e5a5fe4b57b237",
+          "handlers": []
+        },
+        "0x06000ff7": {
+          "name": ".ctor",
+          "owner": "Newtonsoft.Json.Linq.JValue+JValueDynamicProxy",
+          "no_body": false,
+          "il_sha256": "a0391feee71e7c36a1f7a754cd61e457a618649f195da92965c5e1769fc98ee0",
+          "handlers": []
+        }
+      }
+    }
+  ]
+}

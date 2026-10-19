@@ -1,0 +1,119 @@
+# 1 classes, 417 bytes
+
+== class fixture/InterfaceSuperFixture ==
+package fixture;
+ class InterfaceSuperFixture implements fixture.DefaultParent {
+
+    InterfaceSuperFixture()
+    {
+        return;
+    }
+
+    public int call()
+    {
+        throw new UnsupportedOperationException("fixture/InterfaceSuperFixture.call()I at JVM byte 1: UNSUPPORTED_BYTECODE: qualified interface-super invocation");
+    }
+}
+
+== method 0 <init> ()V ==
+InterfaceSuperFixture()
+{
+    return;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 183,
+        mnemonic: "invokespecial",
+        bytes: [
+            183,
+            0,
+            1,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            1,
+        ),
+        reference: Some(
+            "java/lang/Object.<init>()V",
+        ),
+        operation: 183,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 177,
+        mnemonic: "return",
+        bytes: [
+            177,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 177,
+    },
+]
+
+== method 1 call ()I ==
+DECOMPILE_ERROR: fixture/InterfaceSuperFixture.call()I at JVM byte 1
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 183,
+        mnemonic: "invokespecial",
+        bytes: [
+            183,
+            0,
+            7,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            7,
+        ),
+        reference: Some(
+            "fixture/DefaultParent.value()I",
+        ),
+        operation: 183,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]

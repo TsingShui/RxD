@@ -1,0 +1,71 @@
+{
+  "analyzed_modules_imported_or_executed": false,
+  "artifacts": {
+    "semantics.hash-checked.pyc": {
+      "bytes": 2539,
+      "sha256": "d1477876710e9f824c6953614122ad8ee20b9bf47e2a9db86704fde76f997bef"
+    },
+    "semantics.hash-unchecked.pyc": {
+      "bytes": 2539,
+      "sha256": "ea6d40ff86b06e835a0d26d7c0efbb5827a66d6707578f4b7353c4dc785baa87"
+    },
+    "semantics.marshal": {
+      "bytes": 2523,
+      "sha256": "4da92f63e4f6eefa4df0f69c36218077ff807524f1ca7d31ed4f8ce365561087"
+    },
+    "semantics.oracle.json": {
+      "bytes": 206248,
+      "sha256": "5b78fccaa3f976725bbbc5b82e91d992c453a5c6635bb851010594eb4431bf93",
+      "storage": "semantics.oracle.json.gz",
+      "storage_sha256": "b4c47b9cc1aa8b04c846371c8ced5245b599ab218bf861d57e8f863e082b4fae"
+    },
+    "semantics.py": {
+      "bytes": 1128,
+      "sha256": "ab24378842f3ab7674b69b98c3cd16b78f447a6c0608fefb3888b357163546b3"
+    },
+    "semantics.timestamp.pyc": {
+      "bytes": 2539,
+      "sha256": "eeb2cfa4561a0c3b259cd377eb7f1940c605f788da76ff777ce4a716f4a5a834"
+    }
+  },
+  "binary_sha256": "b6019173e99ba481ce8a2852ffbf19cdaa9b7352d7e40c92bbd408d47da11b2b",
+  "compile_only": true,
+  "generator_sha256": "53a46c1f3fa922c0bc69d655d9a35b74a73e9ae51568ed0dc5d90a5f887efaa9",
+  "helper_sha256": "f7f1bb9212f6a3688b53fdd3680773106564f8af3f3e807fa5ad767ce65655aa",
+  "input": {
+    "code_count": 13,
+    "files": [
+      {
+        "bytes": 2539,
+        "file": "semantics.timestamp.pyc",
+        "header_mode": "timestamp",
+        "sha256": "eeb2cfa4561a0c3b259cd377eb7f1940c605f788da76ff777ce4a716f4a5a834"
+      },
+      {
+        "bytes": 2539,
+        "file": "semantics.hash-unchecked.pyc",
+        "header_mode": "hash-unchecked",
+        "sha256": "ea6d40ff86b06e835a0d26d7c0efbb5827a66d6707578f4b7353c4dc785baa87"
+      },
+      {
+        "bytes": 2539,
+        "file": "semantics.hash-checked.pyc",
+        "header_mode": "hash-checked",
+        "sha256": "d1477876710e9f824c6953614122ad8ee20b9bf47e2a9db86704fde76f997bef"
+      }
+    ],
+    "label": "semantics",
+    "marshal_bytes": 2523,
+    "marshal_sha256": "4da92f63e4f6eefa4df0f69c36218077ff807524f1ca7d31ed4f8ce365561087",
+    "source_bytes": 1128,
+    "source_sha256": "ab24378842f3ab7674b69b98c3cd16b78f447a6c0608fefb3888b357163546b3"
+  },
+  "interpreter": "/private/tmp/rxd-implement-spec/python/cpython-3.13.2-macos-aarch64-none/bin/python3.13",
+  "version_info": [
+    3,
+    13,
+    2,
+    "final",
+    0
+  ]
+}

@@ -1,0 +1,5 @@
+/target/
+.DS_Store
+/tests/corpus/node_modules/
+.pi
+/devtools/hook-gen/node_modules/

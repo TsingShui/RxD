@@ -1,0 +1,12 @@
+# End-to-End Testing Guidelines
+
+- **Prioritize end-to-end tests**, but select them by the affected observable behavior. Backend algorithms use relevant public package tests first; observable milestones use debug/release real CLI built with `--no-default-features --features backend-NAME` and the matching filter. Shared product changes use all-backend suites. Docs/project skills and maintenance scripts do not trigger Rust gates unless product/build inputs changed. A merge is not itself a reason to repeat matching validation. Follow `docs/agents/testing.md` for scope and reuse rules.
+- Be extremely conservative about unit tests and library-level tests: add them only for important, concrete regressions that E2E cannot reasonably cover, with minimal setup and maintenance.
+- Never let unit-test scaffolding or exhaustive unit suites delay delivery or slow development. Do not test private helpers merely because they exist, mirror implementation details, or chase coverage targets. Prefer focused E2E checks when they provide sufficient confidence.
+- Put CLI scenarios in `tests/cli.rs`; launch the actual `rxd` executable through `CARGO_BIN_EXE_rxd`.
+- Verify observable contracts: stdout/stderr, exit codes, byte-exact extraction, output files, source identity, and complete JSONL responses.
+- Prioritize the pinned published and obfuscated corpus in `tests/corpus/`; use handcrafted fixtures for focused boundary regressions. Preserve provenance, hashes, licenses, fixed tool versions and seeds. Expectations must come from the independent Acorn generator, never from rxd output. Never execute analyzed JavaScript.
+- Focused example: `cargo test -p rxd --no-default-features --features backend-dotnet --test cli dotnet::`. Add `--release` for the backend milestone. Full `cargo test --test cli` and `cargo test --release --test cli` are shared-product gates, not every-commit requirements.
+- Measure slow tests before restructuring them: separate fixture setup, subprocess and assertion work. Prefer immutable fixture reuse or cheaper equivalent fixture construction over removing assertions. Keep independent test state. Test counts alone are not performance evidence; do not add timing assertions to ordinary tests.
+
+- Rust embedded inputs (`include_str!`, `include_bytes!`, generated resource bundles) are part of the executable source. Include their actual file hashes in reused gate/build provenance; matching only Rust/Cargo source files does not verify embedded skill or fixture changes.

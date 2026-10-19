@@ -1,0 +1,48 @@
+# 1 classes, 267 bytes
+
+== class fixture/DefaultParent ==
+package fixture;
+ DefaultParent {
+
+    public int value()
+    {
+        return 7;
+    }
+}
+
+== method 0 value ()I ==
+public int value()
+{
+    return 7;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 16,
+        mnemonic: "bipush",
+        bytes: [
+            16,
+            7,
+        ],
+        operands: [
+            7,
+        ],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 16,
+    },
+    Instruction {
+        byte_offset: 2,
+        opcode: 172,
+        mnemonic: "ireturn",
+        bytes: [
+            172,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 172,
+    },
+]

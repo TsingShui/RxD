@@ -1,0 +1,18 @@
+[package]
+name = "rxd-jvm"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "Native JVM class-file frontend for rxd"
+
+[dependencies]
+rxd-core.workspace = true
+anyhow = "1.0"
+radguard = { path = "../../third_party/radguard" }
+serde = { workspace = true }
+sha2 = "0.10"
+zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

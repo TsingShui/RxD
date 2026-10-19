@@ -1,0 +1,71 @@
+{
+  "analyzed_modules_imported_or_executed": false,
+  "artifacts": {
+    "semantics.hash-checked.pyc": {
+      "bytes": 2299,
+      "sha256": "7482737c4f55b60eb5851c057f601b0c0d03c025bef96b32c9000e75fb953aa1"
+    },
+    "semantics.hash-unchecked.pyc": {
+      "bytes": 2299,
+      "sha256": "c2818e1f265561bb31ccf833208d5d107b818756156a778572fecc3034cf367e"
+    },
+    "semantics.marshal": {
+      "bytes": 2283,
+      "sha256": "175778e98bb18e60f69ebf6c9033302faaec2c85c88edd4d20151af602e6e2bd"
+    },
+    "semantics.oracle.json": {
+      "bytes": 122186,
+      "sha256": "856e237eb64257f65c3c0a3cf0621d7c8d192ee90ba8307b327cdd90d79c7b1d",
+      "storage": "semantics.oracle.json.gz",
+      "storage_sha256": "ae8e708ff26111a0bf3afb304e0ae0efda569cf8a7ae9d6d8955a5917e44e956"
+    },
+    "semantics.py": {
+      "bytes": 1128,
+      "sha256": "ab24378842f3ab7674b69b98c3cd16b78f447a6c0608fefb3888b357163546b3"
+    },
+    "semantics.timestamp.pyc": {
+      "bytes": 2299,
+      "sha256": "e53f2a005344857178a8ae507c3dec598e28cbd33683de19ef9728e01cb4ce29"
+    }
+  },
+  "binary_sha256": "4b42b1a117605cafc8607b67b0892a609c2cd125012dd56288abeed8c89cdfb1",
+  "compile_only": true,
+  "generator_sha256": "53a46c1f3fa922c0bc69d655d9a35b74a73e9ae51568ed0dc5d90a5f887efaa9",
+  "helper_sha256": "f7f1bb9212f6a3688b53fdd3680773106564f8af3f3e807fa5ad767ce65655aa",
+  "input": {
+    "code_count": 15,
+    "files": [
+      {
+        "bytes": 2299,
+        "file": "semantics.timestamp.pyc",
+        "header_mode": "timestamp",
+        "sha256": "e53f2a005344857178a8ae507c3dec598e28cbd33683de19ef9728e01cb4ce29"
+      },
+      {
+        "bytes": 2299,
+        "file": "semantics.hash-unchecked.pyc",
+        "header_mode": "hash-unchecked",
+        "sha256": "c2818e1f265561bb31ccf833208d5d107b818756156a778572fecc3034cf367e"
+      },
+      {
+        "bytes": 2299,
+        "file": "semantics.hash-checked.pyc",
+        "header_mode": "hash-checked",
+        "sha256": "7482737c4f55b60eb5851c057f601b0c0d03c025bef96b32c9000e75fb953aa1"
+      }
+    ],
+    "label": "semantics",
+    "marshal_bytes": 2283,
+    "marshal_sha256": "175778e98bb18e60f69ebf6c9033302faaec2c85c88edd4d20151af602e6e2bd",
+    "source_bytes": 1128,
+    "source_sha256": "ab24378842f3ab7674b69b98c3cd16b78f447a6c0608fefb3888b357163546b3"
+  },
+  "interpreter": "/Library/Developer/CommandLineTools/usr/bin/python3",
+  "version_info": [
+    3,
+    9,
+    6,
+    "final",
+    0
+  ]
+}

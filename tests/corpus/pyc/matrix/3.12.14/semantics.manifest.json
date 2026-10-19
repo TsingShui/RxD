@@ -1,0 +1,71 @@
+{
+  "analyzed_modules_imported_or_executed": false,
+  "artifacts": {
+    "semantics.hash-checked.pyc": {
+      "bytes": 2462,
+      "sha256": "c0b04de39172688bd025e147a14e7c5e12ef736fe3aeb23ac5af818cd0634476"
+    },
+    "semantics.hash-unchecked.pyc": {
+      "bytes": 2462,
+      "sha256": "4ae85c1d8a36e6f8a22e096cc48040c86e6736b496b6f449b277ed684fe77eca"
+    },
+    "semantics.marshal": {
+      "bytes": 2446,
+      "sha256": "1495cbeb7f0866e3d5dcf976c3f729e6f027baa810267ced218ee53802b221f4"
+    },
+    "semantics.oracle.json": {
+      "bytes": 187249,
+      "sha256": "958a25b0367dfeafa9a953a5adc625f59f9cb4b64708892339ebb168380ee60b",
+      "storage": "semantics.oracle.json.gz",
+      "storage_sha256": "86d6e8b02d6d98eb9bd0b49b0277b1c9782e55912a2b6e3631cc84546e43b4a5"
+    },
+    "semantics.py": {
+      "bytes": 1128,
+      "sha256": "ab24378842f3ab7674b69b98c3cd16b78f447a6c0608fefb3888b357163546b3"
+    },
+    "semantics.timestamp.pyc": {
+      "bytes": 2462,
+      "sha256": "a45ed6eabe2c5310204022e6c66cca95ea498e01baf9b7aa73daed9409fccb28"
+    }
+  },
+  "binary_sha256": "ac60cfe0268614638d0ffa35f3b0284fc7b3a11482723793455e17eeb278509e",
+  "compile_only": true,
+  "generator_sha256": "53a46c1f3fa922c0bc69d655d9a35b74a73e9ae51568ed0dc5d90a5f887efaa9",
+  "helper_sha256": "f7f1bb9212f6a3688b53fdd3680773106564f8af3f3e807fa5ad767ce65655aa",
+  "input": {
+    "code_count": 13,
+    "files": [
+      {
+        "bytes": 2462,
+        "file": "semantics.timestamp.pyc",
+        "header_mode": "timestamp",
+        "sha256": "a45ed6eabe2c5310204022e6c66cca95ea498e01baf9b7aa73daed9409fccb28"
+      },
+      {
+        "bytes": 2462,
+        "file": "semantics.hash-unchecked.pyc",
+        "header_mode": "hash-unchecked",
+        "sha256": "4ae85c1d8a36e6f8a22e096cc48040c86e6736b496b6f449b277ed684fe77eca"
+      },
+      {
+        "bytes": 2462,
+        "file": "semantics.hash-checked.pyc",
+        "header_mode": "hash-checked",
+        "sha256": "c0b04de39172688bd025e147a14e7c5e12ef736fe3aeb23ac5af818cd0634476"
+      }
+    ],
+    "label": "semantics",
+    "marshal_bytes": 2446,
+    "marshal_sha256": "1495cbeb7f0866e3d5dcf976c3f729e6f027baa810267ced218ee53802b221f4",
+    "source_bytes": 1128,
+    "source_sha256": "ab24378842f3ab7674b69b98c3cd16b78f447a6c0608fefb3888b357163546b3"
+  },
+  "interpreter": "/opt/uv/python/cpython-3.12.14-macos-aarch64-none/bin/python3.12",
+  "version_info": [
+    3,
+    12,
+    14,
+    "final",
+    0
+  ]
+}

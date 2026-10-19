@@ -1,0 +1,247 @@
+# 1 classes, 1435 bytes
+
+== class fixture/ModernFixture ==
+package fixture;
+public class ModernFixture {
+
+    public ModernFixture()
+    {
+        return;
+    }
+
+    public static String concat()
+    {
+        throw new UnsupportedOperationException("fixture/ModernFixture.concat(I)Ljava/lang/String; at JVM byte 1: UNSUPPORTED_BYTECODE: invokedynamic");
+    }
+
+    public static Runnable lambda()
+    {
+        throw new UnsupportedOperationException("fixture/ModernFixture.lambda()Ljava/lang/Runnable; at JVM byte 0: UNSUPPORTED_BYTECODE: invokedynamic");
+    }
+
+    private static void lambda$lambda$0()
+    {
+        System.out.println("fixture");
+        return;
+    }
+}
+
+== method 0 <init> ()V ==
+public ModernFixture()
+{
+    return;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 42,
+        mnemonic: "aload_0",
+        bytes: [
+            42,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 42,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 183,
+        mnemonic: "invokespecial",
+        bytes: [
+            183,
+            0,
+            1,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            1,
+        ),
+        reference: Some(
+            "java/lang/Object.<init>()V",
+        ),
+        operation: 183,
+    },
+    Instruction {
+        byte_offset: 4,
+        opcode: 177,
+        mnemonic: "return",
+        bytes: [
+            177,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 177,
+    },
+]
+
+== method 1 concat (I)Ljava/lang/String; ==
+DECOMPILE_ERROR: fixture/ModernFixture.concat(I)Ljava/lang/String; at JVM byte 1
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 26,
+        mnemonic: "iload_0",
+        bytes: [
+            26,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 26,
+    },
+    Instruction {
+        byte_offset: 1,
+        opcode: 186,
+        mnemonic: "invokedynamic",
+        bytes: [
+            186,
+            0,
+            7,
+            0,
+            0,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            7,
+        ),
+        reference: Some(
+            "dynamic:18:bootstrap:0:name_type:8",
+        ),
+        operation: 186,
+    },
+    Instruction {
+        byte_offset: 6,
+        opcode: 176,
+        mnemonic: "areturn",
+        bytes: [
+            176,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 176,
+    },
+]
+
+== method 2 lambda ()Ljava/lang/Runnable; ==
+DECOMPILE_ERROR: fixture/ModernFixture.lambda()Ljava/lang/Runnable; at JVM byte 0
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 186,
+        mnemonic: "invokedynamic",
+        bytes: [
+            186,
+            0,
+            11,
+            0,
+            0,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            11,
+        ),
+        reference: Some(
+            "dynamic:18:bootstrap:1:name_type:12",
+        ),
+        operation: 186,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 176,
+        mnemonic: "areturn",
+        bytes: [
+            176,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 176,
+    },
+]
+
+== method 3 lambda$lambda$0 ()V ==
+private static void lambda$lambda$0()
+{
+    System.out.println("fixture");
+    return;
+}
+[
+    Instruction {
+        byte_offset: 0,
+        opcode: 178,
+        mnemonic: "getstatic",
+        bytes: [
+            178,
+            0,
+            15,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            15,
+        ),
+        reference: Some(
+            "java/lang/System.outLjava/io/PrintStream;",
+        ),
+        operation: 178,
+    },
+    Instruction {
+        byte_offset: 3,
+        opcode: 18,
+        mnemonic: "ldc",
+        bytes: [
+            18,
+            21,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            21,
+        ),
+        reference: None,
+        operation: 18,
+    },
+    Instruction {
+        byte_offset: 5,
+        opcode: 182,
+        mnemonic: "invokevirtual",
+        bytes: [
+            182,
+            0,
+            23,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: Some(
+            23,
+        ),
+        reference: Some(
+            "java/io/PrintStream.println(Ljava/lang/String;)V",
+        ),
+        operation: 182,
+    },
+    Instruction {
+        byte_offset: 8,
+        opcode: 177,
+        mnemonic: "return",
+        bytes: [
+            177,
+        ],
+        operands: [],
+        targets: [],
+        constant_index: None,
+        reference: None,
+        operation: 177,
+    },
+]

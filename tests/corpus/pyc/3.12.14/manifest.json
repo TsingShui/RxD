@@ -1,0 +1,125 @@
+{
+  "analyzed_modules_imported_or_executed": false,
+  "artifacts": {
+    "extended.hash-checked.pyc": {
+      "bytes": 10373,
+      "sha256": "a2ba0b2a61e08dd63837bf644caf74baa6f11a91ca53b4bc95739679d31f95f1"
+    },
+    "extended.hash-unchecked.pyc": {
+      "bytes": 10373,
+      "sha256": "a309bdfdcd081f237ca742a4055f5b89bdea01cf578e79098aed75b12f0116d1"
+    },
+    "extended.marshal": {
+      "bytes": 10357,
+      "sha256": "ccfe04db98b3a73ab59964637376509e443e40117c4e3ccdc188bfc0585ce172"
+    },
+    "extended.oracle.json": {
+      "bytes": 513927,
+      "sha256": "e64bd7480a34be2caf8803ed8b607a5da4559d95b1ea3dac1943656c229f9b6c"
+    },
+    "extended.py": {
+      "bytes": 8813,
+      "sha256": "8186da4ceee354a11faa740cc3f53394b09585e7357c0686a9821922d93a7a32"
+    },
+    "extended.timestamp.pyc": {
+      "bytes": 10373,
+      "sha256": "bf994274a4bc7c489d64ecbb6715905790fd392606e6949af223b334a678e126"
+    },
+    "graph.hash-checked.pyc": {
+      "bytes": 3152,
+      "sha256": "51b498e355633288bee9f762c81495a5a76c8354d8aead2561e080b3a770cc7c"
+    },
+    "graph.hash-unchecked.pyc": {
+      "bytes": 3152,
+      "sha256": "46edf47bf2ccb1f817965c1fed73dd3c5d8b9b6b34b24c912567875b0782355b"
+    },
+    "graph.marshal": {
+      "bytes": 3136,
+      "sha256": "91888d8412772d05585e05740ffcb681d8e368e9a835de331571b738878bb02b"
+    },
+    "graph.oracle.json": {
+      "bytes": 267992,
+      "sha256": "408baf4b4d01020b0c089c90e5486340c62af62f25a76104d6ddda7a4113351c"
+    },
+    "graph.py": {
+      "bytes": 1169,
+      "sha256": "dbe154eec3c76117261911943722b064d3726254c935a87601f30a202ec4f2f6"
+    },
+    "graph.timestamp.pyc": {
+      "bytes": 3152,
+      "sha256": "ad3a411784cff325d12c659874a6760c4591363428a52bf3270f913972e9226a"
+    }
+  },
+  "binary_sha256": "ac60cfe0268614638d0ffa35f3b0284fc7b3a11482723793455e17eeb278509e",
+  "compile_only": true,
+  "generator_sha256": "f7f1bb9212f6a3688b53fdd3680773106564f8af3f3e807fa5ad767ce65655aa",
+  "inputs": [
+    {
+      "code_count": 15,
+      "files": [
+        {
+          "bytes": 3152,
+          "file": "graph.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "ad3a411784cff325d12c659874a6760c4591363428a52bf3270f913972e9226a"
+        },
+        {
+          "bytes": 3152,
+          "file": "graph.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "46edf47bf2ccb1f817965c1fed73dd3c5d8b9b6b34b24c912567875b0782355b"
+        },
+        {
+          "bytes": 3152,
+          "file": "graph.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "51b498e355633288bee9f762c81495a5a76c8354d8aead2561e080b3a770cc7c"
+        }
+      ],
+      "label": "graph",
+      "marshal_bytes": 3136,
+      "marshal_sha256": "91888d8412772d05585e05740ffcb681d8e368e9a835de331571b738878bb02b",
+      "source_bytes": 1169,
+      "source_sha256": "dbe154eec3c76117261911943722b064d3726254c935a87601f30a202ec4f2f6"
+    },
+    {
+      "code_count": 2,
+      "files": [
+        {
+          "bytes": 10373,
+          "file": "extended.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "bf994274a4bc7c489d64ecbb6715905790fd392606e6949af223b334a678e126"
+        },
+        {
+          "bytes": 10373,
+          "file": "extended.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "a309bdfdcd081f237ca742a4055f5b89bdea01cf578e79098aed75b12f0116d1"
+        },
+        {
+          "bytes": 10373,
+          "file": "extended.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "a2ba0b2a61e08dd63837bf644caf74baa6f11a91ca53b4bc95739679d31f95f1"
+        }
+      ],
+      "label": "extended",
+      "marshal_bytes": 10357,
+      "marshal_sha256": "ccfe04db98b3a73ab59964637376509e443e40117c4e3ccdc188bfc0585ce172",
+      "source_bytes": 8813,
+      "source_sha256": "8186da4ceee354a11faa740cc3f53394b09585e7357c0686a9821922d93a7a32"
+    }
+  ],
+  "interpreter": "/opt/uv/python/cpython-3.12.14-macos-aarch64-none/bin/python3.12",
+  "magic_hex": "cb0d0d0a",
+  "preparation_manifest_sha256": "acf5598658924287a8c02b53470527d6177d56767d199d35985d15b7feff4f9c",
+  "python": "3.12.14 (main, Aug 25 2026, 13:50:33) [Clang 22.1.3 ]",
+  "version_info": [
+    3,
+    12,
+    14,
+    "final",
+    0
+  ]
+}

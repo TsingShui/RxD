@@ -1,0 +1,221 @@
+{
+  "refs_version": 1,
+  "generator": {
+    "file": "generate-refs.mjs",
+    "sha256": "991e6b6a9f245709d2715372f5dde9e448602b2ba1304eed1f13b07dbe06ef64",
+    "acorn": "8.19.0",
+    "oracle": "Acorn AST: one-parameter function/arrow with one return/throw or expression body and no nested bindings or assignments; literal/static-property names excluded; UTF-8 byte spans"
+  },
+  "cases": [
+    {
+      "name": "jquery-4.0.0-production",
+      "file": "artifacts/jquery-4.0.0-production.js",
+      "source_id": "39a546ea9ad97f8bfaf5d3e0e8f8556adb415e470e59007ada9759dce472adaa",
+      "resolution": "resolved",
+      "identifier": "e",
+      "byte": 572,
+      "declaration": {
+        "start": 572,
+        "end": 573
+      },
+      "entity": {
+        "kind": "function_declaration",
+        "start": 561,
+        "end": 646
+      },
+      "references": [
+        {
+          "start": 588,
+          "end": 589,
+          "read": true,
+          "write": false,
+          "member_write": false
+        },
+        {
+          "start": 590,
+          "end": 591,
+          "read": true,
+          "write": false,
+          "member_write": false
+        },
+        {
+          "start": 612,
+          "end": 613,
+          "read": true,
+          "write": false,
+          "member_write": false
+        },
+        {
+          "start": 623,
+          "end": 624,
+          "read": true,
+          "write": false,
+          "member_write": false
+        },
+        {
+          "start": 644,
+          "end": 645,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    },
+    {
+      "name": "lodash-4.18.1-production",
+      "file": "artifacts/lodash-4.18.1-production.js",
+      "source_id": "a8d7e6291ad80256f976ace90824a71018d2f706992c9107b20bdced97bee27b",
+      "resolution": "resolved",
+      "identifier": "n",
+      "byte": 1398,
+      "declaration": {
+        "start": 1398,
+        "end": 1399
+      },
+      "entity": {
+        "kind": "function_declaration",
+        "start": 1387,
+        "end": 1420
+      },
+      "references": [
+        {
+          "start": 1408,
+          "end": 1409,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    },
+    {
+      "name": "vue-3.5.43-production",
+      "file": "artifacts/vue-3.5.43-production.js",
+      "source_id": "b72394052eef1eeda1752db3758ce1be6f88016903f22e5241cc732ea307478e",
+      "resolution": "resolved",
+      "identifier": "e",
+      "byte": 245,
+      "declaration": {
+        "start": 245,
+        "end": 246
+      },
+      "entity": {
+        "kind": "arrow_function",
+        "start": 245,
+        "end": 254
+      },
+      "references": [
+        {
+          "start": 248,
+          "end": 249,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    },
+    {
+      "name": "application-terser",
+      "file": "artifacts/application-terser.js",
+      "source_id": "874b250455d0e0b418c682840a59f47d78dc1482082f48821c20ac17c0693211",
+      "resolution": "resolved",
+      "identifier": "t",
+      "byte": 505,
+      "declaration": {
+        "start": 505,
+        "end": 506
+      },
+      "entity": {
+        "kind": "arrow_function",
+        "start": 505,
+        "end": 530
+      },
+      "references": [
+        {
+          "start": 514,
+          "end": 515,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    },
+    {
+      "name": "application-renamed-escaped",
+      "file": "artifacts/application-renamed-escaped.js",
+      "source_id": "7c224a258565c42a84211b5804ee4b39259717584ab8df3f6d6ce0a44e176413",
+      "resolution": "resolved",
+      "identifier": "_0x238f06",
+      "byte": 1364,
+      "declaration": {
+        "start": 1364,
+        "end": 1373
+      },
+      "entity": {
+        "kind": "arrow_function",
+        "start": 1364,
+        "end": 1447
+      },
+      "references": [
+        {
+          "start": 1401,
+          "end": 1410,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    },
+    {
+      "name": "application-flattened-string-array",
+      "file": "artifacts/application-flattened-string-array.js",
+      "source_id": "999fba1a8130339fe7662a389b29c4635ece190be5a24b8a32471e6e9788112d",
+      "resolution": "resolved",
+      "identifier": "_0x439687",
+      "byte": 3284,
+      "declaration": {
+        "start": 3284,
+        "end": 3293
+      },
+      "entity": {
+        "kind": "arrow_function",
+        "start": 3284,
+        "end": 3359
+      },
+      "references": [
+        {
+          "start": 3323,
+          "end": 3332,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    },
+    {
+      "name": "application-rc4",
+      "file": "artifacts/application-rc4.js",
+      "source_id": "691e2f04876701c28acd52ae573964bc7203a2b39780c701ee8c46239193d960",
+      "resolution": "resolved",
+      "identifier": "_0x3a81f8",
+      "byte": 3955,
+      "declaration": {
+        "start": 3955,
+        "end": 3964
+      },
+      "entity": {
+        "kind": "arrow_function",
+        "start": 3955,
+        "end": 4044
+      },
+      "references": [
+        {
+          "start": 4001,
+          "end": 4010,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "OPENZEPPELIN-MIT.txt": {
+    "source": "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/LICENSE",
+    "sha256": "8b3fddff3cff904ab9bd7c48a9288fb08ab4f47b179c07af6df7886b12cb04d6"
+  },
+  "SOLC-JS-MIT.txt": {
+    "source": "solc@0.8.26 npm tarball LICENSE",
+    "sha256": "852bcc033a46c62f99fb5ffd43b3241ba2c0c440c6034aa2114505f2c4f03c4a"
+  }
+}

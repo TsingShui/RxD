@@ -1,0 +1,212 @@
+[
+  {
+    "version": "3.9.6",
+    "module": "ast.py",
+    "fixture_source_sha256": "4585b867dd51b2b500fdaa7eaf8fc85066596f49f35f2e07c98991171b0afa79",
+    "upstream_source_sha256": "4585b867dd51b2b500fdaa7eaf8fc85066596f49f35f2e07c98991171b0afa79",
+    "matches": true
+  },
+  {
+    "version": "3.9.6",
+    "module": "configparser.py",
+    "fixture_source_sha256": "fb62822bc88a645d02f99af84a83d014045d3a1358ed5eab620566bc5773ffc5",
+    "upstream_source_sha256": "fb62822bc88a645d02f99af84a83d014045d3a1358ed5eab620566bc5773ffc5",
+    "matches": true
+  },
+  {
+    "version": "3.9.6",
+    "module": "email/policy.py",
+    "fixture_source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+    "upstream_source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+    "matches": true
+  },
+  {
+    "version": "3.9.6",
+    "module": "email/parser.py",
+    "fixture_source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+    "upstream_source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+    "matches": true
+  },
+  {
+    "version": "3.9.6",
+    "module": "dataclasses.py",
+    "fixture_source_sha256": "100d5daf6285d6b756794d3405174c79eec136bda24d65114d28dde569618250",
+    "upstream_source_sha256": "100d5daf6285d6b756794d3405174c79eec136bda24d65114d28dde569618250",
+    "matches": true
+  },
+  {
+    "version": "3.8.20",
+    "module": "ast.py",
+    "fixture_source_sha256": "5c63117dfa24cb8df9409e82d9ce062e2b09f6198f7954b8a5ef6ca180f0cd5c",
+    "upstream_source_sha256": "5c63117dfa24cb8df9409e82d9ce062e2b09f6198f7954b8a5ef6ca180f0cd5c",
+    "matches": true
+  },
+  {
+    "version": "3.8.20",
+    "module": "configparser.py",
+    "fixture_source_sha256": "3261a343aea92919c5bfd5793343d674b85d65758b34a8d7374a8a5cc0d8ce05",
+    "upstream_source_sha256": "3261a343aea92919c5bfd5793343d674b85d65758b34a8d7374a8a5cc0d8ce05",
+    "matches": true
+  },
+  {
+    "version": "3.8.20",
+    "module": "email/policy.py",
+    "fixture_source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+    "upstream_source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+    "matches": true
+  },
+  {
+    "version": "3.8.20",
+    "module": "email/parser.py",
+    "fixture_source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+    "upstream_source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+    "matches": true
+  },
+  {
+    "version": "3.8.20",
+    "module": "dataclasses.py",
+    "fixture_source_sha256": "0e3819791cb852aadbefc3bfd026c9bf27269ab642d71ee52f50ed73a603b31c",
+    "upstream_source_sha256": "0e3819791cb852aadbefc3bfd026c9bf27269ab642d71ee52f50ed73a603b31c",
+    "matches": true
+  },
+  {
+    "version": "3.10.16",
+    "module": "ast.py",
+    "fixture_source_sha256": "2bacf018a141dd55b5ab20e4e2cc39ca7390b26f06948f8a8cb6edbedc292829",
+    "upstream_source_sha256": "2bacf018a141dd55b5ab20e4e2cc39ca7390b26f06948f8a8cb6edbedc292829",
+    "matches": true
+  },
+  {
+    "version": "3.10.16",
+    "module": "configparser.py",
+    "fixture_source_sha256": "df56496e25906c42f7599e7237b1c8e33eb6e9a9a5590cad55e2907492bba88a",
+    "upstream_source_sha256": "df56496e25906c42f7599e7237b1c8e33eb6e9a9a5590cad55e2907492bba88a",
+    "matches": true
+  },
+  {
+    "version": "3.10.16",
+    "module": "email/policy.py",
+    "fixture_source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+    "upstream_source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+    "matches": true
+  },
+  {
+    "version": "3.10.16",
+    "module": "email/parser.py",
+    "fixture_source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+    "upstream_source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+    "matches": true
+  },
+  {
+    "version": "3.10.16",
+    "module": "dataclasses.py",
+    "fixture_source_sha256": "fa2e3728d8184954479c6fcd17015a5e0c176850f18f119f5c548fca49019441",
+    "upstream_source_sha256": "fa2e3728d8184954479c6fcd17015a5e0c176850f18f119f5c548fca49019441",
+    "matches": true
+  },
+  {
+    "version": "3.11.11",
+    "module": "ast.py",
+    "fixture_source_sha256": "c513073798bdbf3cdef09327d0d2d381a53213a13a4ba3f02729695327539406",
+    "upstream_source_sha256": "c513073798bdbf3cdef09327d0d2d381a53213a13a4ba3f02729695327539406",
+    "matches": true
+  },
+  {
+    "version": "3.11.11",
+    "module": "configparser.py",
+    "fixture_source_sha256": "230b09836340e7c66765f14c36de250f3f67fe427849c6dca6714db65abb5a49",
+    "upstream_source_sha256": "230b09836340e7c66765f14c36de250f3f67fe427849c6dca6714db65abb5a49",
+    "matches": true
+  },
+  {
+    "version": "3.11.11",
+    "module": "email/policy.py",
+    "fixture_source_sha256": "56a2a90d973c06668f6f113d67f26cf348af10b33eece2a6b812e34da45258d8",
+    "upstream_source_sha256": "56a2a90d973c06668f6f113d67f26cf348af10b33eece2a6b812e34da45258d8",
+    "matches": true
+  },
+  {
+    "version": "3.11.11",
+    "module": "email/parser.py",
+    "fixture_source_sha256": "7a665bc106e9d4f6f8f2c8de53b2c1d5b97f5105cc7da638b82d731f6f9e354e",
+    "upstream_source_sha256": "7a665bc106e9d4f6f8f2c8de53b2c1d5b97f5105cc7da638b82d731f6f9e354e",
+    "matches": true
+  },
+  {
+    "version": "3.11.11",
+    "module": "dataclasses.py",
+    "fixture_source_sha256": "77a41ea9eb35d959781087b72ef5b452218b57b9d8f2d28688d45a40ca7f8a09",
+    "upstream_source_sha256": "77a41ea9eb35d959781087b72ef5b452218b57b9d8f2d28688d45a40ca7f8a09",
+    "matches": true
+  },
+  {
+    "version": "3.12.14",
+    "module": "ast.py",
+    "fixture_source_sha256": "b515c23dbbc459329d3b802a3aac742cc456d7472e66f7ed6e9dc97e40596d7d",
+    "upstream_source_sha256": "b515c23dbbc459329d3b802a3aac742cc456d7472e66f7ed6e9dc97e40596d7d",
+    "matches": true
+  },
+  {
+    "version": "3.12.14",
+    "module": "configparser.py",
+    "fixture_source_sha256": "cf5318e0c45a2e206b4ec74d4d66493185ed26c3736a86b0ebdf8f3a3e365a1a",
+    "upstream_source_sha256": "cf5318e0c45a2e206b4ec74d4d66493185ed26c3736a86b0ebdf8f3a3e365a1a",
+    "matches": true
+  },
+  {
+    "version": "3.12.14",
+    "module": "email/policy.py",
+    "fixture_source_sha256": "35fcbece24fac56fdefe15c93351eefda47c3440204746b8519e71d4633b0f3e",
+    "upstream_source_sha256": "35fcbece24fac56fdefe15c93351eefda47c3440204746b8519e71d4633b0f3e",
+    "matches": true
+  },
+  {
+    "version": "3.12.14",
+    "module": "email/parser.py",
+    "fixture_source_sha256": "88890ea9994c55ff7d6c1fd570fece2785f51ed407ee95df4aff946e250bcd66",
+    "upstream_source_sha256": "88890ea9994c55ff7d6c1fd570fece2785f51ed407ee95df4aff946e250bcd66",
+    "matches": true
+  },
+  {
+    "version": "3.12.14",
+    "module": "dataclasses.py",
+    "fixture_source_sha256": "d242aea5fcf6408b1c1f622442f88f68b9526ce1f8bd2890d74a144677c427d9",
+    "upstream_source_sha256": "d242aea5fcf6408b1c1f622442f88f68b9526ce1f8bd2890d74a144677c427d9",
+    "matches": true
+  },
+  {
+    "version": "3.13.2",
+    "module": "ast.py",
+    "fixture_source_sha256": "287a92c9f6d2658b71e93c4cc3881cb14f2181e56b4b16a6046fbdcf80495ab9",
+    "upstream_source_sha256": "287a92c9f6d2658b71e93c4cc3881cb14f2181e56b4b16a6046fbdcf80495ab9",
+    "matches": true
+  },
+  {
+    "version": "3.13.2",
+    "module": "configparser.py",
+    "fixture_source_sha256": "51162370ffc9e3a32428a637832bf8a85d314a62cc9fe93adb56011c9a434ed0",
+    "upstream_source_sha256": "51162370ffc9e3a32428a637832bf8a85d314a62cc9fe93adb56011c9a434ed0",
+    "matches": true
+  },
+  {
+    "version": "3.13.2",
+    "module": "email/policy.py",
+    "fixture_source_sha256": "35fcbece24fac56fdefe15c93351eefda47c3440204746b8519e71d4633b0f3e",
+    "upstream_source_sha256": "35fcbece24fac56fdefe15c93351eefda47c3440204746b8519e71d4633b0f3e",
+    "matches": true
+  },
+  {
+    "version": "3.13.2",
+    "module": "email/parser.py",
+    "fixture_source_sha256": "88890ea9994c55ff7d6c1fd570fece2785f51ed407ee95df4aff946e250bcd66",
+    "upstream_source_sha256": "88890ea9994c55ff7d6c1fd570fece2785f51ed407ee95df4aff946e250bcd66",
+    "matches": true
+  },
+  {
+    "version": "3.13.2",
+    "module": "dataclasses.py",
+    "fixture_source_sha256": "18b8b97f6c43ece379793745dfd505ed713a4c86bc6babdcdec593101b5f4399",
+    "upstream_source_sha256": "18b8b97f6c43ece379793745dfd505ed713a4c86bc6babdcdec593101b5f4399",
+    "matches": true
+  }
+]

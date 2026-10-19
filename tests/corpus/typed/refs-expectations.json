@@ -1,0 +1,119 @@
+{
+  "refs_version": 1,
+  "generator": {
+    "file": "../generate-typed.mjs",
+    "sha256": "2ff7a953c561d23ab69635ed2973a0a983e2396ceb15059ba6cea45ac19cf739",
+    "babel": "7.29.9",
+    "node": "v24.20.0"
+  },
+  "cases": [
+    {
+      "name": "babel-parser-types",
+      "file": "artifacts/babel-parser.d.ts",
+      "source_id": "e6ca59368dce5a594dcde9bbb6ae640d668fa6c28c31639dd2a75b731bb036a2",
+      "resolution": "resolved",
+      "identifier": "line",
+      "byte": 371,
+      "declaration": {
+        "start": 371,
+        "end": 375
+      },
+      "entity": {
+        "kind": "constructor",
+        "start": 359,
+        "end": 413
+      },
+      "references": []
+    },
+    {
+      "name": "babel-types-declarations",
+      "file": "artifacts/babel-types.d.ts",
+      "source_id": "69d4b61c408556b97b796782a1110f7e01a03ed80f31741f2c59b722185830ed",
+      "resolution": "resolved",
+      "identifier": "tagName",
+      "byte": 29,
+      "declaration": {
+        "start": 29,
+        "end": 36
+      },
+      "entity": {
+        "kind": "function_declaration",
+        "start": 0,
+        "end": 56
+      },
+      "references": []
+    },
+    {
+      "name": "typed-login-source",
+      "file": "artifacts/login.tsx",
+      "source_id": "368120434e867213bfc067c4281a4eb77fc979ea780f7bbac4e6f224e6e5f009",
+      "resolution": "resolved",
+      "identifier": "props",
+      "byte": 360,
+      "declaration": {
+        "start": 360,
+        "end": 365
+      },
+      "entity": {
+        "kind": "function_declaration",
+        "start": 328,
+        "end": 629
+      },
+      "references": [
+        {
+          "start": 447,
+          "end": 452,
+          "read": true,
+          "write": false,
+          "member_write": false,
+          "type_reference": false,
+          "value_reference": true
+        },
+        {
+          "start": 462,
+          "end": 467,
+          "read": true,
+          "write": false,
+          "member_write": false,
+          "type_reference": false,
+          "value_reference": true
+        },
+        {
+          "start": 582,
+          "end": 587,
+          "read": true,
+          "write": false,
+          "member_write": false,
+          "type_reference": false,
+          "value_reference": true
+        }
+      ]
+    },
+    {
+      "name": "jsx-page-source",
+      "file": "artifacts/page.jsx",
+      "source_id": "9f2d78f15fd2dcf14fbe172cd229861aba4ff31f0f872b9b48f9adf33fba8ef5",
+      "resolution": "resolved",
+      "identifier": "props",
+      "byte": 133,
+      "declaration": {
+        "start": 133,
+        "end": 138
+      },
+      "entity": {
+        "kind": "function_declaration",
+        "start": 119,
+        "end": 278
+      },
+      "references": [
+        {
+          "start": 248,
+          "end": 253,
+          "read": true,
+          "write": false,
+          "member_write": false
+        }
+      ]
+    }
+  ]
+}

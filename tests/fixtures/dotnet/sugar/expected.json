@@ -1,0 +1,383 @@
+{
+  "sha256": "84de7739c8717a9860e419feeeec2e8c1cfe69faae2c72e91c778cbfdcb618bc",
+  "bytes": 8704,
+  "mvid": "599f0c31-21c9-4ad6-ad95-2f4e0432fe8a",
+  "pe_timestamp": "0xa9ee0cfc",
+  "methods": {
+    "0x06000001": {
+      "name": "AsyncAwait",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8272,
+      "il_hex": "1200281b00000a7d080000041200027d090000041200157d0700000412007c080000041200280100002b12007c08000004281d00000a2a",
+      "code_size": 55,
+      "max_stack": 2,
+      "init_locals": true,
+      "local_signature_token": 285212673,
+      "handlers": []
+    },
+    "0x06000002": {
+      "name": "Iterator",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8339,
+      "il_hex": "1ffe731700000625027d0f0000042a",
+      "code_size": 15,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000003": {
+      "name": "ClosureAndLocalFunction",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8355,
+      "il_hex": "731200000625027d06000004fe0614000006731e00000a2a",
+      "code_size": 24,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000004": {
+      "name": "Linq",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8380,
+      "il_hex": "027e03000004252d17267e02000004fe060f000006731f00000a258003000004280200002b7e04000004252d17267e02000004fe0610000006731e00000a258004000004280300002b7e05000004252d17267e02000004fe0611000006731e00000a258005000004280400002b280500002b2a",
+      "code_size": 115,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000005": {
+      "name": "Initializers",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8508,
+      "il_hex": "188d270000012516029e25170217589e0a732400000a25730c000006250616946f0b0000066f2500000a25730c000006250617946f0b0000066f2500000a2a",
+      "code_size": 63,
+      "max_stack": 6,
+      "init_locals": true,
+      "local_signature_token": 285212674,
+      "handlers": []
+    },
+    "0x06000006": {
+      "name": "Using",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8584,
+      "il_hex": "02732600000a0a066f2700000a0bde0a062c06066f1400000adc072a",
+      "code_size": 28,
+      "max_stack": 1,
+      "init_locals": true,
+      "local_signature_token": 285212675,
+      "handlers": [
+        {
+          "kind": "finally",
+          "try_offset": 7,
+          "try_length": 9,
+          "handler_offset": 16,
+          "handler_length": 10,
+          "class_token": null,
+          "filter_offset": null
+        }
+      ]
+    },
+    "0x06000007": {
+      "name": "Lock",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8640,
+      "il_hex": "020a160b061201282800000a03256f0a00000617580c086f0b000006080cde0a072c0606282900000adc082a",
+      "code_size": 44,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 285212676,
+      "handlers": [
+        {
+          "kind": "finally",
+          "try_offset": 4,
+          "try_length": 28,
+          "handler_offset": 32,
+          "handler_length": 10,
+          "class_token": null,
+          "filter_offset": null
+        }
+      ]
+    },
+    "0x06000008": {
+      "name": "NullPropagation",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8712,
+      "il_hex": "022d02152a02280a0000062a",
+      "code_size": 12,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000009": {
+      "name": "Interpolation",
+      "declaring_type": "Rxd.Sugar.Probe",
+      "rva": 8728,
+      "il_hex": "12001818282a00000a120002282b00000a12007201000070282c00000a1200037207000070280600002b1200282e00000a2a",
+      "code_size": 50,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 285212677,
+      "handlers": []
+    },
+    "0x0600000a": {
+      "name": "get_Value",
+      "declaring_type": "Rxd.Sugar.Item",
+      "rva": 8790,
+      "il_hex": "027b010000042a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000b": {
+      "name": "set_Value",
+      "declaring_type": "Rxd.Sugar.Item",
+      "rva": 8798,
+      "il_hex": "02037d010000042a",
+      "code_size": 8,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000c": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Sugar.Item",
+      "rva": 8807,
+      "il_hex": "02282f00000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000d": {
+      "name": ".cctor",
+      "declaring_type": "Rxd.Sugar.Probe+<>c",
+      "rva": 8815,
+      "il_hex": "730e00000680020000042a",
+      "code_size": 11,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000e": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Sugar.Probe+<>c",
+      "rva": 8827,
+      "il_hex": "02282f00000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000f": {
+      "name": "<Linq>b__3_0",
+      "declaring_type": "Rxd.Sugar.Probe+<>c",
+      "rva": 8835,
+      "il_hex": "0316fe022a",
+      "code_size": 5,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000010": {
+      "name": "<Linq>b__3_1",
+      "declaring_type": "Rxd.Sugar.Probe+<>c",
+      "rva": 8841,
+      "il_hex": "032a",
+      "code_size": 2,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000011": {
+      "name": "<Linq>b__3_2",
+      "declaring_type": "Rxd.Sugar.Probe+<>c",
+      "rva": 8844,
+      "il_hex": "03185a2a",
+      "code_size": 4,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000012": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Sugar.Probe+<>c__DisplayClass2_0",
+      "rva": 8849,
+      "il_hex": "02282f00000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000013": {
+      "name": "<ClosureAndLocalFunction>g__AddSeed|0",
+      "declaring_type": "Rxd.Sugar.Probe+<>c__DisplayClass2_0",
+      "rva": 8857,
+      "il_hex": "03027b06000004582a",
+      "code_size": 9,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000014": {
+      "name": "<ClosureAndLocalFunction>b__1",
+      "declaring_type": "Rxd.Sugar.Probe+<>c__DisplayClass2_0",
+      "rva": 8867,
+      "il_hex": "02032813000006185a2a",
+      "code_size": 10,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000015": {
+      "name": "MoveNext",
+      "declaring_type": "Rxd.Sugar.Probe+<AsyncAwait>d__0",
+      "rva": 8880,
+      "il_hex": "027b070000040a062c37283000000a0d1203283100000a0c1202283200000a2d3c0216250a7d0700000402087d0a000004027c08000004120202280700002bde5b027b0a0000040c027c0a000004fe151d0000010215250a7d070000041202283400000a027b0900000417580bde191304021ffe7d07000004027c080000041104283500000ade14021ffe7d07000004027c0800000407283600000a2a",
+      "code_size": 157,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 285212678,
+      "handlers": [
+        {
+          "kind": "catch",
+          "try_offset": 7,
+          "try_length": 104,
+          "handler_offset": 111,
+          "handler_length": 25,
+          "class_token": 16777246,
+          "filter_offset": null
+        }
+      ]
+    },
+    "0x06000016": {
+      "name": "SetStateMachine",
+      "declaring_type": "Rxd.Sugar.Probe+<AsyncAwait>d__0",
+      "rva": 9068,
+      "il_hex": "027c0800000403283700000a2a",
+      "code_size": 13,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000017": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9082,
+      "il_hex": "02282f00000a02037d0b00000402283800000a7d0d0000042a",
+      "code_size": 25,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000018": {
+      "name": "System.IDisposable.Dispose",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9108,
+      "il_hex": "021ffe7d0b0000042a",
+      "code_size": 9,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000019": {
+      "name": "MoveNext",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9120,
+      "il_hex": "027b0b0000040a062c0606172e29162a02157d0b00000402167d100000042b2e02027b10000004185a7d0c00000402177d0b000004172a02157d0b000004027b100000040b020717587d10000004027b10000004027b0e00000432c4162a",
+      "code_size": 94,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 285212679,
+      "handlers": []
+    },
+    "0x0600001a": {
+      "name": "System.Collections.Generic.IEnumerator<System.Int32>.get_Current",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9226,
+      "il_hex": "027b0c0000042a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600001b": {
+      "name": "System.Collections.IEnumerator.Reset",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9234,
+      "il_hex": "733900000a7a",
+      "code_size": 6,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600001c": {
+      "name": "System.Collections.IEnumerator.get_Current",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9241,
+      "il_hex": "027b0c0000048c270000012a",
+      "code_size": 12,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600001d": {
+      "name": "System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9256,
+      "il_hex": "027b0b0000041ffe3318027b0d000004283800000a330b02167d0b000004020a2b071673170000060a06027b0f0000047d0e000004062a",
+      "code_size": 55,
+      "max_stack": 2,
+      "init_locals": true,
+      "local_signature_token": 285212680,
+      "handlers": []
+    },
+    "0x0600001e": {
+      "name": "System.Collections.IEnumerable.GetEnumerator",
+      "declaring_type": "Rxd.Sugar.Probe+<Iterator>d__1",
+      "rva": 9323,
+      "il_hex": "02281d0000062a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    }
+  },
+  "provenance": {
+    "sdk": "10.0.401",
+    "compiler": "5.9.0-1.26423.113 (e34a38d2ae1fc26406a317517196e55c68ff83ab)",
+    "compiler_sha256": "99148255a90b5a6a0a37b7be3a51e8753bcdbb52f3a7785eb8bb227e99e34414",
+    "framework_packages": [
+      {
+        "name": "Microsoft.NETCore.App.Ref",
+        "version": "10.0.12"
+      }
+    ],
+    "expectation_reader_runtime": "Microsoft.NETCore.App 10.0.12",
+    "package_references": [],
+    "source_sha256": "46dbbaea665125ccbbcc5164a76cf44bf08672006ca391e65b27f65988f54fa6",
+    "expectation_reader": "System.Reflection.Metadata / System.Reflection.PortableExecutable (SDK framework)"
+  }
+}

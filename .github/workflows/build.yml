@@ -1,0 +1,360 @@
+name: Build rxd
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_RELEASE_OPT_LEVEL: 3
+  CARGO_PROFILE_RELEASE_LTO: thin
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+  CARGO_PROFILE_RELEASE_STRIP: symbols
+  PYTHONUTF8: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  RUST_TOOLCHAIN: 1.98.0
+  RELEASE_TAG: ${{ github.ref_name }}
+
+jobs:
+  plan:
+    name: Plan and tooling
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      full: ${{ steps.scope.outputs.full }}
+      matrix: ${{ steps.scope.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Select affected checks
+        id: scope
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra=()
+          base="$BASE_REF"
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            schedule:*|workflow_dispatch:*|*:refs/tags/*) extra=(--full); base=HEAD ;;
+            pull_request:*) base=$(git merge-base "$base" HEAD) ;;
+          esac
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            extra=(--full)
+            base=HEAD
+          fi
+          python3 scripts/ci-scope.py --base "$base" --head HEAD "${extra[@]}" --github-output "$GITHUB_OUTPUT"
+          git diff --check "$base" HEAD
+      - name: Check maintenance tooling contracts
+        if: steps.scope.outputs.tools == 'true'
+        run: |
+          python3 -B -m unittest discover -s devtools/testing -p 'test_*.py'
+          python3 -B -m unittest discover -s devtools/upstream -p 'test_*.py'
+          python3 -B -m unittest discover -s devtools/prebuilt -p 'test_*.py'
+      - name: Verify registered prebuilt runtime identities
+        if: steps.scope.outputs.full == 'true'
+        run: |
+          python3 scripts/prebuilt-ilspy.py check
+          python3 scripts/prebuilt-ilspy.py --android-app check
+
+  quick:
+    name: Quick checks (${{ matrix.scope }})
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Initialize only the Cargo path dependency
+        run: git submodule update --init third_party/kuna
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: quick-${{ matrix.scope }}
+          cache-workspace-crates: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Run scoped formatting, lint and public tests
+        env:
+          SCOPE: ${{ matrix.scope }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$SCOPE" in
+            shared)
+              python3 scripts/format-workspace.py --check
+              cargo clippy --locked --workspace --all-targets --exclude rxd-kuna-cli --no-default-features --features all-backends,mcp -- -D warnings
+              cargo check --locked -p rxd --no-default-features
+              cargo test --locked --no-default-features --features all-backends --test cli
+              cargo test --locked --release --no-default-features --features all-backends --test cli
+              cargo test --locked --no-default-features --features all-backends,mcp --test cli mcp::
+              cargo test --locked --release --no-default-features --features all-backends,mcp --test cli mcp::
+              ;;
+            dotnet|html|jvm|dex|pyc|evm|wasm)
+              python3 scripts/format-workspace.py --check
+              cargo clippy --locked -p rxd --no-default-features --features "backend-$SCOPE" --all-targets -- -D warnings
+              if [ "$SCOPE" = dex ] || [ "$SCOPE" = jvm ]; then
+                cargo clippy --locked -p radguard --all-targets -- -D warnings
+              fi
+              cargo test --locked -p "rxd-$SCOPE"
+              cargo test --locked -p rxd --no-default-features --features "backend-$SCOPE" --test cli "$SCOPE::"
+              cargo test --locked --release -p rxd --no-default-features --features "backend-$SCOPE" --test cli "$SCOPE::"
+              if [ "$SCOPE" = wasm ]; then
+                cargo test --locked -p rxd --no-default-features --features backend-wasm --test cli wasm_wabt::
+                cargo test --locked --release -p rxd --no-default-features --features backend-wasm --test cli wasm_wabt::
+              fi
+              ;;
+            *) echo 'Unknown scope; refusing to skip checks' >&2; exit 1 ;;
+          esac
+
+  build:
+    name: ${{ matrix.name }}
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            rid: linux-x64
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            rid: linux-arm64
+          - name: windows-x86_64
+            os: windows-2025
+            target: x86_64-pc-windows-msvc
+            rid: win-x64
+          - name: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            rid: osx-arm64
+    defaults:
+      run:
+        shell: bash
+    env:
+      RXD_ILSPY_EMBED_RS: ${{ github.workspace }}/target/dotnet-native/${{ matrix.rid }}/embed.rs
+      RXD_KUNA_EMBED_RS: ${{ github.workspace }}/target/kuna/${{ matrix.target }}/embed.rs
+    steps:
+      - name: Preserve source and fixture bytes on Windows
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          submodules: true
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Validate the release tag against the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python scripts/verify-release.py --tag "$RELEASE_TAG" --check-version
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) == ''
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Install native build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev
+
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+          rustup default "$RUST_TOOLCHAIN"
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p')" = '${{ matrix.target }}'
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ${{ matrix.target }}-${{ hashFiles('scripts/build-bundled.py', 'scripts/runtime_bundle.py') }}
+          workspaces: |
+            . -> target
+            third_party/kuna/decompiler -> ../../../target/kuna/${{ matrix.target }}/cargo
+          cache-workspace-crates: true
+          cache-directories: |
+            target/kuna/${{ matrix.target }}/specs-build
+            target/kuna/${{ matrix.target }}/specs-commit
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Prepare the verified ILSpy prebuilt without an SDK
+        if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) != ''
+        run: python scripts/prebuilt-ilspy.py prepare '${{ matrix.rid }}'
+
+      - name: Build an unavailable ILSpy target once
+        if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) == ''
+        run: python scripts/build-ilspy.py '${{ matrix.rid }}'
+
+      - name: Build single-file rxd with embedded Kuna and ILSpy
+        run: python scripts/build-bundled.py --jobs 1 --features bundled-ilspy,mcp
+
+      - name: Preserve linked Kuna build identity for checks
+        shell: python
+        run: |
+          import json, os
+          from pathlib import Path
+          metadata = json.loads(Path('target/kuna/${{ matrix.target }}/manifest.json').read_text())
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('KUNA_VERSION=' + metadata['version'] + '\n')
+
+      - name: Check formatting and Clippy
+        if: matrix.name == 'linux-x86_64'
+        run: |
+          python3 scripts/format-workspace.py --check
+          cargo clippy --locked --workspace --all-targets --features bundled-kuna,bundled-ilspy,mcp -- -D warnings
+
+      - name: Check release asset validation
+        if: matrix.name == 'linux-x86_64'
+        run: python scripts/test-release.py
+
+      - name: Retain the no-MCP build
+        if: matrix.name == 'linux-x86_64'
+        run: cargo check --locked --no-default-features
+
+      - name: Run debug CLI and MCP tests
+        if: matrix.name == 'linux-x86_64'
+        run: cargo test --locked --test cli --features bundled-kuna,bundled-ilspy,mcp -- --test-threads=2
+
+      - name: Run release CLI and MCP tests
+        run: cargo test --locked --release --test cli --features bundled-kuna,bundled-ilspy,mcp -- --test-threads=2
+
+      - name: Package and verify the relocatable distribution
+        run: python scripts/package-release.py --target '${{ matrix.target }}' --rid '${{ matrix.rid }}' --name '${{ matrix.name }}'
+
+      - name: Exercise curl-to-shell installation with the real native binary
+        if: runner.os != 'Windows'
+        env:
+          RXD_INSTALL_TEST_BINARY: ${{ github.workspace }}/target/release/rxd
+        run: python scripts/test-install.py
+
+      - name: Verify tracked sources stayed unchanged
+        run: |
+          git diff --exit-code
+          git -C third_party/kuna diff --exit-code
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: rxd-${{ matrix.name }}
+          path: target/dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+
+  gate:
+    name: Validation gate
+    if: always()
+    needs: [plan, quick, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected check to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        shell: python
+        run: |
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          outputs = results['plan']['outputs']
+          for job, selected in [('plan', True), ('quick', outputs.get('rust') == 'true'), ('build', outputs.get('full') == 'true')]:
+              status = results[job]['result']
+              if (selected and status != 'success') or status not in ('success', 'skipped'):
+                  raise SystemExit(f'{job}: {status}')
+
+  publish:
+    name: Publish verified stable Release
+    needs: [build, gate]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.RXD_RELEASE_TOKEN || github.token }}
+      RELEASE_REPO: ${{ vars.RXD_RELEASE_REPO || github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: rxd-*
+          merge-multiple: true
+          path: target/release-assets
+      - name: Include the installer and validate the complete asset set
+        run: |
+          # The embedded installer source must match the uploaded assets.
+          # A separate public distribution destination needs explicit support first.
+          if [ "$RELEASE_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo 'Cross-repository publication is unsupported: installer URLs must match Release assets.' >&2
+            exit 1
+          fi
+          cp install.sh target/release-assets/install.sh
+          (cd target/release-assets && sha256sum install.sh > install.sh.sha256)
+          python scripts/verify-release.py --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --assets target/release-assets
+      - name: Stage an immutable draft Release
+        run: |
+          test "$(gh api "repos/$RELEASE_REPO" --jq .visibility)" = public
+          gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --verify-tag --draft --title "RxD $RELEASE_TAG" --notes "Complete single-executable distribution built from $GITHUB_REPOSITORY@$RELEASE_COMMIT. Linux requires glibc 2.39 or newer. SHA-256 files accompany every archive and the installer."
+          gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" target/release-assets/*
+      - name: Re-download and validate every staged asset before publication
+        run: |
+          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" --dir target/downloaded-release
+          python scripts/verify-release.py --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --assets target/downloaded-release
+      - name: Publish the complete stable Release
+        run: gh release edit "$RELEASE_TAG" --repo "$RELEASE_REPO" --draft=false --latest
+      - name: Verify anonymous versioned downloads
+        env:
+          GH_TOKEN: ''
+        run: python scripts/verify-release.py --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --repo "$RELEASE_REPO" --public
+      - name: Smoke the public installer and active update path
+        env:
+          GH_TOKEN: ''
+        run: |
+          set -o pipefail
+          curl -q --proto '=https' --proto-redir '=https' -fsSL "https://github.com/$RELEASE_REPO/releases/download/$RELEASE_TAG/install.sh" | sh -s -- --version "$RELEASE_TAG" --dir "$RUNNER_TEMP/rxd-public-install"
+          "$RUNNER_TEMP/rxd-public-install/rxd" --version
+          curl -q --proto '=https' --proto-redir '=https' -fsSL "https://github.com/$RELEASE_REPO/releases/latest/download/install.sh" | sh -s -- --dir "$RUNNER_TEMP/rxd-public-install"
+          "$RUNNER_TEMP/rxd-public-install/rxd" --version

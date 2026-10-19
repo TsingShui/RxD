@@ -1,0 +1,1712 @@
+{
+  "corpus_version": 1,
+  "generator": {
+    "file": "../generate-typed.mjs",
+    "sha256": "2ff7a953c561d23ab69635ed2973a0a983e2396ceb15059ba6cea45ac19cf739",
+    "babel": "7.29.9",
+    "node": "v24.20.0"
+  },
+  "cases": [
+    {
+      "name": "babel-parser-types",
+      "file": "artifacts/babel-parser.d.ts",
+      "sha256": "e6ca59368dce5a594dcde9bbb6ae640d668fa6c28c31639dd2a75b731bb036a2",
+      "input_bytes": 9334,
+      "needle": "BABEL_PARSER_SYNTAX_ERROR",
+      "plaintext_find": true,
+      "provenance": {
+        "kind": "production",
+        "package": "@babel/parser",
+        "version": "7.29.9",
+        "url": "https://registry.npmjs.org/@babel/parser/-/parser-7.29.9.tgz",
+        "integrity": "sha512-CjXrNHTnvqBVqHgdBysY3vk2T8tpJHb5/RMeHJBTyVa9xgugCB0CJTx/3oO8RV2QRQP391RWpB7D6hLjm8V9uA==",
+        "original_path": "typings/babel-parser.d.ts",
+        "license": "MIT",
+        "license_file": "../licenses/parser-types-MIT.txt"
+      },
+      "expected": {
+        "entity_count": 25,
+        "structure_sha256": "11442aeb95fd260510f2e04d083a81516c7eee54192b32ed5c60f7f8007903cf",
+        "matches": [
+          {
+            "literal_kind": "type_string",
+            "value": "BABEL_PARSER_SYNTAX_ERROR",
+            "start": 545,
+            "end": 572,
+            "dynamic": false,
+            "entity": [
+              "type_alias",
+              523,
+              617
+            ]
+          }
+        ],
+        "sample_entities": [
+          {
+            "kind": "class_declaration",
+            "start": 273,
+            "end": 415,
+            "parent": [
+              "program",
+              0,
+              9334
+            ],
+            "depth": 1,
+            "name": "Position",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "constructor",
+            "start": 359,
+            "end": 413,
+            "parent": [
+              "class_declaration",
+              273,
+              415
+            ],
+            "depth": 2,
+            "name": "constructor",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "type_alias",
+            "start": 417,
+            "end": 522,
+            "parent": [
+              "program",
+              0,
+              9334
+            ],
+            "depth": 1,
+            "name": "SyntaxPlugin",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "type_alias",
+            "start": 523,
+            "end": 617,
+            "parent": [
+              "program",
+              0,
+              9334
+            ],
+            "depth": 1,
+            "name": "ParseErrorCode",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "interface",
+            "start": 618,
+            "end": 854,
+            "parent": [
+              "program",
+              0,
+              9334
+            ],
+            "depth": 1,
+            "name": "ParseErrorSpecification",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "babel-types-declarations",
+      "file": "artifacts/babel-types.d.ts",
+      "sha256": "69d4b61c408556b97b796782a1110f7e01a03ed80f31741f2c59b722185830ed",
+      "input_bytes": 665892,
+      "needle": "StringLiteral",
+      "plaintext_find": true,
+      "provenance": {
+        "kind": "production",
+        "package": "@babel/types",
+        "version": "7.29.8",
+        "url": "https://registry.npmjs.org/@babel/types/-/types-7.29.8.tgz",
+        "integrity": "sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==",
+        "original_path": "lib/index.d.ts",
+        "license": "MIT",
+        "license_file": "../licenses/types-types-MIT.txt"
+      },
+      "expected": {
+        "entity_count": 1589,
+        "structure_sha256": "c44850c452d7f7b621521e4a718b54099759d2bd4fdf1d1184ff91725fc1c458",
+        "matches": [
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 50924,
+            "end": 50939,
+            "dynamic": false,
+            "entity": [
+              "interface",
+              50871,
+              50961
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 73049,
+            "end": 73078,
+            "dynamic": false,
+            "entity": [
+              "interface",
+              72982,
+              73100
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 78743,
+            "end": 78758,
+            "dynamic": false,
+            "entity": [
+              "interface",
+              78644,
+              79011
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 248126,
+            "end": 248141,
+            "dynamic": false,
+            "entity": [
+              "function_declaration",
+              248068,
+              248264
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 262874,
+            "end": 262889,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 262892,
+            "end": 262921,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 268470,
+            "end": 268485,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 268488,
+            "end": 268517,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 274062,
+            "end": 274077,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 274080,
+            "end": 274109,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 279656,
+            "end": 279671,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 279674,
+            "end": 279703,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 285253,
+            "end": 285268,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 285271,
+            "end": 285300,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 290844,
+            "end": 290859,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 290862,
+            "end": 290891,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 296439,
+            "end": 296454,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 296457,
+            "end": 296486,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 302039,
+            "end": 302054,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 302057,
+            "end": 302086,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 307644,
+            "end": 307659,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 307662,
+            "end": 307691,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 313241,
+            "end": 313256,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 313259,
+            "end": 313288,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 318831,
+            "end": 318846,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 318849,
+            "end": 318878,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 324422,
+            "end": 324437,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 324440,
+            "end": 324469,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 330025,
+            "end": 330040,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 330043,
+            "end": 330072,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 335614,
+            "end": 335629,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 335632,
+            "end": 335661,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 341213,
+            "end": 341228,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 341231,
+            "end": 341260,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 346807,
+            "end": 346822,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 346825,
+            "end": 346854,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 352407,
+            "end": 352422,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 352425,
+            "end": 352454,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 358000,
+            "end": 358015,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 358018,
+            "end": 358047,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 363597,
+            "end": 363612,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 363615,
+            "end": 363644,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 369200,
+            "end": 369215,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 369218,
+            "end": 369247,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 374797,
+            "end": 374812,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 374815,
+            "end": 374844,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 380387,
+            "end": 380402,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 380405,
+            "end": 380434,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 385985,
+            "end": 386000,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 386003,
+            "end": 386032,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 391578,
+            "end": 391593,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 391596,
+            "end": 391625,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 397173,
+            "end": 397188,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 397191,
+            "end": 397220,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 402776,
+            "end": 402791,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 402794,
+            "end": 402823,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 408368,
+            "end": 408383,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 408386,
+            "end": 408415,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 413966,
+            "end": 413981,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 413984,
+            "end": 414013,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 419560,
+            "end": 419575,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 419578,
+            "end": 419607,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 425155,
+            "end": 425170,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 425173,
+            "end": 425202,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 430748,
+            "end": 430763,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 430766,
+            "end": 430795,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 436339,
+            "end": 436354,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 436357,
+            "end": 436386,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 441950,
+            "end": 441965,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 441968,
+            "end": 441997,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 447553,
+            "end": 447568,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 447571,
+            "end": 447600,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 453154,
+            "end": 453169,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 453172,
+            "end": 453201,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 458748,
+            "end": 458763,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 458766,
+            "end": 458795,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 464341,
+            "end": 464356,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 464359,
+            "end": 464388,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 469931,
+            "end": 469946,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 469949,
+            "end": 469978,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 475525,
+            "end": 475540,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 475543,
+            "end": 475572,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 481129,
+            "end": 481144,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 481147,
+            "end": 481176,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 486730,
+            "end": 486745,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 486748,
+            "end": 486777,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 492329,
+            "end": 492344,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 492347,
+            "end": 492376,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 497923,
+            "end": 497938,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 497941,
+            "end": 497970,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 503519,
+            "end": 503534,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 503537,
+            "end": 503566,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 509108,
+            "end": 509123,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 509126,
+            "end": 509155,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 514707,
+            "end": 514722,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 514725,
+            "end": 514754,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 520303,
+            "end": 520318,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 520321,
+            "end": 520350,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 525902,
+            "end": 525917,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 525920,
+            "end": 525949,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 531494,
+            "end": 531509,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 531512,
+            "end": 531541,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 537090,
+            "end": 537105,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 537108,
+            "end": 537137,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 542760,
+            "end": 542775,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteralTypeAnnotation",
+            "start": 542778,
+            "end": 542807,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          },
+          {
+            "literal_kind": "type_string",
+            "value": "StringLiteral",
+            "start": 550102,
+            "end": 550117,
+            "dynamic": false,
+            "entity": [
+              "program",
+              0,
+              665892
+            ]
+          }
+        ],
+        "sample_entities": [
+          {
+            "kind": "function_declaration",
+            "start": 0,
+            "end": 56,
+            "parent": [
+              "program",
+              0,
+              665892
+            ],
+            "depth": 1,
+            "name": "isCompatTag",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "type_alias",
+            "start": 58,
+            "end": 134,
+            "parent": [
+              "program",
+              0,
+              665892
+            ],
+            "depth": 1,
+            "name": "ReturnedChild",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "function_declaration",
+            "start": 135,
+            "end": 215,
+            "parent": [
+              "program",
+              0,
+              665892
+            ],
+            "depth": 1,
+            "name": "buildChildren",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "function_declaration",
+            "start": 217,
+            "end": 279,
+            "parent": [
+              "program",
+              0,
+              665892
+            ],
+            "depth": 1,
+            "name": "assertNode",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "function_declaration",
+            "start": 281,
+            "end": 408,
+            "parent": [
+              "program",
+              0,
+              665892
+            ],
+            "depth": 1,
+            "name": "assertArrayExpression",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "typed-login-source",
+      "file": "artifacts/login.tsx",
+      "sha256": "368120434e867213bfc067c4281a4eb77fc979ea780f7bbac4e6f224e6e5f009",
+      "input_bytes": 689,
+      "needle": "/api/login",
+      "plaintext_find": true,
+      "provenance": {
+        "kind": "handcrafted",
+        "generator": "repository-authored parse-only source"
+      },
+      "expected": {
+        "entity_count": 6,
+        "structure_sha256": "6ad843b60da8ac74fab554d418cdc2c08ccff5d0e7dc0a604bc5319e100efd5a",
+        "matches": [
+          {
+            "literal_kind": "string",
+            "value": "/api/login",
+            "start": 410,
+            "end": 422,
+            "dynamic": false,
+            "entity": [
+              "function_declaration",
+              328,
+              629
+            ]
+          }
+        ],
+        "sample_entities": [
+          {
+            "kind": "interface",
+            "start": 107,
+            "end": 184,
+            "parent": [
+              "program",
+              0,
+              689
+            ],
+            "depth": 1,
+            "name": "Props",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "type_alias",
+            "start": 185,
+            "end": 231,
+            "parent": [
+              "program",
+              0,
+              689
+            ],
+            "depth": 1,
+            "name": "Result",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "arrow_function",
+            "start": 247,
+            "end": 319,
+            "parent": [
+              "program",
+              0,
+              689
+            ],
+            "depth": 1,
+            "name": null,
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "function_declaration",
+            "start": 328,
+            "end": 629,
+            "parent": [
+              "program",
+              0,
+              689
+            ],
+            "depth": 1,
+            "name": "Login",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "arrow_function",
+            "start": 441,
+            "end": 478,
+            "parent": [
+              "function_declaration",
+              328,
+              629
+            ],
+            "depth": 2,
+            "name": null,
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "jsx-page-source",
+      "file": "artifacts/page.jsx",
+      "sha256": "9f2d78f15fd2dcf14fbe172cd229861aba4ff31f0f872b9b48f9adf33fba8ef5",
+      "input_bytes": 279,
+      "needle": "A & B",
+      "plaintext_find": true,
+      "provenance": {
+        "kind": "handcrafted",
+        "generator": "repository-authored parse-only source"
+      },
+      "expected": {
+        "entity_count": 3,
+        "structure_sha256": "59b82d6a1a5cb3f4480a85b6513be21d304809eba1d27a7d6c4188a541dcfcba",
+        "matches": [
+          {
+            "literal_kind": "jsx_attribute",
+            "value": "A & B",
+            "start": 217,
+            "end": 228,
+            "dynamic": false,
+            "entity": [
+              "function_declaration",
+              119,
+              278
+            ]
+          }
+        ],
+        "sample_entities": [
+          {
+            "kind": "arrow_function",
+            "start": 69,
+            "end": 110,
+            "parent": [
+              "program",
+              0,
+              279
+            ],
+            "depth": 1,
+            "name": null,
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          },
+          {
+            "kind": "function_declaration",
+            "start": 119,
+            "end": 278,
+            "parent": [
+              "program",
+              0,
+              279
+            ],
+            "depth": 1,
+            "name": "Page",
+            "flags": {
+              "async": false,
+              "generator": false,
+              "static": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

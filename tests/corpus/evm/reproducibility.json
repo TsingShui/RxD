@@ -1,0 +1,13 @@
+{
+  "method": "recompile trusted sources with the pinned compiler; compare all raw and hex carrier hashes",
+  "same_runtime_and_carrier_hashes": true,
+  "artifacts": {
+    "openzeppelin-erc20.runtime.hex": "526444100c2aa79b511195261d20248ac8962a9137ea29a653f3f790e755f55b",
+    "authored-navigation-legacy.runtime.bin": "fc0f4428d92aba39de3177f3f6fcd2a7cd82ab3eaa3d879dfea6c962cd06cdb1",
+    "openzeppelin-erc20.runtime.bin": "f97737bf244a5b86fd9be5b75f157dac8cce2b511543e19f14045e06c6f0a8b6",
+    "authored-navigation-legacy.runtime.hex": "b5b464c5b738189bdab08e7c5ebdd80ebd005919f3d5fb02e7703c6b6b6a7117",
+    "authored-navigation.runtime.hex": "ffe5e249b509bcfd6786b2d37a8557b4dcb53c740f7137f42edce5d5ce19d6b0",
+    "authored-navigation.runtime.bin": "57b5cd6175ac081a520fbb9cae66f5700b5cc09ea8d60802f54a4de12bdb4602"
+  },
+  "no_input_execution": true
+}

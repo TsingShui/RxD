@@ -1,0 +1,598 @@
+use super::*;
+
+fn corpus(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/corpus/pyc/3.12.14")
+        .join(name)
+}
+
+fn strings(path: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["pyc", "strings"])
+        .arg(path)
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+fn rows(output: &Output) -> Vec<Value> {
+    success(output);
+    output
+        .stdout
+        .split(|&byte| byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect()
+}
+
+fn expected_constants(value: &Value, path: &mut Vec<usize>, result: &mut Vec<(Vec<usize>, Value)>) {
+    match value["type"].as_str().unwrap() {
+        "str" | "bytes" => result.push((path.clone(), value.clone())),
+        "tuple" | "frozenset" => {
+            for (index, child) in value["items"].as_array().unwrap().iter().enumerate() {
+                path.push(index);
+                expected_constants(child, path, result);
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn pyc_strings_match_independent_lossless_constants_and_occurrence_ids() {
+    let path = corpus("graph.timestamp.pyc");
+    let bytes = fs::read(&path).unwrap();
+    let oracle: Value =
+        serde_json::from_slice(&fs::read(corpus("graph.oracle.json")).unwrap()).unwrap();
+    let data = rows(&strings(&path, &[]));
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let mut observed = data[1..data.len() - 1].iter();
+    let mut count = 0;
+    for (owner, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
+        let mut expected = Vec::new();
+        for (slot, value) in code["consts"].as_array().unwrap().iter().enumerate() {
+            expected_constants(value, &mut vec![slot], &mut expected);
+        }
+        for (indices, expected) in expected {
+            let row = observed.next().expect("missing constant occurrence");
+            let id_path = indices
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(".");
+            assert_eq!(
+                row["id"],
+                format!("rxd1:pyc:{hash}:const:{owner}:{id_path}")
+            );
+            assert_eq!(row["context_id"], format!("rxd1:pyc:{hash}:code:{owner}"));
+            assert_eq!(row["detail"]["code_index"], owner);
+            assert_eq!(row["detail"]["constant_slot"], indices[0]);
+            assert_eq!(row["detail"]["constant_path"], serde_json::json!(indices));
+            assert_eq!(row["detail"]["kind"], expected["type"]);
+            assert_eq!(row["detail"]["value"], expected["value"]);
+            let raw = if expected["type"] == "str" {
+                &expected["utf8_surrogatepass_hex"]
+            } else {
+                &expected["hex"]
+            };
+            assert_eq!(&row["detail"]["raw_bytes"], raw);
+            let start = row["detail"]["payload_start"].as_u64().unwrap() as usize;
+            let end = row["detail"]["payload_end"].as_u64().unwrap() as usize;
+            assert_eq!(
+                bytes[start..end]
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>(),
+                *raw
+            );
+            if row["detail"]["reference"] == true
+                && let Some(start) = row["detail"]["occurrence_start"].as_u64()
+            {
+                let reference = oracle["marshal_ranges"]["reference_occurrences"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|reference| reference["start"].as_u64().unwrap() + 16 == start)
+                    .unwrap();
+                assert_eq!(
+                    row["detail"]["occurrence_end"],
+                    reference["end"].as_u64().unwrap() + 16
+                );
+                assert_eq!(
+                    row["detail"]["definition_start"],
+                    reference["target_start"].as_u64().unwrap() + 16
+                );
+                assert!(row["start"].is_null());
+                assert!(row["end"].is_null());
+            }
+            if let Some(start) = row["start"].as_u64() {
+                assert_eq!(
+                    start as usize,
+                    row["detail"]["payload_start"].as_u64().unwrap() as usize
+                );
+                assert_eq!(row["end"], row["detail"]["payload_end"]);
+            }
+            count += 1;
+        }
+    }
+    assert!(observed.next().is_none());
+    assert_eq!(data.last().unwrap()["records"], count);
+    assert_eq!(data.last().unwrap()["complete"], true);
+    assert_eq!(data[0]["detail"]["instruction_validation"], "not_scanned");
+}
+
+#[test]
+fn pyc_strings_filter_exact_text_and_raw_payload_without_losing_shared_occurrences() {
+    let path = corpus("graph.timestamp.pyc");
+    let all = rows(&strings(&path, &[]));
+    for (args, expected) in [
+        (vec!["--contains", "雪"], 3),
+        (vec!["--contains-hex", "EDA080"], 3),
+        (vec!["--contains-hex", "ff00"], 1),
+        (vec!["--contains", "shared-container-marker"], 5),
+        (vec!["--contains", "SHARED-CONTAINER-MARKER"], 0),
+        (vec!["--contains", "\u{fffd}"], 0),
+    ] {
+        let matched = rows(&strings(&path, &args));
+        assert_eq!(matched.last().unwrap()["records"], expected, "{args:?}");
+        assert_eq!(matched.last().unwrap()["complete"], true);
+        assert_eq!(
+            matched[0]["query"][if args[0] == "--contains" {
+                "contains"
+            } else {
+                "contains_hex"
+            }],
+            args[1]
+        );
+        for row in &matched[1..matched.len() - 1] {
+            assert!(all.contains(row));
+        }
+    }
+    for hex in ["f", "xx", "0x00", "ff 00", "éé"] {
+        let invalid = strings(&path, &["--contains-hex", hex]);
+        assert_eq!(invalid.status.code(), Some(2));
+        assert!(invalid.stdout.is_empty());
+    }
+    let conflict = strings(&path, &["--contains", "a", "--contains-hex", "61"]);
+    assert_eq!(conflict.status.code(), Some(2));
+    assert!(conflict.stdout.is_empty());
+    let empty_hex = rows(&strings(&path, &["--contains-hex", ""]));
+    assert_eq!(&empty_hex[1..empty_hex.len() - 1], &all[1..all.len() - 1]);
+    let empty_text = rows(&strings(&path, &["--contains", ""]));
+    assert_eq!(
+        empty_text.last().unwrap()["records"].as_u64().unwrap(),
+        all.len() as u64 - 2 - 3
+    );
+}
+
+fn bytes_field(value: &[u8]) -> Vec<u8> {
+    let mut out = vec![b's'];
+    out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+    out.extend_from_slice(value);
+    out
+}
+fn module(body: &[u8], consts: &[u8]) -> Vec<u8> {
+    let mut out = vec![b'c'];
+    for value in [0_u32, 0, 0, 2, 0] {
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+    out.extend_from_slice(body);
+    out.extend_from_slice(consts);
+    out.extend_from_slice(b")\0)\0");
+    out.extend(bytes_field(b""));
+    out.extend_from_slice(b"z\x0afixture.pyz\x08<module>z\x08<module>");
+    out.extend_from_slice(&1_u32.to_le_bytes());
+    out.extend(bytes_field(b""));
+    out.extend(bytes_field(b""));
+    out
+}
+
+#[test]
+fn pyc_strings_distinguish_literal_definitions_container_aliases_and_shared_const_tables() {
+    let mut consts = vec![b')', 5, b')' | 0x80, 1, b'z' | 0x80, 1, b'x'];
+    consts.extend_from_slice(&[b')' | 0x80, 1]);
+    consts.extend_from_slice(b"r\0\0\0\0r\x02\0\0\0>\x01\0\0\0r\0\0\0\0");
+    consts.extend(module(&bytes_field(&[100]), b"r\0\0\0\0"));
+    let bytes = module(&bytes_field(&[100]), &consts); // Odd bodies deliberately remain unscanned.
+    let (_dir, path) = fixture(&bytes, "shared.marshal");
+    let all = rows(&strings(&path, &["--version", "3.12"]));
+    assert_eq!(all.len(), 7);
+    let expected = [
+        (0, vec![0, 0]),
+        (0, vec![1, 0, 0]),
+        (0, vec![2, 0, 0]),
+        (0, vec![3, 0, 0]),
+        (1, vec![0]),
+    ];
+    for (row, (owner, path)) in all[1..6].iter().zip(expected) {
+        assert_eq!(row["detail"]["code_index"], owner);
+        assert_eq!(row["detail"]["constant_path"], serde_json::json!(path));
+        assert_eq!(row["detail"]["value"], "x");
+        assert_eq!(row["detail"]["raw_bytes"], "78");
+        assert_eq!(row["parent_id"], row["context_id"]);
+        assert_eq!(
+            row["detail"]["definition_start"],
+            all[1]["detail"]["definition_start"]
+        );
+    }
+    let start = all[1]["start"].as_u64().unwrap() as usize;
+    let end = all[1]["end"].as_u64().unwrap() as usize;
+    assert_eq!(&bytes[start..end], b"x");
+    for row in &all[2..6] {
+        for key in ["start", "end"] {
+            assert!(row[key].is_null());
+        }
+        for key in ["occurrence_start", "occurrence_end"] {
+            assert!(row["detail"][key].is_null());
+        }
+        for alias in row["detail"]["aliases"].as_array().unwrap() {
+            let start = alias["start"].as_u64().unwrap() as usize;
+            let end = alias["end"].as_u64().unwrap() as usize;
+            assert_eq!(bytes[start], b'r');
+            assert_eq!(end - start, 5);
+        }
+    }
+    assert_eq!(all[3]["detail"]["aliases"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        all[5]["detail"]["aliases"][0]["constant_path"],
+        serde_json::json!([])
+    );
+    failure(
+        run(&path, &["--version", "3.12", "--json"]),
+        1,
+        "INVALID_INPUT",
+    );
+}
+
+#[test]
+fn pyc_strings_budget_work_includes_actual_hex_generation_before_allocation() {
+    let payload = vec![b'a'; 500];
+    let mut consts = b")\x01".to_vec();
+    consts.extend(bytes_field(&payload));
+    let (_dir, path) = fixture(module(&bytes_field(&[]), &consts), "work.marshal");
+    let zero = strings(
+        &path,
+        &["--version", "3.12", "--contains", "missing", "--perf"],
+    );
+    let reports: Vec<Value> = String::from_utf8(zero.stderr)
+        .unwrap()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let without_output = reports
+        .iter()
+        .find(|row| row["scope"] == "analysis")
+        .unwrap()["counters"]["work"]
+        .as_u64()
+        .unwrap();
+    let all = strings(&path, &["--version", "3.12", "--perf"]);
+    success(&all);
+    let reports: Vec<Value> = String::from_utf8(all.stderr)
+        .unwrap()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let with_output = reports
+        .iter()
+        .find(|row| row["scope"] == "analysis")
+        .unwrap()["counters"]["work"]
+        .as_u64()
+        .unwrap();
+    // Missing-byte matching visits 494 bytes; raw hex still processes all 500.
+    assert!(with_output > without_output);
+}
+
+#[test]
+fn pyc_strings_preserve_empty_control_unicode_bytes_and_duplicate_definitions() {
+    let mut consts = b")\x07u\0\0\0\0".to_vec();
+    consts.extend(bytes_field(b""));
+    consts.extend_from_slice(b"u\x05\0\0\0\0\n\xe9\x9b\xaa");
+    consts.extend(bytes_field(b"\xffa\0b"));
+    consts.extend_from_slice(b"z\x01xz\x01x[\x01\0\0\0z\x07ignored");
+    let (_dir, path) = fixture(module(&bytes_field(&[100]), &consts), "literal.marshal");
+    let all = rows(&strings(&path, &["--version", "3.12"]));
+    assert_eq!(all.len(), 8); // Mutable list is outside the immutable-constant scope.
+    assert_eq!(all[1]["detail"]["value"], "");
+    assert_eq!(all[1]["start"], all[1]["end"]);
+    assert_eq!(all[2]["detail"]["raw_bytes"], "");
+    assert!(all[2]["detail"]["value"].is_null());
+    assert_eq!(all[3]["detail"]["value"], "\0\n雪");
+    assert_eq!(all[4]["detail"]["raw_bytes"], "ff610062");
+    assert_ne!(all[5]["id"], all[6]["id"]);
+    assert_ne!(all[5]["start"], all[6]["start"]);
+    assert_eq!(
+        rows(&strings(&path, &["--version", "3.12", "--contains", "a"]))[1],
+        all[4]
+    );
+    assert_eq!(
+        rows(&strings(
+            &path,
+            &["--version", "3.12", "--contains-hex", "610062"]
+        ))[1],
+        all[4]
+    );
+    assert_eq!(
+        rows(&strings(
+            &path,
+            &["--version", "3.12", "--contains-hex", "000a"]
+        ))[1],
+        all[3]
+    );
+    assert_eq!(
+        rows(&strings(&path, &["--version", "3.12", "--contains", ""])).len(),
+        all.len()
+    );
+    assert_eq!(
+        rows(&strings(
+            &path,
+            &["--version", "3.12", "--contains", "ignored"]
+        ))[1]["records"],
+        0
+    );
+}
+
+#[test]
+fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
+    let path = corpus("graph.timestamp.pyc");
+    let output = strings(&path, &["--perf"]);
+    let all = rows(&output);
+    assert_js_keys(
+        &all[0],
+        &[
+            "record",
+            "backend",
+            "command",
+            "source_id",
+            "input_bytes",
+            "schema_version",
+            "query",
+            "detail",
+        ],
+    );
+    assert_eq!(all[0]["command"], "strings");
+    assert_eq!(all[0]["schema_version"], 2);
+    assert_eq!(
+        all[0]["query"],
+        serde_json::json!({"contains":null,"contains_hex":null,"version":null})
+    );
+    assert_js_keys(
+        &all[0]["detail"],
+        &[
+            "analysis",
+            "python_version",
+            "code_count",
+            "instruction_validation",
+            "containers",
+        ],
+    );
+    assert_eq!(
+        all[0]["detail"]["containers"],
+        serde_json::json!(["tuple", "frozenset"])
+    );
+    for row in &all[1..all.len() - 1] {
+        assert_js_keys(
+            row,
+            &[
+                "record",
+                "id",
+                "source_id",
+                "parent_id",
+                "context_id",
+                "start",
+                "end",
+                "detail",
+            ],
+        );
+        assert_js_keys(
+            &row["detail"],
+            &[
+                "code_index",
+                "constant_slot",
+                "constant_path",
+                "kind",
+                "value",
+                "raw_bytes",
+                "definition_start",
+                "definition_end",
+                "payload_start",
+                "payload_end",
+                "occurrence_start",
+                "occurrence_end",
+                "reference",
+                "aliases",
+            ],
+        );
+        for alias in row["detail"]["aliases"].as_array().unwrap() {
+            assert_js_keys(alias, &["start", "end", "constant_path"]);
+        }
+    }
+    assert_js_keys(
+        all.last().unwrap(),
+        &["record", "records", "complete", "detail"],
+    );
+    assert_js_keys(
+        &all.last().unwrap()["detail"],
+        &["analysis", "code_count", "instruction_validation"],
+    );
+    let reports: Vec<Value> = String::from_utf8(output.stderr)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(reports.len(), 2);
+    let perf = reports
+        .iter()
+        .find(|row| row["scope"] == "analysis")
+        .unwrap();
+    assert_eq!(perf["command"], "strings");
+    assert!(perf["counters"]["instructions"].is_null());
+    assert!(perf["counters"]["ast_depth"].is_null());
+    assert_eq!(
+        perf["resource_limits"],
+        serde_json::json!({"input_bytes":8u64<<30,"entities":100_000,"work":16_777_216,"records":100_000,"output_bytes":32*1024*1024})
+    );
+    let bytes = fs::read(&path).unwrap();
+    let (dir, renamed) = fixture(&bytes, "renamed.bin");
+    assert_eq!(strings(&renamed, &[]).stdout, output.stdout);
+    assert_eq!(strings(&path, &[]).stdout, output.stdout);
+    let destination = dir.path().join("strings.jsonl");
+    for (flag, amount) in [
+        ("--max-input-bytes", bytes.len()),
+        (
+            "--max-entities",
+            perf["counters"]["entities"].as_u64().unwrap() as usize,
+        ),
+        (
+            "--max-work",
+            perf["counters"]["work"].as_u64().unwrap() as usize,
+        ),
+        ("--max-records", all.len() - 2),
+        ("--max-output-bytes", output.stdout.len()),
+    ] {
+        assert_eq!(rows(&strings(&path, &[flag, &amount.to_string()])), all);
+        fs::write(&destination, b"keep").unwrap();
+        let failed = strings(
+            &path,
+            &[
+                flag,
+                &(amount - 1).to_string(),
+                "--perf",
+                "-o",
+                destination.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(failed.status.code(), Some(1));
+        assert!(failed.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&failed.stderr).contains("RESOURCE_LIMIT"));
+        assert_eq!(fs::read(&destination).unwrap(), b"keep");
+        let invalid = strings(&path, &[flag, "0"]);
+        assert_eq!(invalid.status.code(), Some(2));
+        assert!(invalid.stdout.is_empty());
+    }
+    let written = strings(&path, &["-o", destination.to_str().unwrap()]);
+    success(&written);
+    assert!(written.stdout.is_empty());
+    assert_eq!(fs::read(destination).unwrap(), output.stdout);
+    failure(
+        strings(&path, &["-o", path.to_str().unwrap()]),
+        2,
+        "INVALID_QUERY",
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    let mut changed = bytes.clone();
+    changed[8] = 1; // Identity includes the input header even when literals are unchanged.
+    let (_dir, changed) = fixture(changed, "changed.pyc");
+    let changed = rows(&strings(&changed, &[]));
+    assert_ne!(changed[1]["id"], all[1]["id"]);
+    assert_eq!(changed[1]["detail"], all[1]["detail"]);
+    let raw = rows(&strings(&corpus("graph.marshal"), &["--version", "3.12"]));
+    assert_eq!(raw[0]["query"]["version"], "3.12");
+    for (raw, pyc) in raw[1..raw.len() - 1].iter().zip(&all[1..all.len() - 1]) {
+        assert_eq!(raw["detail"]["raw_bytes"], pyc["detail"]["raw_bytes"]);
+        assert_eq!(
+            raw["detail"]["payload_start"].as_u64().unwrap() + 16,
+            pyc["detail"]["payload_start"]
+        );
+    }
+    assert_eq!(
+        rows(&strings(
+            &path,
+            &["--contains", "absent-value", "--max-records", "1"]
+        ))[1]["records"],
+        0
+    );
+}
+
+#[test]
+fn pyc_strings_reject_invalid_headers_raw_modes_and_trailing_marshal_atomically() {
+    let source = fs::read(corpus("graph.timestamp.pyc")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("bad.pyc");
+    let destination = dir.path().join("keep.jsonl");
+    for bytes in [&source[..15], &source[..source.len() - 1], b"not pyc"] {
+        fs::write(&input, bytes).unwrap();
+        fs::write(&destination, b"keep").unwrap();
+        failure(
+            strings(&input, &["-o", destination.to_str().unwrap()]),
+            1,
+            "INVALID_INPUT",
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"keep");
+    }
+    let mut bytes = source.clone();
+    bytes.push(0);
+    fs::write(&input, &bytes).unwrap();
+    failure(strings(&input, &[]), 1, "INVALID_INPUT");
+    let mut bytes = source.clone();
+    bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
+    fs::write(&input, &bytes).unwrap();
+    failure(strings(&input, &[]), 1, "INVALID_INPUT");
+    failure(strings(&corpus("graph.marshal"), &[]), 1, "INVALID_INPUT");
+    failure(
+        strings(&corpus("graph.timestamp.pyc"), &["--version", "3.12"]),
+        1,
+        "INVALID_INPUT",
+    );
+    failure(
+        strings(&corpus("graph.marshal"), &["--version", "3.14"]),
+        1,
+        "INVALID_INPUT",
+    );
+}
+
+#[test]
+fn pyc_strings_bound_long_match_work_and_deep_paths_without_false_output_limits() {
+    let mut consts = b")\x01".to_vec();
+    for _ in 0..80 {
+        consts.extend_from_slice(b")\x01");
+    }
+    consts.extend(bytes_field(&vec![b'a'; 500]));
+    let (_dir, path) = fixture(module(&bytes_field(&[]), &consts), "deep.marshal");
+    let all = strings(&path, &["--version", "3.12"]);
+    let data = rows(&all);
+    assert_eq!(
+        data[1]["detail"]["constant_path"].as_array().unwrap().len(),
+        81
+    );
+    assert_eq!(
+        strings(
+            &path,
+            &[
+                "--version",
+                "3.12",
+                "--max-output-bytes",
+                &all.stdout.len().to_string()
+            ]
+        )
+        .stdout,
+        all.stdout
+    );
+    let needle = format!("{}b", "a".repeat(200));
+    let result = strings(
+        &path,
+        &[
+            "--version",
+            "3.12",
+            "--contains",
+            &needle,
+            "--max-work",
+            "5000",
+            "--perf",
+        ],
+    );
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stdout.is_empty());
+    let reports: Vec<Value> = String::from_utf8(result.stderr)
+        .unwrap()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let report = reports
+        .iter()
+        .find(|row| row["scope"] == "analysis")
+        .unwrap();
+    assert_eq!(report["error_code"], "RESOURCE_LIMIT");
+    assert_eq!(report["resource_limits"]["work"], 5000);
+    assert_eq!(report["counters"]["work"], 5000);
+}

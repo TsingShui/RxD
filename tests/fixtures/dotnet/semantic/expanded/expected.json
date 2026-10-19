@@ -1,0 +1,391 @@
+{
+  "sha256": "fc16b016bb60f334642ef1d827a1cc2045d0b822ce7fb112f3cf51aded202b16",
+  "bytes": 8192,
+  "methods": [
+    {
+      "token": 100663297,
+      "name": "Pick",
+      "il_hex": "022a",
+      "rva": 8264
+    },
+    {
+      "token": 100663298,
+      "name": "Pick",
+      "il_hex": "022a",
+      "rva": 8268
+    },
+    {
+      "token": 100663299,
+      "name": ".ctor",
+      "il_hex": "2a",
+      "rva": 8272
+    },
+    {
+      "token": 100663300,
+      "name": "Generic",
+      "il_hex": "022a",
+      "rva": 8276
+    },
+    {
+      "token": 100663301,
+      "name": "Dup",
+      "il_hex": "022a",
+      "rva": 8280
+    },
+    {
+      "token": 100663302,
+      "name": "Dup",
+      "il_hex": "022a",
+      "rva": 8284
+    },
+    {
+      "token": 100663303,
+      "name": "Caller",
+      "il_hex": "280100000afe060100000ad00100000a270100000a280200000a280400000a280500000a280600000a280700000a280800000a280900000a280a00000a730300000a280100002b280200002b280300002b280c00000a280d00000a280e00000a280f00000a281000000a281100000a2a",
+      "rva": 8288
+    },
+    {
+      "token": 100663304,
+      "name": "Echo",
+      "il_hex": "032a",
+      "rva": 8412
+    },
+    {
+      "token": 100663305,
+      "name": "Touch",
+      "il_hex": "2a",
+      "rva": 8416
+    },
+    {
+      "token": 100663306,
+      "name": "AliasType",
+      "il_hex": "022a",
+      "rva": 8420
+    },
+    {
+      "token": 100663307,
+      "name": "TypeSpecEcho",
+      "il_hex": "022a",
+      "rva": 8424
+    },
+    {
+      "token": 100663308,
+      "name": "FieldTypeCaller",
+      "il_hex": "7b1200000a7c1200000a7d1200000ad01200000a7b1300000a7b1400000a7b1500000a7b1600000a7b1700000a7b1800000a7b1900000a7b1a00000a7b1b00000a7e010000047f010000048001000004d002000002d001000001d002000001d003000001d005000001d006000001d007000001d00100001bd00200001bd00300001bd00400001bd00500001bd00600001b7401000001fe160100001b6f1c00000a2a",
+      "rva": 8428
+    }
+  ],
+  "sites": [
+    {
+      "il_offset": 0,
+      "opcode": "call",
+      "target_token": 167772161
+    },
+    {
+      "il_offset": 5,
+      "opcode": "ldftn",
+      "target_token": 167772161
+    },
+    {
+      "il_offset": 11,
+      "opcode": "ldtoken",
+      "target_token": 167772161
+    },
+    {
+      "il_offset": 16,
+      "opcode": "jmp",
+      "target_token": 167772161
+    },
+    {
+      "il_offset": 21,
+      "opcode": "call",
+      "target_token": 167772162
+    },
+    {
+      "il_offset": 26,
+      "opcode": "call",
+      "target_token": 167772164
+    },
+    {
+      "il_offset": 31,
+      "opcode": "call",
+      "target_token": 167772165
+    },
+    {
+      "il_offset": 36,
+      "opcode": "call",
+      "target_token": 167772166
+    },
+    {
+      "il_offset": 41,
+      "opcode": "call",
+      "target_token": 167772167
+    },
+    {
+      "il_offset": 46,
+      "opcode": "call",
+      "target_token": 167772168
+    },
+    {
+      "il_offset": 51,
+      "opcode": "call",
+      "target_token": 167772169
+    },
+    {
+      "il_offset": 56,
+      "opcode": "call",
+      "target_token": 167772170
+    },
+    {
+      "il_offset": 61,
+      "opcode": "newobj",
+      "target_token": 167772163
+    },
+    {
+      "il_offset": 66,
+      "opcode": "call",
+      "target_token": 721420289
+    },
+    {
+      "il_offset": 71,
+      "opcode": "call",
+      "target_token": 721420290
+    },
+    {
+      "il_offset": 76,
+      "opcode": "call",
+      "target_token": 721420291
+    },
+    {
+      "il_offset": 81,
+      "opcode": "call",
+      "target_token": 167772172
+    },
+    {
+      "il_offset": 86,
+      "opcode": "call",
+      "target_token": 167772173
+    },
+    {
+      "il_offset": 91,
+      "opcode": "call",
+      "target_token": 167772174
+    },
+    {
+      "il_offset": 96,
+      "opcode": "call",
+      "target_token": 167772175
+    },
+    {
+      "il_offset": 101,
+      "opcode": "call",
+      "target_token": 167772176
+    },
+    {
+      "il_offset": 106,
+      "opcode": "call",
+      "target_token": 167772177
+    }
+  ],
+  "field_type_sites": [
+    {
+      "method_token": 100663308,
+      "il_offset": 0,
+      "opcode": "ldfld",
+      "target_token": 167772178
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 5,
+      "opcode": "ldflda",
+      "target_token": 167772178
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 10,
+      "opcode": "stfld",
+      "target_token": 167772178
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 15,
+      "opcode": "ldtoken",
+      "target_token": 167772178
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 20,
+      "opcode": "ldfld",
+      "target_token": 167772179
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 25,
+      "opcode": "ldfld",
+      "target_token": 167772180
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 30,
+      "opcode": "ldfld",
+      "target_token": 167772181
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 35,
+      "opcode": "ldfld",
+      "target_token": 167772182
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 40,
+      "opcode": "ldfld",
+      "target_token": 167772183
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 45,
+      "opcode": "ldfld",
+      "target_token": 167772184
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 50,
+      "opcode": "ldfld",
+      "target_token": 167772185
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 55,
+      "opcode": "ldfld",
+      "target_token": 167772186
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 60,
+      "opcode": "ldfld",
+      "target_token": 167772187
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 65,
+      "opcode": "ldsfld",
+      "target_token": 67108865
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 70,
+      "opcode": "ldsflda",
+      "target_token": 67108865
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 75,
+      "opcode": "stsfld",
+      "target_token": 67108865
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 80,
+      "opcode": "ldtoken",
+      "target_token": 33554434
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 85,
+      "opcode": "ldtoken",
+      "target_token": 16777217
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 90,
+      "opcode": "ldtoken",
+      "target_token": 16777218
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 95,
+      "opcode": "ldtoken",
+      "target_token": 16777219
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 100,
+      "opcode": "ldtoken",
+      "target_token": 16777221
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 105,
+      "opcode": "ldtoken",
+      "target_token": 16777222
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 110,
+      "opcode": "ldtoken",
+      "target_token": 16777223
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 115,
+      "opcode": "ldtoken",
+      "target_token": 452984833
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 120,
+      "opcode": "ldtoken",
+      "target_token": 452984834
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 125,
+      "opcode": "ldtoken",
+      "target_token": 452984835
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 130,
+      "opcode": "ldtoken",
+      "target_token": 452984836
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 135,
+      "opcode": "ldtoken",
+      "target_token": 452984837
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 140,
+      "opcode": "ldtoken",
+      "target_token": 452984838
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 145,
+      "opcode": "castclass",
+      "target_token": 16777217
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 150,
+      "opcode": "constrained.",
+      "target_token": 452984833
+    },
+    {
+      "method_token": 100663308,
+      "il_offset": 156,
+      "opcode": "callvirt",
+      "target_token": 167772188
+    }
+  ],
+  "stream_offsets": {
+    "#~": 1032,
+    "#Strings": 1704,
+    "#Blob": 2120,
+    "#GUID": 3784,
+    "#US": 3800
+  }
+}

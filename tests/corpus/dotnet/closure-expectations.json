@@ -1,0 +1,41 @@
+{
+  "provenance": {
+    "package": "Newtonsoft.Json",
+    "version": "13.0.3",
+    "source_url": "https://api.nuget.org/v3-flatcontainer/newtonsoft.json/13.0.3/newtonsoft.json.13.0.3.nupkg",
+    "package_sha256": "872fc189e638ab1056555b03aaa38f68bcb54286e221aa646eb1129babf63c77",
+    "archive_entry": "lib/net6.0/Newtonsoft.Json.dll",
+    "dll_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+    "dll_bytes": 712464,
+    "license": "MIT",
+    "license_url": "https://github.com/JamesNK/Newtonsoft.Json/blob/13.0.3/LICENSE.md",
+    "analysis_only": true,
+    "input_executed": false
+  },
+  "oracle": "System.Reflection.Metadata PEReader + trusted runtime OpCodes operand descriptors; target never loaded; independent original #US bytes cross-checked with PEReader loads",
+  "metadata_oracle_sha256": "aa3d167cdb12309c1eb09ebf21d19f0fe0f9790c504d885e365f86dcea87984b",
+  "inspector_sha256": "0ff3f0decc394ed8c1ffed26426e72539b62fd41bf5b34c5575eff02ceeecc51",
+  "target": {
+    "owner": "Newtonsoft.Json.JsonReader",
+    "method": "SetToken",
+    "token": 100663569,
+    "site_count": 53,
+    "site_sha256": "818d14ab490141271e1de51121a374a549e1dd267824532deea99079d8a01b88",
+    "no_same_named_member_refs": true,
+    "no_method_specs_for_definition": true
+  },
+  "caller": {
+    "method_token": 100663547,
+    "name": "ReadAsInt32",
+    "declaring_type_token": 33554465,
+    "declaring_type": "Newtonsoft.Json.JsonReader"
+  },
+  "string": {
+    "name": "reader-error",
+    "contains": "Error reading integer. Unexpected token: {0}.",
+    "string": null,
+    "records": 1,
+    "canonical_sha256": "69e3574e2b318878bf44d5e94fbbfe978273eed9c9fe558bb3e9ec6973f6dc9f",
+    "uses": 1
+  }
+}

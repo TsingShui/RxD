@@ -1,0 +1,37 @@
+<Project>
+  <PropertyGroup>
+    <NativeArtifactsRoot>$(MSBuildThisFileDirectory)../../target/android-ilspy/</NativeArtifactsRoot>
+    <BaseIntermediateOutputPath>$(NativeArtifactsRoot)obj/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(NativeArtifactsRoot)bin/</BaseOutputPath>
+    <RestorePackagesPath>$(NativeArtifactsRoot)packages/</RestorePackagesPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>rxd_dotnet_native</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <_UseNativeLibPrefix>true</_UseNativeLibPrefix>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+    <PublishDir>$(NativeArtifactsRoot)publish/</PublishDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../crates/rxd-dotnet/native/Exports.cs" Link="Exports.cs" />
+    <PackageReference Include="ICSharpCode.Decompiler" Version="[11.1.0.9782]" />
+    <LinkerArg Include="$(NativeArtifactsRoot)private_loader.o" />
+    <LinkerArg Include="-Wl,--wrap=dlopen" />
+    <LinkerArg Include="-Wl,-z,max-page-size=16384" />
+    <LinkerArg Include="-Wl,-z,common-page-size=16384" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

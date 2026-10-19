@@ -1,0 +1,53 @@
+{
+  "provenance": {
+    "package": "Newtonsoft.Json",
+    "version": "13.0.3",
+    "source_url": "https://api.nuget.org/v3-flatcontainer/newtonsoft.json/13.0.3/newtonsoft.json.13.0.3.nupkg",
+    "package_sha256": "872fc189e638ab1056555b03aaa38f68bcb54286e221aa646eb1129babf63c77",
+    "archive_entry": "lib/net6.0/Newtonsoft.Json.dll",
+    "dll_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+    "dll_bytes": 712464,
+    "license": "MIT",
+    "license_url": "https://github.com/JamesNK/Newtonsoft.Json/blob/13.0.3/LICENSE.md",
+    "analysis_only": true,
+    "input_executed": false
+  },
+  "oracle": "System.Reflection.Metadata PEReader + trusted runtime OpCodes operand descriptors; target never loaded; #US independently decoded from original PE bytes",
+  "metadata_oracle_sha256": "a4ba15d03f87a2020efe8676da23f881e83a39c2f82a667dbfb53c1a66929b3e",
+  "heap_entries": 784,
+  "load_sites": 1444,
+  "workloads": [
+    {
+      "name": "unfiltered",
+      "contains": null,
+      "string": null,
+      "records": 1291,
+      "canonical_sha256": "358466caa63ba75707ad6bd745d461fd7f9070934e4407514aea125e071d8993",
+      "uses": 1444
+    },
+    {
+      "name": "unexpected",
+      "contains": "Unexpected",
+      "string": null,
+      "records": 131,
+      "canonical_sha256": "6263f9fff9e112de57a80936101ea8ab2217fa83f0196b3aab724a1c19fd5f3f",
+      "uses": 148
+    },
+    {
+      "name": "url",
+      "contains": "http://james.newtonking.com/projects/json",
+      "string": null,
+      "records": 7,
+      "canonical_sha256": "4008d6f728b5dd82da1c7ecc778b1daf69bee4e73c950fbe9785048c07666312",
+      "uses": 15
+    },
+    {
+      "name": "direct-state",
+      "contains": null,
+      "string": "Unexpected state: {0}.",
+      "records": 10,
+      "canonical_sha256": "d2ec855e4ed6ca8d4c8eeea381707383c189052f08de415572a8e90d2753fb6a",
+      "uses": 10
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "corpus_version": 1,
+  "oracle": "WABT wasm-decompile official test suite (test/decompile/*.txt)",
+  "upstream": "https://github.com/WebAssembly/wabt",
+  "upstream_version": "1.0.36",
+  "license": "Apache-2.0 (see ../licenses/wabt-1.0.36-Apache-2.0.txt)",
+  "generator": "generate-wasm.py",
+  "wat2wasm_version": "1.0.42",
+  "note": "Expected text is wasm-decompile output; rxd output is compared structurally, not byte-for-byte. Known-divergence features (struct detection, offset-after-index folding, full multi-value stack flushing) are documented in the test module.",
+  "cases": [
+    {
+      "name": "basic",
+      "source_txt": "basic.txt",
+      "source_txt_sha256": "ad34786c835bee6747c141050507d08b7a2c6e67f9e57f4a27f40a48a7b92397",
+      "wasm": "basic.wasm",
+      "wasm_sha256": "7d19be57e33699e2dc65483f5a7bd26ac627056ad6f83254d89f09b842ef2fe2",
+      "expected_functions": {
+        "f": "export function f(a:int, b:int):int {\n  var c:long = 8L;\n  var d:float = 6.0f;\n  var e:double = 7.0;\n  if (e < 10.0) { d_HelloWorld[5@4]:int = d_HelloWorld[5]:int@1 + 5 }\n  f(a + g_b, 9);\n  loop L_b {\n    if (if (0) { 1 } else { 2 }) goto B_c;\n    continue L_b;\n    label B_c:\n    if (1) continue L_b;\n  }\n  select_if(1, 2, 1 == 1);\n  br_table[B_f, B_g, B_h, B_i, ..B_e](a);\n  unreachable;\n  label B_i:\n  return 100;\n  label B_h:\n  return 101;\n  label B_g:\n  return 102;\n  label B_f:\n  return 103;\n  label B_e:\n  104;\n  if (1) goto B_j;\n  label B_j:\n  a = {\n        2;\n        if (0) goto B_k;\n        3;\n        label B_k:\n      }\n  nop;\n  is_null(null);\n  call_indirect(0);\n  if (0) {}\n  return 0;\n}",
+        "f_c": "function f_c() {\n  var a:int;\n  loop L_a {\n    a = 1;\n    if (a) continue L_a;\n  }\n  a;\n}",
+        "signature": "function signature() {\n}",
+        "signature_1": "function signature_1() {\n}",
+        "f_f": "function f_f() {\n}"
+      }
+    },
+    {
+      "name": "code-metadata",
+      "source_txt": "code-metadata.txt",
+      "source_txt_sha256": "142d9d8843bbe747c77a91caae347957e35d7a0c16d61e5b2312d6514195e900",
+      "wasm": "code-metadata.wasm",
+      "wasm_sha256": "1dd5912205e10de09fe6d5aafdae05555c390b9eea0f9df8ae68d55b47b084c8",
+      "expected_functions": {
+        "f_a": "function f_a(a:int):int {\n  let t0 = a;\n  // @metadata.code.test \"aa\\01a\";\n  return 1234 + t0;\n}"
+      }
+    },
+    {
+      "name": "loadstore",
+      "source_txt": "loadstore.txt",
+      "source_txt_sha256": "690294a3d18b8fed366cc8e7c53214843d5d049b41ba9432c040a3b67c9853d4",
+      "wasm": "loadstore.wasm",
+      "wasm_sha256": "9c902e39bea94ed0ac8ff3c2c96901ffb550280b4ec782226536ac1a2f1d2010",
+      "expected_functions": {
+        "f": "export function f(a:{ a:float, b:float }, b:{ a:ushort, b:long }) {\n  var c:{ a:float, b:float }\n  var d:{ a:ushort, b:long }\n  var e:int;\n  var f:int;\n  var g:int;\n  var h:float_ptr@1;\n  a.a + c.a + a.b + c.b;\n  b.a + d.a + b.b + d.b;\n  e[0]:int;\n  e[0]:float;\n  f[0]:int;\n  f[0]:short;\n  g[0]:int;\n  g[0]:int@1;\n  h[1];\n  a[b]:int = a[b]:int;\n  a[b + 1]:int = a[b + 1]:int;\n  (a + (b << 3))[1]:int = a[b + 1]:int;\n  d_HelloWorld[7]:ubyte;\n}"
+      }
+    },
+    {
+      "name": "passive-data",
+      "source_txt": "passive-data.txt",
+      "source_txt_sha256": "d34d30f856a4bda7356e50c720301d51e7928dd215357c782e5b8feb83ce0e6a",
+      "wasm": "passive-data.wasm",
+      "wasm_sha256": "079ba5d0a7cc8a9ccd6073850706963db75fe62804ee868f7b06dbb63a3726b1",
+      "expected_functions": {}
+    },
+    {
+      "name": "precedence",
+      "source_txt": "precedence.txt",
+      "source_txt_sha256": "a02f34dd3a58f8dcd343a609907288d97a0d4edb416bbe3e8f2890f6de65d857",
+      "wasm": "precedence.wasm",
+      "wasm_sha256": "2925e3750f1b512fd1588228aab0551801ea2aee4b4ff1d8ba9a7ff1e1c41e22",
+      "expected_functions": {
+        "precedence": "export function precedence() {\n  0[0]:int * 1 + 2 << 3 == 4 & 5;\n  (((((6 & 5) == 4) << 3) + 2) * 1)[0]:int;\n}"
+      }
+    },
+    {
+      "name": "stack-flush",
+      "source_txt": "stack-flush.txt",
+      "source_txt_sha256": "a08b07b7bec731e10b1b5a5a804813181dca94744510b25472035ffd6a82b754",
+      "wasm": "stack-flush.wasm",
+      "wasm_sha256": "e6763c647137a6d2f3d619a62ab8ff2e1e236b99875cd8d478076e0bd8b04516",
+      "expected_functions": {
+        "f": "export function f(a:int, b:int):int {\n  let t0 = s();\n  s();\n  let t1, t2 = s(), s();\n  s();\n  t1 + t2;\n  t0;\n  15;\n  13;\n  11 + 12;\n  14;\n  let t3, t4 = mv();\n  let t5, t6 = mv();\n  t6;\n  t4 + t5;\n  t3;\n  let t7, t8 = mv();\n  return t7 == t8;\n}",
+        "s": "export function s():int {\n  return 1\n}",
+        "mv": "export function mv():(int, int) {\n  return 1, 2\n}"
+      }
+    }
+  ]
+}

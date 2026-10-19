@@ -1,0 +1,39 @@
+This directory contains first-party NativeAOT C ABI marshalling glue for rxd.
+The engine is downloaded from NuGet and built, not vendored:
+https://www.nuget.org/packages/ICSharpCode.Decompiler/11.1.0.9782
+Package: ICSharpCode.Decompiler 11.1.0.9782
+Package SHA-256: 1f76df4d35193ba4eeb50ffcd84eae381a2c48c67f95c1104dc406759448a811
+Upstream: https://github.com/icsharpcode/ILSpy
+Commit: a6909b2e1062d2404a52711926fa74030bd96119
+License: MIT
+
+Upstream copyright (NuGet package metadata):
+Copyright 2011-2026 AlphaSierraPapa
+Authors: ILSpy Contributors
+
+MIT License:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+The pinned package depends on System.Collections.Immutable and
+System.Reflection.Metadata (MIT); the NativeAOT build also incorporates the
+.NET runtime (MIT). Distribution must retain their applicable license notices:
+https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT
+All downloaded packages, native binaries and build intermediates remain under
+the ignored target/dotnet-native/ directory, not in this source tree.

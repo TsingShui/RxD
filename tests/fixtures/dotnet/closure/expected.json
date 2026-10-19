@@ -1,0 +1,406 @@
+{
+  "sha256": "c5f4b1013e289e7812fab35aabe4e117c475b922a26a7d507e1007c3550f5a91",
+  "bytes": 5632,
+  "mvid": "2b32b179-43b6-4ab3-b74b-04b35e7b72b1",
+  "pe_timestamp": "0xcce05761",
+  "methods": {
+    "0x06000001": {
+      "name": "get_Value",
+      "declaring_type": "Rxd.Closure.IContract`1",
+      "rva": 0,
+      "il_hex": null,
+      "code_size": 0,
+      "handlers": []
+    },
+    "0x06000002": {
+      "name": "Accept",
+      "declaring_type": "Rxd.Closure.IContract`1",
+      "rva": 0,
+      "il_hex": null,
+      "code_size": 0,
+      "handlers": []
+    },
+    "0x06000003": {
+      "name": "Abstract",
+      "declaring_type": "Rxd.Closure.Base",
+      "rva": 0,
+      "il_hex": null,
+      "code_size": 0,
+      "handlers": []
+    },
+    "0x06000004": {
+      "name": "Inherited",
+      "declaring_type": "Rxd.Closure.Base",
+      "rva": 8272,
+      "il_hex": "1d2a",
+      "code_size": 2,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000005": {
+      "name": "Native",
+      "declaring_type": "Rxd.Closure.Base",
+      "rva": 0,
+      "il_hex": null,
+      "code_size": 0,
+      "handlers": []
+    },
+    "0x06000006": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Closure.Base",
+      "rva": 8275,
+      "il_hex": "02281000000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000007": {
+      "name": "get_Value",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8283,
+      "il_hex": "027b1100000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000008": {
+      "name": "set_Value",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8291,
+      "il_hex": "02037d1100000a2a",
+      "code_size": 8,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000009": {
+      "name": "add_Changed",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8300,
+      "il_hex": "027b1200000a0a060b0703281300000a74100000010c027c1200000a0807280100002b0a060733df2a",
+      "code_size": 41,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 285212673,
+      "handlers": []
+    },
+    "0x0600000a": {
+      "name": "remove_Changed",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8356,
+      "il_hex": "027b1200000a0a060b0703281500000a74100000010c027c1200000a0807280100002b0a060733df2a",
+      "code_size": 41,
+      "max_stack": 3,
+      "init_locals": true,
+      "local_signature_token": 285212673,
+      "handlers": []
+    },
+    "0x0600000b": {
+      "name": "Accept",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8409,
+      "il_hex": "0203281600000a027b1200000a252d02262a6f1700000a2a",
+      "code_size": 24,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000c": {
+      "name": "Abstract",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8434,
+      "il_hex": "1f2a2a",
+      "code_size": 3,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x0600000d": {
+      "name": "NoBody",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 0,
+      "il_hex": null,
+      "code_size": 0,
+      "handlers": []
+    },
+    "0x0600000e": {
+      "name": "Guard",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8440,
+      "il_hex": "1f0a035b0ade0526150ade00062a",
+      "code_size": 14,
+      "max_stack": 2,
+      "init_locals": true,
+      "local_signature_token": 285212674,
+      "handlers": [
+        {
+          "kind": "catch",
+          "try_offset": 0,
+          "try_length": 7,
+          "handler_offset": 7,
+          "handler_length": 5,
+          "class_token": 16777234,
+          "filter_offset": null
+        }
+      ]
+    },
+    "0x0600000f": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Closure.Root`1",
+      "rva": 8484,
+      "il_hex": "02280200002b7d1100000a0228060000062a",
+      "code_size": 18,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000010": {
+      "name": "Separate",
+      "declaring_type": "Rxd.Closure.Sibling",
+      "rva": 8503,
+      "il_hex": "1f632a",
+      "code_size": 3,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000011": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Closure.Sibling",
+      "rva": 8507,
+      "il_hex": "02281000000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000012": {
+      "name": "Read",
+      "declaring_type": "Rxd.Closure.Value",
+      "rva": 8515,
+      "il_hex": "027b030000042a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000013": {
+      "name": "Get",
+      "declaring_type": "Rxd.Closure.Root`1+Nested",
+      "rva": 8523,
+      "il_hex": "027b1900000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000014": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Closure.Root`1+Nested",
+      "rva": 8531,
+      "il_hex": "02281000000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000015": {
+      "name": "Text",
+      "declaring_type": "Rxd.Closure.Root`1+Nested+Deep",
+      "rva": 8539,
+      "il_hex": "72010000702a",
+      "code_size": 6,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    },
+    "0x06000016": {
+      "name": ".ctor",
+      "declaring_type": "Rxd.Closure.Root`1+Nested+Deep",
+      "rva": 8546,
+      "il_hex": "02281000000a2a",
+      "code_size": 7,
+      "max_stack": 8,
+      "init_locals": false,
+      "local_signature_token": 0,
+      "handlers": []
+    }
+  },
+  "types": {
+    "0x02000001": {
+      "name": "<Module>",
+      "parent_token": null,
+      "extends_token": null,
+      "flags": 0,
+      "interfaces": [],
+      "generic_parameters": []
+    },
+    "0x02000002": {
+      "name": "Rxd.Closure.IContract`1",
+      "parent_token": null,
+      "extends_token": null,
+      "flags": 1048737,
+      "interfaces": [],
+      "generic_parameters": [
+        {
+          "name": "T",
+          "number": 0
+        }
+      ]
+    },
+    "0x02000003": {
+      "name": "Rxd.Closure.Base",
+      "parent_token": null,
+      "extends_token": 16777231,
+      "flags": 1048705,
+      "interfaces": [],
+      "generic_parameters": []
+    },
+    "0x02000004": {
+      "name": "Rxd.Closure.Root`1",
+      "parent_token": null,
+      "extends_token": 33554435,
+      "flags": 1048705,
+      "interfaces": [
+        452984833
+      ],
+      "generic_parameters": [
+        {
+          "name": "T",
+          "number": 0
+        }
+      ]
+    },
+    "0x02000005": {
+      "name": "Rxd.Closure.Sibling",
+      "parent_token": null,
+      "extends_token": 16777231,
+      "flags": 1048577,
+      "interfaces": [],
+      "generic_parameters": []
+    },
+    "0x02000006": {
+      "name": "Rxd.Closure.Value",
+      "parent_token": null,
+      "extends_token": 16777235,
+      "flags": 1048841,
+      "interfaces": [],
+      "generic_parameters": []
+    },
+    "0x02000007": {
+      "name": "Rxd.Closure.Choice",
+      "parent_token": null,
+      "extends_token": 16777236,
+      "flags": 257,
+      "interfaces": [],
+      "generic_parameters": []
+    },
+    "0x02000008": {
+      "name": "Rxd.Closure.Root`1+Nested",
+      "parent_token": 33554436,
+      "extends_token": 16777231,
+      "flags": 1048578,
+      "interfaces": [],
+      "generic_parameters": [
+        {
+          "name": "T",
+          "number": 0
+        }
+      ]
+    },
+    "0x02000009": {
+      "name": "Rxd.Closure.Root`1+Nested+Deep",
+      "parent_token": 33554440,
+      "extends_token": 16777231,
+      "flags": 1048578,
+      "interfaces": [],
+      "generic_parameters": [
+        {
+          "name": "T",
+          "number": 0
+        }
+      ]
+    }
+  },
+  "properties": {
+    "0x17000001": {
+      "name": "Value",
+      "owner_token": 33554434,
+      "signature_hex": "28001300",
+      "accessors": [
+        {
+          "method_token": 100663297,
+          "semantics": 2
+        }
+      ]
+    },
+    "0x17000002": {
+      "name": "Value",
+      "owner_token": 33554436,
+      "signature_hex": "28001300",
+      "accessors": [
+        {
+          "method_token": 100663303,
+          "semantics": 2
+        },
+        {
+          "method_token": 100663304,
+          "semantics": 1
+        }
+      ]
+    }
+  },
+  "events": {
+    "0x14000001": {
+      "name": "Changed",
+      "owner_token": 33554436,
+      "event_type_token": 16777232,
+      "accessors": [
+        {
+          "method_token": 100663305,
+          "semantics": 8
+        },
+        {
+          "method_token": 100663306,
+          "semantics": 16
+        }
+      ]
+    }
+  },
+  "table_file_offsets": {
+    "nested_class": 2246,
+    "method_def": 1420,
+    "method_semantics": 2138
+  },
+  "provenance": {
+    "sdk": "10.0.401",
+    "compiler": "5.9.0-1.26423.113 (e34a38d2ae1fc26406a317517196e55c68ff83ab)",
+    "compiler_sha256": "99148255a90b5a6a0a37b7be3a51e8753bcdbb52f3a7785eb8bb227e99e34414",
+    "framework_packages": [
+      {
+        "name": "Microsoft.NETCore.App.Ref",
+        "version": "10.0.12"
+      }
+    ],
+    "expectation_reader_runtime": "Microsoft.NETCore.App 10.0.12",
+    "package_references": [],
+    "source_sha256": "9e13c8e60f47ebb6e2751784f7c0c00485987cef3985b0d5e02b04e016354b0d",
+    "expectation_reader": "System.Reflection.Metadata / System.Reflection.PortableExecutable (SDK framework)"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "oracle": "System.Reflection.Metadata PEReader + trusted runtime OpCodes descriptors; static immutable PE, target never loaded",
+  "inspector_sha256": "58c39b6f305deb156b136a377e9fa2b39cb0dc018ea9399b0cfa560dd16ddcca",
+  "source": "Pinned Newtonsoft.Json 13.0.3 net6.0 MIT published NuGet entry; Microsoft.NETCore.App 10.0.12 osx-arm64 runtime; pinned dotscope 3028b1a WindowsBase/CoreLib upstream test artifacts (not broad production coverage)",
+  "cases": [
+    {
+      "name": "newtonsoft-json-13.0.3",
+      "token": 100664842,
+      "owner": "Newtonsoft.Json.Utilities.ValidationUtils",
+      "method": "ArgumentNotNull",
+      "input_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+      "input_bytes": 712464,
+      "site_count": 153,
+      "site_sha256": "bc19b5e8c12bce0d844c1d6a0784484fed1833d12cc98d7db3cb65b6e0073cb8",
+      "no_same_named_member_refs": true,
+      "no_method_specs_for_definition": true,
+      "acceptance_role": "ordinary"
+    },
+    {
+      "name": "System.Linq",
+      "token": 100664661,
+      "owner": "System.Linq.ThrowHelper",
+      "method": "ThrowArgumentNullException",
+      "input_sha256": "8a868d709f942f2d8de60bac937027ed85b67b0596776f83d03088695ef86204",
+      "input_bytes": 794448,
+      "site_count": 234,
+      "site_sha256": "4bc8eb021fa1c40e249a06e005b5ef402ddf4cd331c092920bcedd733d1611c8",
+      "no_same_named_member_refs": true,
+      "no_method_specs_for_definition": true,
+      "acceptance_role": "ordinary"
+    },
+    {
+      "name": "System.Text.Json",
+      "token": 100663309,
+      "owner": "System.SR",
+      "method": "GetResourceString",
+      "input_sha256": "5e8419f146b0fd12343fdd2d203fa3362b637b62b69a5a6d0acb6e065797382b",
+      "input_bytes": 2101544,
+      "site_count": 215,
+      "site_sha256": "0e4a39961d2e0a82fd0ab6d5bd0240a728ae37a48ae44d13ea1d3c657b635685",
+      "no_same_named_member_refs": true,
+      "no_method_specs_for_definition": true,
+      "acceptance_role": "ordinary"
+    },
+    {
+      "name": "WindowsBase",
+      "token": 100665327,
+      "owner": "MS.Internal.WindowsBase.SR",
+      "method": "GetResourceString",
+      "input_sha256": "d6712d9472c4e92cfa847d0ba64671deb41d92357d41320d9d6dd88bec960e6e",
+      "input_bytes": 2255024,
+      "site_count": 563,
+      "site_sha256": "57a14b267dd945de1a5beb9675867d3b902fc088dd1e76e9f7a21808d3ad920b",
+      "no_same_named_member_refs": true,
+      "no_method_specs_for_definition": true,
+      "acceptance_role": "large_default_diagnostic"
+    },
+    {
+      "name": "CoreLib",
+      "token": 100665733,
+      "owner": "System.Type",
+      "method": "GetTypeFromHandle",
+      "input_sha256": "a6acd5d87523255556bc17d964779aae71da1809623710aa4c6d091061b3246a",
+      "input_bytes": 15767040,
+      "site_count": 5299,
+      "site_sha256": "0e88f02a0d99fe784d92f6f858ace57fe312d1461d463c3dd8db9f7b2bf373f4",
+      "no_same_named_member_refs": true,
+      "no_method_specs_for_definition": true,
+      "acceptance_role": "large_default_diagnostic"
+    }
+  ]
+}

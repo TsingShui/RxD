@@ -1,0 +1,33 @@
+<Project>
+  <!-- Set these before SDK props so restore, compilation and AOT stay ignored. -->
+  <PropertyGroup>
+    <NativeArtifactsRoot>$(MSBuildThisFileDirectory)../../../target/dotnet-native/</NativeArtifactsRoot>
+    <BaseIntermediateOutputPath>$(NativeArtifactsRoot)obj/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(NativeArtifactsRoot)bin/</BaseOutputPath>
+    <RestorePackagesPath>$(NativeArtifactsRoot)packages/</RestorePackagesPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>rxd_dotnet_native</AssemblyName>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <_UseNativeLibPrefix>true</_UseNativeLibPrefix>
+    <SharedLibraryInstallName Condition="$([MSBuild]::IsOSPlatform('OSX'))">@rpath/librxd_dotnet_native.dylib</SharedLibraryInstallName>
+    <PublishDir>$(NativeArtifactsRoot)$(RuntimeIdentifier)/</PublishDir>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ICSharpCode.Decompiler" Version="[11.1.0.9782]" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

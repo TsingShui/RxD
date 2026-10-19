@@ -1,0 +1,13 @@
+radguard
+Copyright 2026 The radguard Authors
+
+Licensed under the Apache License, Version 2.0 (see the LICENSE file).
+
+RadGuard is an independent Rust implementation of the design and behavior of the
+DAD (Dalvik Analysis Decompiler) engine from Androguard
+(https://github.com/androguard/androguard, Copyright 2015-2026 The Androguard
+Project, Apache License 2.0). It does not invoke Androguard or Python at runtime.
+The decompiled output is reconstructed pseudocode, not original Java source.
+
+This copy is rxd's maintained fork; see FORK.md for the changes relative to
+upstream (https://github.com/MG1937/radguard).

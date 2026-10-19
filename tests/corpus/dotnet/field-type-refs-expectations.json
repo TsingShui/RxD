@@ -1,0 +1,98 @@
+{
+  "oracle": "System.Reflection.Metadata PEReader + trusted runtime OpCodes descriptors, static immutable PE; target never loaded",
+  "inspector_sha256": "505541986763d60f574fd21e4b6d4b7201362d28f377ef351139f26df673f8c9",
+  "source": "Pinned Newtonsoft.Json 13.0.3 net6.0 MIT NuGet entry and Microsoft.NETCore.App 10.0.12 osx-arm64 runtime",
+  "limitations": [
+    "Selected non-generic definition targets have independently proven no possible alias roots; raw and semantic complete sites must agree. Generic/alias expansion and scope discrimination are verified separately by independent assembler CLI E2E.",
+    "Warm cache and no CPU isolation; no whole-CoreLib or cold-cache claim."
+  ],
+  "cases": [
+    {
+      "name": "newtonsoft-json-13.0.3",
+      "workload_name": "newtonsoft-json-13.0.3_field",
+      "target_kind": "field",
+      "token": 67109068,
+      "owner": "Newtonsoft.Json.JsonTextReader",
+      "target": "_charPos",
+      "input_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+      "input_bytes": 712464,
+      "site_count": 414,
+      "site_sha256": "212eab74c90451eee8ad29aec9e55489c9d816addd8a5fc28e4b1826f8abf171",
+      "acceptance_role": "ordinary",
+      "no_same_named_member_refs": true
+    },
+    {
+      "name": "newtonsoft-json-13.0.3",
+      "workload_name": "newtonsoft-json-13.0.3_type",
+      "target_kind": "type",
+      "token": 33554474,
+      "owner": null,
+      "target": "Newtonsoft.Json.JsonToken",
+      "input_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+      "input_bytes": 712464,
+      "site_count": 63,
+      "site_sha256": "f18b72aa44b5908639e86dbe04b22885508bcc113a0dec4112d050129741ff4e",
+      "acceptance_role": "ordinary",
+      "no_same_named_type_refs": true,
+      "no_named_or_constructed_type_spec_roots": true
+    },
+    {
+      "name": "System.Linq",
+      "workload_name": "System.Linq_field",
+      "target_kind": "field",
+      "token": 67108865,
+      "owner": "System.SR",
+      "target": "s_usingResourceKeys",
+      "input_sha256": "8a868d709f942f2d8de60bac937027ed85b67b0596776f83d03088695ef86204",
+      "input_bytes": 794448,
+      "site_count": 2,
+      "site_sha256": "88cdb25cbefb99a17997d6530f82dd0f600f9f75c69d1e42559882025993215b",
+      "acceptance_role": "ordinary",
+      "no_same_named_member_refs": true
+    },
+    {
+      "name": "System.Linq",
+      "workload_name": "System.Linq_type",
+      "target_kind": "type",
+      "token": 33554434,
+      "owner": null,
+      "target": "FxResources.System.Linq.SR",
+      "input_sha256": "8a868d709f942f2d8de60bac937027ed85b67b0596776f83d03088695ef86204",
+      "input_bytes": 794448,
+      "site_count": 1,
+      "site_sha256": "8054bc0efca216da635c456bf1dc39266f4681006950728ebc6ce562f39ca85d",
+      "acceptance_role": "ordinary",
+      "no_same_named_type_refs": true,
+      "no_named_or_constructed_type_spec_roots": true
+    },
+    {
+      "name": "System.Text.Json",
+      "workload_name": "System.Text.Json_field",
+      "target_kind": "field",
+      "token": 67109241,
+      "owner": "System.Text.Json.ReadStack",
+      "target": "Current",
+      "input_sha256": "5e8419f146b0fd12343fdd2d203fa3362b637b62b69a5a6d0acb6e065797382b",
+      "input_bytes": 2101544,
+      "site_count": 434,
+      "site_sha256": "75ed2ebcfecbb6e873a7e4e57aad050e49fb0b3833d30435e401f1213cf38d66",
+      "acceptance_role": "ordinary",
+      "no_same_named_member_refs": true
+    },
+    {
+      "name": "System.Text.Json",
+      "workload_name": "System.Text.Json_type",
+      "target_kind": "type",
+      "token": 33554476,
+      "owner": null,
+      "target": "System.Text.Json.JsonElement",
+      "input_sha256": "5e8419f146b0fd12343fdd2d203fa3362b637b62b69a5a6d0acb6e065797382b",
+      "input_bytes": 2101544,
+      "site_count": 39,
+      "site_sha256": "408c6f74d7feac85863da4c6d77c5925b71143fe339ba40a476d70ca1fde2d9d",
+      "acceptance_role": "ordinary",
+      "no_same_named_type_refs": true,
+      "no_named_or_constructed_type_spec_roots": true
+    }
+  ]
+}

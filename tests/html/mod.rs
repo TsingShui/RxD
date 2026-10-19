@@ -1,0 +1,855 @@
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Output},
+};
+
+fn run(path: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["html", "list"])
+        .arg(path)
+        .args(args)
+        .output()
+        .unwrap()
+}
+fn extract(path: &Path, id: &str, destination: &Path, extra: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["html", "extract"])
+        .arg(path)
+        .args(["--id", id, "-o"])
+        .arg(destination)
+        .args(extra)
+        .output()
+        .unwrap()
+}
+fn receipt(output: &Output) -> Value {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        output.stdout.iter().filter(|&&byte| byte == b'\n').count(),
+        1
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+fn rows(output: &Output) -> Vec<Value> {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    output
+        .stdout
+        .split(|b| *b == b'\n')
+        .filter(|b| !b.is_empty())
+        .map(|b| serde_json::from_slice(b).unwrap())
+        .collect()
+}
+fn fails(output: Output, code: &str) {
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains(code));
+}
+
+#[test]
+fn html_list_filters_exact_kinds_tags_and_decoded_duplicate_attributes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("filters.html");
+    fs::write(&path, b"<DIV HREF='/a&amp;b' href='X=Y>Z' disabled><span>inside</span></DIV><div href='/a&b'>outside</div>").unwrap();
+    let all = rows(&run(&path, &[]));
+    let selected = rows(&run(
+        &path,
+        &["--kind", "element", "--tag", "DiV", "--attr", "HrEf=X=Y>Z"],
+    ));
+    assert_eq!(selected.len(), 3);
+    assert_eq!(
+        selected[0]["query"],
+        json!({"kind":"element","tag":"div","attr":"href=X=Y>Z","depth":null,"within":null})
+    );
+    assert_eq!(selected[1], all[1]);
+    assert_eq!(selected[2]["records"], 1);
+    assert_eq!(selected[2]["detail"], all.last().unwrap()["detail"]);
+    let decoded = rows(&run(&path, &["--attr", "href=/a&b"]));
+    assert_eq!(decoded[1], all[1]);
+    assert_eq!(decoded[2], all[4]);
+    assert_eq!(decoded.last().unwrap()["records"], 2);
+    assert_eq!(
+        rows(&run(&path, &["--attr", "href=/a&amp;b"]))
+            .last()
+            .unwrap()["records"],
+        0
+    );
+    assert_eq!(
+        rows(&run(&path, &["--attr", "disabled"])).last().unwrap()["records"],
+        1
+    );
+    let none = rows(&run(&path, &["--kind", "text", "--tag", "div"]));
+    assert_eq!(none.len(), 2);
+    assert_eq!(none[1]["records"], 0);
+    assert_eq!(none[1]["detail"], all.last().unwrap()["detail"]);
+    let absent = rows(&run(&path, &["--attr", "href=x=y"]));
+    assert_eq!(absent.len(), 2);
+    assert_eq!(absent[1]["complete"], true);
+    let empty_value = rows(&run(&path, &["--attr", "disabled="]));
+    assert_eq!(empty_value[1], all[1]);
+    assert_eq!(empty_value[2]["records"], 1);
+}
+
+#[test]
+fn html_list_within_includes_root_and_uses_relative_depth_without_rewriting_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("nested.html");
+    fs::write(
+        &path,
+        b"<main><section><p>A</p><!--C--></section><aside>B</aside></main>",
+    )
+    .unwrap();
+    let all = rows(&run(&path, &[]));
+    let nodes = &all[1..all.len() - 1];
+    let section = nodes
+        .iter()
+        .find(|r| r["detail"]["tag"] == "section")
+        .unwrap();
+    let section_id = section["id"].as_str().unwrap();
+    let filtered = rows(&run(&path, &["--within", section_id, "--depth", "1"]));
+    assert_eq!(
+        filtered[0]["query"],
+        json!({"kind":null,"tag":null,"attr":null,"depth":1,"within":section_id})
+    );
+    let expected: Vec<_> = nodes
+        .iter()
+        .filter(|r| {
+            r["detail"]["tag"] == "section" || r["detail"]["tag"] == "p" || r["record"] == "comment"
+        })
+        .collect();
+    assert_eq!(
+        &filtered[1..filtered.len() - 1],
+        expected.iter().map(|r| (*r).clone()).collect::<Vec<_>>()
+    );
+    assert_eq!(filtered[1]["detail"]["depth"], 1);
+    assert_eq!(filtered[1]["parent_id"], nodes[0]["id"]);
+    let only_root = rows(&run(&path, &["--within", section_id, "--depth", "0"]));
+    assert_eq!(only_root.len(), 3);
+    assert_eq!(only_root[1], *section);
+    let text = rows(&run(&path, &["--kind", "text", "--within", section_id]));
+    assert_eq!(text.len(), 3);
+    assert_eq!(text[1]["detail"]["value"], "A");
+    assert_eq!(text[1]["detail"]["depth"], 3);
+    assert_eq!(
+        text[1]["parent_id"],
+        nodes.iter().find(|r| r["detail"]["tag"] == "p").unwrap()["id"]
+    );
+    assert_eq!(text[1]["context_id"], text[1]["parent_id"]);
+    assert_eq!(text[2]["detail"], all.last().unwrap()["detail"]);
+    let top = rows(&run(&path, &["--depth", "0"]));
+    assert_eq!(top[1], nodes[0]);
+    assert_eq!(top[2]["records"], 1);
+    fails(
+        run(
+            &path,
+            &["--within", section_id, "--depth", "0", "--max-depth", "1"],
+        ),
+        "RESOURCE_LIMIT",
+    );
+    fails(
+        run(
+            &path,
+            &["--within", section_id, "--depth", "0", "--max-records", "1"],
+        ),
+        "RESOURCE_LIMIT",
+    );
+}
+
+#[test]
+fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ids.html");
+    fs::write(&path, b"<div><p>hi</p></div>").unwrap();
+    let all = rows(&run(&path, &[]));
+    let id = all[1]["id"].as_str().unwrap();
+    let text_id = all.iter().find(|r| r["record"] == "text").unwrap()["id"]
+        .as_str()
+        .unwrap();
+    let different = dir.path().join("different.html");
+    fs::write(&different, b"<div><p>other</p></div>").unwrap();
+    let other_id = rows(&run(&different, &[]))[1]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let hash = all[0]["source_id"].as_str().unwrap();
+    for candidate in [
+        "not-an-id".to_owned(),
+        id.replace(":0:", ":00:"),
+        id.replace(":element:", ":unknown:"),
+        format!("rxd1:html:{hash}:element:0:2"),
+    ] {
+        fails(run(&path, &["--within", &candidate]), "INVALID_ID");
+    }
+    fails(run(&path, &["--within", &other_id]), "SOURCE_MISMATCH");
+    let non_element = run(&path, &["--within", text_id]);
+    assert_eq!(non_element.status.code(), Some(2));
+    assert!(non_element.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&non_element.stderr).contains("INVALID_QUERY"));
+    for args in [
+        vec!["--kind", "invalid"],
+        vec!["--attr", ""],
+        vec!["--attr", "bad name=x"],
+        vec!["--attr", "<bad"],
+    ] {
+        let output = run(&path, &args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+fn html_list_filtered_file_is_atomic_and_identical_to_stdout() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    let target = dir.path().join("catalog.jsonl");
+    fs::write(
+        &path,
+        b"<a href='/x&amp;y'>first</a><a href='/z'>second</a>",
+    )
+    .unwrap();
+    let args = ["--tag", "A", "--attr", "HREF=/x&y"];
+    let expected = run(&path, &args);
+    assert_eq!(rows(&expected).last().unwrap()["records"], 1);
+    fs::write(&target, b"old").unwrap();
+    let mut to_file = args.to_vec();
+    to_file.extend(["-o", target.to_str().unwrap()]);
+    assert!(rows_file_success(&run(&path, &to_file)));
+    assert_eq!(fs::read(&target).unwrap(), expected.stdout);
+    to_file.extend(["--max-output-bytes", "1"]);
+    fails(run(&path, &to_file), "RESOURCE_LIMIT");
+    assert_eq!(fs::read(&target).unwrap(), expected.stdout);
+    let mut node_limit = args.to_vec();
+    node_limit.extend(["-o", target.to_str().unwrap(), "--max-records", "1"]);
+    fails(run(&path, &node_limit), "RESOURCE_LIMIT");
+    assert_eq!(fs::read(&target).unwrap(), expected.stdout);
+}
+
+#[test]
+fn html_list_reports_source_bound_lexical_catalog_and_atomic_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    let source = include_bytes!("../fixtures/html/catalog.html");
+    fs::write(&path, source).unwrap();
+    let output = run(&path, &[]);
+    let entries = rows(&output);
+    let hash = format!("{:x}", Sha256::digest(source));
+    assert_eq!(entries.len(), 7);
+    assert_eq!(
+        entries[0],
+        json!({"record":"header","backend":"html","command":"list","source_id":hash,"input_bytes":source.len(),"schema_version":2,"query":{"kind":null,"tag":null,"attr":null,"depth":null,"within":null},"detail":{"path":path.to_str().unwrap(),"analysis":"lexical","parser":"html5gum","parser_version":"0.8.4","lexical_profile":"lexical_naive_v1"}})
+    );
+    let kinds: Vec<_> = entries[1..6]
+        .iter()
+        .map(|r| r["record"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["doctype", "comment", "element", "element", "text"]);
+    let spans: Vec<_> = entries[1..6]
+        .iter()
+        .map(|r| (r["start"].as_u64().unwrap(), r["end"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(spans, [(0, 15), (15, 23), (23, 81), (69, 73), (73, 75)]);
+    for (row, (start, end)) in entries[1..6].iter().zip(spans) {
+        assert_eq!(
+            row["id"],
+            format!(
+                "rxd1:html:{hash}:{}:{start}:{end}",
+                row["record"].as_str().unwrap()
+            )
+        );
+        assert_eq!(row["source_id"], hash);
+    }
+    assert_eq!(
+        entries[1]["detail"],
+        json!({"value":"<!DOCTYPE html>","depth":0})
+    );
+    assert_eq!(entries[2]["detail"], json!({"value":"<!--x-->","depth":0}));
+    assert_eq!(
+        entries[3]["detail"],
+        json!({"tag":"div","attrs":[{"name":"href","value":"/a&b"},{"name":"href","value":"x"},{"name":"disabled","value":""},{"name":"empty","value":""}],"self_closing":false,"void":false,"depth":0,"end_tag":"explicit","content_start":69,"content_end":75})
+    );
+    assert_eq!(entries[3]["context_id"], entries[3]["id"]);
+    assert_eq!(entries[4]["parent_id"], entries[3]["id"]);
+    assert_eq!(entries[4]["detail"]["end_tag"], "not_applicable");
+    assert_eq!(entries[5]["detail"], json!({"value":"Hi","depth":1}));
+    assert_eq!(entries[5]["context_id"], entries[3]["id"]);
+    assert_eq!(entries[6]["record"], "summary");
+    assert_eq!(
+        entries[6]["detail"],
+        json!({"nodes":5,"elements":2,"texts":1,"comments":1,"doctypes":1,"tokenizer_errors":0,"unmatched_end_tags":0,"missing_end_tags":0})
+    );
+    assert_eq!(entries[6]["records"], 5);
+    assert_eq!(output.stdout, run(&path, &[]).stdout);
+    let target = dir.path().join("catalog.jsonl");
+    let written = run(&path, &["-o", target.to_str().unwrap()]);
+    assert!(rows_file_success(&written));
+    assert_eq!(fs::read(target).unwrap(), output.stdout);
+}
+#[test]
+fn html_extract_fetches_every_catalog_kind_with_artifact_identity_and_container_origin() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("source.html");
+    let source = b"<!DOCTYPE html><!--note--><script data-long='&amp;12345678901234567890'>\r\nconst x = 1;\0\xe2\x80\xa8</script>";
+    fs::write(&path, source).unwrap();
+    let catalog = rows(&run(&path, &[]));
+    let destination = dir.path().join("arbitrary-name");
+    let hash = format!("{:x}", Sha256::digest(source));
+    for node in &catalog[1..catalog.len() - 1] {
+        let id = node["id"].as_str().unwrap();
+        let start = node["start"].as_u64().unwrap() as usize;
+        let end = node["end"].as_u64().unwrap() as usize;
+        let output = extract(&path, id, &destination, &[]);
+        let record = receipt(&output);
+        let selected = &source[start..end];
+        assert_eq!(fs::read(&destination).unwrap(), selected);
+        assert_eq!(
+            record,
+            json!({
+                "record":"file", "backend":"html", "command":"extract", "schema_version":2,
+                "id":null, "parent_id":null, "context_id":null,
+                "source_id":format!("{:x}", Sha256::digest(selected)), "start":0, "end":selected.len(),
+                "detail":{"complete":true,"path":destination.to_str().unwrap(),"file_bytes":selected.len(),
+                    "representation":"original","part":"outer",
+                    "origin":{"container":path.to_str().unwrap(),"format":"html","source_id":hash,
+                        "node_id":id,"kind":node["record"],"part":"outer","start":start,"end":end}}
+            })
+        );
+    }
+    let element = catalog
+        .iter()
+        .find(|row| row["detail"]["tag"] == "script")
+        .unwrap();
+    let start = element["detail"]["content_start"].as_u64().unwrap() as usize;
+    let end = element["detail"]["content_end"].as_u64().unwrap() as usize;
+    let record = receipt(&extract(
+        &path,
+        element["id"].as_str().unwrap(),
+        &destination,
+        &["--content"],
+    ));
+    assert_eq!(fs::read(destination).unwrap(), source[start..end]);
+    assert_eq!(record["detail"]["origin"]["start"], start);
+    assert_eq!(record["detail"]["origin"]["end"], end);
+    assert_eq!(record["detail"]["part"], "content");
+}
+
+#[test]
+fn html_extract_rejects_content_on_nonelements_and_empty_content_without_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    fs::write(&path, b"<!DOCTYPE html><!--c--><div></div><span>x</span>").unwrap();
+    let catalog = rows(&run(&path, &[]));
+    let nodes = &catalog[1..catalog.len() - 1];
+    let destination = dir.path().join("artifact");
+    for kind in ["doctype", "comment", "text"] {
+        let node = nodes.iter().find(|r| r["record"] == kind).unwrap();
+        fs::write(&destination, b"old").unwrap();
+        let output = extract(
+            &path,
+            node["id"].as_str().unwrap(),
+            &destination,
+            &["--content"],
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_QUERY"));
+        assert_eq!(fs::read(&destination).unwrap(), b"old");
+    }
+    let empty_div = nodes.iter().find(|r| r["detail"]["tag"] == "div").unwrap();
+    fs::write(&destination, b"old").unwrap();
+    fails(
+        extract(
+            &path,
+            empty_div["id"].as_str().unwrap(),
+            &destination,
+            &["--content"],
+        ),
+        "NOT_FOUND",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"old");
+    let span = nodes.iter().find(|r| r["detail"]["tag"] == "span").unwrap();
+    let record = receipt(&extract(
+        &path,
+        span["id"].as_str().unwrap(),
+        &destination,
+        &["--content"],
+    ));
+    assert_eq!(fs::read(&destination).unwrap(), b"x");
+    assert_eq!(record["detail"]["part"], "content");
+}
+
+#[test]
+fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    fs::write(&path, b"<div><p>hi</p></div>").unwrap();
+    let catalog = rows(&run(&path, &[]));
+    let id = catalog[1]["id"].as_str().unwrap();
+    let hash = catalog[0]["source_id"].as_str().unwrap();
+    let destination = dir.path().join("artifact");
+    let other = dir.path().join("other.html");
+    fs::write(&other, b"<div><p>other</p></div>").unwrap();
+    let other_id = rows(&run(&other, &[]))[1]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    fs::write(&destination, b"old").unwrap();
+    for candidate in [
+        "not-an-id".to_owned(),
+        id.replace(":0:", ":00:"),
+        id.replace(":element:", ":unknown:"),
+        format!("rxd1:html:{hash}:element:0:2"),
+    ] {
+        fails(extract(&path, &candidate, &destination, &[]), "INVALID_ID");
+        assert_eq!(fs::read(&destination).unwrap(), b"old");
+    }
+    fails(
+        extract(&path, &other_id, &destination, &[]),
+        "SOURCE_MISMATCH",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"old");
+    for target in [path.clone(), dir.path().join(".").join("page.html")] {
+        let output = extract(&path, id, &target, &[]);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_QUERY"));
+        assert_eq!(fs::read(&path).unwrap(), b"<div><p>hi</p></div>");
+    }
+}
+
+#[test]
+fn html_extract_enforces_combined_artifact_and_receipt_budget_before_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    fs::write(&path, b"<script>const x = 1;</script>").unwrap();
+    let catalog = rows(&run(&path, &[]));
+    let element = catalog
+        .iter()
+        .find(|r| r["detail"]["tag"] == "script")
+        .unwrap();
+    let destination = dir.path().join("artifact.js");
+    fs::write(&destination, b"old").unwrap();
+    fails(
+        extract(
+            &path,
+            element["id"].as_str().unwrap(),
+            &destination,
+            &["--max-output-bytes", "1"],
+        ),
+        "RESOURCE_LIMIT",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"old");
+    let content_start = element["detail"]["content_start"].as_u64().unwrap() as usize;
+    let content_end = element["detail"]["content_end"].as_u64().unwrap() as usize;
+    let budget = (content_end - content_start).to_string();
+    fs::write(&destination, b"old").unwrap();
+    fails(
+        extract(
+            &path,
+            element["id"].as_str().unwrap(),
+            &destination,
+            &["--content", "--max-output-bytes", budget.as_str()],
+        ),
+        "RESOURCE_LIMIT",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"old");
+}
+
+#[test]
+fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    fs::write(
+        &path,
+        b"<!DOCTYPE html><script>const answer = 40 + 2; function run(v){return v;}</script>",
+    )
+    .unwrap();
+    let catalog = rows(&run(&path, &[]));
+    let script = catalog
+        .iter()
+        .find(|r| r["detail"]["tag"] == "script")
+        .unwrap();
+    let destination = dir.path().join("inline.js");
+    let record = receipt(&extract(
+        &path,
+        script["id"].as_str().unwrap(),
+        &destination,
+        &["--content"],
+    ));
+    assert_eq!(
+        fs::read(&destination).unwrap(),
+        b"const answer = 40 + 2; function run(v){return v;}"
+    );
+    let outlined = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["js", "outline"])
+        .arg(&destination)
+        .output()
+        .unwrap();
+    assert!(
+        outlined.status.success(),
+        "{}",
+        String::from_utf8_lossy(&outlined.stderr)
+    );
+    let rows: Vec<Value> = String::from_utf8(outlined.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows[0]["source_id"], record["source_id"]);
+    assert!(rows.iter().any(|r| r["detail"]["name"] == "run"));
+}
+
+fn rows_file_success(output: &Output) -> bool {
+    output.status.success() && output.stdout.is_empty()
+}
+
+#[test]
+fn html_list_preserves_lexical_recovery_and_corrected_noframes_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("recover.html");
+    fs::write(&path, b"<ul><li><li>x</ul></absent><noframes><b>hidden</b></noframes><noframe><i>visible</i></noframe>").unwrap();
+    let entries = rows(&run(&path, &[]));
+    let nodes = &entries[1..entries.len() - 1];
+    let tags: Vec<_> = nodes
+        .iter()
+        .filter(|row| row["record"] == "element")
+        .map(|row| row["detail"]["tag"].as_str().unwrap())
+        .collect();
+    assert_eq!(tags, ["ul", "li", "li", "noframes", "noframe", "i"]);
+    assert_eq!(nodes[1]["parent_id"], nodes[0]["id"]);
+    assert_eq!(nodes[2]["parent_id"], nodes[1]["id"]);
+    assert_eq!(nodes[2]["detail"]["end_tag"], "missing");
+    assert_eq!(nodes[1]["detail"]["end_tag"], "missing");
+    assert_eq!(nodes[0]["detail"]["end_tag"], "explicit");
+    assert_eq!(entries.last().unwrap()["detail"]["missing_end_tags"], 2);
+    assert_eq!(entries.last().unwrap()["detail"]["unmatched_end_tags"], 1);
+    assert_eq!(
+        nodes
+            .iter()
+            .find(|row| row["detail"]["value"] == "<b>hidden</b>")
+            .unwrap()["record"],
+        "text"
+    );
+    fs::write(&path, b"<div><script src=unq").unwrap();
+    let destination = dir.path().join("previous.jsonl");
+    fs::write(&destination, b"prior catalog").unwrap();
+    fails(
+        run(&path, &["-o", destination.to_str().unwrap()]),
+        "INVALID_INPUT",
+    );
+    assert_eq!(fs::read(destination).unwrap(), b"prior catalog");
+    let absent = dir.path().join("not-created.jsonl");
+    fails(
+        run(&path, &["-o", absent.to_str().unwrap()]),
+        "INVALID_INPUT",
+    );
+    assert!(!absent.exists());
+}
+
+#[test]
+fn html_list_recovers_void_slash_ancestor_and_eof_ranges_without_losing_nul() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("recovery.html");
+    let source = include_bytes!("../fixtures/html/recovery.html");
+    fs::write(&path, source).unwrap();
+    let entries = rows(&run(&path, &[]));
+    let nodes = &entries[1..entries.len() - 1];
+    let elements: Vec<_> = nodes.iter().filter(|r| r["record"] == "element").collect();
+    assert_eq!(elements.len(), 5);
+    for (row, tag, start, end, content_start, content_end, status, slash, void) in [
+        (&elements[0], "div", 0, 42, 5, 36, "explicit", false, false),
+        (
+            &elements[1],
+            "br",
+            5,
+            10,
+            10,
+            10,
+            "not_applicable",
+            true,
+            true,
+        ),
+        (
+            &elements[2],
+            "section",
+            10,
+            36,
+            20,
+            36,
+            "missing",
+            true,
+            false,
+        ),
+        (
+            &elements[3],
+            "span",
+            20,
+            36,
+            26,
+            29,
+            "explicit",
+            false,
+            false,
+        ),
+        (&elements[4], "p", 51, 58, 54, 58, "missing", false, false),
+    ] {
+        assert_eq!(row["detail"]["tag"], tag);
+        assert_eq!(
+            (row["start"].as_u64().unwrap(), row["end"].as_u64().unwrap()),
+            (start, end)
+        );
+        assert_eq!(row["detail"]["content_start"], content_start);
+        assert_eq!(row["detail"]["content_end"], content_end);
+        assert_eq!(row["detail"]["end_tag"], status);
+        assert_eq!(row["detail"]["self_closing"], slash);
+        assert_eq!(row["detail"]["void"], void);
+    }
+    assert_eq!(elements[1]["parent_id"], elements[0]["id"]);
+    assert_eq!(elements[2]["parent_id"], elements[0]["id"]);
+    assert_eq!(elements[3]["parent_id"], elements[2]["id"]);
+    assert!(elements[4]["parent_id"].is_null());
+    let nul_text = nodes
+        .iter()
+        .find(|r| r["detail"]["value"] == "A\0B")
+        .unwrap();
+    assert_eq!(
+        (
+            nul_text["start"].as_u64().unwrap(),
+            nul_text["end"].as_u64().unwrap()
+        ),
+        (26, 29)
+    );
+    assert_eq!(&source[26..29], b"A\0B");
+    assert_eq!(nul_text["parent_id"], elements[3]["id"]);
+    let summary = &entries.last().unwrap()["detail"];
+    assert_eq!(summary["tokenizer_errors"], 1);
+    assert_eq!(summary["unmatched_end_tags"], 1);
+    assert_eq!(summary["missing_end_tags"], 2);
+}
+
+#[test]
+fn html_list_uses_context_states_without_inventing_markup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("contexts.html");
+    fs::write(&path, include_bytes!("../fixtures/html/contexts.html")).unwrap();
+    let entries = rows(&run(&path, &[]));
+    assert_eq!(entries[0]["detail"]["lexical_profile"], "lexical_naive_v1");
+    let nodes = &entries[1..entries.len() - 1];
+    let elements: Vec<_> = nodes.iter().filter(|r| r["record"] == "element").collect();
+    let tags: Vec<_> = elements
+        .iter()
+        .map(|r| r["detail"]["tag"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        tags,
+        [
+            "textarea",
+            "title",
+            "style",
+            "noscript",
+            "noframes",
+            "noframe",
+            "i",
+            "plaintext"
+        ]
+    );
+    for (tag, value) in [
+        ("textarea", "<b>t</b>"),
+        ("title", "<i>x</i>"),
+        ("style", "<b>s</b>"),
+        ("noscript", "<b>n</b>"),
+        ("noframes", "<b>f</b>"),
+        ("plaintext", "<b>p</b>"),
+    ] {
+        let parent = elements.iter().find(|r| r["detail"]["tag"] == tag).unwrap();
+        let text = nodes
+            .iter()
+            .find(|r| r["detail"]["value"] == value)
+            .unwrap();
+        assert_eq!(text["record"], "text");
+        assert_eq!(text["parent_id"], parent["id"]);
+    }
+    assert_eq!(elements[6]["parent_id"], elements[5]["id"]);
+    assert_eq!(elements[7]["detail"]["end_tag"], "missing");
+    assert_eq!(elements[7]["end"], 179);
+    assert_eq!(entries.last().unwrap()["detail"]["missing_end_tags"], 1);
+}
+
+#[test]
+fn html_list_declares_context_approximation_in_cli_discovery_and_results() {
+    let discovery = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["--help"])
+        .output()
+        .unwrap();
+    assert!(discovery.status.success());
+    assert!(String::from_utf8_lossy(&discovery.stdout).contains("lexical_naive_v1"));
+    let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["html", "list", "--help"])
+        .output()
+        .unwrap();
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("lexical_naive_v1"));
+    assert!(!String::from_utf8_lossy(&help.stdout).contains("DOM-complete"));
+
+    let dir = tempfile::tempdir().unwrap();
+    for (fixture, expected_tags, hidden) in [
+        ("foreign.html", vec!["svg", "script"], "<p>later</p>"),
+        ("template.html", vec!["template", "tr", "td", "p"], ""),
+        ("script-data.html", vec!["script", "p"], "<b>still text</b>"),
+    ] {
+        let path = dir.path().join(fixture);
+        fs::write(
+            &path,
+            fs::read(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/html")
+                    .join(fixture),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let entries = rows(&run(&path, &[]));
+        assert_eq!(entries[0]["detail"]["lexical_profile"], "lexical_naive_v1");
+        let nodes = &entries[1..entries.len() - 1];
+        let elements: Vec<_> = nodes.iter().filter(|r| r["record"] == "element").collect();
+        assert_eq!(
+            elements
+                .iter()
+                .map(|r| r["detail"]["tag"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            expected_tags
+        );
+        if !hidden.is_empty() {
+            assert!(nodes.iter().any(|r| r["record"] == "text"
+                && r["detail"]["value"].as_str().unwrap().contains(hidden)));
+        }
+        if fixture == "foreign.html" {
+            assert_eq!(
+                (elements[0]["start"].as_u64(), elements[0]["end"].as_u64()),
+                (Some(0), Some(37))
+            );
+            assert_eq!(
+                (elements[1]["start"].as_u64(), elements[1]["end"].as_u64()),
+                (Some(5), Some(37))
+            );
+            assert_eq!(elements[1]["detail"]["content_start"], 13);
+            assert_eq!(elements[1]["detail"]["content_end"], 37);
+            assert_eq!(elements[1]["parent_id"], elements[0]["id"]);
+            assert_eq!(elements[0]["detail"]["end_tag"], "missing");
+            assert_eq!(entries.last().unwrap()["detail"]["missing_end_tags"], 2);
+        } else if fixture == "template.html" {
+            assert_eq!(elements[1]["parent_id"], elements[0]["id"]);
+            assert_eq!(elements[2]["parent_id"], elements[1]["id"]);
+            assert!(elements[3]["parent_id"].is_null());
+        } else {
+            assert_eq!(elements[0]["detail"]["end_tag"], "explicit");
+            assert_eq!(
+                (elements[0]["start"].as_u64(), elements[0]["end"].as_u64()),
+                (Some(0), Some(61))
+            );
+            assert_eq!(elements[0]["detail"]["content_start"], 8);
+            assert_eq!(elements[0]["detail"]["content_end"], 52);
+            assert_eq!(
+                (elements[1]["start"].as_u64(), elements[1]["end"].as_u64()),
+                (Some(61), Some(73))
+            );
+            assert!(elements[1]["parent_id"].is_null());
+        }
+    }
+}
+
+#[test]
+fn html_list_keeps_nonvoid_slash_tag_open_until_eof() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty.html");
+    fs::write(&path, b"<div/>").unwrap();
+    let entries = rows(&run(&path, &[]));
+    assert_eq!(entries[1]["detail"]["self_closing"], true);
+    assert_eq!(entries[1]["detail"]["void"], false);
+    assert_eq!(entries[1]["detail"]["end_tag"], "missing");
+    assert_eq!(entries[1]["detail"]["content_start"], 6);
+    assert_eq!(entries[1]["detail"]["content_end"], 6);
+    assert_eq!(entries[2]["detail"]["missing_end_tags"], 1);
+}
+
+#[test]
+fn html_list_rejects_untrusted_inputs_and_limits_without_replacing_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("input");
+    let target = dir.path().join("catalog");
+    fs::write(&target, b"old").unwrap();
+    fs::write(&path, b"<a><b>text</b></a>").unwrap();
+    for args in [
+        vec!["--max-input-bytes", "1"],
+        vec!["--max-records", "1"],
+        vec!["--max-depth", "1"],
+        vec!["--max-output-bytes", "1"],
+    ] {
+        let mut args = args;
+        args.extend(["-o", target.to_str().unwrap()]);
+        fails(run(&path, &args), "RESOURCE_LIMIT");
+        assert_eq!(fs::read(&target).unwrap(), b"old");
+    }
+    fs::write(&path, [0xff]).unwrap();
+    fails(
+        run(&path, &["-o", target.to_str().unwrap()]),
+        "INVALID_INPUT",
+    );
+    fails(run(dir.path(), &[]), "INVALID_INPUT");
+    assert_eq!(fs::read(target).unwrap(), b"old");
+    fs::write(&path, b"").unwrap();
+    let empty = rows(&run(&path, &[]));
+    assert_eq!(empty.len(), 2);
+    assert_eq!(empty[1]["records"], 0);
+
+    let malformed = run(&path, &["--max-records", "0"]);
+    assert_eq!(malformed.status.code(), Some(2));
+    assert!(malformed.stdout.is_empty());
+
+    let measured = run(&path, &["--perf"]);
+    assert!(measured.status.success());
+    let perf: Value =
+        serde_json::from_slice(measured.stderr.split(|b| *b == b'\n').next().unwrap()).unwrap();
+    assert_eq!(perf["backend"], "html");
+    assert_eq!(perf["command"], "list");
+    assert_eq!(perf["counters"]["records"], 0);
+    assert_eq!(perf["counters"]["input_bytes"], 0);
+    for stage in [
+        "read",
+        "hash",
+        "utf8",
+        "tokenize",
+        "query",
+        "serialize",
+        "write",
+    ] {
+        assert!(
+            perf["stages_ns"][stage].is_number(),
+            "missing stage {stage}"
+        );
+    }
+}

@@ -1,0 +1,420 @@
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeMap, fs::OpenOptions, io::Read, path::Path};
+
+use anyhow::{Context, Result, bail, ensure};
+use dotscope::{CilAssemblyView, ValidationConfig};
+
+use crate::{CallSignature, Field, Limits, Method, MethodBody, StringRecord, TypeInfo};
+
+pub struct Input {
+    pub source_id: String,
+    pub file_bytes: usize,
+    pub types: Vec<TypeInfo>,
+    pub fields: Vec<Field>,
+    pub methods: Vec<Method>,
+    pub properties: Vec<crate::Property>,
+    pub events: Vec<crate::Event>,
+    pub(crate) view: CilAssemblyView,
+    pub(crate) limits: Limits,
+    pub(crate) rows: [u32; 64],
+    pub(crate) metadata_work: usize,
+    pub(crate) calls: BTreeMap<u32, CallSignature>,
+    pub(crate) member_kinds: BTreeMap<u32, bool>,
+    pub(crate) type_kinds: BTreeMap<u32, bool>,
+}
+
+impl Input {
+    pub fn read(path: &Path, limits: Limits) -> Result<Self> {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let mut file = options
+            .open(path)
+            .with_context(|| format!("open {}", path.display()))?;
+        let meta = file.metadata()?;
+        ensure!(
+            meta.is_file(),
+            "INVALID_INPUT: input must be a regular file"
+        );
+        ensure!(
+            meta.len() <= limits.input_bytes as u64,
+            "RESOURCE_LIMIT: input bytes"
+        );
+        let mut bytes = Vec::new();
+        file.by_ref()
+            .take((limits.input_bytes as u64).saturating_add(1))
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() <= limits.input_bytes,
+            "RESOURCE_LIMIT: input bytes"
+        );
+        let file_bytes = bytes.len();
+        let source_id = rxd_core::identity::captured_id(path, bytes.len()).unwrap_or_else(|| {
+            let digest = Sha256::digest(&bytes);
+            let mut source_id = String::with_capacity(64);
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            for byte in digest {
+                source_id.push(HEX[(byte >> 4) as usize] as char);
+                source_id.push(HEX[(byte & 15) as usize] as char);
+            }
+            source_id
+        });
+        let parsed_file = dotscope::File::from_mem(bytes).context("INVALID_INPUT: PE parsing")?;
+        ensure!(
+            parsed_file.repairs().is_empty(),
+            "INVALID_INPUT: automatic PE repair is unsupported"
+        );
+        // Keep structural, heap and metadata-token checks, while avoiding unrelated
+        // whole-assembly semantic/signature passes. Queried signatures and IL tokens
+        // are separately validated with bounded walkers in this backend.
+        let mut validation = ValidationConfig::minimal();
+        validation.enable_cross_table_validation = true;
+        // Defer the validation engine until raw table counts pass the budgets.
+        // The raw view constructor still performs bounded PE/stream/table parsing;
+        // the complete query structural/reference validation runs below.
+        let mut deferred = validation;
+        deferred.enable_raw_validation = false;
+        let view = CilAssemblyView::from_dotscope_file_with_validation(parsed_file, deferred)
+            .context("INVALID_INPUT: metadata structure and references")?;
+        let mut rows = [0; 64];
+        let mut total = 0usize;
+        let tables = view
+            .tables()
+            .context("INVALID_INPUT: missing metadata tables")?;
+        for summary in tables.table_summary() {
+            let idx = summary.table_id as usize;
+            ensure!(idx < rows.len(), "INVALID_INPUT: table index");
+            rows[idx] = summary.row_count;
+            total = total
+                .checked_add(summary.row_count as usize)
+                .context("RESOURCE_LIMIT: row count")?;
+        }
+        ensure!(
+            rows[2] as usize + rows[4] as usize + rows[6] as usize <= limits.entities,
+            "RESOURCE_LIMIT: metadata entities"
+        );
+        ensure!(total <= limits.work, "RESOURCE_LIMIT: metadata work");
+        crate::validation::validate(&view, validation)
+            .context("INVALID_INPUT: metadata structure and references")?;
+        let mut input = Self {
+            source_id,
+            file_bytes,
+            types: Vec::new(),
+            fields: Vec::new(),
+            methods: Vec::new(),
+            properties: Vec::new(),
+            events: Vec::new(),
+            view,
+            limits,
+            rows,
+            metadata_work: 0,
+            calls: BTreeMap::new(),
+            member_kinds: BTreeMap::new(),
+            type_kinds: BTreeMap::new(),
+        };
+        crate::metadata::load(&mut input)?;
+        Ok(input)
+    }
+
+    pub fn type_by_id(&self, id: &str) -> Result<&TypeInfo> {
+        let token = self.entity_token(id, "type", 2)?;
+        let index = self
+            .types
+            .binary_search_by_key(&token, |ty| ty.token)
+            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: type does not exist"))?;
+        Ok(&self.types[index])
+    }
+
+    fn entity_token(&self, id: &str, kind: &str, table: u32) -> Result<u32> {
+        let prefix = format!("rxd1:dotnet:{}:{kind}:", self.source_id);
+        let encoded = id
+            .strip_prefix(&prefix)
+            .context("INVALID_QUERY: source, backend or kind mismatch")?;
+        ensure!(
+            encoded.len() == 8 && encoded.bytes().all(|b| b.is_ascii_hexdigit()),
+            "INVALID_QUERY: entity token"
+        );
+        let token = u32::from_str_radix(encoded, 16).context("INVALID_QUERY: entity token")?;
+        ensure!(
+            token >> 24 == table
+                && token & 0xffffff > 0
+                && token & 0xffffff <= self.rows[table as usize],
+            "INVALID_QUERY: entity token table or row"
+        );
+        Ok(token)
+    }
+
+    pub fn reference_token_by_id(&self, id: &str) -> Result<u32> {
+        let kind = id.split(':').nth(3).context("INVALID_QUERY: entity ID")?;
+        let table = match kind {
+            "method" => 6,
+            "field" => 4,
+            "type" => 2,
+            _ => bail!("INVALID_QUERY: reference ID kind"),
+        };
+        self.entity_token(id, kind, table)
+    }
+
+    pub fn class_body(&self, id: &str) -> Result<crate::ClassBody<'_>> {
+        crate::class::body(self, self.type_by_id(id)?)
+    }
+
+    pub fn method_by_id(&self, id: &str) -> Result<&Method> {
+        let token = self.entity_token(id, "method", 6)?;
+        let index = self
+            .methods
+            .binary_search_by_key(&token, |m| m.token)
+            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: method does not exist"))?;
+        Ok(&self.methods[index])
+    }
+
+    pub fn body(&self, method: &Method) -> Result<MethodBody> {
+        let index = self
+            .methods
+            .binary_search_by_key(&method.token, |m| m.token)
+            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: foreign method"))?;
+        let canonical = &self.methods[index];
+        ensure!(canonical.id == method.id, "INVALID_QUERY: foreign method");
+        crate::il::body(self, canonical)
+    }
+
+    pub fn resolve_call(&self, token: u32, context: &Method) -> Result<CallSignature> {
+        let mut call = if token >> 24 == 6 {
+            let index = self
+                .methods
+                .binary_search_by_key(&token, |method| method.token)
+                .map_err(|_| anyhow::anyhow!("INVALID_INPUT: missing method call token"))?;
+            let method = &self.methods[index];
+            ensure!(
+                !matches!(method.signature_flags & 15, 5 | 11),
+                "UNSUPPORTED: vararg call signature"
+            );
+            method_call(method)
+        } else {
+            self.calls
+                .get(&token)
+                .cloned()
+                .with_context(|| format!("UNSUPPORTED: unresolved call signature 0x{token:08x}"))?
+        };
+        if call.return_type.contains('!') || call.parameters.iter().any(|ty| ty.contains('!')) {
+            let mut work = Work::new(self.limits.work.min(self.limits.output_bytes));
+            let type_args =
+                crate::metadata::type_arguments(self, call.declaring_type_token, &mut work)?;
+            let same_owner = call.declaring_type_token == context.declaring_type_token;
+            let mut replace = |ty: &str| {
+                crate::metadata::instantiate(
+                    ty,
+                    type_args.as_deref(),
+                    call.method_arguments.as_deref(),
+                    same_owner,
+                    &mut work,
+                )
+            };
+            call.return_type = replace(&call.return_type)?;
+            call.parameters = call
+                .parameters
+                .iter()
+                .map(|ty| replace(ty))
+                .collect::<Result<_>>()?;
+        }
+        Ok(call)
+    }
+
+    pub fn this_type(&self, method: &Method) -> Result<String> {
+        let canonical = self.method_by_id(&method.id)?;
+        ensure!(
+            canonical.token == method.token,
+            "INVALID_QUERY: foreign method"
+        );
+        let token = canonical.declaring_type_token;
+        Ok(if canonical.declaring_type_is_value_type {
+            format!("valuetype(0x{token:08x})&")
+        } else {
+            format!("class(0x{token:08x})")
+        })
+    }
+
+    // TypeRef alone does not tell us whether a type is a class or value type.
+    // Do not guess from its name or silently resolve a dependency.
+    pub(crate) fn type_signature_with_work(&self, token: u32, work: &mut Work) -> Result<String> {
+        work.charge(1)?;
+        self.check_token(token, &[1, 2, 27])?;
+        if let Some(value_type) = self.type_kinds.get(&token) {
+            work.charge(if *value_type { 21 } else { 17 })?;
+            return Ok(format!(
+                "{}(0x{token:08x})",
+                if *value_type { "valuetype" } else { "class" }
+            ));
+        }
+        if token >> 24 == 27 {
+            use dotscope::metadata::tables::TypeSpecRaw;
+            let row = self
+                .view
+                .tables()
+                .and_then(|t| t.table::<TypeSpecRaw>())
+                .context("UNSUPPORTED: missing TypeSpec table")?
+                .get(token & 0xffffff)?
+                .context("UNSUPPORTED: missing TypeSpec")?;
+            return crate::metadata::type_signature(self, self.blob(row.signature)?, work);
+        }
+        bail!("UNSUPPORTED: unresolved type kind 0x{token:08x}")
+    }
+
+    pub(crate) fn field_signature_with_work(
+        &self,
+        token: u32,
+        context: &Method,
+        work: &mut Work,
+    ) -> Result<(String, Option<bool>)> {
+        work.charge(1)?;
+        if let Ok(index) = self
+            .fields
+            .binary_search_by_key(&token, |field| field.token)
+        {
+            let field = &self.fields[index];
+            ensure!(
+                !field.signature.contains('!')
+                    || field.declaring_type_token == context.declaring_type_token,
+                "UNSUPPORTED: unresolved field generic context"
+            );
+            work.charge(field.signature.len())?;
+            return Ok((field.signature.clone(), Some(field.flags & 0x10 != 0)));
+        }
+        self.check_token(token, &[10])?;
+        use dotscope::metadata::tables::MemberRefRaw;
+        let row = self
+            .view
+            .tables()
+            .and_then(|t| t.table::<MemberRefRaw>())
+            .context("UNSUPPORTED: missing MemberRef table")?
+            .get(token & 0xffffff)?
+            .context("UNSUPPORTED: missing field MemberRef")?;
+        let signature = crate::metadata::field_signature(self, self.blob(row.signature)?, work)?;
+        let signature = if signature.contains('!') {
+            let type_args = crate::metadata::type_arguments(self, row.class.token.value(), work)?;
+            crate::metadata::instantiate(
+                &signature,
+                type_args.as_deref(),
+                None,
+                row.class.token.value() == context.declaring_type_token,
+                work,
+            )?
+        } else {
+            signature
+        };
+        Ok((signature, None))
+    }
+
+    pub fn strings(&self) -> Result<Vec<StringRecord>> {
+        crate::metadata::strings(self)
+    }
+
+    pub fn string_uses(&self, contains: Option<&str>) -> Result<crate::StringUses> {
+        crate::strings::uses(self, contains)
+    }
+
+    pub fn string_references(&self, value: &str) -> Result<Vec<crate::StringReference>> {
+        crate::strings::references(self, value)
+    }
+
+    pub fn user_string_references(&self, token: u32) -> Result<Vec<crate::StringReference>> {
+        crate::strings::token_references(self, token)
+    }
+
+    pub fn validate_token(&self, token: u32) -> Result<()> {
+        if token >> 24 == 0x70 {
+            let requested = std::collections::BTreeSet::from([token & 0xffffff]);
+            return crate::il::validate_user_strings(
+                self,
+                &requested,
+                &mut Work::new(self.limits.work),
+            );
+        }
+        let table = (token >> 24) as u8;
+        self.check_token(token, &[table])
+    }
+
+    pub(crate) fn check_token(&self, token: u32, tables: &[u8]) -> Result<()> {
+        let table = (token >> 24) as u8;
+        let rid = token & 0x00ff_ffff;
+        ensure!(
+            tables.contains(&table)
+                && rid > 0
+                && (table as usize) < self.rows.len()
+                && rid <= self.rows[table as usize],
+            "INVALID_INPUT: invalid metadata token 0x{token:08x}"
+        );
+        Ok(())
+    }
+
+    pub(crate) fn blob(&self, index: u32) -> Result<&[u8]> {
+        ensure!(index != 0, "INVALID_INPUT: missing signature blob");
+        self.view
+            .blobs()
+            .context("INVALID_INPUT: missing blob heap")?
+            .get(index as usize)
+            .context("INVALID_INPUT: blob index")
+    }
+
+    pub(crate) fn name(&self, index: u32) -> Result<&str> {
+        let name = self
+            .view
+            .strings()
+            .context("INVALID_INPUT: missing string heap")?
+            .get(index as usize)
+            .context("INVALID_INPUT: string index")?;
+        ensure!(
+            name.len() <= self.limits.output_bytes,
+            "RESOURCE_LIMIT: metadata name bytes"
+        );
+        Ok(name)
+    }
+
+    pub(crate) fn id(&self, kind: &str, token: u32) -> String {
+        format!("rxd1:dotnet:{}:{kind}:{token:08x}", self.source_id)
+    }
+}
+
+pub(crate) struct Work {
+    initial: usize,
+    remaining: usize,
+}
+impl Work {
+    pub(crate) fn new(limit: usize) -> Self {
+        Self {
+            initial: limit,
+            remaining: limit,
+        }
+    }
+    pub(crate) fn used(&self) -> usize {
+        self.initial - self.remaining
+    }
+
+    pub(crate) fn charge(&mut self, amount: usize) -> Result<()> {
+        if amount > self.remaining {
+            bail!("RESOURCE_LIMIT: analysis work");
+        }
+        self.remaining -= amount;
+        Ok(())
+    }
+}
+
+// Method definitions already own their full bounded signature. Build a call
+// projection only when queried, rather than duplicating every signature in an
+// eager second index on every outline/get request.
+pub(crate) fn method_call(method: &Method) -> CallSignature {
+    CallSignature {
+        token: method.token,
+        name: format!("{}::{}", method.declaring_type, method.name),
+        parameters: method.parameters.clone(),
+        return_type: method.return_type.clone(),
+        has_this: method.has_this,
+        signature_flags: method.signature_flags,
+        declaring_type_token: method.declaring_type_token,
+        method_arguments: None,
+    }
+}

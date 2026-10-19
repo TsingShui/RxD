@@ -1,0 +1,414 @@
+{
+  "analyzed_modules_imported_or_executed": false,
+  "artifacts": {
+    "ast.hash-checked.pyc": {
+      "bytes": 52285,
+      "sha256": "b5ea5cb9ee43a74a3b106cece4b171c583c3481718f4eb817168604e2b5f8326"
+    },
+    "ast.hash-unchecked.pyc": {
+      "bytes": 52285,
+      "sha256": "f8e1a87417709ef7d0a3abef6bd89541aab6d89398b23850a4bb4c512202529d"
+    },
+    "ast.marshal": {
+      "bytes": 52269,
+      "sha256": "f51b54457ecd426510676e8a39b8bcd5572ef99eb8252490841714c8f2617e65"
+    },
+    "ast.oracle.json": {
+      "bytes": 3517555,
+      "sha256": "f2097cf3b1f70ca7133e2fa020e51f7b182fda24adff36a86bd126fb4b33b6b2",
+      "storage": "ast.oracle.json.gz",
+      "storage_sha256": "198322457e8bfbe27eb804d90f4b57a796a2e481435859964274b966ad313917"
+    },
+    "ast.py": {
+      "bytes": 56179,
+      "sha256": "4585b867dd51b2b500fdaa7eaf8fc85066596f49f35f2e07c98991171b0afa79"
+    },
+    "ast.timestamp.pyc": {
+      "bytes": 52285,
+      "sha256": "aa1bf08d7434461c920fd4f8d2c6693bfbd35524610cdb96edadfab5c588a752"
+    },
+    "configparser.hash-checked.pyc": {
+      "bytes": 45848,
+      "sha256": "67900618debbdb668a03050af82d0dd1b69ad4b3361d6f109c0c57d88c693645"
+    },
+    "configparser.hash-unchecked.pyc": {
+      "bytes": 45848,
+      "sha256": "4538239c7b066f069379b211b5958e3d40e266d514f7bfd59f8c8c14b9e4a482"
+    },
+    "configparser.marshal": {
+      "bytes": 45832,
+      "sha256": "27f0ca864090476438833374fda3eea91f6f44970f5c61c06a1a775986c06c5d"
+    },
+    "configparser.oracle.json": {
+      "bytes": 2293676,
+      "sha256": "1f5e5631e31ebb6cc765d24dd454876a4a1e2163af6e417dfcd2c25d0f3c96fc",
+      "storage": "configparser.oracle.json.gz",
+      "storage_sha256": "04a130c5b2040c1715ad4501f16d512a8ef022b1a442694b1b2a1e6fda2ea154"
+    },
+    "configparser.py": {
+      "bytes": 54584,
+      "sha256": "fb62822bc88a645d02f99af84a83d014045d3a1358ed5eab620566bc5773ffc5"
+    },
+    "configparser.timestamp.pyc": {
+      "bytes": 45848,
+      "sha256": "844c570ae87477690e5982f44e025e4a8afca515628aa7348e896729a6b1a4bf"
+    },
+    "dataclasses.hash-checked.pyc": {
+      "bytes": 23164,
+      "sha256": "55c4eb5d54710532ac0ba9ad9e5a98f1fb01d1a9d7e747d0a962e4dc0500a50d"
+    },
+    "dataclasses.hash-unchecked.pyc": {
+      "bytes": 23164,
+      "sha256": "e6687f1545180f005aeb57129b493d59c49b863f986c9a3b9a6a0cc65a8ac228"
+    },
+    "dataclasses.marshal": {
+      "bytes": 23148,
+      "sha256": "23474c3f8fa7371b89026e6cf34b4a6791f56d9c53b0063f138e92eed850f742"
+    },
+    "dataclasses.oracle.json": {
+      "bytes": 1492299,
+      "sha256": "dc342d04e71832082eb76c3ec8536c3ae21d5c2d521626506cc2c8d56521086b",
+      "storage": "dataclasses.oracle.json.gz",
+      "storage_sha256": "fe646ba2671111bb693ede7c2fc0c13e79ff3240667e6bbc4b6362abdcb9b9e6"
+    },
+    "dataclasses.py": {
+      "bytes": 49504,
+      "sha256": "100d5daf6285d6b756794d3405174c79eec136bda24d65114d28dde569618250"
+    },
+    "dataclasses.timestamp.pyc": {
+      "bytes": 23164,
+      "sha256": "f869402cbd5c1fd5d539760007ec4d0792a2b5a7026f99a99a813177e3862768"
+    },
+    "email-parser.hash-checked.pyc": {
+      "bytes": 5725,
+      "sha256": "0f0439447168f451a6bd06d17148970d405af4a2384e4e0a079122dcf4e1c8eb"
+    },
+    "email-parser.hash-unchecked.pyc": {
+      "bytes": 5725,
+      "sha256": "9fee8f59372dcd8e715b9411790f82c6ac07d8233a0072a7b8fc09a8fc2a7d32"
+    },
+    "email-parser.marshal": {
+      "bytes": 5709,
+      "sha256": "6995fb48f2c2151a1b86acd6144f1fe3ffbcf500d789b540d1ac453a43ade41f"
+    },
+    "email-parser.oracle.json": {
+      "bytes": 173596,
+      "sha256": "2b0f5a2fd995d2ba82f29d93e3a7c2beedec33ee20cd57a2ab18b8f31fd22b36",
+      "storage": "email-parser.oracle.json.gz",
+      "storage_sha256": "1451db326192e40eeea20d9998ab6d53f6340064ef3d73d7c0417e0ea006b482"
+    },
+    "email-parser.py": {
+      "bytes": 5041,
+      "sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49"
+    },
+    "email-parser.timestamp.pyc": {
+      "bytes": 5725,
+      "sha256": "6c5b8dac02a2ced66a73da05f9d5d135df47ca58807165b9a964318d78522f2a"
+    },
+    "email-policy.hash-checked.pyc": {
+      "bytes": 9618,
+      "sha256": "9e0fe044d8f0135a5960204502a57c8812e0ec491b5333d22a22e4690ab75f59"
+    },
+    "email-policy.hash-unchecked.pyc": {
+      "bytes": 9618,
+      "sha256": "57441a2df5407c56f2f345d42bcd0a8ac9ff68e57eb0751ed19e8abb418409fa"
+    },
+    "email-policy.marshal": {
+      "bytes": 9602,
+      "sha256": "6363f0df2b02afdc67502165e13dcaff998d78cc95343797cbc48c71af0d62f6"
+    },
+    "email-policy.oracle.json": {
+      "bytes": 254726,
+      "sha256": "69bebafb88cad29213927343263bb0aaf667b7a0c97edce9e125e71aac87a3d4",
+      "storage": "email-policy.oracle.json.gz",
+      "storage_sha256": "95a5191ce105ebebec09726459536b4415913041acd9adf8a1e617dbca0c2b9d"
+    },
+    "email-policy.py": {
+      "bytes": 10383,
+      "sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302"
+    },
+    "email-policy.timestamp.pyc": {
+      "bytes": 9618,
+      "sha256": "75543cdcd775ad9be79d1c00f22da497299d83890e5c577e3fe9bc3c63660ba9"
+    },
+    "extended.hash-checked.pyc": {
+      "bytes": 9159,
+      "sha256": "874d047e85ae5e86e561fd0a83e20a0b662a0e92613e2677bdeeb444138e1c54"
+    },
+    "extended.hash-unchecked.pyc": {
+      "bytes": 9159,
+      "sha256": "adcdb97f5626896315f9208dce3fb8b3e2811d08f6e12fbd94ce3c6a327d8691"
+    },
+    "extended.marshal": {
+      "bytes": 9143,
+      "sha256": "575daf5e4fc65de5925f54da18646a32b97a966a61030b3c581dc8711aa90973"
+    },
+    "extended.oracle.json": {
+      "bytes": 373005,
+      "sha256": "4872b0564d1c8e3d0e17d7b38dd37da80b7c63ddca2249d5af83ad631db7c73f",
+      "storage": "extended.oracle.json.gz",
+      "storage_sha256": "265a0a3979e6a6928b06e2ae6dafc60fb6a31c0b924259cfc0478d02559f18df"
+    },
+    "extended.py": {
+      "bytes": 8813,
+      "sha256": "8186da4ceee354a11faa740cc3f53394b09585e7357c0686a9821922d93a7a32"
+    },
+    "extended.timestamp.pyc": {
+      "bytes": 9159,
+      "sha256": "d3c5a8094108ad94272758dba63d1b5fc7ea1e6ffd69ecf4fc965d0e1ee18692"
+    },
+    "graph.hash-checked.pyc": {
+      "bytes": 2596,
+      "sha256": "8c7ed33761bc2bed9644f4aa2460d117055f763413ca8b43af00313c00373f73"
+    },
+    "graph.hash-unchecked.pyc": {
+      "bytes": 2596,
+      "sha256": "65687194cd3b2b53e7470d931eb77bc39c959b4cf89d97d8247803ce9a401449"
+    },
+    "graph.marshal": {
+      "bytes": 2580,
+      "sha256": "0dd306c02008e0750440c5681bbf7d5ad6c224540521a3bdac9368e8a8b15a28"
+    },
+    "graph.oracle.json": {
+      "bytes": 146808,
+      "sha256": "bd5d9d53f6ab8b27cabbb63c67bc227b05c810fc1635ade5e0a45df7db3c2584",
+      "storage": "graph.oracle.json.gz",
+      "storage_sha256": "5ed29987510aca08ba1add218ff6d2c07908bbbad0054e63d560bed93a45dab4"
+    },
+    "graph.py": {
+      "bytes": 1169,
+      "sha256": "dbe154eec3c76117261911943722b064d3726254c935a87601f30a202ec4f2f6"
+    },
+    "graph.timestamp.pyc": {
+      "bytes": 2596,
+      "sha256": "323b1928e1004b35c1e6b4c4bcf93f0c1ff5d4c75e808f8e941f178051608523"
+    }
+  },
+  "binary_sha256": "4b42b1a117605cafc8607b67b0892a609c2cd125012dd56288abeed8c89cdfb1",
+  "compile_only": true,
+  "generator_sha256": "f7f1bb9212f6a3688b53fdd3680773106564f8af3f3e807fa5ad767ce65655aa",
+  "inputs": [
+    {
+      "code_count": 16,
+      "files": [
+        {
+          "bytes": 2596,
+          "file": "graph.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "323b1928e1004b35c1e6b4c4bcf93f0c1ff5d4c75e808f8e941f178051608523"
+        },
+        {
+          "bytes": 2596,
+          "file": "graph.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "65687194cd3b2b53e7470d931eb77bc39c959b4cf89d97d8247803ce9a401449"
+        },
+        {
+          "bytes": 2596,
+          "file": "graph.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "8c7ed33761bc2bed9644f4aa2460d117055f763413ca8b43af00313c00373f73"
+        }
+      ],
+      "label": "graph",
+      "marshal_bytes": 2580,
+      "marshal_sha256": "0dd306c02008e0750440c5681bbf7d5ad6c224540521a3bdac9368e8a8b15a28",
+      "source_bytes": 1169,
+      "source_sha256": "dbe154eec3c76117261911943722b064d3726254c935a87601f30a202ec4f2f6"
+    },
+    {
+      "code_count": 2,
+      "files": [
+        {
+          "bytes": 9159,
+          "file": "extended.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "d3c5a8094108ad94272758dba63d1b5fc7ea1e6ffd69ecf4fc965d0e1ee18692"
+        },
+        {
+          "bytes": 9159,
+          "file": "extended.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "adcdb97f5626896315f9208dce3fb8b3e2811d08f6e12fbd94ce3c6a327d8691"
+        },
+        {
+          "bytes": 9159,
+          "file": "extended.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "874d047e85ae5e86e561fd0a83e20a0b662a0e92613e2677bdeeb444138e1c54"
+        }
+      ],
+      "label": "extended",
+      "marshal_bytes": 9143,
+      "marshal_sha256": "575daf5e4fc65de5925f54da18646a32b97a966a61030b3c581dc8711aa90973",
+      "source_bytes": 8813,
+      "source_sha256": "8186da4ceee354a11faa740cc3f53394b09585e7357c0686a9821922d93a7a32"
+    },
+    {
+      "code_count": 169,
+      "files": [
+        {
+          "bytes": 52285,
+          "file": "ast.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "aa1bf08d7434461c920fd4f8d2c6693bfbd35524610cdb96edadfab5c588a752"
+        },
+        {
+          "bytes": 52285,
+          "file": "ast.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "f8e1a87417709ef7d0a3abef6bd89541aab6d89398b23850a4bb4c512202529d"
+        },
+        {
+          "bytes": 52285,
+          "file": "ast.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "b5ea5cb9ee43a74a3b106cece4b171c583c3481718f4eb817168604e2b5f8326"
+        }
+      ],
+      "label": "ast",
+      "license": "CPython PSF license; verify exact source hash against official tag",
+      "marshal_bytes": 52269,
+      "marshal_sha256": "f51b54457ecd426510676e8a39b8bcd5572ef99eb8252490841714c8f2617e65",
+      "source_bytes": 56179,
+      "source_path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/ast.py",
+      "source_sha256": "4585b867dd51b2b500fdaa7eaf8fc85066596f49f35f2e07c98991171b0afa79",
+      "upstream_source": "https://github.com/python/cpython/blob/v3.9.6/Lib/ast.py"
+    },
+    {
+      "code_count": 115,
+      "files": [
+        {
+          "bytes": 45848,
+          "file": "configparser.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "844c570ae87477690e5982f44e025e4a8afca515628aa7348e896729a6b1a4bf"
+        },
+        {
+          "bytes": 45848,
+          "file": "configparser.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "4538239c7b066f069379b211b5958e3d40e266d514f7bfd59f8c8c14b9e4a482"
+        },
+        {
+          "bytes": 45848,
+          "file": "configparser.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "67900618debbdb668a03050af82d0dd1b69ad4b3361d6f109c0c57d88c693645"
+        }
+      ],
+      "label": "configparser",
+      "license": "CPython PSF license; verify exact source hash against official tag",
+      "marshal_bytes": 45832,
+      "marshal_sha256": "27f0ca864090476438833374fda3eea91f6f44970f5c61c06a1a775986c06c5d",
+      "source_bytes": 54584,
+      "source_path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/configparser.py",
+      "source_sha256": "fb62822bc88a645d02f99af84a83d014045d3a1358ed5eab620566bc5773ffc5",
+      "upstream_source": "https://github.com/python/cpython/blob/v3.9.6/Lib/configparser.py"
+    },
+    {
+      "code_count": 11,
+      "files": [
+        {
+          "bytes": 9618,
+          "file": "email-policy.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "75543cdcd775ad9be79d1c00f22da497299d83890e5c577e3fe9bc3c63660ba9"
+        },
+        {
+          "bytes": 9618,
+          "file": "email-policy.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "57441a2df5407c56f2f345d42bcd0a8ac9ff68e57eb0751ed19e8abb418409fa"
+        },
+        {
+          "bytes": 9618,
+          "file": "email-policy.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "9e0fe044d8f0135a5960204502a57c8812e0ec491b5333d22a22e4690ab75f59"
+        }
+      ],
+      "label": "email-policy",
+      "license": "CPython PSF license; verify exact source hash against official tag",
+      "marshal_bytes": 9602,
+      "marshal_sha256": "6363f0df2b02afdc67502165e13dcaff998d78cc95343797cbc48c71af0d62f6",
+      "source_bytes": 10383,
+      "source_path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/email/policy.py",
+      "source_sha256": "ca1b94f27db711094e9ba3ec4419313c3e660d1016f4bf01d467e5a174bb6302",
+      "upstream_source": "https://github.com/python/cpython/blob/v3.9.6/Lib/email/policy.py"
+    },
+    {
+      "code_count": 15,
+      "files": [
+        {
+          "bytes": 5725,
+          "file": "email-parser.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "6c5b8dac02a2ced66a73da05f9d5d135df47ca58807165b9a964318d78522f2a"
+        },
+        {
+          "bytes": 5725,
+          "file": "email-parser.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "9fee8f59372dcd8e715b9411790f82c6ac07d8233a0072a7b8fc09a8fc2a7d32"
+        },
+        {
+          "bytes": 5725,
+          "file": "email-parser.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "0f0439447168f451a6bd06d17148970d405af4a2384e4e0a079122dcf4e1c8eb"
+        }
+      ],
+      "label": "email-parser",
+      "license": "CPython PSF license; verify exact source hash against official tag",
+      "marshal_bytes": 5709,
+      "marshal_sha256": "6995fb48f2c2151a1b86acd6144f1fe3ffbcf500d789b540d1ac453a43ade41f",
+      "source_bytes": 5041,
+      "source_path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/email/parser.py",
+      "source_sha256": "eab481ca55902fae679fa2f794c8a81f913723d5029a79d9eb806d4b0c6b6b49",
+      "upstream_source": "https://github.com/python/cpython/blob/v3.9.6/Lib/email/parser.py"
+    },
+    {
+      "code_count": 74,
+      "files": [
+        {
+          "bytes": 23164,
+          "file": "dataclasses.timestamp.pyc",
+          "header_mode": "timestamp",
+          "sha256": "f869402cbd5c1fd5d539760007ec4d0792a2b5a7026f99a99a813177e3862768"
+        },
+        {
+          "bytes": 23164,
+          "file": "dataclasses.hash-unchecked.pyc",
+          "header_mode": "hash-unchecked",
+          "sha256": "e6687f1545180f005aeb57129b493d59c49b863f986c9a3b9a6a0cc65a8ac228"
+        },
+        {
+          "bytes": 23164,
+          "file": "dataclasses.hash-checked.pyc",
+          "header_mode": "hash-checked",
+          "sha256": "55c4eb5d54710532ac0ba9ad9e5a98f1fb01d1a9d7e747d0a962e4dc0500a50d"
+        }
+      ],
+      "label": "dataclasses",
+      "license": "CPython PSF license; verify exact source hash against official tag",
+      "marshal_bytes": 23148,
+      "marshal_sha256": "23474c3f8fa7371b89026e6cf34b4a6791f56d9c53b0063f138e92eed850f742",
+      "source_bytes": 49504,
+      "source_path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/dataclasses.py",
+      "source_sha256": "100d5daf6285d6b756794d3405174c79eec136bda24d65114d28dde569618250",
+      "upstream_source": "https://github.com/python/cpython/blob/v3.9.6/Lib/dataclasses.py"
+    }
+  ],
+  "interpreter": "/Library/Developer/CommandLineTools/usr/bin/python3",
+  "magic_hex": "610d0d0a",
+  "original_manifest_sha256": "8f249a607e8399a5b621fc553714016fbaf38cf1f35eb4e4ec10ef3e1fdbe4f9",
+  "python": "3.9.6 (default, Apr 17 2026, 18:15:52) \n[Clang 21.0.0 (clang-2100.1.1.101)]",
+  "version_info": [
+    3,
+    9,
+    6,
+    "final",
+    0
+  ]
+}

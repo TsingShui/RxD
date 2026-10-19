@@ -1,0 +1,310 @@
+{
+  "contexts_version": 1,
+  "generator": {
+    "file": "generate-contexts.mjs",
+    "sha256": "a17e9cc9d96cbdb4a032328f6a45217d26cb2508f7f66a7f44571ccd71c8496c",
+    "acorn": "8.19.0",
+    "node": "v24.20.0",
+    "refs_sha256": "6155271d08d74991b2ed29393ab183719e7499ffbc335a6e77efac704a6b838b",
+    "oracle": "Acorn local syntax ancestor ranges and immediate context parents; function/class/method boundaries reset contexts; anchors from pinned literal and independent restricted refs expectations"
+  },
+  "cases": [
+    {
+      "name": "jquery-4.0.0-production",
+      "file": "artifacts/jquery-4.0.0-production.js",
+      "source_id": "39a546ea9ad97f8bfaf5d3e0e8f8556adb415e470e59007ada9759dce472adaa",
+      "matches": [
+        {
+          "start": 5613,
+          "end": 5654,
+          "context": {
+            "kind": "expression_statement",
+            "start": 5605,
+            "end": 5657,
+            "parent": null
+          }
+        }
+      ],
+      "selected": {
+        "start": 572,
+        "end": 573,
+        "context": {
+          "kind": "parameter",
+          "start": 572,
+          "end": 573,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 588,
+          "end": 589,
+          "context": {
+            "kind": "return_statement",
+            "start": 575,
+            "end": 645,
+            "parent": null
+          }
+        },
+        {
+          "start": 590,
+          "end": 591,
+          "context": {
+            "kind": "return_statement",
+            "start": 575,
+            "end": 645,
+            "parent": null
+          }
+        },
+        {
+          "start": 612,
+          "end": 613,
+          "context": {
+            "kind": "return_statement",
+            "start": 575,
+            "end": 645,
+            "parent": null
+          }
+        },
+        {
+          "start": 623,
+          "end": 624,
+          "context": {
+            "kind": "return_statement",
+            "start": 575,
+            "end": 645,
+            "parent": null
+          }
+        },
+        {
+          "start": 644,
+          "end": 645,
+          "context": {
+            "kind": "return_statement",
+            "start": 575,
+            "end": 645,
+            "parent": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "lodash-4.18.1-production",
+      "file": "artifacts/lodash-4.18.1-production.js",
+      "source_id": "a8d7e6291ad80256f976ace90824a71018d2f706992c9107b20bdced97bee27b",
+      "matches": [
+        {
+          "start": 3890,
+          "end": 3911,
+          "context": {
+            "kind": "variable_declarator",
+            "start": 3887,
+            "end": 3911,
+            "parent": {
+              "kind": "variable_declaration",
+              "start": 3793,
+              "end": 7938
+            }
+          }
+        }
+      ],
+      "selected": {
+        "start": 1398,
+        "end": 1399,
+        "context": {
+          "kind": "parameter",
+          "start": 1398,
+          "end": 1399,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 1408,
+          "end": 1409,
+          "context": {
+            "kind": "return_statement",
+            "start": 1401,
+            "end": 1419,
+            "parent": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "vue-3.5.43-production",
+      "file": "artifacts/vue-3.5.43-production.js",
+      "source_id": "b72394052eef1eeda1752db3758ce1be6f88016903f22e5241cc732ea307478e",
+      "matches": [
+        {
+          "start": 22396,
+          "end": 22439,
+          "context": {
+            "kind": "variable_declarator",
+            "start": 22393,
+            "end": 22444,
+            "parent": {
+              "kind": "variable_declaration",
+              "start": 22368,
+              "end": 22445
+            }
+          }
+        }
+      ],
+      "selected": {
+        "start": 245,
+        "end": 246,
+        "context": {
+          "kind": "parameter",
+          "start": 245,
+          "end": 246,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 248,
+          "end": 249,
+          "context": null
+        }
+      ]
+    },
+    {
+      "name": "application-terser",
+      "file": "artifacts/application-terser.js",
+      "source_id": "874b250455d0e0b418c682840a59f47d78dc1482082f48821c20ac17c0693211",
+      "matches": [
+        {
+          "start": 223,
+          "end": 235,
+          "context": {
+            "kind": "variable_declarator",
+            "start": 201,
+            "end": 303,
+            "parent": {
+              "kind": "variable_declaration",
+              "start": 195,
+              "end": 304
+            }
+          }
+        }
+      ],
+      "selected": {
+        "start": 505,
+        "end": 506,
+        "context": {
+          "kind": "parameter",
+          "start": 505,
+          "end": 506,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 514,
+          "end": 515,
+          "context": null
+        }
+      ]
+    },
+    {
+      "name": "application-renamed-escaped",
+      "file": "artifacts/application-renamed-escaped.js",
+      "source_id": "7c224a258565c42a84211b5804ee4b39259717584ab8df3f6d6ce0a44e176413",
+      "matches": [
+        {
+          "start": 468,
+          "end": 510,
+          "context": {
+            "kind": "variable_declarator",
+            "start": 409,
+            "end": 739,
+            "parent": {
+              "kind": "variable_declaration",
+              "start": 403,
+              "end": 740
+            }
+          }
+        }
+      ],
+      "selected": {
+        "start": 1364,
+        "end": 1373,
+        "context": {
+          "kind": "parameter",
+          "start": 1364,
+          "end": 1373,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 1401,
+          "end": 1410,
+          "context": null
+        }
+      ]
+    },
+    {
+      "name": "application-flattened-string-array",
+      "file": "artifacts/application-flattened-string-array.js",
+      "source_id": "999fba1a8130339fe7662a389b29c4635ece190be5a24b8a32471e6e9788112d",
+      "matches": [
+        {
+          "start": 932,
+          "end": 944,
+          "context": {
+            "kind": "variable_declarator",
+            "start": 668,
+            "end": 1239,
+            "parent": {
+              "kind": "variable_declaration",
+              "start": 662,
+              "end": 1240
+            }
+          }
+        }
+      ],
+      "selected": {
+        "start": 3284,
+        "end": 3293,
+        "context": {
+          "kind": "parameter",
+          "start": 3284,
+          "end": 3293,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 3323,
+          "end": 3332,
+          "context": null
+        }
+      ]
+    },
+    {
+      "name": "application-rc4",
+      "file": "artifacts/application-rc4.js",
+      "source_id": "691e2f04876701c28acd52ae573964bc7203a2b39780c701ee8c46239193d960",
+      "matches": [],
+      "selected": {
+        "start": 3955,
+        "end": 3964,
+        "context": {
+          "kind": "parameter",
+          "start": 3955,
+          "end": 3964,
+          "parent": null
+        }
+      },
+      "references": [
+        {
+          "start": 4001,
+          "end": 4010,
+          "context": null
+        }
+      ]
+    }
+  ]
+}
