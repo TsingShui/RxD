@@ -191,3 +191,34 @@ closure.
 Shared snapshot, quota, cancellation and complete-response rules are in the
 [MCP design](mcp-design.md); the decision is [ADR 0007](../adr/0007-typed-mcp-service.md).
 CLI output and exit codes are unchanged by the MCP projection.
+
+## Performance baseline
+
+Measured on a 523 MiB production APK (97 root DEX entries, 928,795 classes,
+4,939,532 code items, 725 MiB of DEX once inflated), release build, three runs,
+median:
+
+| command | records | output | wall |
+| --- | ---: | ---: | ---: |
+| `classes` | 928,795 | 78 MB | 0.165 s |
+| `methods` | 5,194,250 | 679 MB | 0.36 s |
+| `methods --class <one class>` | 1 | tiny | 0.11 s |
+| `xref type java/lang/String` | 108,126 | 15 MB | 0.20 s |
+
+The fixed cost is inflating the entries: ~115 ms of wall time across 10-12
+threads. Everything above that scales with the bytes a command prints, so
+`sorted`/`deduped` output would only have added cost - a class index is reported
+in archive order for exactly this reason.
+
+Two optimizations were measured and rejected, and must not be retried without
+new evidence:
+
+- **Prefix inflation for the class index.** The last class descriptor sits at 81%
+  of an entry both on this 97-entry APK and on a 13-entry one, so the saving is
+  ~19% of the inflate work; a streaming inflater is slower per byte than
+  libdeflate, which makes the net negative.
+- **Batched rendering for `methods`.** Rendering entries in bounded batches
+  instead of collecting every payload measured 0.53 s (16-entry batches) and
+  0.44 s (64-entry batches) against 0.36 s collected, while peak RSS fell only
+  from 797 MB to 692 MB: the peak is dominated by inflated DEX buffers, not by
+  the rendered payload.
