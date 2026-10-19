@@ -15,7 +15,7 @@ use memmap2::Mmap;
 use rayon::prelude::*;
 use std::cell::OnceCell;
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -380,6 +380,53 @@ pub fn find_reference_hits_with_policy(
 #[cfg(test)]
 pub fn list_classes(path: &Path, threads: usize, debug: bool) -> Result<Vec<ClassEntry>> {
     list_classes_with_policy(path, ArchivePolicy::default(), threads, debug)
+}
+
+/// Which methods a `functions`-style listing reports.
+pub use crate::dex::methods::Selector as MethodSelector;
+
+/// Every method defined by the archive's DEX entries, rendered as record lines.
+///
+/// Entries are walked in central-directory order and each one renders its rows into its
+/// own buffer, so the joined payload keeps archive order without a global sort.
+pub fn list_methods_with_policy(
+    path: &Path,
+    policy: ArchivePolicy,
+    selector: &MethodSelector<'_>,
+    threads: usize,
+    debug: bool,
+) -> Result<(String, usize)> {
+    let started = Instant::now();
+    let chunks = map_dex_entries(
+        path,
+        policy,
+        threads,
+        EntryOrder::Natural,
+        None,
+        |inflated| {
+            let mut out = String::new();
+            let mut rows = 0;
+            for logical in dex::container::logical_dexes(&inflated.entry.name, inflated.data()?)? {
+                rows += crate::dex::methods::render(&logical.data, selector, &mut out)?;
+            }
+            Ok(vec![(out, rows)])
+        },
+    )?;
+    let mut payload = String::new();
+    let mut records = 0usize;
+    for (chunk, count) in chunks {
+        payload.push_str(&chunk);
+        records += count;
+    }
+    if debug {
+        crate::diag::diagnose(format_args!(
+            "[methods] records={} rendered={:.2} ms bytes={}",
+            records,
+            started.elapsed().as_secs_f64() * 1e3,
+            payload.len()
+        ));
+    }
+    Ok((payload, records))
 }
 
 pub fn list_classes_with_policy(
@@ -823,97 +870,6 @@ pub fn list_strings_with_policy(
         ));
     }
     Ok(rows)
-}
-
-/// The member table for one class, from the one definition that exists.
-#[cfg(test)]
-pub fn member_lines(
-    paths: &[PathBuf],
-    descriptor: &str,
-    threads: usize,
-) -> Result<MemberLinesLookup> {
-    member_lines_with_policy(paths, ArchivePolicy::default(), descriptor, threads)
-}
-
-pub fn member_lines_with_policy(
-    paths: &[PathBuf],
-    policy: ArchivePolicy,
-    descriptor: &str,
-    threads: usize,
-) -> Result<MemberLinesLookup> {
-    let (definitions, lines) = walk_definitions(
-        paths,
-        policy,
-        descriptor,
-        threads,
-        dex::members::member_lines,
-    )?
-    .unique();
-    Ok(MemberLinesLookup { definitions, lines })
-}
-
-/// What a member-table lookup found; `lines` only when exactly one definition exists.
-#[derive(Debug, Default)]
-pub struct MemberLinesLookup {
-    pub definitions: Vec<String>,
-    pub lines: Option<Vec<String>>,
-}
-
-/// One class's definition sites: the entry names, and one extracted value per site.
-struct Definitions<T> {
-    names: Vec<String>,
-    values: Vec<T>,
-}
-
-impl<T> Definitions<T> {
-    /// The single value, when the class is defined exactly once.
-    fn unique(mut self) -> (Vec<String>, Option<T>) {
-        let value = (self.names.len() == 1).then(|| self.values.remove(0));
-        (self.names, value)
-    }
-}
-
-/// Runs `extract` over every DEX a class is defined in, in input and entry order.
-fn walk_definitions<T: Send>(
-    paths: &[PathBuf],
-    policy: ArchivePolicy,
-    descriptor: &str,
-    threads: usize,
-    extract: impl Fn(&[u8], &str) -> Result<Option<T>> + Sync,
-) -> Result<Definitions<T>> {
-    let mut definitions = Definitions {
-        names: Vec::new(),
-        values: Vec::new(),
-    };
-    for path in paths {
-        let found = map_dex_entries(
-            path,
-            policy,
-            threads,
-            EntryOrder::Natural,
-            None,
-            |inflated| {
-                let mut found = Vec::new();
-                for logical in
-                    dex::container::logical_dexes(&inflated.entry.name, inflated.data()?)?
-                {
-                    // A DEX 041 container carries an extra-long header; the reader wants the
-                    // standard view, exactly as `getclass` does.
-                    let normalized = dex::container::standard_header_view(&logical.data);
-                    let data = normalized.as_deref().unwrap_or(&logical.data);
-                    if let Some(value) = extract(data, descriptor)? {
-                        found.push((logical.name.clone(), value));
-                    }
-                }
-                Ok(found)
-            },
-        )?;
-        for (name, value) in found {
-            definitions.names.push(name);
-            definitions.values.push(value);
-        }
-    }
-    Ok(definitions)
 }
 
 /// Which member table a lookup reads.

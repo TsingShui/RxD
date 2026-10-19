@@ -129,7 +129,6 @@ rxd js outline inline.js
 ```sh
 rxd dex strings app.apk --filter Authorization --limit 20
 rxd dex findrefs app.apk string Authorization
-rxd dex get-class app.apk "$CALLER_CLASS" --members
 rxd dex manifest app.apk
 rxd jar strings library.jar --filter Authorization
 rxd jar findrefs library.jar string Authorization
@@ -142,7 +141,6 @@ DEX IDs/source IDs are null: route findrefs using `detail.class` (the caller)
 and `detail.entry`; reuse the unchanged archive. DEX strings have global table
 indices and no owning class. A duplicate class is an ambiguity, not a reason to
 choose the first definition. DEX 041 may identify logical DEX members separately.
-`get-class --members` exposes member indices; runtime field slots differ from
 field_ids, while method indices are method_ids.
 DEX `-o` also prints the same bytes to stdout; other backends have their own file
 output contracts. In JVM findrefs take the caller `context_id` as `METHOD_ID`;

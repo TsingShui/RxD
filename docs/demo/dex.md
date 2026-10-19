@@ -14,7 +14,6 @@ target/release/rxd dex xref /path/to/app.apk type Gson
 target/release/rxd dex xref /path/to/app.apk method onCreate --class com.example.Main
 target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example --fuzzy-class
 target/release/rxd dex get-class /path/to/app.apk com.example.Main
-target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' --members -o target/Main.java
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
 target/release/rxd dex classes /path/to/classes.dex --threads 2
 ```
@@ -56,7 +55,6 @@ target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' > target/
 
 `strings.detail.value/index` use the global DEX string table; `detail.class` is always
 `schema_version=2`; read layout from `detail.instance_fields` etc. Exits 3/4 emit no
-`get-class --members` comment tables, Java text and Manifest XML remain unchanged.
 
 ## MCP
 

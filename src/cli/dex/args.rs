@@ -19,6 +19,32 @@ pub enum Command {
     Manifest(ManifestArgs),
     /// List classes defined across every DEX in an APK.
     Classes(ClassesArgs),
+    /// List every method the archive's DEX files define.
+    ///
+    /// A method is reported once per definition; `method_ids` entries that are only
+    /// referenced are not listed.
+    Methods(MethodsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct MethodsArgs {
+    pub apk_path: PathBuf,
+    /// Only list methods defined by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
+    #[arg(long)]
+    pub class: Option<String>,
+    /// Case-insensitive substring filter over the method name.
+    #[arg(short, long)]
+    pub filter: Option<String>,
+    /// Append each method's access flags to its record.
+    #[arg(long)]
+    pub with_flags: bool,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    pub threads: usize,
+    /// Print phase timings on stderr.
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Debug, Args)]
@@ -111,13 +137,6 @@ pub struct ManifestArgs {
 
 #[derive(Debug, Args)]
 pub struct GetClassArgs {
-    /// Also print a machine-readable member table before the source.
-    ///
-    /// One line per field (`field_ids`, the runtime `slot`, static flag, type) and per
-    /// method (`method_ids`, prototype, flags), which is what maps a runtime index to the
-    /// member in the source below. Without this flag the output is unchanged.
-    #[arg(long)]
-    pub members: bool,
     #[arg(long)]
     pub debug: bool,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -235,6 +254,7 @@ impl Command {
             Self::Xref(args) => args.debug,
             Self::Manifest(args) => args.debug,
             Self::Classes(args) => args.debug,
+            Self::Methods(args) => args.debug,
         }
     }
 
@@ -246,6 +266,7 @@ impl Command {
             Self::Xref(_) => "xref",
             Self::Manifest(_) => "manifest",
             Self::Classes(_) => "classes",
+            Self::Methods(_) => "methods",
         }
     }
 }

@@ -17,7 +17,6 @@ preserved; argument positions and exit-code semantics are.
 
 | Command | Query and output |
 | --- | --- |
-| `get-class INPUT CLASS` | Java decompilation text by dotted name or Dalvik descriptor; `--members` prints a field/method index table. |
 | `entries INPUT` | Archive entries in central-directory order with compression and sizes; duplicate names are preserved. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
 | `xref INPUT string\|type VALUE` | Literal string or type references, with referring member and matched target. |
@@ -55,8 +54,6 @@ JS/ASAR file-output contract: DEX keeps its original direct write and does not p
 atomic rollback on failure. Input and output must be different files.
 
 Normal queries exit 0 (including zero references or results); input/analysis/write
-`get-class --members` preserve ambiguity semantics: 3 means no result, 4 means
-`get-class --members` refuse to select a definition. A missing class for `get-class`
 is still exit 1. Consumers must not assume that a non-zero exit implies empty stdout.
 
 DEX uses the CLI streaming path directly and preserves SIGPIPE/broken-pipe behavior;
@@ -137,7 +134,6 @@ references within one member are listed once; ordering is preserved.
 instance-first runtime slot, `field_index` is the DEX `field_ids` index, and
 `method_index` is the DEX `method_ids` index. `access_flags` is an integer.
 
-`get-class` Java and `get-class --members` text (including the member comment table)
 and Manifest XML stay outside the envelope and are byte-stable; JSON and Java are never
 mixed. `-o` copies stdout exactly. Input/analysis errors emit no success envelope.
 

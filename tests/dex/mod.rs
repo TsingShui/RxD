@@ -64,7 +64,10 @@ fn assert_record(row: &Value) {
             "field_index",
             "slot",
         ],
-        "method" => &["entry", "class", "name", "access_flags", "method_index"],
+        // `methods` prints one descriptor row per definition; `get-class --members` prints
+        // its member table as text, so this is the only `method` record shape.
+        "method" if row["detail"].get("access_flags").is_some() => &["access_flags", "descriptor"],
+        "method" => &["descriptor"],
 
         other => panic!("unexpected dex record {other}"),
     };
@@ -205,6 +208,54 @@ fn dex_strings_filter_pagination_and_output_file_keep_identical_bytes() {
 }
 
 #[test]
+fn dex_methods_lists_definitions_and_honours_class_and_name_filters() {
+    let dex = const_string_dex(1);
+    let (_dir, path) = fixture(stored_zip(&[("classes.dex", &dex)]), "methods.apk");
+    let all = query("methods", &path, &[]);
+    success(&all);
+    let rows = dex_records(&all);
+    assert!(!rows.is_empty(), "{}", text(&all));
+    assert!(rows.iter().all(|row| row["record"] == "method"));
+    assert!(
+        rows.iter().any(|row| {
+            row["detail"]["descriptor"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("LFixture0;->"))
+        }),
+        "{}",
+        text(&all)
+    );
+    // A class filter lists that class only, and every row names it.
+    let one = query("methods", &path, &["--class", "Fixture0"]);
+    success(&one);
+    let rows = dex_records(&one);
+    assert!(!rows.is_empty(), "{}", text(&one));
+    assert!(
+        rows.iter().all(|row| {
+            row["detail"]["descriptor"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("LFixture0;->"))
+        }),
+        "{}",
+        text(&one)
+    );
+    // A name filter that nothing matches lists nothing.
+    let none = query("methods", &path, &["--filter", "zzz_no_such_method"]);
+    success(&none);
+    assert_eq!(dex_records(&none).len(), 0);
+    // Access flags are opt-in.
+    let flagged = query("methods", &path, &["--class", "Fixture0", "--with-flags"]);
+    success(&flagged);
+    assert!(
+        dex_records(&flagged)
+            .iter()
+            .all(|row| row["detail"]["access_flags"].is_u64()),
+        "{}",
+        text(&flagged)
+    );
+}
+
+#[test]
 fn dex_entries_preserve_directory_order_duplicates_and_root_selection() {
     let one = const_string_dex(1);
     let two = const_string_dex(2);
@@ -246,7 +297,7 @@ fn dex_entries_preserve_directory_order_duplicates_and_root_selection() {
 }
 
 #[test]
-fn dex_getclass_preserves_source_member_table_debug_and_missing_class_status() {
+fn dex_getclass_preserves_source_debug_and_missing_class_status() {
     let dex = const_string_dex(2);
     let (dir, bare) = fixture(&dex, "input.dex");
     let wrapped = dir.path().join("app.apk");
@@ -266,13 +317,6 @@ fn dex_getclass_preserves_source_member_table_debug_and_missing_class_status() {
     assert_eq!(wrapped_out.stdout, original.stdout);
     assert_eq!(fs::read(output_file).unwrap(), original.stdout);
     assert!(String::from_utf8_lossy(&wrapped_out.stderr).contains("Hit DEX: classes.dex"));
-    let members = query("get-class", &wrapped, &["--members", "Fixture1"]);
-    success(&members);
-    assert!(text(&members).starts_with("# members methods:"));
-    assert!(members.stdout.ends_with(&original.stdout));
-    let missing_members = query("get-class", &bare, &["--members", "Absent"]);
-    assert_eq!(missing_members.status.code(), Some(1));
-    assert!(missing_members.stdout.is_empty());
     let missing = query("get-class", &bare, &["Absent"]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(missing.stdout.is_empty());

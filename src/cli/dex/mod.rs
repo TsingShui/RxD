@@ -109,7 +109,7 @@ fn run_command(
     let command_name = command.name();
     // Only a member lookup has a verdict of its own (one hit, none, several); every
     // other command either produced its payload or failed.
-    let mut status = 0;
+    let status = 0;
     match command {
         Command::Xref(args) => {
             let query = args.query()?;
@@ -275,6 +275,32 @@ fn run_command(
             finish_stream(&mut payload, strings.len())?;
             emit(&payload, args.output.as_deref())?;
         }
+        Command::Methods(args) => {
+            let selector = apk::MethodSelector {
+                class: args.class.as_deref(),
+                name: args.filter.as_deref(),
+                with_flags: args.with_flags,
+            };
+            let (rows, records) = apk::list_methods_with_policy(
+                &args.apk_path,
+                archive_policy,
+                &selector,
+                args.threads,
+                args.debug,
+            )?;
+            let mut payload = stream_header(
+                "methods",
+                std::slice::from_ref(&args.apk_path),
+                json!({
+                    "class":args.class, "filter":args.filter, "with_flags":args.with_flags,
+                }),
+            )?;
+            payload.push_str(&rows);
+            let mut summary = String::new();
+            finish_stream(&mut summary, records)?;
+            payload.push_str(&summary);
+            emit(&payload, args.output.as_deref())?;
+        }
         Command::Entries(args) => {
             let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {
                 apk::list_entries(&args.apk_path)
@@ -311,41 +337,6 @@ fn run_command(
         }
         Command::Getclass(args) => {
             let class_name = query::format_class_name(&args.dalvik_class)?;
-            // `--members` prefixes the index table. It has to describe the same definition
-            // the source came from, so a class defined more than once is refused rather
-            // than resolved by taking the first - the table would otherwise annotate one
-            // definition while the decompiler rendered another.
-            let mut table: Vec<String> = Vec::new();
-            if args.members {
-                let inputs = [args.apk_path.clone()];
-                let lookup = apk::member_lines_with_policy(
-                    &inputs,
-                    archive_policy,
-                    &class_name,
-                    args.threads,
-                )?;
-                match lookup.lines {
-                    Some(lines) => table = lines,
-                    None if lookup.definitions.is_empty() => {
-                        bail!("Class {class_name} not found in APK.");
-                    }
-                    None => {
-                        eprintln!(
-                            "Error: {class_name} is defined {} times ({}); --members must name one definition",
-                            lookup.definitions.len(),
-                            lookup.definitions.join(", ")
-                        );
-                        #[cfg(feature = "mcp")]
-                        if crate::query::is_capturing() {
-                            emit(
-                                &format!("{}\n", json!({"definitions":lookup.definitions})),
-                                None,
-                            )?;
-                        }
-                        status = apk::lookup_status(lookup.definitions.len());
-                    }
-                }
-            }
             if status == 0 {
                 let hit = apk::decompile_class_with_policy(
                     &args.apk_path,
@@ -362,10 +353,6 @@ fn run_command(
                     rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
                 }
                 let mut payload = String::with_capacity(source.len() + 256);
-                for line in &table {
-                    payload.push_str(line);
-                    payload.push('\n');
-                }
                 payload.push_str(&source);
                 payload.push('\n');
                 emit(&payload, args.output.as_deref())?;

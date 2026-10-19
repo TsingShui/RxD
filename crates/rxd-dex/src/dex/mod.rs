@@ -10,7 +10,7 @@
 
 pub(crate) mod container;
 mod filter;
-pub(crate) mod members;
+pub(crate) mod methods;
 mod mutf8;
 mod opcodes;
 pub(crate) mod prefix;
