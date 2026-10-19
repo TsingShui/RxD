@@ -62,9 +62,9 @@
     <div class="feature-grid">
       <article><h3>端侧模型</h3><p>下载固定 Qwen3.5-2B Q4_K_M（1.28 GB）或导入 GGUF。llama.rn 在 CPU 上做文本推理，最高 8k 上下文、1,024 token 回复，thinking 可选。模型不内嵌 APK；导入按 SHA-256 绑定并通过真实引擎探针。</p></article>
       <article><h3>模型连接</h3><p>通过 Pi AI 接入 OpenAI Completions/Responses、Anthropic Messages 与 Google Generative AI。命名连接、模型设置与设备凭据；凭据使用 Android Keystore/SecureStore。本地 HTTP 端点有明确的未加密提示。</p></article>
-      <article><h3>真实分析</h3><p>内嵌 ARM64 rxd 覆盖 JS、ASAR、HTML、APK/DEX、JVM、.NET、WASM、EVM、PYC 与 Kuna。<code>rxd_file_outline</code> 是有界 JS 快路径，其他格式走 shell 里的 <code>$ARXD_RXD</code>。分析源码永不执行。</p></article>
+      <article><h3>真实分析</h3><p>内嵌 ARM64 rxd 覆盖 JS、ASAR、HTML、APK/DEX、JVM、.NET、WASM、EVM、PYC 与 Kuna。<code>rxd_file_outline</code> 是有界 JS 快路径，其他格式走 shell 里的 <code>$ARXD_RXD</code>。</p></article>
       <article><h3>持久工作区</h3><p>Pi-durable 管理对话、工具轮次与持久化。SQLite 保留历史、归档、附件与报告。删除会话不会删除文件库。</p></article>
-      <article><h3>文件与 Skills</h3><p>浏览、编辑、复制、分享与附加文件。导入 <code>SKILL.md</code>、目录或工作区技能；默认禁用，导入永不执行脚本。Agent 按需加载已准入的 Skills。</p></article>
+      <article><h3>文件与 Skills</h3><p>浏览、编辑、复制、分享与附加文件。导入 <code>SKILL.md</code>、目录或工作区技能；默认禁用。Agent 按需加载已准入的 Skills。</p></article>
       <article><h3>MCP 与后台进程</h3><p>保存 stdio 启动定义或 HTTP(S) 端点，连接并发现工具。长任务实例可见，停止是显式动作。Android 上的明文 HTTP 仅限 loopback。</p></article>
     </div>
   </section>
@@ -88,7 +88,7 @@
     <div class="feature-grid">
       <article><h3>仅 Android ARM64</h3><p>按 <code>apps/arxd/README.md</code> 从源码构建。设备证据与宿主机检查分开记录；尚未发布 APK。</p></article>
       <article><h3>端侧模型不是沙箱</h3><p>2B CPU 路径的能力与延迟不同于云端模型。shell 工具不提供网络隔离；不可信输入仍应在设备外隔离。</p></article>
-      <article><h3>导入不等于执行</h3><p>Skill 导入不运行脚本，模型文件不内嵌 APK。只启用你信任的工作流。模型导入必须通过哈希、模板与工具解析器探针。</p></article>
+      <article><h3>导入是显式动作</h3><p>Skills 与模型默认禁用，只启用你信任的工作流。模型文件不内嵌 APK，导入必须通过哈希、模板与工具解析器探针。</p></article>
     </div>
   </section>
 

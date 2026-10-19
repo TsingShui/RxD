@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RxD — 一个二进制，完成大部分静态分析</title>
-<meta name="description" content="RxD 是面向 Agent 的开源分析 CLI，覆盖原生、托管、容器与字节码格式。一个二进制、内容绑定 ID，输入永不执行。">
+<meta name="description" content="RxD 是面向 Agent 的开源分析 CLI，覆盖原生、托管、容器与字节码格式。一个二进制、内容绑定 ID、确定性记录。">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/zh/">
 <link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/">
@@ -47,7 +47,7 @@
       <div class="hero-copy">
         <p class="kicker">RUST × DECOMPILER / 面向 AGENT 的分析 CLI</p>
         <h1>一个二进制。<br>完成大部分静态分析。</h1>
-        <p class="lede">Native、APK、JAR、JavaScript、.NET、WASM、PYC 与 EVM —— 定位线索、追踪引用、按需取回原始单元。内容绑定 ID、确定性记录，输入永不执行。</p>
+        <p class="lede">Native、APK、JAR、JavaScript、.NET、WASM、PYC 与 EVM —— 定位线索、追踪引用、按需取回原始单元。内容绑定 ID、确定性记录。</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">立即上手 <span aria-hidden="true">→</span></a>
           <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD">GitHub 仓库 <span aria-hidden="true">↗</span></a>
@@ -55,7 +55,7 @@
         <ul class="hero-meta">
           <li>单文件可执行</li>
           <li>Apache-2.0</li>
-          <li>输入永不执行</li>
+          <li>字节精确提取</li>
         </ul>
       </div>
       <figure class="console" aria-label="RxD 命令示例">
@@ -104,7 +104,7 @@ target/release/rxd skill install -a pi</code></pre>
       <div class="feature-grid">
         <article><h3>内容绑定身份</h3><p>每个 ID 绑定输入哈希与真实字节区间。提取返回原始字节，而不是重新构造地址。</p></article>
         <article><h3>Agent 优先输出</h3><p>稳定 JSONL 信封：header、records、summary。detail 是闭合的逐记录 schema；原始源码保持字节精确。</p></article>
-        <article><h3>永不执行</h3><p>解析器只读固定缓冲区。输入与恢复出的模块永不执行；预算与原子失败都是显式的。</p></article>
+        <article><h3>显式预算</h3><p>记录数、解码量与输入大小都有显式上限。超限是错误，输出保持原子。</p></article>
         <article><h3>诚实降级</h3><p>反编译器无法恢复某个单元时，保留完整原始 IL／字节码／指令与原因，不返回部分猜测。</p></article>
       </div>
     </div>

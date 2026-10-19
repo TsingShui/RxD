@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RxD — one binary for most agentic analysis</title>
-<meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats. One binary, content-bound IDs, no input execution.">
+<meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats. One binary, content-bound IDs, deterministic records.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/">
 <link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/">
@@ -48,7 +48,7 @@
       <div class="hero-copy">
         <p class="kicker">RUST × DECOMPILER / AGENT-FIRST ANALYSIS CLI</p>
         <h1>One binary.<br>Most agentic analysis.</h1>
-        <p class="lede">Native, APK, JAR, JavaScript, .NET, WASM, PYC and EVM — locate a clue, find references, and fetch the original unit. Content-bound IDs, deterministic records, and input that is never executed.</p>
+        <p class="lede">Native, APK, JAR, JavaScript, .NET, WASM, PYC and EVM — locate a clue, find references, and fetch the original unit. Content-bound IDs, deterministic records, and byte-exact extraction.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">Get started <span aria-hidden="true">→</span></a>
           <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD">GitHub repository <span aria-hidden="true">↗</span></a>
@@ -56,12 +56,12 @@
         <ul class="hero-meta">
           <li>Single executable</li>
           <li>Apache-2.0</li>
-          <li>Inputs never run</li>
+          <li>Byte-exact extraction</li>
         </ul>
       </div>
       <figure class="hero-mark" aria-label="RxD mark">
         <img src="assets/arxd-light-1024.png" alt="" width="420" height="420">
-        <figcaption>RXD / CONTENT-BOUND / STATIC-ONLY</figcaption>
+        <figcaption>RXD / CONTENT-BOUND / BYTE-EXACT</figcaption>
       </figure>
     </div>
   </section>
@@ -90,7 +90,7 @@ target/release/rxd skill install -a pi</code></pre>
       <div class="feature-grid">
         <article><h3>Content-bound identity</h3><p>Every ID binds the input hash and a real byte range. Extraction returns original bytes, never a reconstruction of the address.</p></article>
         <article><h3>Agent-first output</h3><p>Stable JSONL envelopes: header, records and summary. Detail is a closed per-record schema. Raw source stays byte-exact.</p></article>
-        <article><h3>No execution</h3><p>Parsers read fixed buffers. Inputs and recovered modules are never executed; budgets and atomic failures are explicit.</p></article>
+        <article><h3>Explicit budgets</h3><p>Record, decode and input limits are explicit. Oversized work fails and output stays atomic.</p></article>
         <article><h3>Honest degradation</h3><p>When a decompiler cannot recover a unit, the full original IL/bytecode/instructions and a reason remain. Partial guesses are not returned.</p></article>
       </div>
     </div>

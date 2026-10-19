@@ -179,13 +179,6 @@
         </div>
       </div>
       <div class="rm-item">
-        <span class="rm-status is-hold">Never</span>
-        <div class="rm-body">
-          <h3>Executing input / dynamic behavior</h3>
-          <p>Inputs are never run, modules are never instantiated and pages are never loaded. RxD reads static bytes and does not claim runtime semantics.</p>
-        </div>
-      </div>
-      <div class="rm-item">
         <span class="rm-status is-hold">Design boundary</span>
         <div class="rm-body">
           <h3>Human terminal UI</h3>
@@ -203,7 +196,7 @@
     </div>
     <div class="feature-grid">
       <article><h3>Agent-first</h3><p>Low latency, low token cost and structured output. Query precision is never traded for a human presentation layer.</p></article>
-      <article><h3>Static-only</h3><p>Inputs never execute. Capability is bounded by static facts, content identity and explicit budgets.</p></article>
+      <article><h3>Bounded</h3><p>Capability is bounded by content identity, explicit budgets and deterministic output.</p></article>
       <article><h3>Measured</h3><p>150 ms is the backend acceptance line. Exceptions need scope, release measurements and approval; they do not transfer to other inputs.</p></article>
     </div>
   </section>

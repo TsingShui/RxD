@@ -47,7 +47,7 @@
 
   <section class="section">
     <h2>APK: find Authorization, then fetch the class</h2>
-    <p class="section-lede">Search the string table, route the hit to its referencing class, then fetch Java by descriptor. The APK is never installed or run.</p>
+    <p class="section-lede">Search the string table, route the hit to its referencing class, then fetch Java by descriptor.</p>
     <pre><code>rxd dex strings app.apk --filter Authorization --limit 20
 rxd dex findrefs app.apk string Authorization
 rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
@@ -56,7 +56,7 @@ rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
 
   <section class="section">
     <h2>JavaScript: locate a request handler</h2>
-    <p class="section-lede">No execution, no deobfuscation. Inspect structure, search decoded literals, then fetch original source by ID.</p>
+    <p class="section-lede">No deobfuscation. Inspect structure, search decoded literals, then fetch original source by ID.</p>
     <pre><code>rxd js outline bundle.js --jsonl
 rxd js find bundle.js --string '/api/login'
 rxd js refs bundle.js --byte 122

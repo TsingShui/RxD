@@ -48,7 +48,7 @@
 
   <section class="section">
     <h2>APK：找到 Authorization，再取回它的类</h2>
-    <p class="section-lede">搜索字符串表，把命中路由到引用类，再按 descriptor 取 Java。APK 永不安装、永不运行。</p>
+    <p class="section-lede">搜索字符串表，把命中路由到引用类，再按 descriptor 取 Java。</p>
     <pre><code>rxd dex strings app.apk --filter Authorization --limit 20
 rxd dex findrefs app.apk string Authorization
 rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
@@ -57,7 +57,7 @@ rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
 
   <section class="section">
     <h2>JavaScript：定位一个请求处理器</h2>
-    <p class="section-lede">不执行、不去混淆。看结构，搜解码字面量，再按 ID 取原始源码。</p>
+    <p class="section-lede">不去混淆。看结构，搜解码字面量，再按 ID 取原始源码。</p>
     <pre><code>rxd js outline bundle.js --jsonl
 rxd js find bundle.js --string '/api/login'
 rxd js refs bundle.js --byte 122
