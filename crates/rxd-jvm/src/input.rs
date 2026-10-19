@@ -20,6 +20,17 @@ pub struct Input {
     pub source_id: String,
     pub file_bytes: usize,
     pub classes: Vec<InputClass>,
+    /// Every archive entry with its sizes, in central-directory order.
+    pub entries: Vec<InputEntry>,
+}
+
+/// One archive entry, in the same shape dex reports for an APK.
+#[derive(Debug, Clone)]
+pub struct InputEntry {
+    pub name: String,
+    pub compression: u16,
+    pub compressed_size: usize,
+    pub uncompressed_size: usize,
 }
 
 impl Input {
@@ -50,7 +61,17 @@ impl Input {
         let source_id = rxd_core::identity::content_id(path, &bytes);
         let file_bytes = bytes.len();
         let mut classes = Vec::new();
+        let mut entries = Vec::new();
         if bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
+            entries.push(InputEntry {
+                name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                compression: 0,
+                compressed_size: file_bytes,
+                uncompressed_size: file_bytes,
+            });
             ensure!(
                 bytes.len() <= limits.class_bytes,
                 "RESOURCE_LIMIT: class byte budget exceeded"
@@ -68,6 +89,19 @@ impl Input {
                 zip.len() <= limits.entries,
                 "RESOURCE_LIMIT: archive entry budget exceeded"
             );
+            for index in 0..zip.len() {
+                let entry = zip.by_index(index)?;
+                entries.push(InputEntry {
+                    name: entry.name().to_owned(),
+                    compression: match entry.compression() {
+                        zip::CompressionMethod::Stored => 0,
+                        zip::CompressionMethod::Deflated => 8,
+                        _ => 255,
+                    },
+                    compressed_size: usize::try_from(entry.compressed_size()).unwrap_or(usize::MAX),
+                    uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
+                });
+            }
             let mut manifest = String::new();
             match zip.by_name("META-INF/MANIFEST.MF") {
                 Ok(entry) => {
@@ -179,6 +213,7 @@ impl Input {
             source_id,
             file_bytes,
             classes,
+            entries,
         })
     }
 

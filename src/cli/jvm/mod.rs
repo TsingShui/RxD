@@ -20,6 +20,12 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
+    /// List the entries an archive holds, in central-directory order.
+    Entries {
+        input: PathBuf,
+        #[command(flatten)]
+        options: Options,
+    },
     /// List the fields an archive declares as JSONL.
     Fields {
         input: PathBuf,
@@ -180,6 +186,7 @@ impl Command {
         match self {
             Self::Classes { .. } => "classes",
             Self::Fields { .. } => "fields",
+            Self::Entries { .. } => "entries",
             Self::Methods { .. } => "methods",
             Self::Get { .. } => "get-method",
             Self::GetClass { .. } => "get-class",
@@ -386,6 +393,59 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
+    if let Command::Entries { input, options } = command {
+        let limits = options.limits();
+        let input = Input::read(&input, limits, options.release)?;
+        let mut output = Vec::new();
+        append(
+            &mut output,
+            &header(
+                "jvm",
+                "entries",
+                Some(&input.source_id),
+                Some(input.file_bytes),
+                json!({}),
+                json!({"analysis":"entries","release":options.release})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+            limits.output_bytes,
+        )?;
+        let mut records = 0usize;
+        for entry in &input.entries {
+            let compression = match entry.compression {
+                0 => "stored",
+                8 => "deflated",
+                _ => "other",
+            };
+            append(
+                &mut output,
+                &record(
+                    "entry",
+                    RecordMeta::default(),
+                    json!({
+                        "name":entry.name,
+                        "compression":compression,
+                        "compressed_size":entry.compressed_size,
+                        "uncompressed_size":entry.uncompressed_size,
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+                limits.output_bytes,
+            )?;
+            records += 1;
+        }
+        append(
+            &mut output,
+            &summary(records, true, serde_json::Map::new()),
+            limits.output_bytes,
+        )?;
+        super::write_output(&output, options.output.as_deref())?;
+        return Ok(());
+    }
     let (path, options, request, class_filter, method_filter, listing) = match command {
         Command::Classes {
             input,
@@ -440,6 +500,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             Listing::Classes,
         ),
         Command::GetClass { .. } => unreachable!("handled above"),
+        Command::Entries { .. } => unreachable!("handled above"),
         Command::Strings { .. } => unreachable!("handled above"),
         Command::Xref { .. } => unreachable!("handled above"),
     };
