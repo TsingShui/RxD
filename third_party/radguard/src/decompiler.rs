@@ -85,6 +85,7 @@ impl<'a> Decompiler<'a> {
                         &class_name,
                         method,
                         &[],
+                        false,
                     )
                     .map(Some);
             }
@@ -232,7 +233,7 @@ impl<'a> Decompiler<'a> {
                 .and_then(|annotations| annotations.get(&method.method_idx))
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            output = self.write_method(output, descriptor, &name, method, annotations)?;
+            output = self.write_method(output, descriptor, &name, method, annotations, true)?;
         }
         output.source.push_str("}\n");
         Ok(output)
@@ -245,6 +246,7 @@ impl<'a> Decompiler<'a> {
         class_name: &str,
         method: &EncodedMethod,
         annotations: &[EncodedAnnotation],
+        indent: bool,
     ) -> Result<SourceOutput> {
         let resolved = self.dex.method(method.method_idx)?;
         let access = method_access(method.access_flags);
@@ -272,7 +274,7 @@ impl<'a> Decompiler<'a> {
             parameter_types,
             annotations: rendered_annotations,
             style: crate::render::SourceStyle::DAD,
-            indent: true,
+            indent,
         };
         Ok(crate::render::write_method(
             output,
