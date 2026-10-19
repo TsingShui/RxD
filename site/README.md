@@ -5,7 +5,7 @@ Static, dependency-free pages served by GitHub Pages at
 
 ## Structure
 
-- `index.html` — RxD overview: hero mark, quick start, why, backends, provenance and MCP.
+- `index.html` — RxD overview: hero mark, quick start, why, provenance and MCP.
 - `examples.html` — standalone query examples for APK, JavaScript, .NET and more.
 - `arxd.html` — standalone Android host page for Arxd.
 - `roadmap.html` — development status, next work and permanent non-goals.

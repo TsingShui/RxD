@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RxD — one binary for most static analysis</title>
+<title>RxD — one binary for most agentic analysis</title>
 <meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats. One binary, content-bound IDs, no input execution.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/">
@@ -47,7 +47,7 @@
     <div class="wrap hero-grid">
       <div class="hero-copy">
         <p class="kicker">RUST × DECOMPILER / AGENT-FIRST ANALYSIS CLI</p>
-        <h1>One binary.<br>Most static analysis.</h1>
+        <h1>One binary.<br>Most agentic analysis.</h1>
         <p class="lede">Native, APK, JAR, JavaScript, .NET, WASM, PYC and EVM — locate a clue, find references, and fetch the original unit. Content-bound IDs, deterministic records, and input that is never executed.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">Get started <span aria-hidden="true">→</span></a>
@@ -93,31 +93,6 @@ target/release/rxd skill install -a pi</code></pre>
         <article><h3>No execution</h3><p>Parsers read fixed buffers. Inputs and recovered modules are never executed; budgets and atomic failures are explicit.</p></article>
         <article><h3>Honest degradation</h3><p>When a decompiler cannot recover a unit, the full original IL/bytecode/instructions and a reason remain. Partial guesses are not returned.</p></article>
       </div>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="kicker">BACKENDS</p>
-        <h2>One namespace per format.</h2>
-        <p class="section-lede">Each backend exposes the capability loop that fits its format: enumerate, search, cross-reference and fetch.</p>
-      </div>
-      <table class="format-table">
-        <thead><tr><th>Backend</th><th>Entry</th><th>Capability</th></tr></thead>
-        <tbody>
-          <tr><td>Native (Kuna)</td><td><code>rxd kuna</code></td><td>ELF/PE/Mach-O functions, single-function and project decompilation</td></tr>
-          <tr><td>JavaScript</td><td><code>rxd js</code></td><td>Structures, decoded literals, lexical references, original source</td></tr>
-          <tr><td>ASAR</td><td><code>rxd asar</code></td><td>Archive entries and raw extraction</td></tr>
-          <tr><td>HTML</td><td><code>rxd html</code></td><td>Lexical container records and node extraction</td></tr>
-          <tr><td>Android APK/DEX</td><td><code>rxd dex</code></td><td>Classes, strings, references, Manifest, field layout</td></tr>
-          <tr><td>JVM</td><td><code>rxd jar</code></td><td>Class metadata, strings, references, Java decompilation</td></tr>
-          <tr><td>.NET IL</td><td><code>rxd dotnet</code></td><td>Metadata, strings, semantic XREF, original IL or C#</td></tr>
-          <tr><td>WebAssembly</td><td><code>rxd wasm</code></td><td>Module structure, instructions, references, C-like output</td></tr>
-          <tr><td>CPython bytecode</td><td><code>rxd pyc</code></td><td>3.8–3.13 navigation, original instructions, source recovery</td></tr>
-          <tr><td>EVM bytecode</td><td><code>rxd evm</code></td><td>EVMole analysis, static navigation, bounded pseudocode</td></tr>
-        </tbody>
-      </table>
     </div>
   </section>
 

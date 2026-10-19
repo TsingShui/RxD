@@ -287,6 +287,7 @@ ul, ol { padding: 0; list-style: none; }
 .eyebrow .sep { color: #4e4a44; margin: 0 2px; }
 
 html[lang="zh-CN"] .hero h1 { font-size: clamp(30px, 8.6vw, 56px); }
+html[lang="en"] .hero h1 { font-size: clamp(34px, 4.4vw, 58px); }
 h1 {
   margin-top: 26px;
   font-size: clamp(38px, 5vw, 62px);
