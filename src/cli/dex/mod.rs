@@ -297,9 +297,7 @@ fn run_command(
             )?;
             let mut summary = String::new();
             finish_stream(&mut summary, records)?;
-            // Stream the per-entry payloads: a full listing is ~680 MiB, and joining
-            // them first held two copies of it.
-            super::dex::output::emit_rows(
+            emit_rows(
                 std::iter::once(header)
                     .chain(chunks)
                     .chain(std::iter::once(summary)),
