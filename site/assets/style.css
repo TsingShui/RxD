@@ -1613,6 +1613,40 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
 }
 
 /* Clean documentation pages */
+.why-list {
+  list-style: none;
+  counter-reset: why;
+  margin: 34px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--ink-line);
+}
+.why-list li {
+  position: relative;
+  padding: 22px 0 24px 52px;
+  border-bottom: 1px solid var(--ink-line);
+  counter-increment: why;
+}
+.why-list li::before {
+  content: "0" counter(why);
+  position: absolute;
+  left: 0;
+  top: 24px;
+  font: 400 10px/1 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--ember);
+}
+.why-list h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.why-list p {
+  margin-top: 7px;
+  max-width: 78ch;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #918b82;
+}
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1724,6 +1758,7 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
 }
 @media (max-width: 720px) {
   .feature-grid { grid-template-columns: 1fr; }
+  .why-list li { padding-left: 38px; }
   .prov-grid { grid-template-columns: 1fr; }
   .prov-card { padding: 20px 18px; }
   .format-table th,
