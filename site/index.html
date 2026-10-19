@@ -101,21 +101,21 @@ target/release/rxd skill install -a pi</code></pre>
       <div class="section-head">
         <p class="kicker">PROVENANCE</p>
         <h2>Where the backends come from.</h2>
-        <p class="section-lede">Each backend names its format only; the source column links upstream repositories where one exists and leaves RxD-owned implementations plain. Versions and licenses stay auditable.</p>
+        <p class="section-lede">Each backend names its format only; the source column states what RxD contributes and links the independent upstream engine where one exists. Versions and licenses stay auditable.</p>
       </div>
       <table class="format-table">
         <thead><tr><th>Backend</th><th>Source / engine</th><th>License</th></tr></thead>
         <tbody>
-          <tr><td>Native</td><td><a href="https://github.com/Noelo-Lab/kuna">Kuna CLI</a>; linked adapter</td><td>Apache-2.0 (Kuna)</td></tr>
-          <tr><td>JavaScript</td><td><a href="https://github.com/oxc-project/oxc">Oxc parser</a></td><td>MIT (Oxc)</td></tr>
-          <tr><td>ASAR</td><td>RxD ASAR indexer</td><td>Apache-2.0</td></tr>
+          <tr><td>Native</td><td><a href="https://github.com/Noelo-Lab/kuna">Kuna CLI</a> + RxD linked adapter</td><td>Apache-2.0 (Kuna)</td></tr>
+          <tr><td>JavaScript</td><td><a href="https://github.com/oxc-project/oxc">Oxc parser</a> + RxD structure/refs</td><td>MIT (Oxc)</td></tr>
+          <tr><td>ASAR</td><td>RxD index/extract</td><td>Apache-2.0</td></tr>
           <tr><td>HTML</td><td>RxD lexical container</td><td>Apache-2.0</td></tr>
-          <tr><td>Android APK/DEX</td><td>RxD + <a href="https://github.com/MG1937/rust_ASC">rust_ASC</a></td><td>Apache-2.0</td></tr>
-          <tr><td>JVM</td><td>RxD class parser + <a href="https://github.com/MG1937/radguard">radguard IR</a></td><td>Apache-2.0</td></tr>
-          <tr><td>.NET IL</td><td><a href="https://github.com/icsharpcode/ILSpy">ILSpy v11 NativeAOT</a></td><td>MIT (ILSpy)</td></tr>
-          <tr><td>WebAssembly</td><td><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser">wasmparser</a> + RxD</td><td>Apache-2.0 / MIT / LLVM-exception</td></tr>
-          <tr><td>CPython bytecode</td><td>RxD marshal + pycdc fork</td><td>MIT (pycdc)</td></tr>
-          <tr><td>EVM bytecode</td><td><a href="https://github.com/cdump/evmole">EVMole 0.9.4</a></td><td>MIT (EVMole)</td></tr>
+          <tr><td>Android APK/DEX</td><td>RxD DEX frontend + <a href="https://github.com/MG1937/rust_ASC">rust_ASC</a></td><td>Apache-2.0</td></tr>
+          <tr><td>JVM</td><td>RxD JVM frontend + <a href="https://github.com/MG1937/radguard">radguard IR</a></td><td>Apache-2.0</td></tr>
+          <tr><td>.NET IL</td><td>RxD metadata/IL frontend + <a href="https://github.com/icsharpcode/ILSpy">ILSpy v11 NativeAOT</a></td><td>MIT (ILSpy)</td></tr>
+          <tr><td>WebAssembly</td><td><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser">wasmparser</a> + RxD decode/decompile</td><td>Apache-2.0 / MIT / LLVM-exception</td></tr>
+          <tr><td>CPython bytecode</td><td>RxD bytecode frontend + pycdc fork</td><td>MIT (pycdc)</td></tr>
+          <tr><td>EVM bytecode</td><td><a href="https://github.com/cdump/evmole">EVMole 0.9.4</a> + RxD query projection</td><td>MIT (EVMole)</td></tr>
         </tbody>
       </table>
       <p class="section-lede">RxD-owned components are Apache-2.0; the column names the upstream engine's license. Upstream repositories are linked where an independent source exists. Exact versions, notices and local patches live in <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/NOTICE">NOTICE</a>, the per-component LICENSE files and the <a class="text-link" href="https://github.com/TsingShui/RxD/tree/main/docs/design">backend design docs</a>. Upstream engines are pinned.</p>
