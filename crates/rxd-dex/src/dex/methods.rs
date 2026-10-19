@@ -1,4 +1,8 @@
-//! Enumerate the methods a DEX file defines.
+//! Enumerate the members a DEX file defines.
+//!
+//! Methods and fields share one source, `class_data`: it declares the fields first and
+//! the methods after them, so both enumerations walk the same record with a different
+//! tail. Fields are first here because a `class_data_item` starts with them.
 //!
 //! A method is only *defined* through `class_data`: `method_ids` also lists methods the
 //! code merely references. So this walks `class_defs -> class_data -> encoded_method`
@@ -27,7 +31,11 @@ pub struct Selector<'a> {
 /// Append one `{"record":"method","detail":{"descriptor":…}}` line per defined method.
 ///
 /// Returns the number of rows appended.
-pub(crate) fn render(data: &[u8], selector: &Selector<'_>, out: &mut String) -> Result<usize> {
+pub(crate) fn render_methods(
+    data: &[u8],
+    selector: &Selector<'_>,
+    out: &mut String,
+) -> Result<usize> {
     let dex = Dex::parse(data)?;
     let mut names: Vec<Option<Box<str>>> = vec![None; dex.header.strings_size];
     let mut protos: Vec<Option<Box<str>>> = vec![None; dex.header.protos_size];
@@ -165,4 +173,86 @@ fn skip_uleb(data: &[u8], cursor: &mut usize) -> Result<()> {
             return Ok(());
         }
     }
+}
+
+/// Append one `{"record":"field","detail":{"descriptor":…}}` line per declared field.
+///
+/// A field is declared in `class_data`'s static and instance sections, before the
+/// methods; the type comes from `field_ids[field_idx]`. Returns the rows appended.
+pub(crate) fn render_fields(
+    data: &[u8],
+    selector: &Selector<'_>,
+    out: &mut String,
+) -> Result<usize> {
+    let dex = Dex::parse(data)?;
+    let mut rows = 0usize;
+    for class_index in 0..dex.header.classes_size {
+        let class_def = dex.header.classes_off + class_index * 32;
+        let descriptor = dex.type_name(dex.u32(class_def)? as usize)?;
+        if let Some(wanted) = selector.class
+            && !matches_class(&descriptor, wanted)
+        {
+            continue;
+        }
+        let class_data_off = dex.u32(class_def + 24)? as usize;
+        if class_data_off == 0 {
+            continue;
+        }
+        rows += render_fields_of(&dex, class_data_off, &descriptor, selector, out)?;
+    }
+    Ok(rows)
+}
+
+fn render_fields_of(
+    dex: &Dex<'_>,
+    offset: usize,
+    descriptor: &str,
+    selector: &Selector<'_>,
+    out: &mut String,
+) -> Result<usize> {
+    let mut cursor = offset;
+    let static_fields = read_uleb(dex.data, &mut cursor)? as usize;
+    let instance_fields = read_uleb(dex.data, &mut cursor)? as usize;
+    // The two method counts follow; the field sections come before the method ones.
+    read_uleb(dex.data, &mut cursor)?;
+    read_uleb(dex.data, &mut cursor)?;
+    let mut rows = 0usize;
+    for count in [static_fields, instance_fields] {
+        let mut field_idx = 0u32;
+        for _ in 0..count {
+            field_idx = field_idx
+                .checked_add(read_uleb(dex.data, &mut cursor)?)
+                .context("field index overflow")?;
+            let access_flags = read_uleb(dex.data, &mut cursor)? as u16;
+            let index = field_idx as usize;
+            if index >= dex.header.fields_size {
+                anyhow::bail!("field index out of range");
+            }
+            let row = dex.header.fields_off + index * 8;
+            let type_idx = u16::from_le_bytes([dex.data[row + 2], dex.data[row + 3]]) as usize;
+            let name_idx = dex.u32(row + 4)? as usize;
+            let name = dex.string(name_idx)?;
+            if let Some(pattern) = selector.name
+                && !name.to_lowercase().contains(pattern)
+            {
+                continue;
+            }
+            let ty = dex.type_name(type_idx)?;
+            let mut rendered = String::with_capacity(descriptor.len() + name.len() + ty.len() + 4);
+            rendered.push_str(descriptor);
+            rendered.push_str("->");
+            rendered.push_str(&name);
+            rendered.push(':');
+            rendered.push_str(&ty);
+            out.push_str("{\"record\":\"field\",\"detail\":{\"descriptor\":");
+            push_json_string(out, &rendered);
+            if selector.with_flags {
+                out.push_str(",\"access_flags\":");
+                out.push_str(&access_flags.to_string());
+            }
+            out.push_str("}}\n");
+            rows += 1;
+        }
+    }
+    Ok(rows)
 }

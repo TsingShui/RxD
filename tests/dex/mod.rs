@@ -54,16 +54,8 @@ fn assert_record(row: &Value) {
             "compressed_size",
             "uncompressed_size",
         ],
-        "field" => &[
-            "entry",
-            "class",
-            "name",
-            "type",
-            "access_flags",
-            "static",
-            "field_index",
-            "slot",
-        ],
+        "field" if row["detail"].get("access_flags").is_some() => &["access_flags", "descriptor"],
+        "field" => &["descriptor"],
         // `methods` prints one descriptor row per definition; `get-class --members` prints
         // its member table as text, so this is the only `method` record shape.
         "method" if row["detail"].get("access_flags").is_some() => &["access_flags", "descriptor"],
@@ -225,6 +217,42 @@ fn dex_get_method_renders_one_method_from_its_methods_coordinate() {
     assert_ne!(missing.status.code(), Some(0));
     let malformed = query("get-method", &path, &["--at", "not-a-coordinate"]);
     assert_ne!(malformed.status.code(), Some(0));
+}
+
+#[test]
+fn dex_fields_list_declarations_and_honour_class_and_name_filters() {
+    let dex = const_string_dex(2);
+    let (_dir, path) = fixture(stored_zip(&[("classes.dex", &dex)]), "fields.apk");
+    let all = query("fields", &path, &[]);
+    success(&all);
+    let rows = dex_records(&all);
+    assert!(
+        rows.iter().all(|row| row["record"] == "field"),
+        "{}",
+        text(&all)
+    );
+    // A field descriptor is `Lclass;->name:type`, so both separators have to be there.
+    assert!(
+        rows.iter().all(|row| {
+            row["detail"]["descriptor"]
+                .as_str()
+                .is_some_and(|value| value.contains("->") && value.contains(':'))
+        }),
+        "{}",
+        text(&all)
+    );
+    let filtered = query("fields", &path, &["--filter", "zzz_no_such_field"]);
+    success(&filtered);
+    assert_eq!(dex_records(&filtered).len(), 0);
+    let flagged = query("fields", &path, &["--with-flags"]);
+    success(&flagged);
+    assert!(
+        dex_records(&flagged)
+            .iter()
+            .all(|row| row["detail"]["access_flags"].is_u64()),
+        "{}",
+        text(&flagged)
+    );
 }
 
 #[test]

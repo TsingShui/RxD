@@ -25,6 +25,8 @@ pub enum Command {
     /// method found by `methods` or reported by `xref` renders without pulling its class.
     #[command(name = "get-method")]
     GetMethod(GetMethodArgs),
+    /// List every field the archive's DEX files declare.
+    Fields(FieldsArgs),
     /// List every method the archive's DEX files define.
     ///
     /// A method is reported once per definition; `method_ids` entries that are only
@@ -38,6 +40,27 @@ pub struct GetMethodArgs {
     /// `Lx/y;->name(proto)`: the `descriptor` of a `methods` row.
     #[arg(long)]
     pub at: String,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    pub threads: usize,
+    /// Print phase timings on stderr.
+    #[arg(long)]
+    pub debug: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct FieldsArgs {
+    pub apk_path: PathBuf,
+    /// Only list fields declared by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
+    #[arg(long)]
+    pub class: Option<String>,
+    /// Case-insensitive substring filter over the field name.
+    #[arg(short, long)]
+    pub filter: Option<String>,
+    /// Append each field's access flags to its record.
+    #[arg(long)]
+    pub with_flags: bool,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -276,6 +299,7 @@ impl Command {
             Self::Manifest(args) => args.debug,
             Self::Classes(args) => args.debug,
             Self::Methods(args) => args.debug,
+            Self::Fields(args) => args.debug,
             Self::GetMethod(args) => args.debug,
         }
     }
@@ -289,6 +313,7 @@ impl Command {
             Self::Manifest(_) => "manifest",
             Self::Classes(_) => "classes",
             Self::Methods(_) => "methods",
+            Self::Fields(_) => "fields",
             Self::GetMethod(_) => "get-method",
         }
     }

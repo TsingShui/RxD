@@ -288,6 +288,34 @@ fn run_command(
             )?;
             emit(&source, args.output.as_deref())?;
         }
+        Command::Fields(args) => {
+            let filter = args.filter.as_deref().map(str::to_lowercase);
+            let selector = apk::MethodSelector {
+                class: args.class.as_deref(),
+                name: filter.as_deref(),
+                with_flags: args.with_flags,
+            };
+            let (chunks, records) = apk::list_fields_with_policy(
+                &args.apk_path,
+                archive_policy,
+                &selector,
+                args.threads,
+                args.debug,
+            )?;
+            let header = stream_header(
+                "fields",
+                std::slice::from_ref(&args.apk_path),
+                json!({"class":args.class, "filter":args.filter, "with_flags":args.with_flags}),
+            )?;
+            let mut summary = String::new();
+            finish_stream(&mut summary, records)?;
+            emit_rows(
+                std::iter::once(header)
+                    .chain(chunks)
+                    .chain(std::iter::once(summary)),
+                args.output.as_deref(),
+            )?;
+        }
         Command::Methods(args) => {
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),

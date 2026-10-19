@@ -427,6 +427,49 @@ pub use crate::dex::methods::Selector as MethodSelector;
 ///
 /// Entries are walked in central-directory order and each one renders its rows into its
 /// own buffer, so the joined payload keeps archive order without a global sort.
+/// Every field declared by the archive's DEX entries, rendered as record lines.
+pub fn list_fields_with_policy(
+    path: &Path,
+    policy: ArchivePolicy,
+    selector: &MethodSelector<'_>,
+    threads: usize,
+    debug: bool,
+) -> Result<(Vec<String>, usize)> {
+    let started = Instant::now();
+    let chunks = map_dex_entries(
+        path,
+        policy,
+        threads,
+        EntryOrder::Natural,
+        None,
+        |inflated| {
+            let mut out = String::new();
+            let mut rows = 0;
+            for logical in dex::container::logical_dexes(&inflated.entry.name, inflated.data()?)? {
+                rows += crate::dex::methods::render_fields(&logical.data, selector, &mut out)?;
+            }
+            Ok(vec![(out, rows)])
+        },
+    )?;
+    let mut records = 0usize;
+    let mut bytes = 0usize;
+    let mut payloads = Vec::with_capacity(chunks.len());
+    for (chunk, count) in chunks {
+        bytes += chunk.len();
+        records += count;
+        payloads.push(chunk);
+    }
+    if debug {
+        crate::diag::diagnose(format_args!(
+            "[fields] records={} rendered={:.2} ms bytes={}",
+            records,
+            started.elapsed().as_secs_f64() * 1e3,
+            bytes
+        ));
+    }
+    Ok((payloads, records))
+}
+
 pub fn list_methods_with_policy(
     path: &Path,
     policy: ArchivePolicy,
@@ -445,7 +488,7 @@ pub fn list_methods_with_policy(
             let mut out = String::new();
             let mut rows = 0;
             for logical in dex::container::logical_dexes(&inflated.entry.name, inflated.data()?)? {
-                rows += crate::dex::methods::render(&logical.data, selector, &mut out)?;
+                rows += crate::dex::methods::render_methods(&logical.data, selector, &mut out)?;
             }
             Ok(vec![(out, rows)])
         },

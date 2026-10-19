@@ -23,6 +23,8 @@ preserved; argument positions and exit-code semantics are.
 | `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
+| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`, `--with-flags`. |
+| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`, `--with-flags`. |
 
 APK/DEX commands keep their original argument positions, `--threads` / `--thread`
 alias and supported range. The default thread count comes from
@@ -114,6 +116,7 @@ Fixed detail fields:
 | Record | Command | Detail |
 | --- | --- | --- |
 | class | classes | `descriptor` |
+| field | fields | `descriptor`; `access_flags` with `--with-flags` |
 | string | strings | `entry, index, value, class` |
 Ordering: records follow the archive central-directory order, and inside one entry the
 `class_defs` (classes) or code-item (xref) order. No backend sorts by identity, so a class
