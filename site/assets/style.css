@@ -1352,11 +1352,11 @@ h2 {
   color: var(--bone);
 }
 .footer-brand p {
+  max-width: 34ch;
   margin-top: 14px;
-  font: 400 9.5px/1.9 var(--mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #716c64;
+  font: 400 11px/1.8 var(--mono);
+  letter-spacing: 0.01em;
+  color: #827c73;
 }
 .footer-col { display: flex; flex-direction: column; gap: 9px; }
 .footer-col > span {
@@ -1386,6 +1386,7 @@ h2 {
   color: #6a655e;
 }
 .footer-tag { color: #4f4b45; }
+.footer-bottom a { margin-left: auto; }
 .footer-bottom a:hover { color: var(--bone); }
 .br-mobile { display: none; }
 
