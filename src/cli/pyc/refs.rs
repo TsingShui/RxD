@@ -110,7 +110,7 @@ pub fn run(
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
-            append(&mut out, &Record {record:"reference", at:None, source_id:None, parent_at:None,
+            append(&mut out, &Record {record:envelope::REFERENCE, at:None, source_id:None, parent_at:None,
                 context_at:envelope::at_of(&analysis.code_id(hit.code_index)).into_owned(), start:hit.start, end:hit.end, detail:hit})?;
         }
         analysis.charge_work(scan.unsupported.len())?;

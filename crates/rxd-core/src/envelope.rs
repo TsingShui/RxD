@@ -94,6 +94,18 @@ pub fn header(
 }
 
 /// Build a stream data record or a single-object result, preserving detail verbatim.
+/// The row kind every backend's `xref` emits.
+///
+/// One name for one shape: the cross-reference skeleton (`context_at` + `detail.target` +
+/// the backend's evidence) is shared, so its spelling is not repeated per backend. Backend
+/// specific kinds (`class`, `table`, `entity`, …) stay with their backend.
+pub const REFERENCE: &str = "reference";
+
+/// A cross-reference row.
+pub fn reference(meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
+    record(REFERENCE, meta, detail)
+}
+
 pub fn record(record: &str, meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
     let mut value = json!({
         "record": record,

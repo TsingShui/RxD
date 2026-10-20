@@ -428,8 +428,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         for hit in &hits {
             append(
                 &mut output,
-                &record(
-                    "reference",
+                &rxd_core::envelope::reference(
                     RecordMeta {
                         context_at: Some(&hit.method_at),
                         ..RecordMeta::default()

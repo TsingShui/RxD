@@ -425,7 +425,9 @@ enum Field<'a> {
 /// An offset and a mnemonic were considered and dropped: nothing that consumes a hit
 /// acts on the instruction itself, only on which method references what.
 fn push_reference(payload: &mut String, entry: &str, caller: &str, matched: &str) -> Result<()> {
-    payload.push_str("{\"record\":\"reference\",\"context_at\":");
+    payload.push_str("{\"record\":\"");
+    payload.push_str(rxd_core::envelope::REFERENCE);
+    payload.push_str("\",\"context_at\":");
     push_json_string(payload, caller);
     payload.push_str(",\"detail\":{\"target\":");
     push_json_string(payload, matched);

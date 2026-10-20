@@ -50,7 +50,7 @@ impl Reference {
             value_reference: Option<bool>,
         }
         crate::envelope::body(
-            "reference",
+            rxd_core::envelope::REFERENCE,
             rxd_core::envelope::RecordMeta {
                 parent_at: Some(&self.location.entity_id),
                 context_at: self.context_at.as_deref(),
@@ -129,7 +129,7 @@ pub fn run(
                     let reference = scoping.get_reference(id.reference_id.get()?);
                     return Some((
                         JsString::from(id.name.as_str()),
-                        "reference",
+                        rxd_core::envelope::REFERENCE,
                         span,
                         reference.symbol_id(),
                         node_id,

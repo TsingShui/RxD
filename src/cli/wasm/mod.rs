@@ -488,8 +488,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                     &mut output,
                     &mut records,
                     limits,
-                    &record(
-                        "reference",
+                    &rxd_core::envelope::reference(
                         RecordMeta {
                             context_at: Some(&reference.id),
                             ..RecordMeta::default()

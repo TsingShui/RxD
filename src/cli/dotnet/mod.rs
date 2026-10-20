@@ -632,8 +632,7 @@ fn reference_record(
     }
     let method = &input.methods[(site.method_token & 0xffffff) as usize - 1];
     let start = site.code_offset + site.il_offset as usize;
-    Ok(envelope::record(
-        "reference",
+    Ok(envelope::reference(
         RecordMeta {
             context_at: Some(&method.id),
             parent_at: Some(&method.declaring_type_id),
