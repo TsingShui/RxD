@@ -2,7 +2,7 @@
 
 `rxd html` enumerates lexical records in a local HTML file and extracts exact byte ranges
 by content-bound ID. It never executes page scripts, loads external resources or builds a
-DOM. Only `list` and `extract` exist; extracted inline JS/TS is passed to `rxd js`.
+DOM. Only `entries` and `extract` exist; extracted inline JS/TS is passed to `rxd js`.
 `lexical_naive_v1` is a lexical approximation, not a browser parser. See the
 [HTML design](../design/html-design.md).
 
@@ -27,10 +27,10 @@ analysis of a real site.
 ## list
 
 ```sh
-"$RXD" html list "$DEMO/page.html"
+"$RXD" html entries "$DEMO/page.html"
 ```
 
-Header backend is `html`, command `list`, with path/`analysis: lexical`/`parser:
+Header backend is `html`, command `entries`, with path/`analysis: lexical`/`parser:
 html5gum`/`parser_version: 0.8.4`/`lexical_profile: lexical_naive_v1`. Structured output
 follows [ADR 0003](../adr/0003-output-envelope.md), `schema_version=2`. Records appear in
 source order: doctype/comment/element/text. IDs are
@@ -51,21 +51,21 @@ element/text/comment/doctype; `--within` validates an element ID and selects its
 subtree; `--depth` is relative depth.
 
 ```sh
-"$RXD" html list "$DEMO/page.html" --tag script
-"$RXD" html list "$DEMO/page.html" --attr 'href=/x&y'
-"$RXD" html list "$DEMO/page.html" --kind text --within '<MAIN_ID>' --depth 2
+"$RXD" html entries "$DEMO/page.html" --tag script
+"$RXD" html entries "$DEMO/page.html" --attr 'href=/x&y'
+"$RXD" html entries "$DEMO/page.html" --kind text --within '<MAIN_ID>' --depth 2
 ```
 
 ## extract
 
 ```sh
 "$RXD" html extract "$DEMO/page.html" \
-  --id '<SCRIPT_ELEMENT_ID>' \
+  --at '<SCRIPT_AT>' \
   --content -o "$DEMO/inline.js"
 cat "$DEMO/inline.js"
 ```
 
-Both `--id` and `-o` are required. `--content` is element-only and selects the content
+Both `--at` and `-o` are required. `--content` is element-only and selects the content
 range (the default outer range otherwise). The file contains the original slice of the
 selected half-open container range with an independent SHA-256. Stdout is a single
 receipt, not the file content:
@@ -116,9 +116,9 @@ selected by the Agent's syntax; arbitrary script content is not promised to pars
 ## Budgets and performance
 
 ```sh
-"$RXD" html list "$DEMO/page.html" --max-input-bytes 67108864 --max-records 100000 \
-  --max-output-bytes 33554432 --max-depth 512
-"$RXD" html extract "$DEMO/page.html" --id '<SCRIPT_ELEMENT_ID>' --content \
+"$RXD" html entries "$DEMO/page.html" --depth 2 \
+  --kind element
+"$RXD" html extract "$DEMO/page.html" --at '<SCRIPT_AT>' --content \
   -o "$DEMO/profile-inline.js" --perf
 python3 -B benches/html.py --samples 20 --output target/benchmarks/html
 ```

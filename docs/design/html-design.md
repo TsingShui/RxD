@@ -3,7 +3,7 @@
 Status: implemented.
 
 `rxd html` is the Agent-facing lexical container entry for local HTML. It provides
-`list` and `extract`. It reads one bounded, valid-UTF-8 regular local file, enumerates
+`entries` and `extract`. It reads one bounded, valid-UTF-8 regular local file, enumerates
 element/text/comment/doctype records in source order, and extracts exact byte ranges
 by content-bound ID. `rxd-html` depends only on shared budgets, protocol and file
 reading; it does not depend on `rxd-js` or Oxc, execute page scripts, load external
@@ -23,11 +23,11 @@ scans; HTML files are always handled by `rxd html`.
 
 | Command | Output and behavior |
 | --- | --- |
-| `html list FILE [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: list`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
-| `html extract FILE --id ID -o OUTPUT [--content]` | `--id` and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
+| `html entries FILE [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: list`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
+| `html extract FILE --at AT -o OUTPUT [--content]` | `--at` and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
-`schema_version=2`. `list` format-specific fields are under `detail`; the `extract`
+`schema_version=2`. `entries` format-specific fields are under `detail`; the `extract`
 receipt is a single `file` record with `backend`/`command`/`schema_version` and
 `source_id` (artifact SHA-256), with receipt content under `detail`.
 
@@ -157,7 +157,7 @@ claims. Extracted bytes are the selected half-open container range with independ
 SHA-256; no entity decode, newline conversion, BOM removal, pretty-printing or syntax
 insertion.
 
-CLI `extract` requires explicit `--id` and `-o`, one input, and forbids replacing the
+CLI `extract` requires explicit `--at` and `-o`, one input, and forbids replacing the
 input with the target (including path aliases). Host output paths are never derived
 from element attributes. The receipt is one schema-2 `file` record: outer `backend:
 html`, `command: extract`, `schema_version`, `source_id` (artifact SHA); `id`,
@@ -176,18 +176,17 @@ commit uses an existing same-directory temporary file and atomic replacement. A
 pre-commit failure preserves the old target, produces no final artifact and emits no
 payload; an output/commit failure leaves no success receipt. If stdout transfer fails
 after replacement, the output file may exist and a non-zero exit is not complete
-success; `list` stdout may also be partial, and complete success still requires a
+success; `entries` stdout may also be partial, and complete success still requires a
 complete summary plus exit 0. Multi-node extraction, directory write transactions and
 persistent parse state are not implemented.
 
 ## Resource budgets
 
-Defaults: `--max-input-bytes` 8 GiB (lowerable from 1 byte to 8 GiB; checked while
-reading; 32-bit spans keep actual addressable content below 4 GiB); `--max-records`
-100,000 (all catalog nodes before filtering, including extract's validation catalog);
-`--max-output-bytes` 32 MiB (complete JSONL for list; raw artifact plus complete
-serialized receipt for extract); `--max-depth` 512 (lexical nesting budget, distinct
-from the `--depth` selector). Node/depth limits are enforced during parsing, not by
+reading; 32-bit spans keep actual addressable content below 4 GiB), 100,000 records
+(all catalog nodes before filtering, including extract's validation catalog), 32 MiB
+output (complete JSONL for entries; raw artifact plus complete serialized receipt for
+extract) and lexical nesting depth 512 (distinct from the `--depth` selector). All four
+values live in `rxd_core::Budget`; the CLI exposes no budget flags. Node/depth limits are enforced during parsing, not by
 unbounded accumulation and truncation. Exceeding a limit returns `RESOURCE_LIMIT` and
 never silently truncates or skips nodes; arithmetic/range overflow is explicit.
 Diagnostics go to stderr. Exit 0 means complete success (including zero rows); 1 means
@@ -197,7 +196,7 @@ input/ID/resource/I/O failure; 2 means command-line or query argument error (inc
 ## Relationship to JavaScript (ADR 0002)
 
 Per [ADR 0002](../adr/0002-backend-capability-closure.md), HTML is a lexical container
-format: it provides ENUMERATE (`list`) and node FETCH (`extract`); `--attr` provides a
+format: it provides ENUMERATE (`entries`) and node FETCH (`extract`); `--attr` provides a
 limited metadata SEARCH (exact decoded attribute value). General text/constant SEARCH
 and code XREF are explicitly exempt because payload semantics belong to the extracted
 content's code backend; this version does not parse external references or model a
@@ -212,7 +211,7 @@ and JS backends are independent; HTML does not depend on JS.
 
 ## Performance diagnostics
 
-`--perf` marks analysis and CLI records with `backend: html` and command `list` or
+`--perf` marks analysis and CLI records with `backend: html` and command `entries` or
 `extract`. Stages are `read/hash/utf8/tokenize/query/serialize/write`; `tokenize` is
 recorded by `Perf::measure("tokenize", ...)`. For extract, `analysis.output_bytes` is
 artifact plus receipt and `CLI.output_bytes` is the stdout receipt; `list -o` reports

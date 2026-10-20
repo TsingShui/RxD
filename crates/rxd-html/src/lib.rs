@@ -318,6 +318,8 @@ pub struct ListQuery {
     pub attr: Option<String>,
     pub within: Option<String>,
     pub depth: Option<usize>,
+    /// Case-insensitive substring over the element name or the text/comment content.
+    pub contains: Option<String>,
 }
 
 /// Prepared artifact bytes and the single success receipt. Nothing is written here; the
@@ -357,6 +359,15 @@ fn canonical_id(id: &str) -> bool {
 }
 
 fn validate_id(id: &str, hash: &str, ids: &[String]) -> Result<usize> {
+    // A row prints the copy-only `kind:start:end`; identity lives in the header, so the
+    // short form is expanded here instead of making a caller reassemble the hash.
+    let expanded;
+    let id = if id.split(':').count() == 3 {
+        expanded = format!("rxd1:html:{hash}:{id}");
+        expanded.as_str()
+    } else {
+        id
+    };
     if !canonical_id(id) {
         return Err(Error::new("INVALID_ID", "malformed HTML record ID"));
     }
@@ -455,6 +466,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         attr,
         within,
         depth,
+        contains,
     } = query;
     if kind
         .as_deref()
@@ -507,6 +519,16 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
                 || root == Some(index)
                 || node.parent.is_some_and(|parent| inside[parent]);
             let relative_depth = root.map_or(node.depth, |root| node.depth.saturating_sub(catalog.nodes[root].depth));
+            let contains_ok = contains.as_ref().is_none_or(|needle| {
+                let needle = needle.to_lowercase();
+                match &node.detail {
+                    Detail::Element { tag, .. } => tag.to_lowercase().contains(&needle),
+                    _ => node.kind.to_lowercase().contains(&needle)
+                        || text
+                            .get(node.start..node.end)
+                            .is_some_and(|raw| raw.to_lowercase().contains(&needle)),
+                }
+            });
             let matches_attr = attr.as_ref().is_none_or(|(name, value)| {
                 matches!(&node.detail, Detail::Element { attrs, .. } if attrs.iter().any(|a| a.name == *name && value.as_ref().is_none_or(|v| a.value == *v)))
             });
@@ -516,7 +538,9 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
             if inside[index]
                 && depth.is_none_or(|limit| relative_depth <= limit)
                 && kind.as_deref().is_none_or(|expected| node.kind == expected)
-                && matches_tag && matches_attr
+                && matches_tag
+                && matches_attr
+                && contains_ok
             {
                 selected.push(index);
             }
@@ -532,8 +556,8 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         limit: limits.output_bytes,
     };
     perf.measure("serialize", || -> Result<()> {
-        output.json(&envelope::header("html", "list", Some(&hash), Some(text.len()),
-            json!({"kind":kind,"tag":tag,"attr":query_attr,"depth":depth,"within":within}),
+        output.json(&envelope::header("html", "entries", Some(&hash), Some(text.len()),
+            json!({"kind":kind,"tag":tag,"attr":query_attr,"depth":depth,"within":within,"contains":contains}),
             json!({"path":path,"analysis":"lexical","parser":"html5gum","parser_version":"0.8.4","lexical_profile":"lexical_naive_v1"}).as_object().unwrap().clone()))?;
         for &index in &order {
             let node = &catalog.nodes[index];
@@ -544,7 +568,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
                     json!({"tag":tag,"attrs":attrs,"self_closing":self_closing,"void":is_void,"depth":node.depth,"end_tag":end_tag,"content_start":content_start,"content_end":content_end}),
                 Detail::Value => json!({"value":catalog.slice(node.start, node.end)?,"depth":node.depth}),
             };
-            output.json(&envelope::record(node.kind, RecordMeta { at: Some(id), source_id: Some(&hash), parent_at: parent.as_deref(), context_at: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end) }, detail.as_object().unwrap().clone()))?;
+            output.json(&envelope::record(node.kind, RecordMeta { at: Some(id), parent_at: parent.as_deref(), context_at: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end), ..RecordMeta::default() }, detail.as_object().unwrap().clone()))?;
         }
         let count = |kind| catalog.nodes.iter().filter(|node| node.kind == kind).count();
         output.json(&envelope::summary(order.len(), true,

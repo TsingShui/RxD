@@ -1,18 +1,22 @@
 mod args;
 use super::{finish, write_output};
 pub(crate) use args::Command;
-use rxd_core::{Error, Limits, Result, perf::Perf};
+use rxd_core::{Budget, Error, Limits, Result, perf::Perf};
 use std::io::{self, Write};
 
 pub(super) fn execute(command: Command) -> Result<()> {
     let (common, name) = match &command {
-        Command::List { common, .. } | Command::Extract { common, .. } => (common, command.name()),
+        Command::Entries { common, .. } | Command::Extract { common, .. } => {
+            (common, command.name())
+        }
     };
+    // One budget table for every backend; the CLI exposes no knobs for it.
+    let budget = Budget::default();
     let limits = Limits {
-        input_bytes: super::input_limit(common.max_input_bytes),
-        records: common.max_records,
-        output_bytes: common.max_output_bytes,
-        ast_depth: common.max_depth,
+        input_bytes: budget.input_bytes,
+        records: budget.records,
+        output_bytes: budget.output_bytes,
+        ast_depth: 512,
         ..Limits::default()
     };
     let mut perf = Perf::new(common.debug || common.perf, "analysis", "html", name);
@@ -20,13 +24,14 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let emit_perf = common.perf;
     let debug = common.debug;
     let result = (|| match command {
-        Command::List {
+        Command::Entries {
             common,
             kind,
             tag,
             attr,
             within,
             depth,
+            filter,
         } => {
             let bytes = rxd_html::list(
                 &common.input,
@@ -36,6 +41,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
                     attr,
                     within,
                     depth,
+                    contains: filter,
                 },
                 limits,
                 &mut perf,
@@ -44,7 +50,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
         }
         Command::Extract {
             common,
-            id,
+            at,
             content,
         } => {
             let destination = common
@@ -52,7 +58,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
                 .as_deref()
                 .ok_or_else(|| Error::new("INVALID_QUERY", "extract requires --output"))?;
             let response =
-                rxd_html::extract(&common.input, &id, content, destination, limits, &mut perf)?;
+                rxd_html::extract(&common.input, &at, content, destination, limits, &mut perf)?;
             perf.measure("write", || {
                 write_output(&response.bytes, Some(destination))?;
                 io::stdout()
