@@ -18,7 +18,7 @@ fn fixture() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
     (root, large, small)
 }
 fn tool_call(id: u64, path: &std::path::Path) -> Value {
-    json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"js_outline","arguments":{"input":{"path":path}}}})
+    json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"js_entities","arguments":{"input":{"path":path}}}})
 }
 fn error(response: &Value, code: &str) {
     assert_eq!(response["result"]["isError"], true, "{response}");
@@ -44,10 +44,10 @@ fn mcp_complete_responses_and_worker_ipc_fail_explicitly_at_budgets() {
         "16384",
     ]);
     client.initialize();
-    let outlined = client.tool("js_outline", json!({"input":{"path":path}}));
-    assert_ne!(outlined["isError"], true, "{outlined}");
-    let id = outlined["structuredContent"]["records"][0]["id"].clone();
-    let fetched = client.tool("js_get", json!({"input":{"path":path},"id":id}));
+    let entities = client.tool("js_entities", json!({"input":{"path":path}}));
+    assert_ne!(entities["isError"], true, "{entities}");
+    let at = entities["structuredContent"]["records"][0]["at"].clone();
+    let fetched = client.tool("js_get", json!({"input":{"path":path},"at":at}));
     assert_eq!(fetched["isError"], true, "{fetched}");
     assert_eq!(
         fetched["structuredContent"]["error"]["code"],
@@ -60,7 +60,7 @@ fn mcp_complete_responses_and_worker_ipc_fail_explicitly_at_budgets() {
         "256",
     ]);
     ipc.initialize();
-    let failed = ipc.tool("js_outline", json!({"input":{"path":path}}));
+    let failed = ipc.tool("js_entities", json!({"input":{"path":path}}));
     assert_eq!(
         failed["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
         "{failed}"
@@ -77,7 +77,7 @@ fn mcp_deadline_failure_leaves_the_protocol_process_usable() {
         "1",
     ]);
     client.initialize();
-    let result = client.tool("js_outline", json!({"input":{"path":large}}));
+    let result = client.tool("js_entities", json!({"input":{"path":large}}));
     assert_eq!(result["isError"], true, "{result}");
     assert_eq!(
         result["structuredContent"]["error"]["code"], "TIMEOUT",
@@ -107,7 +107,7 @@ fn mcp_worker_admission_is_bounded_and_cancellation_releases_the_slot() {
     // A cancelled response is suppressed. Poll through the public tool boundary until its worker allocation is released.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let result = client.tool("js_outline", json!({"input":{"path":small}}));
+        let result = client.tool("js_entities", json!({"input":{"path":small}}));
         if result["isError"] != true {
             assert_eq!(
                 result["structuredContent"]["records"][1]["detail"]["label"],
@@ -166,14 +166,14 @@ fn mcp_killed_worker_reports_failure_then_subsequent_queries_succeed() {
     let response = client.receive();
     assert_eq!(response["id"], 100);
     error(&response, "WORKER_ERROR");
-    let recovered = client.tool("js_outline", json!({"input":{"path":small}}));
+    let recovered = client.tool("js_entities", json!({"input":{"path":small}}));
     assert_ne!(recovered["isError"], true, "{recovered}");
     let listing = client.request("tools/list", json!({}));
     let schema = &listing["result"]["tools"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|tool| tool["name"] == "js_outline")
+        .find(|tool| tool["name"] == "js_entities")
         .unwrap()["outputSchema"];
     assert_schema(&response["result"]["structuredContent"], schema);
 }
@@ -200,7 +200,6 @@ fn mcp_client_eof_reaps_active_workers_before_server_exit() {
 #[test]
 #[cfg(unix)]
 fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
-    use sha2::{Digest, Sha256};
     use std::{
         io::Write,
         os::fd::AsRawFd,
@@ -213,11 +212,8 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
         "x".repeat(2 * 1024 * 1024)
     );
     fs::write(&path, &source).unwrap();
-    let id = format!(
-        "rxd1:js:{:x}:program:0:{}",
-        Sha256::digest(source.as_bytes()),
-        source.len()
-    );
+    // The whole-file program coordinate is what a large `js_get` fetch needs.
+    let at = format!("program:0:{}", source.len());
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["mcp", "serve", "--root", root.path().to_str().unwrap()])
         .stdin(Stdio::piped())
@@ -229,7 +225,7 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
     for request in [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"backpressure-e2e","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"js_get","arguments":{"input":{"path":path},"id":id}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"js_get","arguments":{"input":{"path":path},"at":at}}}),
     ] {
         serde_json::to_writer(&mut input, &request).unwrap();
         input.write_all(b"\n").unwrap();

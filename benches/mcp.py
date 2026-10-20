@@ -175,8 +175,8 @@ def builtin_cases(root, dotnet, csharp):
                                 'cli': ['js', 'find', '${path}', '--string', case['needle']],
                                 'projection': 'jsonl'},
                       'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'js_get',
-                                    'arguments': {'id': '${q.records.0.context_id}'},
-                                    'cli': ['js', 'get', '${path}', '--id', '${q.records.0.context_id}', '--json'],
+                                    'arguments': {'at': '${q.records.0.context_at}'},
+                                    'cli': ['js', 'get', '${path}', '--at', '${q.records.0.context_at}', '--json'],
                                     'projection': 'json'}]})
     for label, digest, owner, method in [
             ('gson-2.11.0', '57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b',
@@ -187,12 +187,12 @@ def builtin_cases(root, dotnet, csharp):
                       'sha256': digest, 'backend': 'jar', 'synthetic': False,
                       'provenance': {'source': 'tests/corpus/jvm/README.md', 'published_method': owner + '.' + method},
                       'oracle': {'kind': 'jvm-method', 'name': method},
-                      'query': {'tool': 'jar_outline', 'arguments': {'class': owner, 'method': method},
-                                'cli': ['jar', 'outline', '${path}', '--class', owner, '--method', method],
+                      'query': {'tool': 'jar_methods', 'arguments': {'class': 'L' + owner + ';', 'filter': method},
+                                'cli': ['jar', 'methods', '${path}', '--class', 'L' + owner + ';', '--filter', method],
                                 'projection': 'jsonl'},
                       'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'jar_get_method',
-                                    'arguments': {'id': '${selected_id}', 'bytecode': True},
-                                    'cli': ['jar', 'get-method', '${path}', '${selected_id}', '--bytecode'],
+                                    'arguments': {'at': '${selected_id}', 'raw': True},
+                                    'cli': ['jar', 'get-method', '${path}', '--at', '${selected_id}', '--raw'],
                                     'projection': 'json'}]})
     for version in ['3.8.20', '3.9.6', '3.10.16', '3.11.11', '3.12.14', '3.13.2']:
         directory = root / 'tests/corpus/pyc/matrix' / version
@@ -216,13 +216,13 @@ def builtin_cases(root, dotnet, csharp):
                       'source_scale': {'code_objects': len(oracle['codes']), 'selected_code_index': selected,
                                        'selected_bytecode_bytes': len(oracle['codes'][selected]['code_hex']) // 2},
                       'query': {'tool': 'pyc_xref', 'arguments': {'name': 'self'},
-                                'cli': ['pyc', 'refs', '${path}', '--name', 'self'], 'projection': 'jsonl'},
-                      'workflow': [{'name': 'q'}, {'name': 'select', 'tool': 'pyc_outline',
+                                'cli': ['pyc', 'xref', '${path}', '--name', 'self'], 'projection': 'jsonl'},
+                      'workflow': [{'name': 'q'}, {'name': 'select', 'tool': 'pyc_codes',
                                     'arguments': {'index': selected},
-                                    'cli': ['pyc', 'outline', '${path}', '--index', selected], 'projection': 'jsonl'},
+                                    'cli': ['pyc', 'codes', '${path}', '--index', selected], 'projection': 'jsonl'},
                                    {'name': 'fetch', 'tool': 'pyc_get_code',
-                                    'arguments': {'code_id': '${select.records.0.id}'},
-                                    'cli': ['pyc', 'get-code', '${path}', '${select.records.0.id}'], 'projection': 'json'}],
+                                    'arguments': {'at': '${select.records.0.at}'},
+                                    'cli': ['pyc', 'get-code', '${path}', '--at', '${select.records.0.at}'], 'projection': 'json'}],
                       '_pyc_oracle': oracle, '_selected': selected})
     if dotnet:
         pin = json.loads((root / 'tests/corpus/dotnet/string-expectations.json').read_text())
@@ -230,34 +230,35 @@ def builtin_cases(root, dotnet, csharp):
         cases.append({'name': 'newtonsoft-13.0.3-strings', 'input': str(dotnet),
                       'sha256': pin['provenance']['dll_sha256'], 'backend': 'dotnet', 'synthetic': False,
                       'provenance': pin['provenance'], 'oracle': {'kind': 'dotnet-strings', **expected},
-                      'query': {'tool': 'dotnet_strings', 'arguments': {'contains': expected['contains']},
-                                'cli': ['dotnet', 'strings', '${path}', '--contains', expected['contains']],
+                      'query': {'tool': 'dotnet_strings', 'arguments': {'filter': expected['contains']},
+                                'cli': ['dotnet', 'strings', '${path}', '--filter', expected['contains']],
                                 'projection': 'jsonl'},
                       'workflow': [{'name': 'q'}, {'name': 'refs', 'tool': 'dotnet_xref',
-                                    'arguments': {'id': '${selected_id}'},
-                                    'cli': ['dotnet', 'refs', '${path}', '--id', '${selected_id}'], 'projection': 'jsonl'},
+                                    'arguments': {'at': '${selected_id}'},
+                                    'cli': ['dotnet', 'xref', '${path}', '--at', '${selected_id}'], 'projection': 'jsonl'},
                                    {'name': 'fetch', 'tool': 'dotnet_get_method',
-                                    'arguments': {'id': '${selected_id}', 'il': True},
-                                    'cli': ['dotnet', 'get-method', '${path}', '${selected_id}', '--il'], 'projection': 'json'}]})
+                                    'arguments': {'at': '${selected_id}', 'raw': True},
+                                    'cli': ['dotnet', 'get-method', '${path}', '--at', '${selected_id}', '--raw'], 'projection': 'json'}]})
     if dotnet and csharp:
         oracle = json.loads((root / 'tests/corpus/dotnet/class-expectations.json').read_text())
         owner = next(case for case in oracle['workloads'] if case['name'] == 'Newtonsoft.Json.JsonReader')
         token, expected = next((token, method) for token, method in owner['methods'].items() if method['name'] == 'get_TokenType')
         digest = oracle['provenance']['dll_sha256']
-        identity_id = 'rxd1:dotnet:' + digest + ':method:' + token[2:]
+        # A .NET coordinate is its metadata token, printed as `0x06000001`.
+        at = '0x' + token[2:]
         cases.append({'name': 'newtonsoft-13.0.3-token-type-csharp', 'input': str(dotnet),
                       'sha256': digest, 'backend': 'dotnet', 'synthetic': False,
                       'provenance': oracle['provenance'],
                       'oracle': {'kind': 'dotnet-method', **expected},
                       'source_scale': {'method_token': token, 'independent_il_sha256': expected['il_sha256']},
-                      'query': {'tool': 'dotnet_get_method', 'arguments': {'id': identity_id},
-                                'cli': ['dotnet', 'get-method', '${path}', identity_id], 'projection': 'json'},
+                      'query': {'tool': 'dotnet_get_method', 'arguments': {'at': at},
+                                'cli': ['dotnet', 'get-method', '${path}', '--at', at], 'projection': 'json'},
                       'workflow': [{'name': 'q'}, {'name': 'refs', 'tool': 'dotnet_xref',
-                                    'arguments': {'id': '${q.id}'},
-                                    'cli': ['dotnet', 'refs', '${path}', '--id', '${q.id}'], 'projection': 'jsonl'},
+                                    'arguments': {'at': '${q.at}'},
+                                    'cli': ['dotnet', 'xref', '${path}', '--at', '${q.at}'], 'projection': 'jsonl'},
                                    {'name': 'fetch', 'tool': 'dotnet_get_method',
-                                    'arguments': {'id': '${q.id}', 'il': True},
-                                    'cli': ['dotnet', 'get-method', '${path}', '${q.id}', '--il'], 'projection': 'json'}]})
+                                    'arguments': {'at': '${q.at}', 'raw': True},
+                                    'cli': ['dotnet', 'get-method', '${path}', '--at', '${q.at}', '--raw'], 'projection': 'json'}]})
     return cases
 
 
@@ -380,9 +381,9 @@ def validate_catalog(packet, case):
 def returned_route(state, name, value, backend):
     state[name] = value
     if name == 'q' and backend in ('jar', 'dotnet', 'wasm'):
-        state['selected_id'] = next((entry['id'] if backend in ('jar', 'wasm') else entry['context_id']
+        state['selected_id'] = next((entry['at'] if backend in ('jar', 'wasm') else entry['context_at']
                                     for entry in value.get('records', [])
-                                    if entry['record'] in ('method', 'function') or entry.get('context_id')), None)
+                                    if entry['record'] in ('method', 'function') or entry.get('context_at')), None)
 
 
 def fresh_workflow(recorder, case, context, sample):
@@ -474,15 +475,15 @@ def measure_case(recorder, case, samples, concurrency, baseline):
             return {'preflight_failure': 'MCP preflight failed', 'groups': groups}
         parity(result, expected, query['projection'])
         if case['backend'] == 'jar':
-            context['selected_id'] = next(row['id'] for row in result['records'] if row['record'] == 'method')
+            context['selected_id'] = next(row['at'] for row in result['records'] if row['record'] == 'method')
         elif case['backend'] == 'wasm':
-            context['selected_id'] = next(row['id'] for row in result['records'] if row['record'] == 'function')
+            context['selected_id'] = next(row['at'] for row in result['records'] if row['record'] == 'function')
         elif case['backend'] == 'pyc':
             # Get the ID from actual ENUMERATE; never fabricate the timed workflow route.
-            outlined = structured(prepared.tool('pyc_outline', {'input': {'path': path}, 'index': case['_selected']})[0])
-            context['selected_id'] = outlined['records'][0]['id']
+            outlined = structured(prepared.tool('pyc_codes', {'input': {'path': path}, 'index': case['_selected']})[0])
+            context['selected_id'] = outlined['records'][0]['at']
         else:
-            context['selected_id'] = next((row['context_id'] for row in result.get('records', []) if row['context_id']), None)
+            context['selected_id'] = next((row['context_at'] for row in result.get('records', []) if row['context_at']), None)
         context['q'] = result
         scale = []
         for step in case.get('workflow', []):

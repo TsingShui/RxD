@@ -53,7 +53,7 @@ fn plan_asar(
         output_bytes,
         ..Default::default()
     };
-    let mut perf = rxd_core::perf::Perf::new(false, "analysis", "asar", "list");
+    let mut perf = rxd_core::perf::Perf::new(false, "analysis", "asar", "entries");
     let rxd_asar::Response::List(bytes) = rxd_asar::run(
         rxd_asar::Query::Entries { contains: None },
         rxd_asar::Options {

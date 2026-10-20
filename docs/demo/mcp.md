@@ -46,8 +46,9 @@ try {
   const input = {target_id: opened.target_id};
   const hits = await call("js_find", {input, string: "/api/login"});
   if (!hits.summary.complete) throw new Error("incomplete query");
+  // `at` identifies a row; `context_at` names the structure that reported it.
   const sources = await Promise.all(hits.records.map(hit =>
-    call("js_get", {input, id: hit.context_id})));
+    call("js_get", {input, at: hit.context_at})));
   const originalText = sources.map(source => source.detail.source);
 } finally {
   await call("rxd_close", {target_id: opened.target_id});
@@ -58,13 +59,13 @@ The copied input stays fixed even if the original path changes. Handles expire a
 to one server process. Direct one-shot calls need no open:
 
 ```js
-const out = await call("jar_outline", {
+const out = await call("jar_methods", {
   input: {path: "/workspace/gson.jar"},
-  class: "com/google/gson/JsonPrimitive", method: "isNumber"
+  class: "Lcom/google/gson/JsonPrimitive;", filter: "isNumber"
 });
 const method = out.records.find(row => row.record === "method");
 const body = await call("jar_get_method", {
-  input: {path: "/workspace/gson.jar"}, id: method.id, bytecode: true
+  input: {path: "/workspace/gson.jar"}, at: method.at, raw: true
 });
 ```
 
@@ -76,12 +77,12 @@ ASAR child targets compose without caller-managed paths:
 ```js
 const parent = await call("rxd_open", {path: "/workspace/app.asar", backend: "asar"});
 const extracted = await call("asar_extract", {
-  input: {target_id: parent.target_id}, file: "main.js", include_bytes: true
+  input: {target_id: parent.target_id}, at: "main.js", include_bytes: true
 });
 const child = extracted.child_target;
 await call("rxd_close", {target_id: parent.target_id});
 try {
-  const structure = await call("js_outline", {input: {target_id: child.target_id}});
+  const structure = await call("js_entities", {input: {target_id: child.target_id}});
   // extracted.bytes_base64 is the exact entry; child.source_id is its SHA-256.
 } finally {
   await call("rxd_close", {target_id: child.target_id});

@@ -19,11 +19,14 @@ pub struct ToolDefinition {
     pub capabilities: Vec<String>,
 }
 
-/// Classify a command by what it does, for tool annotations.
+/// Classify a command by what it does, for tool annotations. The command names are the
+/// shared CLI vocabulary, so a listing grouped by backend still classifies the same way.
 fn capability(command: &str) -> &'static str {
     match command {
-        "outline" | "entries" | "classes" | "list" | "analyze" | "interface" | "storage"
-        | "disassemble" | "basic-blocks" | "cfg" | "metadata" | "manifest" => "ENUMERATE",
+        "entities" | "functions" | "classes" | "methods" | "fields" | "entries" | "types"
+        | "imports" | "exports" | "tables" | "memories" | "globals" | "data" | "elements"
+        | "codes" | "blocks" | "analyze" | "interface" | "storage" | "disassemble"
+        | "basic-blocks" | "cfg" | "metadata" | "manifest" => "ENUMERATE",
         "strings" | "find" | "identifiers" | "calls" | "members" | "locate" => "SEARCH",
         "xref" => "XREF",
         _ => "FETCH",
@@ -34,7 +37,7 @@ fn capability(command: &str) -> &'static str {
 /// synthetic overlay; every other tool is exactly its CLI command.
 fn input_schema(spec: &reflect::ToolSpec) -> Value {
     let mut schema = reflect::input_schema(spec);
-    if spec.name == "asar_extract" {
+    if matches!(spec.name.as_str(), "asar_extract" | "html_extract") {
         schema["properties"]["include_bytes"] = serde_json::json!({
             "type": "boolean",
             "description": "Return the extracted bytes beside the receipt."
@@ -122,72 +125,13 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
     Ok(())
 }
 
-/// Resource ceilings the server imposes on every call, spelled as the CLI flags the
-/// backend actually declares.
-fn ceilings(spec: &reflect::ToolSpec, b: QueryBudgets) -> Vec<(&'static str, usize)> {
-    let mut limits: Vec<(&'static str, usize)> = Vec::new();
-    if spec.backend == "dex" {
-        if !matches!(spec.name.as_str(), "dex_manifest" | "dex_entries") {
-            limits.push(("threads", b.threads));
-        }
-        return limits;
-    }
-    limits.push(("max-input-bytes", b.input_bytes));
-    limits.push(("max-output-bytes", b.output_bytes));
-    match spec.backend.as_str() {
-        "jar" => {
-            limits.push(("max-class-bytes", b.input_bytes.min(16 * 1024 * 1024)));
-            limits.push(("max-expanded-bytes", b.input_bytes));
-            limits.push(("max-entries", b.entities));
-            limits.push(("max-work", b.work));
-        }
-        "js" => {
-            limits.push(("max-entities", b.entities));
-            limits.push(("max-records", b.records));
-            limits.push(("max-ast-depth", b.ast_depth));
-            if matches!(spec.name.as_str(), "js_outline" | "js_find") {
-                limits.push(("threads", b.threads));
-            }
-            if matches!(spec.name.as_str(), "js_xref" | "js_symbols" | "js_get") {
-                limits.push(("max-semantic-nodes", b.semantic_nodes));
-            }
-        }
-        "html" => {
-            limits.push(("max-records", b.records));
-            limits.push(("max-depth", b.ast_depth));
-        }
-        "asar" => {
-            limits.push(("max-records", b.records));
-            limits.push(("max-entries", b.entities));
-            limits.push(("max-header-bytes", b.input_bytes.min(8 * 1024 * 1024)));
-        }
-        "evm" => {
-            limits.push(("max-records", b.records));
-            if matches!(
-                spec.name.as_str(),
-                "evm_outline" | "evm_strings" | "evm_xref" | "evm_get_block" | "evm_get_function"
-            ) {
-                limits.push(("max-work", b.work));
-                limits.push(("max-states", b.states));
-                limits.push(("max-stack-cells", b.stack_cells));
-                limits.push(("max-reconstruction-work", b.reconstruction_work));
-                limits.push(("max-values", b.values));
-            }
-        }
-        _ if spec.name == "pyc_decompile" => {
-            limits.push(("max-work", b.work));
-            limits.push(("max-ast-depth", b.ast_depth.min(128)));
-        }
-        _ => {
-            limits.push(("max-entities", b.entities));
-            limits.push(("max-records", b.records));
-            limits.push(("max-work", b.work));
-            if spec.backend != "pyc" || matches!(spec.name.as_str(), "pyc_xref" | "pyc_get_code") {
-                limits.push(("max-instructions", b.instructions));
-            }
-        }
-    }
-    limits
+/// Apply the server's thread budget to a command that declares `--threads`. Every other
+/// ceiling lives in `rxd_core::Budget` and has no CLI flag, so nothing else is projected:
+/// a caller may ask for fewer threads, never for more, and no backend flag is invented.
+fn bound_threads(spec: &reflect::ToolSpec, b: QueryBudgets) -> Option<(&'static str, usize)> {
+    spec.exposed()
+        .any(|arg| arg.key == "threads")
+        .then_some(("threads", b.threads))
 }
 
 pub(super) fn argv(
@@ -198,8 +142,14 @@ pub(super) fn argv(
 ) -> Result<Vec<std::ffi::OsString>, QueryError> {
     let spec = spec(name)?;
     let paths: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
-    let limits = ceilings(&spec, b);
-    let argv = reflect::argv(&spec, arguments, &paths, &limits)?;
+    let mut arguments = arguments.clone();
+    if let Some((key, ceiling)) = bound_threads(&spec, b) {
+        let requested = arguments
+            .get(key)
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok());
+        arguments[key] = serde_json::json!(requested.map_or(ceiling, |value| value.min(ceiling)));
+    }
     // Machine-readable output is requested inside `reflect::argv`, before any `--`.
-    Ok(argv)
+    reflect::argv(&spec, &arguments, &paths)
 }

@@ -29,11 +29,11 @@ def verify(binary, directory, env, expect_native=False):
             record = found['records'][0]
             assert record['detail']['value'] == 'MCP \u03bb', record
             fetched = structured(client.tool('js_get', {
-                'input': selected['input'], 'id': record['context_id']})[0])
+                'input': selected['input'], 'at': record['context_at']})[0])
             assert fetched['detail']['source'].encode() == original[fetched['start']:fetched['end']], fetched
-            outlined = structured(client.tool('js_outline', {'input': selected['input']})[0])
+            outlined = structured(client.tool('js_entities', {'input': selected['input']})[0])
             root = outlined['header']['detail']['root_id']
-            fetched = structured(client.tool('js_get', {'input': selected['input'], 'id': root})[0])
+            fetched = structured(client.tool('js_get', {'input': selected['input'], 'at': root})[0])
             assert fetched['detail']['source'].encode() == original, fetched
             closed = structured(client.tool('rxd_close', {'target_id': opened['target_id']})[0])
             assert closed['target_id'] == opened['target_id'], closed

@@ -17,6 +17,7 @@ fn mcp_legacy_and_modern_clients_discover_the_server() {
     assert!(modern.wait_exit().success());
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_catalog_filters_backends_and_publishes_input_output_schemas() {
     let mut client = Client::start(&["--backends", "js"]);
@@ -34,13 +35,18 @@ fn mcp_catalog_filters_backends_and_publishes_input_output_schemas() {
         assert!(tool["inputSchema"].is_object(), "{tool}");
         assert!(tool["outputSchema"].is_object(), "{tool}");
     }
-    let disabled = client.request("tools/call", json!({"name":"jar_outline","arguments":{}}));
+    let disabled = client.request("tools/call", json!({"name":"jar_entries","arguments":{}}));
     assert!(disabled["error"].is_object(), "{disabled}");
     client.send_raw(b"not-json\n");
     assert_eq!(client.receive()["error"]["code"], -32700);
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
     client.disconnect();
     assert!(client.wait_exit().success());
+}
+
+#[cfg(feature = "backend-asar")]
+#[test]
+fn mcp_artifact_tools_are_annotated_as_creating_a_target() {
     let mut asar = Client::start(&["--backends", "asar"]);
     asar.initialize();
     let response = asar.request("tools/list", json!({}));
@@ -87,6 +93,7 @@ fn mcp_legacy_initialize_negotiates_a_supported_version() {
     client.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
 }
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_protocol_request_admission_is_bounded_and_recovers_after_cancellation() {
     let root = tempfile::tempdir().unwrap();
@@ -103,7 +110,7 @@ fn mcp_protocol_request_admission_is_bounded_and_recovers_after_cancellation() {
         "1",
     ]);
     client.initialize();
-    client.send(json!({"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"js_outline","arguments":{"input":{"path":path}}}}));
+    client.send(json!({"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"js_entities","arguments":{"input":{"path":path}}}}));
     client.send(json!({"jsonrpc":"2.0","id":101,"method":"tools/list","params":{}}));
     let denied = client.receive();
     assert_eq!(denied["id"], 101, "{denied}");
