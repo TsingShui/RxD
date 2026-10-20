@@ -20,7 +20,7 @@ pub use functions::{
     FunctionSelection, MemoryWord,
 };
 pub use literals::{LiteralInventory, LiteralKind, LiteralQuery};
-pub use navigation::{BasicBlock, Instruction, Navigation};
+pub use navigation::{BasicBlock, Instruction, Listing, Navigation};
 
 pub const ENGINE_VERSION: &str = "0.9.4";
 
@@ -34,7 +34,6 @@ pub enum Encoding {
 #[derive(Clone, Copy)]
 pub enum Query {
     Analyze,
-    Interface,
     Storage,
     Disassemble,
     BasicBlocks,
@@ -55,19 +54,49 @@ pub struct Limits {
     pub values: usize,
 }
 
-impl Default for Limits {
-    fn default() -> Self {
+impl Limits {
+    /// Project the one shared budget table onto the EVM ceilings.
+    ///
+    /// The abstract interpreter's context graph, retained stack cells and value arena have
+    /// no dedicated field in [`rxd_core::Budget`], so they take their ceilings from the
+    /// shared entity, entry and work budgets instead of backend-local numbers. Limits are
+    /// reported in the `--perf` sidecar and are never CLI knobs.
+    pub fn from_budget(budget: rxd_core::Budget) -> Self {
         Self {
-            input_bytes: rxd_core::MAX_INPUT_BYTES,
-            records: 100_000,
-            output_bytes: 16 * 1024 * 1024,
-            work: 16 * 1024 * 1024,
-            states: 100_000,
-            stack_cells: 1_048_576,
-            reconstruction_work: 1_048_576,
-            values: 1_048_576,
+            input_bytes: budget.input_bytes,
+            records: budget.records,
+            output_bytes: budget.output_bytes,
+            work: budget.work,
+            states: budget.entities,
+            stack_cells: budget.entries,
+            reconstruction_work: budget.work,
+            values: budget.entries,
         }
     }
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self::from_budget(rxd_core::Budget::default())
+    }
+}
+
+/// Expand the copy-only coordinate a record prints into the canonical content-bound ID.
+///
+/// A record prints short, self-describing coordinates such as `hex:block:0:4` because the
+/// stream header already carries the source identity. A full `rxd1:evm:<sha256>:...` ID is
+/// returned unchanged so a foreign hash still fails `SOURCE_MISMATCH` during validation.
+pub(crate) fn canonical_id(source_id: &str, at: &str) -> String {
+    if at.starts_with("rxd1:") {
+        at.to_string()
+    } else {
+        format!("rxd1:evm:{source_id}:{at}")
+    }
+}
+
+/// Strip the schema prefix from a content-bound ID for printing next to its record.
+pub(crate) fn coordinate(id: &str) -> String {
+    rxd_core::envelope::at_of(id).into_owned()
 }
 
 /// One fixed carrier and its explicitly selected decoded interpretation.
@@ -207,11 +236,6 @@ impl Analysis {
                     .with_disassemble()
                     .with_basic_blocks()
                     .with_control_flow_graph()
-                    .with_metadata(),
-                Query::Interface => args
-                    .with_selectors()
-                    .with_arguments()
-                    .with_state_mutability()
                     .with_metadata(),
                 Query::Storage => args.with_storage().with_state_mutability().with_metadata(),
                 Query::Disassemble => args.with_disassemble(),

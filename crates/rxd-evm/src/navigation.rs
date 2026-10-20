@@ -28,6 +28,15 @@ pub struct BasicBlock {
     pub instruction_end: usize,
 }
 
+/// The two output options every EVM row listing shares.
+#[derive(Clone, Copy)]
+pub struct Listing<'a> {
+    /// Emit the exact decoded bytecode as lowercase hex in the header.
+    pub include_bytecode: bool,
+    /// Case-insensitive substring over the value the row is named by.
+    pub filter: Option<&'a str>,
+}
+
 pub struct Navigation {
     pub carrier: Carrier,
     pub instructions: Vec<Instruction>,
@@ -154,18 +163,27 @@ impl Navigation {
         result
     }
 
-    pub fn block_id(&self, block: &BasicBlock) -> String {
+    /// The copy-only coordinate a row prints and `--at` accepts.
+    pub fn block_coordinate(&self, block: &BasicBlock) -> String {
         format!(
-            "rxd1:evm:{}:{}:block:{}:{}",
-            self.carrier.source_id,
+            "{}:block:{}:{}",
             self.carrier.encoding.as_str(),
             block.start,
             block.end
         )
     }
 
+    pub fn block_id(&self, block: &BasicBlock) -> String {
+        format!(
+            "rxd1:evm:{}:{}",
+            self.carrier.source_id,
+            self.block_coordinate(block)
+        )
+    }
+
     pub fn select_block(&self, id: &str) -> Result<&BasicBlock> {
-        let fields: Vec<_> = id.split(':').collect();
+        let canonical = crate::canonical_id(&self.carrier.source_id, id);
+        let fields: Vec<_> = canonical.split(':').collect();
         let invalid = || {
             Error::new(
                 "INVALID_ID",
@@ -250,7 +268,6 @@ impl Navigation {
             if fetch { "block" } else { "basic_block" },
             RecordMeta {
                 at: Some(&id),
-                source_id: Some(&self.carrier.source_id),
                 start: Some(start),
                 end: Some(end),
                 ..RecordMeta::default()
@@ -267,16 +284,27 @@ impl Navigation {
         record
     }
 
-    pub fn outline_json(
+    pub fn blocks_json(
         &self,
-        functions: &crate::FunctionNavigation,
         include: bool,
+        filter: Option<&str>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
-        let records = self.blocks.len() + functions.functions.len();
-        perf.counters.records = Some(records);
-        if records > limits.records {
+        let needle = filter.map(str::to_lowercase);
+        let selected: Vec<_> = self
+            .blocks
+            .iter()
+            .filter(|block| {
+                needle.as_ref().is_none_or(|needle| {
+                    self.block_coordinate(block)
+                        .to_ascii_lowercase()
+                        .contains(needle)
+                })
+            })
+            .collect();
+        perf.counters.records = Some(selected.len());
+        if selected.len() > limits.records {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "EVM result record budget exceeded",
@@ -284,22 +312,20 @@ impl Navigation {
         }
         let header = envelope::header(
             "evm",
-            "outline",
+            "blocks",
             Some(&self.carrier.source_id),
             Some(self.carrier.bytes.len()),
-            json!({"encoding": self.carrier.encoding}),
+            json!({"encoding": self.carrier.encoding, "filter": filter}),
             header_detail(object(json!({"carrier": self.carrier_detail(),
                 "bytecode": self.bytecode_detail(include), "offset_unit": "decoded_bytecode_byte",
                 "basic_block_end": "exclusive", "boundary_status": "producer_candidate", "discovery_complete": null,
                 "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "undecoded_tail": self.undecoded_tail()}))),
         );
         let summary = envelope::summary(
-            records,
+            selected.len(),
             true,
-            summary_detail(object(
-                json!({"blocks": self.blocks.len(), "functions": functions.functions.len(),
-            "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "discovery_complete": null}),
-            )),
+            summary_detail(object(json!({"blocks": selected.len(),
+            "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "discovery_complete": null}))),
         );
         let mut output = BoundedOutput {
             bytes: Vec::new(),
@@ -307,22 +333,15 @@ impl Navigation {
             exceeded: false,
         };
         write_record(&mut output, &header)?;
-        for function in &functions.functions {
-            functions.prepare_record(self, function, false, limits, perf)?;
-            write_record(
-                &mut output,
-                &functions.function_record(self, function, None),
-            )?;
-        }
-        for block in &self.blocks {
+        for block in selected {
             write_record(&mut output, &self.block_record(block, false))?;
         }
         write_record(&mut output, &summary)?;
         Ok(output.bytes)
     }
 
-    pub fn block_json(&self, id: &str, limits: Limits, perf: &mut Perf) -> Result<Vec<u8>> {
-        let block = self.select_block(id)?;
+    pub fn block_json(&self, at: &str, limits: Limits, perf: &mut Perf) -> Result<Vec<u8>> {
+        let block = self.select_block(at)?;
         perf.counters.records = Some(1);
         if limits.records == 0 {
             return Err(Error::new(
@@ -362,7 +381,7 @@ pub(crate) fn header_detail(
         "target_kind":null,"target_decoded_offset":null,"target_semantics":null,"coverage":null,"literal_scope":null,
         "excluded_unindexed_pushes":null,"discovery_complete":null,"disassembly_complete":null,"undecoded_tail":null,
         "source_call_graph_complete":null,"abi_verified":null,"data_scope":null,"metadata_range":null,"copy_witnesses":null,
-        "unknown_copy_witnesses":null,"unvisited_copy_sites":null,"data_reference_coverage":null,"unknown_copy_evidence":null
+        "unknown_copy_witnesses":null,"unvisited_copy_sites":null,"data_reference_coverage":null,"unknown_copy_evidence":null,"metadata":null
     }));
     fields.extend(detail);
     fields

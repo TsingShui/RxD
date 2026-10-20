@@ -206,10 +206,10 @@ impl DataInventory {
         result
     }
 
-    fn id(&self, navigation: &Navigation, literal: &DataLiteral) -> String {
+    /// The copy-only coordinate a row prints and `--at` accepts.
+    fn coordinate(&self, navigation: &Navigation, literal: &DataLiteral) -> String {
         format!(
-            "rxd1:evm:{}:{}:literal:data:{}:{}:{}",
-            navigation.carrier.source_id,
+            "{}:literal:data:{}:{}:{}",
             navigation.carrier.encoding.as_str(),
             literal.kind,
             literal.start,
@@ -217,14 +217,23 @@ impl DataInventory {
         )
     }
 
-    fn select(&self, navigation: &Navigation, id: &str) -> Result<&DataLiteral> {
+    fn id(&self, navigation: &Navigation, literal: &DataLiteral) -> String {
+        format!(
+            "rxd1:evm:{}:{}",
+            navigation.carrier.source_id,
+            self.coordinate(navigation, literal)
+        )
+    }
+
+    fn select(&self, navigation: &Navigation, at: &str) -> Result<&DataLiteral> {
         let invalid = || {
             Error::new(
                 "INVALID_ID",
                 "expected a canonical content-bound EVM data literal ID",
             )
         };
-        let fields: Vec<_> = id.split(':').collect();
+        let canonical = crate::canonical_id(&navigation.carrier.source_id, at);
+        let fields: Vec<_> = canonical.split(':').collect();
         if fields.len() != 9
             || fields[0] != "rxd1"
             || fields[1] != "evm"
@@ -305,7 +314,7 @@ impl DataInventory {
             copy_witnesses: self.witnesses.len(), unknown_copy_witnesses: self.unknown,
             unvisited_copy_sites: self.unvisited, data_reference_coverage: "contextual_static_evidence",
             unknown_copy_evidence: self.witnesses.iter().enumerate().filter(|(_,w)| w.operation.source.is_none() || w.operation.length.is_none()).map(|(i,w)|json!({
-                "instruction_offset":w.operation.pc,"block_id":navigation.block_id(&navigation.blocks[w.block]),"context_id":self.context(navigation,functions,Some(i)),"context_index":w.context,"context_entry_state":self.entry(functions,i).json(),"entry_evidence_block_ids":w.entry_blocks.iter().map(|&b|navigation.block_id(&navigation.blocks[b])).collect::<Vec<_>>(),
+                "instruction_offset":w.operation.pc,"block_id":navigation.block_coordinate(&navigation.blocks[w.block]),"context_at":self.context(navigation,functions,Some(i)).map(|context|crate::coordinate(&context)),"context_index":w.context,"context_entry_state":self.entry(functions,i).json(),"entry_evidence_block_ids":w.entry_blocks.iter().map(|&b|navigation.block_coordinate(&navigation.blocks[b])).collect::<Vec<_>>(),
                 "source_offset_hex":w.operation.source.map(|v|format!("{v:064x}")),"length_hex":w.operation.length.map(|v|format!("{v:064x}")),
                 "destination_offset_hex":w.operation.destination.map(|v|format!("{v:064x}")),"reason":match (w.operation.source,w.operation.length){(None,None)=>"source_offset_and_length_unknown",(None,_)=>"source_offset_unknown",_=>"length_unknown"}
             })).collect(),
@@ -316,6 +325,7 @@ impl DataInventory {
         &'a self,
         navigation: &Navigation,
         query: &LiteralQuery,
+        filter: Option<&str>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<(Vec<DataMatch<'a>>, usize)> {
@@ -345,6 +355,13 @@ impl DataInventory {
                 }
             };
             if !matched {
+                continue;
+            }
+            if filter.is_some_and(|needle| {
+                !crate::literals::literal_value(bytes)
+                    .to_lowercase()
+                    .contains(needle)
+            }) {
                 continue;
             }
             work(perf, self.witnesses.len(), limits.work)?;
@@ -406,6 +423,12 @@ impl DataInventory {
         })
     }
 
+    fn index_of(&self, literal: &DataLiteral) -> usize {
+        self.literals
+            .binary_search(literal)
+            .expect("candidate comes from this sorted inventory")
+    }
+
     pub(crate) fn search_records<'a>(
         &'a self,
         navigation: &'a Navigation,
@@ -417,11 +440,11 @@ impl DataInventory {
             let l = item.literal;
             let bytes = &navigation.carrier.bytecode[l.start..l.end];
             let (start, end) = navigation.carrier.carrier_range(l.start, l.end);
-            let id = self.id(navigation, l);
             let context = self.context(navigation, functions, route);
-            envelope::record("data_literal", RecordMeta { at: Some(&id), source_id: Some(&navigation.carrier.source_id),
+            envelope::record("data_literal", RecordMeta { at: Some(&self.id(navigation, l)),
                 context_at: context.as_deref(), start: Some(start), end: Some(end), ..RecordMeta::default() },
-                crate::navigation::object(json!({"literal_id":id,"literal_kind":"data_candidate","region_kind":l.kind,
+                crate::navigation::object(json!({"value":crate::literals::literal_value(bytes),"index":self.index_of(l),
+                    "literal_kind":"data_candidate","region_kind":l.kind,
                     "decoded_start":l.start,"decoded_end":l.end,"bytes_hex":hex(bytes),
                     "number_hex":(bytes.len() <= 32).then(|| format!("{:064x}",U256::from_be_slice(bytes))),
                     "query_kind":query.kind,"evidence_kind":match (l.kind, query.kind) {
@@ -440,6 +463,7 @@ impl DataInventory {
         navigation: &Navigation,
         functions: &FunctionNavigation,
         id: &str,
+        filter: Option<&str>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<(DataLiteral, Vec<usize>, &'static str)> {
@@ -449,15 +473,26 @@ impl DataInventory {
             limits.work,
         )?;
         let literal = self.select(navigation, id)?;
-        let routes = self.routes(navigation, literal);
-        Self::check_records(routes.len(), limits)?;
-        let status = if !routes.is_empty() {
+        let referenced = self.routes(navigation, literal);
+        let status = if !referenced.is_empty() {
             "statically_copied"
         } else if self.unknown + self.unvisited > 0 {
             "unreferenced_or_unknown"
         } else {
             "unreferenced"
         };
+        let routes: Vec<usize> = referenced
+            .into_iter()
+            .filter(|&route| {
+                filter.is_none_or(|needle| {
+                    self.context(navigation, functions, Some(route))
+                        .is_some_and(|context| {
+                            crate::coordinate(&context).to_lowercase().contains(needle)
+                        })
+                })
+            })
+            .collect();
+        Self::check_records(routes.len(), limits)?;
         let mut payload_lower_bound = 0usize;
         for &route in &routes {
             let (start, end, _) = Self::available(navigation, &self.witnesses[route]).unwrap();
@@ -487,7 +522,6 @@ impl DataInventory {
         &self,
         navigation: &Navigation,
         functions: &FunctionNavigation,
-        id: &str,
         literal: &DataLiteral,
         route: usize,
     ) -> Value {
@@ -505,20 +539,19 @@ impl DataInventory {
         envelope::record(
             "data_reference",
             RecordMeta {
-                source_id: Some(&navigation.carrier.source_id),
                 context_at: Some(&context),
                 start: Some(start),
                 end: Some(end),
                 ..RecordMeta::default()
             },
             crate::navigation::object(
-                json!({"literal_id":id,"reference_kind":"codecopy","evidence_kind":"contextual_constant_codecopy",
+                json!({"target":self.coordinate(navigation, literal),"reference_kind":"codecopy","evidence_kind":"contextual_constant_codecopy",
                     "instruction_offset":operation.pc,"instruction_end":operation.pc+1,"instruction_carrier_start":instruction_start,"instruction_carrier_end":instruction_end,
                     "source_offset_hex":operation.source.map(|v|format!("{v:064x}")),"length_hex":operation.length.map(|v|format!("{v:064x}")),
                     "destination_offset_hex":operation.destination.map(|v|format!("{v:064x}")),"available_source_start":available_start,"available_source_end":available_end,
                     "zero_padding_hex":format!("{padding:064x}"),"copied_decoded_start":copied_start,"copied_decoded_end":copied_end,
-                    "copied_bytes_hex":hex(&navigation.carrier.bytecode[copied_start..copied_end]),"block_id":navigation.block_id(&navigation.blocks[witness.block]),
-                    "context_kind":if witness.owner.is_some(){"function"}else{"block"},"context_index":witness.context,"context_entry_state":self.entry(functions,route).json(),"entry_evidence_block_ids":witness.entry_blocks.iter().map(|&b|navigation.block_id(&navigation.blocks[b])).collect::<Vec<_>>(),"resolution":"resolved","runtime_string_proven":false}),
+                    "copied_bytes_hex":hex(&navigation.carrier.bytecode[copied_start..copied_end]),"block_id":navigation.block_coordinate(&navigation.blocks[witness.block]),
+                    "context_kind":if witness.owner.is_some(){"function"}else{"block"},"context_index":witness.context,"context_entry_state":self.entry(functions,route).json(),"entry_evidence_block_ids":witness.entry_blocks.iter().map(|&b|navigation.block_coordinate(&navigation.blocks[b])).collect::<Vec<_>>(),"resolution":"resolved","runtime_string_proven":false}),
             ),
         )
     }

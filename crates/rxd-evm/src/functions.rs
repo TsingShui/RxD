@@ -122,7 +122,7 @@ impl FunctionCandidate {
 }
 
 pub enum FunctionSelection<'a> {
-    Id(&'a str),
+    At(&'a str),
     Selector(&'a str),
 }
 
@@ -130,6 +130,12 @@ pub struct FunctionNavigation {
     pub functions: Vec<FunctionCandidate>,
     /// Supported function indices for each native block, in stable function order.
     pub owners: Vec<Vec<usize>>,
+    /// EVMole's own selector-bearing analysis, keyed by the four-byte selector.
+    ///
+    /// Populated only when the caller asks for the interface listing; it is the same
+    /// single in-memory analysis that seeds `functions`, never a second pass.
+    interface: Option<BTreeMap<String, Value>>,
+    metadata: Option<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -784,12 +790,52 @@ pub(crate) fn block_local_edges(
 }
 
 impl FunctionNavigation {
-    pub fn discover(navigation: &Navigation, limits: Limits, perf: &mut Perf) -> Result<Self> {
+    /// Discover selector-dispatched candidates from one native analysis.
+    ///
+    /// `interface` additionally requests EVMole's argument, mutability and metadata
+    /// capabilities and keeps them for the `interface` listing; every other navigation
+    /// command asks only for selectors, so its cost is unchanged.
+    pub fn discover(
+        navigation: &Navigation,
+        interface: bool,
+        limits: Limits,
+        perf: &mut Perf,
+    ) -> Result<Self> {
         let producer = perf.measure("analyze", || {
-            evmole::contract_info(
-                evmole::ContractInfoArgs::new(&navigation.carrier.bytecode).with_selectors(),
-            )
+            let args = evmole::ContractInfoArgs::new(&navigation.carrier.bytecode).with_selectors();
+            let args = if interface {
+                args.with_arguments()
+                    .with_state_mutability()
+                    .with_metadata()
+            } else {
+                args
+            };
+            evmole::contract_info(args)
         });
+        let mut abi = None;
+        let mut metadata = None;
+        if interface {
+            let mut by_selector = BTreeMap::new();
+            for function in producer.functions.iter().flatten() {
+                // `bytecodeOffset` duplicates the candidate entry, so only the ABI fields
+                // the navigation row does not already carry are kept for the listing.
+                by_selector.insert(
+                    hex(&function.selector),
+                    json!({
+                        "arguments": function.arguments.as_ref().map(|arguments| arguments
+                            .iter()
+                            .map(|argument| argument.sol_type_name().to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")),
+                        "stateMutability": function.state_mutability.map(|value| value.as_json_str()),
+                    }),
+                );
+            }
+            abi = Some(by_selector);
+            metadata = producer.metadata.as_ref().map(|metadata| {
+                serde_json::to_value(metadata).expect("fixed native metadata schema")
+            });
+        }
         let stage = perf.start_stage();
         let result = (|| {
             let mut candidates: BTreeSet<(String, &'static str, usize)> = producer
@@ -901,7 +947,12 @@ impl FunctionNavigation {
                     owners[block].push(index);
                 }
             }
-            Ok(Self { functions, owners })
+            Ok(Self {
+                functions,
+                owners,
+                interface: abi,
+                metadata,
+            })
         })();
         perf.record("navigate", stage);
         result
@@ -1051,10 +1102,14 @@ impl FunctionNavigation {
         Ok(witnesses)
     }
 
-    pub fn function_id(&self, navigation: &Navigation, function: &FunctionCandidate) -> String {
+    /// The copy-only coordinate a row prints and `--at` accepts.
+    pub fn function_coordinate(
+        &self,
+        navigation: &Navigation,
+        function: &FunctionCandidate,
+    ) -> String {
         format!(
-            "rxd1:evm:{}:{}:function:{}:{}:{}",
-            navigation.carrier.source_id,
+            "{}:function:{}:{}:{}",
             navigation.carrier.encoding.as_str(),
             function.selector,
             function.dispatch,
@@ -1062,10 +1117,18 @@ impl FunctionNavigation {
         )
     }
 
-    pub fn owner_ids(&self, navigation: &Navigation, block: usize) -> Vec<String> {
+    pub fn function_id(&self, navigation: &Navigation, function: &FunctionCandidate) -> String {
+        format!(
+            "rxd1:evm:{}:{}",
+            navigation.carrier.source_id,
+            self.function_coordinate(navigation, function)
+        )
+    }
+
+    pub fn owner_coordinates(&self, navigation: &Navigation, block: usize) -> Vec<String> {
         self.owners[block]
             .iter()
-            .map(|&index| self.function_id(navigation, &self.functions[index]))
+            .map(|&index| self.function_coordinate(navigation, &self.functions[index]))
             .collect()
     }
 
@@ -1103,8 +1166,9 @@ impl FunctionNavigation {
             return Ok(selected);
         }
         let id =
-            id.ok_or_else(|| Error::new("INVALID_QUERY", "select a function ID or --selector"))?;
-        let fields: Vec<_> = id.split(':').collect();
+            id.ok_or_else(|| Error::new("INVALID_QUERY", "select a function --at or --selector"))?;
+        let canonical = crate::canonical_id(&navigation.carrier.source_id, id);
+        let fields: Vec<_> = canonical.split(':').collect();
         let invalid = || {
             Error::new(
                 "INVALID_ID",
@@ -1183,7 +1247,7 @@ impl FunctionNavigation {
             .iter()
             .map(|&index| {
                 let mut record = navigation.block_record(&navigation.blocks[index], false);
-                let owners = self.owner_ids(navigation, index);
+                let owners = self.owner_coordinates(navigation, index);
                 record["detail"]["shared"] = json!(owners.len() > 1);
                 record["detail"]["owner_ids"] = json!(owners);
                 record
@@ -1199,12 +1263,23 @@ impl FunctionNavigation {
             json!({"unit_kind":"function","selector":function.selector,"dispatch":function.dispatch,"decoded_entry":function.entry,
             "entry_evidence":"selector_dispatch_candidate","entry_state_status":if function.entry_states.is_empty(){"unknown"}else{"dispatcher_derived"},
             "entry_states":function.entry_states.iter().map(AbstractState::json).collect::<Vec<_>>(),
-            "included_block_ids":function.block_indices.iter().map(|&i|navigation.block_id(&navigation.blocks[i])).collect::<Vec<_>>(),
+            "included_block_ids":function.block_indices.iter().map(|&i|navigation.block_coordinate(&navigation.blocks[i])).collect::<Vec<_>>(),
             "segments":segments,"blocks":blocks,"instruction_count":instruction_count,"context_count":function.contexts.len(),
             "boundary_status":if function.boundary_complete(){"static_reachable"}else{"incomplete"},"boundary_complete":function.boundary_complete(),
             "ownership_status":if function.cross_entries.is_empty(){"candidate"}else{"cross_entry_unknown"},"cross_entries":function.cross_entries,
             "unknown_successors":function.unknown_successors,"discovery_complete":null}),
         );
+        if let Some(interface) = &self.interface {
+            // Fixed nullable ABI fields: a candidate witnessed only by its own dispatcher
+            // comparison has no upstream selector entry and keeps null here.
+            let native = interface.get(&function.selector);
+            for key in ["arguments", "stateMutability"] {
+                detail.insert(
+                    key.to_owned(),
+                    native.map_or(Value::Null, |native| native[key].clone()),
+                );
+            }
+        }
         if raw.is_some() {
             let instructions: Vec<_> = function
                 .block_indices
@@ -1223,7 +1298,7 @@ impl FunctionNavigation {
                     json!({"decoded_start":start,"decoded_end":end,"carrier_start":carrier_start,"carrier_end":carrier_end,
                         "raw_hex":hex(&navigation.carrier.bytecode[start..end]),"reason":e.reason})
                 }).collect::<Vec<_>>(),"control_flow":function.contexts.iter().enumerate().map(|(index,c)|json!({"context":index,
-                    "block_id":navigation.block_id(&navigation.blocks[c.block_index]),"entry_state":c.entry.json(),"exit_state":c.exit.json(),
+                    "block_id":navigation.block_coordinate(&navigation.blocks[c.block_index]),"entry_state":c.entry.json(),"exit_state":c.exit.json(),
                     "edges":c.edges,"problems":c.problems})).collect::<Vec<_>>(),
                 "reconstruction":crate::reconstruction::Reconstruction::not_requested(),
                 "complete":true})));
@@ -1232,7 +1307,6 @@ impl FunctionNavigation {
             if fetch { "function_code" } else { "function" },
             RecordMeta {
                 at: Some(&id),
-                source_id: Some(&navigation.carrier.source_id),
                 start: range.map(|r| r.0),
                 end: range.map(|r| r.1),
                 ..RecordMeta::default()
@@ -1347,7 +1421,7 @@ impl FunctionNavigation {
         let query = perf.start_stage();
         let preparation: Result<&FunctionCandidate> = (|| {
             let function = match selection {
-                FunctionSelection::Id(id) => self.select(navigation, Some(id), None)?,
+                FunctionSelection::At(at) => self.select(navigation, Some(at), None)?,
                 FunctionSelection::Selector(selector) => {
                     self.select(navigation, None, Some(selector))?
                 }
@@ -1394,6 +1468,82 @@ impl FunctionNavigation {
             Ok(output.bytes)
         })();
         perf.record("serialize", serialization);
+        result
+    }
+
+    /// List content-bound function candidates with EVMole's own ABI fields per row.
+    pub fn interface_json(
+        &self,
+        navigation: &Navigation,
+        include: bool,
+        filter: Option<&str>,
+        limits: Limits,
+        perf: &mut Perf,
+    ) -> Result<Vec<u8>> {
+        let needle = filter.map(str::to_lowercase);
+        let selected: Vec<_> = self
+            .functions
+            .iter()
+            .filter(|function| {
+                needle
+                    .as_ref()
+                    .is_none_or(|needle| function.selector.contains(needle.as_str()))
+            })
+            .collect();
+        perf.counters.records = Some(selected.len());
+        if selected.len() > limits.records {
+            return Err(Error::new(
+                "RESOURCE_LIMIT",
+                "EVM result record budget exceeded",
+            ));
+        }
+        let disassembly_complete = navigation.decoded_end == navigation.carrier.bytecode.len();
+        let header = envelope::header(
+            "evm",
+            "interface",
+            Some(&navigation.carrier.source_id),
+            Some(navigation.carrier.bytes.len()),
+            json!({"encoding": navigation.carrier.encoding, "filter": filter}),
+            crate::navigation::header_detail(object(json!({
+                "carrier": navigation.carrier_detail(),
+                "bytecode": navigation.bytecode_detail(include),
+                "offset_unit": "decoded_bytecode_byte",
+                "basic_block_end": "exclusive",
+                "boundary_status": "producer_candidate",
+                "discovery_complete": null,
+                "disassembly_complete": disassembly_complete,
+                "undecoded_tail": navigation.undecoded_tail(),
+                "abi_verified": false,
+                "metadata": self.metadata}))),
+        );
+        let summary = envelope::summary(
+            selected.len(),
+            true,
+            crate::navigation::summary_detail(object(json!({
+                "functions": selected.len(),
+                "discovery_complete": null,
+                "disassembly_complete": disassembly_complete,
+                "source_call_graph_complete": false}))),
+        );
+        let stage = perf.start_stage();
+        let result = (|| {
+            let mut output = BoundedOutput {
+                bytes: Vec::new(),
+                limit: limits.output_bytes,
+                exceeded: false,
+            };
+            write_record(&mut output, &header)?;
+            for function in selected {
+                self.prepare_record(navigation, function, false, limits, perf)?;
+                write_record(
+                    &mut output,
+                    &self.function_record(navigation, function, None),
+                )?;
+            }
+            write_record(&mut output, &summary)?;
+            Ok(output.bytes)
+        })();
+        perf.record("serialize", stage);
         result
     }
 }

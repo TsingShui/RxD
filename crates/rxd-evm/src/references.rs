@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use crate::{
     FunctionNavigation, Limits, LiteralInventory, Navigation,
-    navigation::{header_detail, object, summary_detail},
+    navigation::{Listing, header_detail, object, summary_detail},
 };
 
 #[derive(Default)]
@@ -40,18 +40,18 @@ pub(crate) struct SummaryDetail {
 pub(crate) fn header(
     navigation: &Navigation,
     id: &str,
-    include_bytecode: bool,
+    listing: Listing<'_>,
     detail: HeaderDetail,
 ) -> Value {
     envelope::header(
         "evm",
-        "refs",
+        "xref",
         Some(&navigation.carrier.source_id),
         Some(navigation.carrier.bytes.len()),
-        json!({"encoding":navigation.carrier.encoding,"id":id,
+        json!({"encoding":navigation.carrier.encoding,"at":crate::coordinate(id),"filter":listing.filter,
             "reference_scope":if detail.target_kind=="literal"{"exact_literal_occurrence"}else{"static_control_flow"}}),
         header_detail(object(json!({
-            "carrier":navigation.carrier_detail(),"bytecode":navigation.bytecode_detail(include_bytecode),
+            "carrier":navigation.carrier_detail(),"bytecode":navigation.bytecode_detail(listing.include_bytecode),
             "offset_unit":"decoded_bytecode_byte","target_kind":detail.target_kind,
             "target_decoded_offset":detail.target_decoded_offset,"target_semantics":detail.target_semantics,
             "coverage":detail.coverage,"literal_scope":detail.literal_scope,
@@ -83,31 +83,30 @@ pub(crate) fn summary(navigation: &Navigation, detail: SummaryDetail) -> Value {
     )
 }
 
+/// A filter narrows a reference listing to rows whose caller coordinate matches.
+pub(crate) fn keeps(record: &Value, needle: Option<&str>) -> bool {
+    needle.is_none_or(|needle| {
+        record["context_at"]
+            .as_str()
+            .is_some_and(|context| context.to_ascii_lowercase().contains(needle))
+    })
+}
+
 pub fn refs_json(
     navigation: &Navigation,
     functions: &FunctionNavigation,
-    id: &str,
-    include_bytecode: bool,
+    at: &str,
+    listing: Listing<'_>,
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
+    let id = crate::canonical_id(&navigation.carrier.source_id, at);
     match id.split(':').nth(4) {
-        Some("literal") => LiteralInventory::discover(navigation, limits, perf)?.refs_json(
-            navigation,
-            functions,
-            id,
-            include_bytecode,
-            limits,
-            perf,
-        ),
-        Some("function" | "block") => crate::code_references::refs_json(
-            navigation,
-            functions,
-            id,
-            include_bytecode,
-            limits,
-            perf,
-        ),
+        Some("literal") => LiteralInventory::discover(navigation, limits, perf)?
+            .refs_json(navigation, functions, &id, listing, limits, perf),
+        Some("function" | "block") => {
+            crate::code_references::refs_json(navigation, functions, &id, listing, limits, perf)
+        }
         _ => Err(Error::new(
             "INVALID_ID",
             "expected an EVM literal, block or function ID",
