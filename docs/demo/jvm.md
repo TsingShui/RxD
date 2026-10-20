@@ -15,6 +15,10 @@ target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar --class fixt
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I'
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' --raw
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' -o target/add.java
+# locate → fetch without copying a coordinate: pipe the whole stream, header included,
+# so the fetch can refuse a stream that describes another archive
+target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar | \
+  target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --from -
 ```
 
 `get-method` default Java and `get-class` Java are outside the envelope. `--raw`

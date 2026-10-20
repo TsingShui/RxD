@@ -120,6 +120,47 @@ impl Target {
     }
 }
 
+/// One FETCH selector: a coordinate copied from a row, or a previous JSONL stream.
+///
+/// The same two paths FE TCH already had on dotnet; every backend that fetches one unit
+/// takes it, so `locate | fetch` works without a hand-copied coordinate.
+#[derive(Debug, Args)]
+pub struct Selector {
+    /// Coordinate copied from a record, exactly as that row printed it.
+    #[arg(
+        long,
+        value_name = "COORD",
+        required_unless_present = "from",
+        conflicts_with = "from"
+    )]
+    pub at: Option<String>,
+    /// Read the coordinate from a previous JSONL stream (a file, or `-` for stdin). The
+    /// stream must describe this input, so a stale stream cannot fetch from another file.
+    #[arg(
+        long,
+        value_name = "JSONL",
+        required_unless_present = "at",
+        conflicts_with = "at"
+    )]
+    pub from: Option<PathBuf>,
+}
+
+impl Selector {
+    /// Resolve the coordinate to fetch; `units` are the record kinds the stream may carry.
+    pub fn resolve(&self, units: &[&str], source_id: &str) -> anyhow::Result<String> {
+        match &self.at {
+            Some(at) => Ok(at.clone()),
+            None => selector_stream(
+                self.from
+                    .as_deref()
+                    .expect("clap requires exactly one selector"),
+                units,
+                Expect::Content(source_id),
+            ),
+        }
+    }
+}
+
 /// The two faces every backend shares.
 #[derive(Debug, Args)]
 pub struct TargetArgs {

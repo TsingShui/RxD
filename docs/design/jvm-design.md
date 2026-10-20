@@ -34,6 +34,8 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT --at CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
 | `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
+| `jar get-method INPUT --at COORD \| --from JSONL` | One method as Java, or its original instructions with `--raw`; `--from` reads the coordinate from a previous stream (header included) and refuses a stream from another input |
+| `jar get-class INPUT --at COORD \| --from JSONL` | One class as Java, same selector |
 | `jar xref INPUT --at COORD` | header/reference/summary JSONL; the coordinate is an exact identity (`Lx/y;`, `Lx/y;->name(proto)`, `Lx/y;->name:type`); `context_at` is the caller, `detail.target` the matched coordinate, `detail.byte_offset`/`detail.mnemonic` the reference site |
 | `jar xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type` record, with the stream's content identity checked against this archive |
 | `jar xref INPUT -f PATTERN --kind KIND` | the same rows for a case-sensitive substring search over the target's value, name or type, with `--class` over a member's owner; `--kind` is required |

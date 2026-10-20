@@ -719,6 +719,48 @@ fn jvm_xref_takes_its_anchor_from_a_previous_stream() {
     assert!(String::from_utf8_lossy(&refused.stderr).contains("came from a different input"));
 }
 
+/// `locate | fetch` without copying a coordinate: `--from` is the same selection `--at` is,
+/// read out of the previous stream, and the stream's identity decides whether it applies.
+#[test]
+fn jvm_fetch_takes_its_selector_from_a_previous_stream() {
+    let path = input("flow-deflated.jar");
+    let listed = run(&["methods"], &path);
+    success(&listed);
+    let methods = jvm_jsonl(&listed);
+    let at = methods[1]["at"].as_str().unwrap().to_owned();
+
+    let fetch = |stream: &[u8]| {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(["jar", "get-method"])
+            .arg(&path)
+            .args(["--from", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            use std::io::Write;
+            child.stdin.as_mut().unwrap().write_all(stream).unwrap();
+        }
+        drop(child.stdin.take());
+        child.wait_with_output().unwrap()
+    };
+
+    let streamed = fetch(&listed.stdout);
+    let expected = run(&["get-method", "--at", &at], &path);
+    success(&expected);
+    assert_eq!(streamed.stdout, expected.stdout);
+
+    // A stream from another archive is refused rather than applied to this one.
+    let foreign = run(&["methods"], &input("flow-stored.jar"));
+    success(&foreign);
+    let mixed = fetch(&foreign.stdout);
+    assert!(!mixed.status.success());
+    assert!(String::from_utf8_lossy(&mixed.stderr).contains("came from a different input"));
+    assert!(mixed.stdout.is_empty());
+}
+
 #[test]
 fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     let path = input("flow-deflated.jar");

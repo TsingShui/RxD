@@ -5,49 +5,13 @@ use std::{
 };
 
 use super::filter::CaseArgs;
+use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
 use rxd_core::{Budget, Error, Result};
 use rxd_dotnet::{Input, Limits};
 use serde_json::{Map, Value, json};
-
-/// One FETCH selector: a coordinate copied from a record, or a previous JSONL
-/// stream to read that coordinate from.
-#[derive(Args, Clone, Debug)]
-pub struct Selector {
-    /// Coordinate copied from a record: the metadata token, such as `0x06000003`
-    /// (`0x` optional).
-    #[arg(long, required_unless_present = "from", conflicts_with = "from")]
-    at: Option<String>,
-    /// Read the coordinate from a previous JSONL stream (a file, or `-` for stdin).
-    /// The stream's `source_id` must match this input, so a stale stream cannot
-    /// silently fetch a member from another file.
-    #[arg(
-        long,
-        value_name = "JSONL",
-        required_unless_present = "at",
-        conflicts_with = "at"
-    )]
-    from: Option<PathBuf>,
-}
-
-impl Selector {
-    /// Resolve the coordinate to fetch; `units` are the record kinds the stream may
-    /// carry (a stream is not trusted to name the unit the command needs).
-    fn resolve(&self, units: &[&str], source_id: &str) -> anyhow::Result<String> {
-        match &self.at {
-            Some(at) => Ok(at.clone()),
-            None => crate::cli::xref::selector_stream(
-                self.from
-                    .as_deref()
-                    .expect("clap requires exactly one selector"),
-                units,
-                crate::cli::xref::Expect::Content(source_id),
-            ),
-        }
-    }
-}
 
 #[derive(Subcommand)]
 pub enum Command {

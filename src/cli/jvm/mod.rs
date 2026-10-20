@@ -7,7 +7,9 @@ use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
 use super::filter::CaseArgs;
-use super::xref::{Anchor, Expect, Kind as XrefKind, Target, TargetArgs, selector_stream};
+use super::xref::{
+    Anchor, Expect, Kind as XrefKind, Selector, Target, TargetArgs, selector_stream,
+};
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -68,9 +70,8 @@ pub enum Command {
     #[command(name = "get-method")]
     Get {
         input: PathBuf,
-        /// `Lclass;->name(proto)`: the `at` a `methods` row prints.
-        #[arg(long)]
-        at: String,
+        #[command(flatten)]
+        selector: Selector,
         /// Print the original instruction listing instead of reconstructed source.
         #[arg(long)]
         raw: bool,
@@ -81,9 +82,8 @@ pub enum Command {
     #[command(name = "get-class")]
     GetClass {
         input: PathBuf,
-        /// `Lx/y;` or `x.y`: the `at` a `classes` row prints.
-        #[arg(long)]
-        at: String,
+        #[command(flatten)]
+        selector: Selector,
         #[command(flatten)]
         options: Options,
     },
@@ -308,12 +308,13 @@ pub fn execute(command: Command) -> Result<()> {
 fn execute_inner(command: Command) -> anyhow::Result<()> {
     if let Command::GetClass {
         input,
-        at: coordinate,
+        selector,
         options,
     } = command
     {
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
+        let coordinate = selector.resolve(&["class"], &input.source_id)?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
         anyhow::ensure!(
             source.len() <= limits.output_bytes,
@@ -595,13 +596,13 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             ),
             Command::Get {
                 input,
-                at,
+                selector,
                 raw,
                 options,
             } => (
                 input,
                 options,
-                Some((at, raw)),
+                Some((selector, raw)),
                 None,
                 None,
                 false,
@@ -616,7 +617,8 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     let limits = options.limits();
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
-    if let Some((at, raw)) = request {
+    if let Some((selector, raw)) = request {
+        let at = selector.resolve(&["method"], &input.source_id)?;
         if raw {
             let (selected, index) = input.method_by_at(&at)?;
             let method = &selected.class.methods[index];
