@@ -12,8 +12,6 @@ use std::path::PathBuf;
 pub struct FetchOptions {
     #[command(flatten)]
     pub common: static_commands::Options,
-    #[arg(long, default_value_t = 1_000_000, value_parser = crate::cli::positive)]
-    max_instructions: usize,
 }
 #[derive(Serialize)]
 struct Detail<'a> {
@@ -37,8 +35,8 @@ struct View<'a> {
     backend: &'static str,
     command: &'static str,
     record: &'static str,
-    id: &'a str,
-    source_id: &'a str,
+    at: String,
+    source_id: Option<&'a str>,
     parent_at: Option<String>,
     context_at: Option<&'a str>,
     start: usize,
@@ -47,7 +45,7 @@ struct View<'a> {
 }
 pub fn fetch(
     input: PathBuf,
-    id: String,
+    at: String,
     version: Option<(u8, u8)>,
     options: FetchOptions,
     perf: &mut Perf,
@@ -58,13 +56,13 @@ pub fn fetch(
     perf.resource_limits
         .as_mut()
         .unwrap()
-        .insert("instructions", options.max_instructions);
+        .insert("instructions", super::budget().instructions);
     let mut analysis = loaded?;
-    let selected = perf.measure("query", || analysis.parse_code_id(&id));
+    let selected = perf.measure("query", || analysis.parse_code_id(&at));
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;
     let result = perf.measure("decode", || {
-        code_view::build(&mut analysis, selected, options.max_instructions)
+        code_view::build(&mut analysis, selected, super::budget().instructions)
     });
     perf.counters.work = Some(analysis.evidence.work);
     let evidence = result?;
@@ -78,8 +76,8 @@ pub fn fetch(
             backend: "pyc",
             command: "get-code",
             record: "code_view",
-            id: &id,
-            source_id: &analysis.source_id,
+            at: rxd_core::envelope::at_of(&analysis.code_id(selected)).into_owned(),
+            source_id: None,
             parent_at: entry
                 .parent
                 .map(|i| rxd_core::envelope::at_of(&analysis.code_id(i)).into_owned()),
@@ -92,7 +90,7 @@ pub fn fetch(
                 representation: "original_bytecode",
                 complete: true,
                 query: Query {
-                    code_id: &id,
+                    code_id: &at,
                     version: version.map(|(a, b)| format!("{a}.{b}")),
                 },
                 metadata: static_commands::record(&analysis, selected)?.detail,

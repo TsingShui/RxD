@@ -24,7 +24,7 @@ fn rows(output: &Output) -> Vec<Value> {
 }
 fn code_rows(path: &Path, args: &[&str]) -> Vec<Value> {
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["pyc", "outline"])
+        .args(["pyc", "codes"])
         .arg(path)
         .args(args)
         .output()
@@ -70,7 +70,7 @@ fn pyc_refs_route_exact_explicit_names_to_original_code() {
     assert_eq!(stream.last().unwrap()["records"], hits.len());
     assert_eq!(stream.last().unwrap()["complete"], true);
     for (hit, (index, ins)) in hits.iter().zip(expected) {
-        assert!(hit["id"].is_null());
+        assert!(hit["at"].is_null());
         assert_eq!(hit["detail"]["code_index"], index);
         assert_eq!(hit["detail"]["offset"], ins["offset"]);
         assert_eq!(hit["detail"]["opcode"], ins["opcode"]);
@@ -91,7 +91,8 @@ fn pyc_refs_route_exact_explicit_names_to_original_code() {
         let fetch = Command::new(env!("CARGO_BIN_EXE_rxd"))
             .args(["pyc", "get-code"])
             .arg(&path)
-            .arg(hit["context_id"].as_str().unwrap())
+            .arg("--at")
+            .arg(hit["context_at"].as_str().unwrap())
             .output()
             .unwrap();
         success(&fetch);
@@ -231,12 +232,12 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
     let all = refs(&path, "value", &["--perf"]);
     let stream = rows(&all);
     let codes = code_rows(&path, &[]);
-    let id = codes[4]["id"].as_str().unwrap();
+    let id = codes[4]["at"].as_str().unwrap();
     let narrow = refs(&path, "value", &["--within", id, "--perf"]);
     let selected = rows(&narrow);
     let expected: Vec<_> = stream
         .iter()
-        .filter(|r| r["record"] == "reference" && r["context_id"] == id)
+        .filter(|r| r["record"] == "reference" && r["context_at"] == id)
         .cloned()
         .collect();
     assert_eq!(selected[1..selected.len() - 1], expected);
@@ -300,17 +301,17 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             hit,
             &[
                 "record",
-                "id",
+                "at",
                 "source_id",
-                "parent_id",
-                "context_id",
+                "parent_at",
+                "context_at",
                 "start",
                 "end",
                 "detail",
             ],
         );
-        assert!(hit["id"].is_null());
-        assert!(hit["parent_id"].is_null());
+        assert!(hit["at"].is_null());
+        assert!(hit["parent_at"].is_null());
         for field in [
             "constant_id",
             "constant_slot",
@@ -342,7 +343,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             &hit["detail"]["target"],
             &["table", "index", "id", "value_id"],
         );
-        assert_eq!(hit["source_id"], stream[0]["source_id"]);
+        assert!(hit["source_id"].is_null());
     }
     let summary = stream.last().unwrap();
     assert_js_keys(summary, &["record", "records", "complete", "detail"]);
@@ -360,10 +361,9 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
     );
     assert_eq!(summary["detail"]["unsupported"], serde_json::json!([]));
     for bad in [
-        id.replace(":pyc:", ":wasm:"),
-        id.replace(":code:", ":const:"),
-        id.replace(":code:4", ":code:04"),
-        id.replace(":code:4", ":code:9999"),
+        id.replace("code:", "const:"),
+        id.replace("code:4", "code:04"),
+        id.replace("code:4", "code:9999"),
         format!("{id}:0"),
         "rxd1:pyc:0:code:4".into(),
     ] {
@@ -373,6 +373,12 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             "INVALID_QUERY",
         );
     }
+    let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
+    failure(
+        refs(&path, "value", &["--within", &foreign]),
+        1,
+        "SOURCE_MISMATCH",
+    );
     let (_dir, changed) = fixture(
         fs::read(&path)
             .unwrap()
@@ -382,13 +388,18 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             .collect::<Vec<_>>(),
         "changed.pyc",
     );
+    success(&refs(&changed, "value", &["--within", id]));
+    let original = format!(
+        "rxd1:pyc:{:x}:{id}",
+        Sha256::digest(fs::read(&path).unwrap())
+    );
     failure(
-        refs(&changed, "value", &["--within", id]),
-        2,
-        "INVALID_QUERY",
+        refs(&changed, "value", &["--within", &original]),
+        1,
+        "SOURCE_MISMATCH",
     );
     let raw = corpus("graph.marshal");
-    let raw_id = code_rows(&raw, &["--version", "3.12"])[4]["id"]
+    let raw_id = code_rows(&raw, &["--version", "3.12"])[4]["at"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -446,7 +457,7 @@ fn pyc_refs_fail_scanned_corruption_atomically_and_expose_unsupported_coverage()
     let safe = rows(&refs(
         &damaged,
         "absent",
-        &["--within", ids[0]["id"].as_str().unwrap()],
+        &["--within", ids[0]["at"].as_str().unwrap()],
     ));
     assert_eq!(safe.last().unwrap()["complete"], true); // Only selected body semantics scanned.
     let start = oracle["marshal_ranges"]["code_ranges"][0]["pyc_bytecode_start"]
@@ -466,7 +477,7 @@ fn pyc_refs_fail_scanned_corruption_atomically_and_expose_unsupported_coverage()
         diagnostic,
         &[
             "code_index",
-            "context_id",
+            "context_at",
             "offset",
             "start",
             "end",
@@ -481,7 +492,7 @@ fn pyc_refs_fail_scanned_corruption_atomically_and_expose_unsupported_coverage()
     let scoped = rows(&refs(
         &unknown_path,
         "absent",
-        &["--within", ids[4]["id"].as_str().unwrap()],
+        &["--within", ids[4]["at"].as_str().unwrap()],
     ));
     assert_eq!(scoped[1]["complete"], true);
     let mut cache = bytes.clone();
@@ -557,70 +568,77 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
     let complete = refs(&path, "marker", &["--perf"]);
     let stream = rows(&complete);
     let perf = perf_row(&complete);
-    assert_eq!(perf["resource_limits"]["instructions"], 1_000_000);
+    let budget = rxd_core::Budget::default();
+    assert_eq!(
+        perf["resource_limits"]["instructions"],
+        Value::from(budget.instructions)
+    );
     assert!(perf["counters"]["ast_depth"].is_null());
     assert_eq!(
         perf["counters"]["records"],
         stream.last().unwrap()["records"]
     );
+    assert_no_budget_flags(&path, "xref");
+    // Exact accounting lives in the library, which owns the shared ceilings.
+    let bytes = fs::read(&path).unwrap();
+    let mut base = shared_static_limits();
+    base.input_bytes = bytes.len();
+    let codes = code_rows(&path, &[]);
+    let (perf, scan) = xref_name_library(&path, None, "marker", None, base, budget.instructions);
+    let scan = scan.unwrap();
+    assert_eq!(scan.hits.len(), stream.last().unwrap()["records"]);
+    let perf = perf_value(&perf);
+    let work = perf["counters"]["work"].as_u64().unwrap() as usize;
+    let entities = perf["counters"]["entities"].as_u64().unwrap() as usize;
+    for (field, amount, instructions) in [
+        ("input_bytes", bytes.len(), budget.instructions),
+        ("entities", entities, budget.instructions),
+        ("work", work, budget.instructions),
+        ("records", scan.hits.len(), budget.instructions),
+        ("instructions", 0, 99),
+    ] {
+        let mut exact = base;
+        match field {
+            "input_bytes" => exact.input_bytes = amount,
+            "entities" => exact.entities = amount,
+            "work" => exact.work = amount,
+            "records" => exact.records = amount,
+            _ => {}
+        }
+        assert!(
+            xref_name_library(&path, None, "marker", None, exact, instructions)
+                .1
+                .is_ok(),
+            "{field}"
+        );
+        let mut less = exact;
+        match field {
+            "input_bytes" => less.input_bytes = amount - 1,
+            "entities" => less.entities = amount - 1,
+            "work" => less.work = amount - 1,
+            "records" => less.records = amount - 1,
+            _ => {}
+        }
+        let instructions = if field == "instructions" { 98 } else { 99 };
+        let error = xref_name_library(&path, None, "marker", None, less, instructions)
+            .1
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "RESOURCE_LIMIT", "{field}");
+    }
+    let id = codes[4]["at"].as_str().unwrap();
+    assert!(
+        xref_name_library(&path, None, "value", Some(id), base, 9)
+            .1
+            .is_ok()
+    );
+    let error = xref_name_library(&path, None, "value", Some(id), base, 8)
+        .1
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "RESOURCE_LIMIT");
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("keep.jsonl");
-    for (flag, amount) in [
-        ("--max-input-bytes", fs::read(&path).unwrap().len()),
-        ("--max-output-bytes", complete.stdout.len()),
-        (
-            "--max-work",
-            perf["counters"]["work"].as_u64().unwrap() as usize,
-        ),
-        (
-            "--max-entities",
-            perf["counters"]["entities"].as_u64().unwrap() as usize,
-        ),
-        (
-            "--max-records",
-            stream.last().unwrap()["records"].as_u64().unwrap() as usize,
-        ),
-        ("--max-instructions", 99), // Largest graph body; cap is per code, not reset work.
-    ] {
-        let exact = amount.to_string();
-        let less = (amount - 1).to_string();
-        let output = refs(&path, "marker", &[flag, &exact]);
-        success(&output);
-        assert_eq!(output.stdout, complete.stdout, "{flag} exact boundary");
-        fs::write(&out, b"keep").unwrap();
-        let failed = refs(
-            &path,
-            "marker",
-            &[flag, &less, "--perf", "-o", out.to_str().unwrap()],
-        );
-        let failed_perf = perf_row(&failed);
-        failure(failed, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&out).unwrap(), b"keep");
-        assert!(
-            failed_perf["counters"]["work"].is_null()
-                || failed_perf["counters"]["work"].as_u64().unwrap()
-                    <= if flag == "--max-work" {
-                        (amount - 1) as u64
-                    } else {
-                        16_777_216
-                    }
-        );
-        if flag == "--max-work" {
-            assert_eq!(failed_perf["counters"]["work"], amount - 1); // Failure in the final actual serialization charge.
-        }
-        if flag == "--max-instructions" {
-            assert!(failed_perf["counters"]["instructions"].as_u64().unwrap() > 0); // Earlier codes are retained in failure counters.
-        }
-    }
-    let ids = code_rows(&path, &[]);
-    let id = ids[4]["id"].as_str().unwrap();
-    let selected = refs(&path, "value", &["--within", id, "--max-instructions", "9"]);
-    success(&selected);
-    failure(
-        refs(&path, "value", &["--within", id, "--max-instructions", "8"]),
-        1,
-        "RESOURCE_LIMIT",
-    );
     let output = refs(&path, "marker", &["-o", out.to_str().unwrap()]);
     success(&output);
     assert!(output.stdout.is_empty());
@@ -630,14 +648,4 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
         2,
         "INVALID_QUERY",
     );
-    for flag in [
-        "--max-input-bytes",
-        "--max-output-bytes",
-        "--max-work",
-        "--max-entities",
-        "--max-records",
-        "--max-instructions",
-    ] {
-        assert_eq!(refs(&path, "marker", &[flag, "0"]).status.code(), Some(2));
-    }
 }

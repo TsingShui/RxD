@@ -5,7 +5,7 @@ Status: implemented; `rxd pyz` is planned.
 `rxd pyc` is the Agent-facing entry for compiled CPython bytecode. `decompile` uses
 the imported pycdc Rust library to turn a `.pyc` or explicitly versioned raw marshal
 code object into Python text without importing/executing input or loading a Python
-runtime. `outline`, `strings`, `get-code` and `xref` provide static navigation,
+runtime. `codes`, `strings`, `get-code` and `xref` provide static navigation,
 lossless constant search, original FETCH and explicit name/constant references for
 final CPython 3.8–3.13 formats. `rxd pyz` container handling is planned separately.
 
@@ -20,8 +20,8 @@ rxd pyc decompile raw.marshal --version 3.12 -o recovered.py
 Default stdout is UTF-8 Python text; `-o` atomically writes the file and does not
 repeat it on stdout. `--json` returns one ADR 0003 `record: source` envelope with
 `schema_version: 2`, `backend: pyc`, `command: decompile`, input SHA-256 `source_id`,
-record/id/parent_id/context_id/start/end and detail. There is no code-unit navigation or
-original source range, so id/parent/context/start/end are null; generated text offsets
+record/at/parent_at/context_at/start/end and detail. There is no code-unit navigation or
+original source range, so at/parent/context/start/end are null; generated text offsets
 never become input offsets. Detail fields are `input_bytes`, `python_version`,
 `representation: decompiled_python`, `complete`, `source`. Incomplete output sets
 `complete: false`; default text mode then fails with `INCOMPLETE_DECOMPILATION` instead
@@ -47,8 +47,10 @@ opcodes use `complete: false` / `INCOMPLETE_DECOMPILATION`; that flag describes 
 recovery only, not whole-file bytecode semantics or behavior equivalence.
 
 Input must be a regular file; directories return `INVALID_INPUT` (exit 1) with empty
-stdout and preserved `-o` target. Defaults: input 8 GiB (`--max-input-bytes` lowerable;
-32-bit spans keep actual addressable content below 4 GiB), output 32 MiB; marshal
+stdout and preserved `-o` target. Ceilings come only from the shared
+`rxd_core::Budget` table projected into the backend `Limits`; the CLI exposes no
+`--max-*` flag. Input 8 GiB (32-bit spans keep actual addressable content below 4 GiB),
+output 32 MiB, work 1,000,000 and AST depth from the shared core limits; marshal
 parsing/reference expansion 128 levels and 1,000,000 objects, cumulative bytes read/
 copied 128 MiB, long-to-decimal squared-digit work 16,777,216. Cycles are rejected
 immediately; shared objects cannot bypass object budgets by exponential expansion.
@@ -62,9 +64,9 @@ compares device/inode for hard links and case aliases, returning `INVALID_QUERY`
 Different targets use atomic replacement. `--perf`/`--debug` write only to stderr.
 Isolated workers are not OS sandboxes.
 
-`decompile` adds `--max-work N` (positive, default 16,777,216) and `--max-ast-depth N`
-(1..=128, default 128). Work starts at instruction recovery: decoder/recovery/generator
-helper entries, explicit loop iterations and scan callbacks each count one; AST safety
+`decompile` takes its work and AST-depth ceilings from the shared `Budget`/core limits;
+there is no CLI knob for either. Work starts at instruction recovery: decoder/recovery/
+generator helper entries, explicit loop iterations and scan callbacks each count one; AST safety
 traversal counts visited nodes and enqueued edges along actual repeated paths;
 collection reservations/copies/expansions count elements; string copies/source appends
 count bytes. Format-spec copies, temporary formatter/join/append work and lossy UTF-8
@@ -92,8 +94,8 @@ panics propagate. Resource failure retains consumed work/depth and phase timings
 `--perf` follows the analysis/CLI stderr JSONL sidecar with content identity, input/
 output sizes and fresh-worker cost. Stages: read/hash/parse/decompile/generate/serialize/
 write; utf8/visit/query are zero and limits null; `resource_limits` echoes
-max_input_bytes/max_output_bytes/max_work/max_ast_depth plus marshal_depth/
-marshal_objects/marshal_expanded_objects/marshal_copied_bytes/marshal_long_work.
+input_bytes/output_bytes/work/ast_depth plus marshal_depth/marshal_objects/
+marshal_expanded_objects/marshal_copied_bytes/marshal_long_work.
 `counters.work` is accepted cumulative units, `counters.ast_depth` accepted peak; failed
 requests do not count rejected reservations/depth, and unrelated semantic counters are
 null.
@@ -119,11 +121,14 @@ larger version set.
 The code index uses the same bounded fixed input and one marshal reader. Root index 0;
 `co_consts` serialization order, depth-first preorder; code directly inside tuple/list/
 set/frozenset/slice participates; dict uses alternating key/value positions. A distinct
-code object is indexed once; its ID is
-`rxd1:pyc:<full-input-sha256>:code:<decimal-index>`. Rename/new process/filtering does
-not change the ID or renumber. The first discovery containment determines `parent_id`;
-this does not prove unique runtime ownership. `kind` is always `unknown`; name/compile
-mode/flags are not inferred as class/function identity.
+code object is indexed once; its content-bound ID is
+`rxd1:pyc:<full-input-sha256>:code:<decimal-index>` and each codes row prints the
+copy-only coordinate `code:<decimal-index>`. `get-code --at` and `xref --within` expand
+that short coordinate against the stream header's source identity; a full form still
+binds the digest, so a foreign digest is `SOURCE_MISMATCH`. Rename/new process/filtering
+does not change the ID or renumber. The first discovery containment determines
+`parent_at`; this does not prove unique runtime ownership. `kind` is always `unknown`;
+name/compile mode/flags are not inferred as class/function identity.
 
 Each owner's shared container definition is traversed once to avoid exponential alias
 expansion. `incoming` retains code containment edges found in this traversal with owner
@@ -134,32 +139,34 @@ or alias const table has no new contiguous occurrence bytes, so its range is nul
 `alias_start/alias_end` preserves the alias. All serialized occurrence/definition and
 field positions come from parser evidence and are reused by SEARCH/FETCH.
 
-Outline does not build a decompiler AST, recover source, scan `co_code` instructions or
+`codes` does not build a decompiler AST, recover source, scan `co_code` instructions or
 decode line/exception tables. Complete summary means header/marshal/index/filtering were
 fully processed; `instruction_validation: not_scanned` explicitly excludes unscanned
 instruction validity. Empty `co_code` is `body_status: empty`; non-bytes fields keep
 metadata and original field evidence with `unavailable` and `bytecode_bytes: null`. A
 later single-code FETCH rejects an unreadable body.
 
-`--name` matches the original UTF-8 name exactly and preserves same-name results; zero
-matches is a complete empty result. `--index` missing is `INVALID_QUERY` (exit 2); the
-filters are mutually exclusive. Marshal surrogatepass payloads keep raw bytes: valid
+`-f/--filter` is a case-insensitive substring over the code name and `--name` matches
+the original UTF-8 name exactly, both preserving global indexes; zero matches is a
+complete empty result. `--index` missing is `INVALID_QUERY` (exit 2), and `--name`
+cannot be combined with `--index`. Marshal surrogatepass payloads keep raw bytes: valid
 UTF-8 metadata uses a string, otherwise text is null and corresponding `*_bytes` give
 lowercase payload hex; the lossy decompiler compatibility view is never used. Non-ASCII
 payloads for ASCII tags are rejected. Cycles/forward xref are rejected; FLAG_REF
 containers reserve reference slots before children, and definition and reference site
 stay separate.
 
-### Outline schema v2
+### Codes schema v2
 
 ADR 0003 three-part JSONL: exactly one header, zero or more `record: code` sorted by
-global index, exactly one summary. Header query is `name/index/version` (null when
-absent); detail is `analysis/python_version/code_count/instruction_validation`. Summary
-records/complete describe data records; detail is `code_count/analysis/
+global index, exactly one summary. Header query is `filter/name/index/version` (null
+when absent); detail is `analysis/python_version/code_count/instruction_validation`.
+Summary records/complete describe data records; detail is `code_count/analysis/
 instruction_validation`; analysis is always `metadata`.
 
-Code meta: record/id/source_id/parent_id/context_id/start/end/detail always present;
-context_id null; root parent null. Outer start/end are the real half-open file range of
+Code meta: record/at/source_id/parent_at/context_at/start/end/detail always present;
+`at` is `code:<index>`, source_id is null (the header carries it), context_at null, root
+parent null. Outer start/end are the real half-open file range of
 the code marshal **definition** in the fixed input, never instruction offsets or generated
 text. All fields/payload ranges use full-file coordinates; raw marshal starts at 0 and PYC
 is rebased +16.
@@ -183,18 +190,19 @@ real file bytes; integer fields without object occurrence have the last three ra
 null and reference false. Each incoming item has owner_id/constant_path/start/end/
 alias_start/alias_end/reference.
 
-Static budgets: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
-4 GiB), entities 100,000, cumulative work 16,777,216, records 100,000, output 32 MiB;
-`--max-input-bytes/--max-entities/--max-work/--max-records/--max-output-bytes`.
-Entities count every parsed marshal occurrence (code, constants/names/localsplus entries,
-field objects; each alias occurrence counts 1). Work accumulates from the same parser
+Static budgets project the shared table: input 8 GiB (32-bit spans keep actual
+addressable content below 4 GiB), entities 100,000, cumulative work 1,000,000, records
+100,000, output 32 MiB. The CLI exposes no ceiling flag. Entities count every parsed
+marshal occurrence (code, constants/names/localsplus entries, field objects; each alias
+occurrence counts 1). Work accumulates from the same parser
 into index/filtering: each occurrence, index/traversal visit, copied child handle,
-incoming path handle and query candidate counts 1; equal-length exact-name comparison
-charges UTF-8 bytes. Container reservations, index paths/edges and record allocation are
-checked before use; serialization checks actual JSONL bytes including header/summary/
-newlines. Existing marshal depth 128, objects 1,000,000, reference expansion 1,000,000,
-copy 128 MiB and long squared work 16,777,216 remain. Outline has no instruction/AST
-budget because it builds neither.
+incoming path handle, query candidate, substring candidate and filter bytes count 1;
+exact-name comparison charges UTF-8 bytes. Container reservations, index paths/edges and
+record allocation are checked before use; serialization checks actual JSONL bytes
+including header/summary/newlines. Existing marshal depth 128, objects 1,000,000,
+reference expansion 1,000,000, copy 128 MiB and long squared work 16,777,216 remain.
+`codes` has no instruction/AST budget because it builds neither; the shared
+`instructions` ceiling is only relevant to FETCH/xref.
 
 `-o` atomically writes the same complete response and does not repeat stdout. Any input/
 budget/query error has no partial result and leaves an existing output. Diagnostics/
@@ -204,20 +212,21 @@ query/serialize/write. Decompile keeps decompile/generate; new nullable perf fie
 null. Worker isolation is not an OS sandbox; no analyzed code executes.
 
 Independent offline oracle/provenance/generator hashes/licenses are in
-`tests/corpus/pyc/README.md`. E2E covers graphs, duplicate names, shared/cyclic data,
-raw input, Unicode, original spans, budget boundaries, schema, atomic output and header
-ranges. `benches/pyc.py --command outline` measures release outline on fresh processes.
+`tests/corpus/pyc/README.md`. E2E covers graphs, duplicate names, filters, shared/cyclic
+data, raw input, Unicode, original spans, shared-budget accounting (driven through the
+library because the CLI has no ceiling flag), schema, atomic output and header ranges.
+`benches/pyc.py --command codes` measures release codes on fresh processes.
 
 ## Constant search
 
 ```sh
 rxd pyc strings module.pyc
-rxd pyc strings module.pyc --contains URL
-rxd pyc strings module.pyc --contains-hex ff00
+rxd pyc strings module.pyc -f URL
+rxd pyc strings module.pyc --filter-hex ff00
 rxd pyc strings graph.marshal --version 3.12 -o target/strings.jsonl
 ```
 
-`strings` reuses outline's fixed input/marshal evidence/code index, supports the same
+`strings` reuses codes' fixed input/marshal evidence/code index, supports the same
 final matrix and raw-version mode, and does not start the decompiler/AST or scan
 `co_code`. It emits every str/bytes occurrence by global code index, top-level
 `co_consts` slot and immutable-container serialized child order. Immutable containers are
@@ -227,13 +236,14 @@ order. Mutable list/dict/set/slice do not expand, and dynamic expressions, runti
 concatenation or f-strings are not evaluated.
 
 Constant ID:
-`rxd1:pyc:<full-input-sha256>:const:<code-index>:<dot-separated-index-path>`.
-Different owner/slot/path is a different ID; equal text or shared objects do not
-deduplicate. Tuple/frozenset and whole-`co_consts` shared xref still expand every owner/
-path; raw payload shares a definition handle; path/alias copies and actual traversal
-charge work first. Owner is the owning code definition; a shared code's literal is
-enumerated once under its distinct index. context_id/parent_id are the owner code ID;
-context can be passed to get-code.
+`rxd1:pyc:<full-input-sha256>:const:<code-index>:<dot-separated-index-path>`; each row
+prints the copy-only coordinate `const:<code-index>:<path>`, which `xref --const-id`
+expands against the header identity. Different owner/slot/path is a different ID; equal
+text or shared objects do not deduplicate. Tuple/frozenset and whole-`co_consts` shared
+xref still expand every owner/path; raw payload shares a definition handle; path/alias
+copies and actual traversal charge work first. Owner is the owning code definition; a
+shared code's literal is enumerated once under its distinct index. context_at/parent_at
+are the owner `code:<index>`; context can be passed to get-code --at.
 
 `value` is used only for str payload strictly representable as UTF-8; valid marshal
 surrogatepass or other non-lossless Unicode is null, never replacement characters. bytes
@@ -241,24 +251,28 @@ value is always null. `raw_bytes` gives lowercase hex for every str/bytes litera
 including empty/non-UTF-8 bytes, read only from the real fixed-input payload range, never
 from `PyObject::Str`'s decompiler compatibility view.
 
-Mutually exclusive `--contains` does literal substring matching for decodable str and
-UTF-8 query-byte subsequence for bytes; undecodable str does not match text.
-`--contains-hex` does raw payload-byte subsequence, accepts mixed-case even-length hex
-without prefix/separators; invalid values are clap argument errors (exit 2). Neither
-case-folds nor normalizes. Empty hex matches every literal including empty; empty text
-matches decodable str and all bytes. NUL queries use hex because OS argv cannot carry NUL.
-Zero matches exits 0 with complete header/summary and records=0.
+Mutually exclusive `-f/--filter` is a case-insensitive substring over decodable str
+literals (Unicode lowercase folding) and a byte-exact UTF-8 query-byte subsequence over
+bytes literals; undecodable str does not match text. `--filter-hex` does raw
+payload-byte subsequence, accepts mixed-case even-length hex without prefix/separators;
+invalid values are clap argument errors (exit 2). The hex form is byte-exact and never
+case-folds, while text matching folds case only. Empty hex matches
+every literal including empty; empty text matches decodable str and all bytes. NUL queries
+use hex because OS argv cannot carry NUL. Zero matches exits 0 with complete
+header/summary and records=0.
 
 ### Strings schema v2
 
-ADR 0003 header/string/summary JSONL. Header query is contains/contains_hex/version
+ADR 0003 header/string/summary JSONL. Header query is filter/filter_hex/version
 (absent null); detail analysis/python_version/code_count/instruction_validation/
 containers; analysis=`constants`; containers=`["tuple","frozenset"]`. Summary records are
 actual string records; complete only means the supported marshal/index literal enumeration
 and filter completed, not unscanned instruction validity; detail code_count/analysis/
 instruction_validation, with `not_scanned`.
 
-String meta: record/id/source_id/parent_id/context_id/start/end/detail. Detail keys:
+String meta: record/at/source_id/parent_at/context_at/start/end/detail; `at` is the
+short const coordinate, source_id null (the header carries it), and context_at/parent_at
+are the owner `code:<index>`. Detail keys:
 code_index/constant_slot/constant_path/kind/value/raw_bytes; definition_start/
 definition_end/payload_start/payload_end; occurrence_start/occurrence_end/reference/
 aliases. All spans are real half-open file bytes (PYC includes its 16-byte header; raw
@@ -289,34 +303,38 @@ Independent CPython 3.12.14 compile-only/marshal oracle covers Unicode/surrogate
 bytes, shared immutable values and multiple owners. Real CLI E2E covers empty/control
 literals, duplicate definitions, container/co_consts multi-layer aliases with real spans,
 raw input offsets, filters/zero results, schema, rename/new process/content changes,
-five budget boundaries and atomic output. Release measurements use real pinned stdlib
+shared-budget accounting through the library and atomic output. Release measurements use
+real pinned stdlib
 modules; `benches/pyc.py --command strings` supports repeated `--query-arg`.
 
 ## Code FETCH
 
 ```sh
-rxd pyc outline module.pyc
-rxd pyc get-code module.pyc 'rxd1:pyc:<full-input-sha256>:code:11'
-rxd pyc get-code raw.marshal 'rxd1:pyc:<full-input-sha256>:code:0' --version 3.12
+rxd pyc codes module.pyc
+rxd pyc get-code module.pyc --at code:11
+rxd pyc get-code raw.marshal --at code:0 --version 3.12
 ```
 
 `get-code` is the final name (no `get` alias or selected-code source rebuild). It accepts
 any enumerated module root, class body, function, lambda or comprehension code; a class
-body is code evidence, not a complete runtime class definition. The full digest/backend/
-kind/canonical decimal index must match the fixed input; forged/stale/foreign/out-of-range
-IDs are `INVALID_QUERY` (exit 2). Missing readable body is `INVALID_INPUT`; readable empty
-bytecode differs from unavailable.
+body is code evidence, not a complete runtime class definition. `--at` takes the short
+`code:<index>` a codes row prints, expanded against the input header identity; the
+full `rxd1:pyc:<digest>:code:<index>` form is also accepted, and a digest that differs
+from the input is `SOURCE_MISMATCH`. Malformed/out-of-range selectors are `INVALID_QUERY`
+(exit 2). Missing readable body is `INVALID_INPUT`; readable empty bytecode differs from
+unavailable.
 
 Default output is one schema-2 `code_view` JSON envelope without header/summary. Outer
-keys: schema_version/backend/command/record/id/source_id/parent_id/context_id/start/end/
-detail; backend=pyc, command=get-code, record=code_view, context_id=null, start/end is
-the selected code definition's half-open marshal range. Detail keys: input_bytes/
+keys: schema_version/backend/command/record/at/source_id/parent_at/context_at/start/end/
+detail; backend=pyc, command=get-code, record=code_view, `at` is the short code
+coordinate, source_id null, context_at null, start/end is the selected code definition's
+half-open marshal range. Detail keys: input_bytes/
 python_version/representation/complete/query/metadata/bytecode_hex/instructions/tables/
 values/line_table_hex/line_mapping/exception_table_hex/exceptions. representation=
 original_bytecode; complete=true means all original body bytes were accounted for and
 supported structural evidence validated, not all opcode semantics/source recovery/
-behavior equivalence. Query keys code_id/version; metadata is identical to the complete
-fixed outline code detail.
+behavior equivalence. Query keys code_id/version; code_id echoes the `--at` value the
+caller supplied, and metadata is identical to the complete fixed codes detail.
 
 Each instruction row has offset/size/start/end/opcode/name/raw_operand/operand/raw_hex/
 role/owner_offset/logical_start/logical_size/prefixes/jump_target/targets/status/line.
@@ -393,8 +411,9 @@ boundaries are rejected. 3.10+ empty line table gives empty mapping; 3.8–3.10 
 exception table (hex empty, exceptions []), and stored field spans are not synthesized.
 Original line/exception payload bytes are retained in both hex and metadata.fields.
 
-Budgets: the five static limits plus positive `--max-instructions` default 1,000,000
-counted in actual raw units (prefix/cache included) before decode. Work continues from
+Budgets: the five static limits plus the shared `instructions` ceiling (100,000)
+counted in actual raw units (prefix/cache included) before decode; no ceiling flag is
+exposed. Work continues from
 parser/index/query and charges every scanned/raw projected unit, table/definition/child
 visit and scalar byte evidence. Metadata scalars/incoming, raw rows, table/child rows and
 hex payload have output lower-bound prechecks before expansion; the complete JSON plus
@@ -408,7 +427,7 @@ are not scanned and no AST is built.
 
 ```sh
 rxd pyc xref module.pyc --name marker
-rxd pyc xref module.pyc --name marker --within 'rxd1:pyc:<input-sha256>:code:9'
+rxd pyc xref module.pyc --name marker --within code:9
 rxd pyc xref graph.marshal --version 3.12 --name cell -o target/xref.jsonl
 ```
 
@@ -416,9 +435,10 @@ rxd pyc xref graph.marshal --version 3.12 --name cell -o target/xref.jsonl
 selection matches the original name payload against query UTF-8 bytes exactly, without
 substring, case-fold, Unicode normalization or replacement-character comparison. Empty
 names are allowed; ordinary zero hits exit 0 with header/summary records=0. The same
-format matrix is used. `--within` uses the strict code-ID validator and must match the
-full input digest/backend/kind/canonical decimal index; invalid/stale/foreign/out-of-range
-IDs are `INVALID_QUERY` (exit 2). With it, only that code body is scanned; without it, all
+format matrix is used. `--within` accepts the short `code:<index>` coordinate (expanded
+against the header identity) or the full content-bound id; a foreign digest is
+`SOURCE_MISMATCH`, while malformed/out-of-range selectors are `INVALID_QUERY` (exit 2).
+With it, only that code body is scanned; without it, all
 distinct codes are scanned by global index and shared aliases are not rescanned. Same-name
 owners and multiple real instructions in one owner are retained, ordered by code index then
 actual instruction offset. The complete input marshal/index is still strictly parsed; a
@@ -460,10 +480,11 @@ Header/reference/summary JSONL per ADR 0003. Header query: name/const_id/within/
 analysis=`explicit_name_references`; scope=`all_codes`/`selected_code`; instruction_
 validation=`scanned_scope`.
 
-Reference meta: record/id/source_id/parent_id/context_id/start/end/detail; id/parent null;
-source_id binds the whole input; context_id is the enclosing code ID usable by get-code.
-Name selector constant fields are null. start/end is the real half-open file range of the
-actual 2-byte instruction inside the original bytecode **definition payload** (PYC includes
+Reference meta: record/at/source_id/parent_at/context_at/start/end/detail; at/parent
+null and source_id null (the header binds the input); context_at is the enclosing short
+`code:<index>` usable by get-code --at. Name selector constant fields are null. start/end
+is the real half-open file range of the actual 2-byte instruction inside the original
+bytecode **definition payload** (PYC includes
 the 16-byte header; raw starts at 0), excluding prefix/cache; shared bodies still use
 definition bytes; short TYPE_REF tokens/code-relative offsets are never file spans. Detail:
 code_index/offset/opcode/name/raw_operand/operand/target/operation/constant_id/
@@ -476,17 +497,18 @@ Summary records are real hit count; complete only means the selected selector's 
 reference scan covered the selected scope, not source recovery or the get-code raw view.
 Detail: analysis/code_count/scanned_code_count/instructions/unsupported_count/unsupported/
 instruction_validation. instructions is the actual scanned raw-unit count including
-prefix/cache; unsupported is always an array of code_index/context_id/offset/start/end/
-opcode/name/status. Safely separable unknown/RESERVED/instrumented opcodes do not guess
-semantics; status=UNSUPPORTED_OPCODE and summary.complete=false even with records=0.
+prefix/cache; unsupported is always an array of code_index/context_at/offset/start/end/
+opcode/name/status, where context_at is the short enclosing code coordinate. Safely
+separable unknown/RESERVED/instrumented opcodes do not guess semantics;
+status=UNSUPPORTED_OPCODE and summary.complete=false even with records=0.
 Unsupported bodies outside the selection do not change narrow coverage. Any unreadable
 body/bad instruction/prefix/cache/operand index/local kind/jump boundary in the scanned
 range is `INVALID_INPUT` (exit 1), with atomic stdout/`-o`. Refs does not scan line/
 exception semantics; get-code validates those.
 
-Budgets inherit the five static limits and marshal limits; entities count parser
-definitions/occurrences/index edges, with no new AST entities. Per-code
-`--max-instructions` default 1,000,000 is checked before decode. Work accumulates from
+Budgets inherit the five static limits, the marshal limits and the shared `instructions`
+ceiling (100,000); entities count parser definitions/occurrences/index edges, with no new
+AST entities. The per-code instruction ceiling is checked before decode. Work accumulates from
 parser/index and charges actual decoder scans/raw projection, boundary construction/
 checks, each supported operand resolution, name candidate/actual byte comparisons, hit/
 diagnostic retention and serialization projection before expansion; it is not reset per
@@ -499,15 +521,17 @@ do not replace output or modify input; failed perf preserves actual work/instruc
 ## Constant references
 
 ```sh
-rxd pyc xref module.pyc --const-id 'rxd1:pyc:<input-sha256>:const:9:2.0'
-rxd pyc xref graph.marshal --version 3.12 --const-id "$CONST_ID" --within "$CODE_ID"
+rxd pyc xref module.pyc --const-id 'const:9:2.0'
+rxd pyc xref graph.marshal --version 3.12 --const-id "$CONST_ID" --within "$CODE_AT"
 ```
 
-CONST_ID comes from a real strings ID, not a literal value. It strictly validates full
-input SHA-256, backend, kind=const, an existing owner code, canonical decimal top-level
-slot and every path component. The path may traverse only tuple/frozenset and end at str/
-bytes; containers, code, other literal kinds, mutable containers, out-of-range, stale/
-foreign/malformed IDs are `INVALID_QUERY` (exit 2). The selected path is located from the
+CONST_ID comes from a real strings row `at`, not a literal value. It accepts the short
+`const:<owner>:<path>` coordinate or the full content-bound id; the short form is expanded
+against the header identity. Validation covers full input SHA-256 (full form only),
+backend, kind=const, an existing owner code, canonical decimal top-level slot and every
+path component. The path may traverse only tuple/frozenset and end at str/bytes;
+containers, code, other literal kinds, mutable containers, out-of-range, malformed IDs and
+full-form digest mismatches (`SOURCE_MISMATCH`) are rejected. The selected path is located from the
 same parser evidence definition/children; equal literals are not traversed and all shared
 aliases are not expanded; work scales with actual path depth. Shared payload keeps distinct
 owner/slot/path identity. `.pyc` and raw marshal compute full digest and file spans
@@ -529,7 +553,7 @@ its str/bytes kind; target is the instruction's **top-level consts slot** and ra
 identity, exactly matching get-code. A path of length 1 uses relation=direct_constant,
 meaning direct reference to the literal slot; deeper paths use containing_constant, which
 only says the instruction references the containing top-level constant and never claims
-it directly loads the nested leaf. The caller's context_id routes to get-code. Equal values
+it directly loads the nested leaf. The caller's context_at routes to get-code --at. Equal values
 in different slots/owners are not linked; multiple nested leaves in one containing slot may
 share instruction evidence, but each query echoes only the selected occurrence. Ordering is
 code index then instruction offset.
@@ -545,12 +569,12 @@ input safety, atomic output and non-goals are the same as name xref.
 
 Per [ADR 0002](../adr/0002-backend-capability-closure.md), PYC ENUMERATE, SEARCH, XREF and
 single-code FETCH apply with no format exemption. For the supported final 3.8–3.13 matrix,
-the backend delivers code outline, constant search, single-code FETCH, explicit name
+the backend delivers code listing, constant search, single-code FETCH, explicit name
 references and explicit constant-occurrence references, while retaining whole-module
 source reconstruction. PYZ container ownership remains `rxd pyz`, still planned.
 Control-flow deflattening, deobfuscation and decryption are permanent non-goals.
 
-`pyc_outline/strings/xref/get_code/decompile` reuse the fixed input/evidence/index and
+`pyc_codes/strings/xref/get_code/decompile` reuse the fixed input/evidence/index and
 preserve native source/fallback/completeness. JSONL projects to header/records/summary;
 single FETCH keeps its original record. Unsolvable raw text, code IDs and original spans
 remain unchanged. The MCP `xref` tool preserves name/const selectors and within scope;

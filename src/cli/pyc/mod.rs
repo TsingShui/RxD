@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
-use rxd_core::{Error, Result};
+use rxd_core::{Budget, Error, Result};
 use rxd_pyc::Limits;
 use serde_json::json;
 
@@ -37,27 +37,34 @@ pub enum Command {
         input: PathBuf,
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
-        #[arg(long, conflicts_with = "contains_hex")]
-        contains: Option<String>,
+        /// Case-insensitive substring over literal text or raw bytes.
+        #[arg(short = 'f', long, conflicts_with = "filter_hex")]
+        filter: Option<String>,
+        /// Case-insensitive substring over raw bytes, given as even hexadecimal digits.
         #[arg(long, value_parser = strings::valid_hex)]
-        contains_hex: Option<String>,
+        filter_hex: Option<String>,
         #[command(flatten)]
         options: static_commands::Options,
     },
-    /// Fetch original instructions, tables and location evidence for one content-bound code ID.
+    /// Fetch original instructions, tables and location evidence for one code coordinate.
     GetCode {
         input: PathBuf,
-        code_id: String,
+        /// The `at` a codes row prints (`code:<index>`).
+        #[arg(long)]
+        at: String,
         #[arg(long,value_parser=parse_version)]
         version: Option<(u8, u8)>,
         #[command(flatten)]
         options: fetch_commands::FetchOptions,
     },
     /// Enumerate bounded code-object metadata without decoding instructions.
-    Outline {
+    Codes {
         input: PathBuf,
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
+        /// Case-insensitive substring over the code name.
+        #[arg(short = 'f', long)]
+        filter: Option<String>,
         #[arg(long, conflicts_with = "index")]
         name: Option<String>,
         #[arg(long)]
@@ -87,17 +94,22 @@ pub struct Options {
     perf: bool,
     #[arg(long)]
     debug: bool,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = super::input_bytes)]
-    max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = super::positive)]
-    max_output_bytes: usize,
-    /// Cumulative decoding, recovery, AST checks and generation work units.
-    #[arg(long, default_value_t = 16_777_216, value_parser = super::positive)]
-    max_work: usize,
-    /// Maximum instruction-derived AST nesting (1..=128).
-    #[arg(long, default_value_t = 128, value_parser = parse_ast_depth)]
-    max_ast_depth: usize,
+}
+
+/// The one shared budget table; pyc projects it instead of restating ceilings.
+pub(crate) fn budget() -> Budget {
+    Budget::default()
+}
+
+fn decompile_limits() -> Limits {
+    let budget = budget();
+    Limits {
+        input_bytes: budget.input_bytes,
+        output_bytes: budget.output_bytes,
+        work: budget.work,
+        // AST nesting is projected from the shared core limits the budget drives.
+        ast_depth: rxd_core::Limits::default().ast_depth,
+    }
 }
 
 struct BoundedOutput {
@@ -160,14 +172,6 @@ fn validate_output(input: &Path, output: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
-fn parse_ast_depth(value: &str) -> std::result::Result<usize, String> {
-    let value = super::positive(value)?;
-    if value > 128 {
-        return Err("AST depth must be in 1..=128".into());
-    }
-    Ok(value)
-}
-
 fn parse_version(value: &str) -> std::result::Result<(u8, u8), String> {
     let (major, minor) = value
         .split_once('.')
@@ -189,7 +193,7 @@ impl Command {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Decompile { .. } => "decompile",
-            Self::Outline { .. } => "outline",
+            Self::Codes { .. } => "codes",
             Self::Strings { .. } => "strings",
             Self::GetCode { .. } => "get-code",
             Self::Xref { .. } => "xref",
@@ -199,7 +203,7 @@ impl Command {
     pub fn perf(&self) -> bool {
         match self {
             Self::Decompile { options, .. } => options.perf,
-            Self::Outline { options, .. } => options.perf,
+            Self::Codes { options, .. } => options.perf,
             Self::Strings { options, .. } => options.perf,
             Self::GetCode { options, .. } => options.common.perf,
             Self::Xref { options, .. } => options.common.perf,
@@ -209,7 +213,7 @@ impl Command {
     pub fn debug(&self) -> bool {
         match self {
             Self::Decompile { options, .. } => options.debug,
-            Self::Outline { options, .. } => options.debug,
+            Self::Codes { options, .. } => options.debug,
             Self::Strings { options, .. } => options.debug,
             Self::GetCode { options, .. } => options.common.debug,
             Self::Xref { options, .. } => options.common.debug,
@@ -238,23 +242,24 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
         Command::Strings {
             input,
             version,
-            contains,
-            contains_hex,
+            filter,
+            filter_hex,
             options,
-        } => return strings::run(input, version, contains, contains_hex, options, perf),
+        } => return strings::run(input, version, filter, filter_hex, options, perf),
         Command::GetCode {
             input,
-            code_id,
+            at,
             version,
             options,
-        } => return fetch_commands::fetch(input, code_id, version, options, perf),
-        Command::Outline {
+        } => return fetch_commands::fetch(input, at, version, options, perf),
+        Command::Codes {
             input,
             version,
+            filter,
             name,
             index,
             options,
-        } => return static_commands::outline(input, version, name, index, options, perf),
+        } => return static_commands::codes(input, version, filter, name, index, options, perf),
         command => command,
     };
     let Command::Decompile {
@@ -267,12 +272,8 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
         unreachable!()
     };
     validate_output(&input, options.output.as_deref())?;
-    let limits = Limits {
-        input_bytes: super::input_limit(options.max_input_bytes),
-        output_bytes: options.max_output_bytes,
-        work: options.max_work,
-        ast_depth: options.max_ast_depth,
-    };
+    let limits = decompile_limits();
+    let output_limit = limits.output_bytes;
     let result = rxd_pyc::run(&input, version, limits, perf)?;
     perf.source_id = Some(result.source_id.clone());
     perf.counters.input_bytes = Some(result.input_bytes);
@@ -307,7 +308,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             object.insert("command".into(), json!("decompile"));
             let mut writer = BoundedOutput {
                 bytes: Vec::new(),
-                limit: options.max_output_bytes,
+                limit: output_limit,
             };
             serde_json::to_writer(&mut writer, &row)
                 .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
@@ -318,7 +319,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
     } else {
         result.source.into_bytes()
     };
-    if bytes.len() > options.max_output_bytes {
+    if bytes.len() > output_limit {
         return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
     }
     perf.counters.output_bytes = Some(bytes.len());

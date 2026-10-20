@@ -15,27 +15,17 @@ pub struct Options {
     pub perf: bool,
     #[arg(long)]
     pub debug: bool,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = crate::cli::input_bytes)]
-    pub(crate) max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 100_000, value_parser = crate::cli::positive)]
-    pub(crate) max_entities: usize,
-    #[arg(long, default_value_t = 16_777_216, value_parser = crate::cli::positive)]
-    pub(crate) max_work: usize,
-    #[arg(long, default_value_t = 100_000, value_parser = crate::cli::positive)]
-    pub(crate) max_records: usize,
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = crate::cli::positive)]
-    pub(crate) max_output_bytes: usize,
 }
 
 impl Options {
     pub(crate) fn limits(&self) -> Limits {
+        let budget = super::budget();
         Limits {
-            input_bytes: crate::cli::input_limit(self.max_input_bytes),
-            entities: self.max_entities,
-            work: self.max_work,
-            records: self.max_records,
-            output_bytes: self.max_output_bytes,
+            input_bytes: budget.input_bytes,
+            entities: budget.entities,
+            work: budget.work,
+            records: budget.records,
+            output_bytes: budget.output_bytes,
         }
     }
 }
@@ -97,7 +87,7 @@ pub(crate) struct Detail<'a> {
 pub(crate) struct Record<'a> {
     record: &'static str,
     at: String,
-    source_id: &'a str,
+    source_id: Option<&'a str>,
     parent_at: Option<String>,
     context_at: Option<&'a str>,
     start: usize,
@@ -181,7 +171,7 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
     Ok(Record {
         record: "code",
         at: envelope::at_of(&analysis.code_id(index)).into_owned(),
-        source_id: &analysis.source_id,
+        source_id: None,
         parent_at: entry
             .parent
             .map(|parent| envelope::at_of(&analysis.code_id(parent)).into_owned()),
@@ -237,50 +227,20 @@ fn append(writer: &mut BoundedOutput, value: &impl Serialize) -> Result<()> {
         .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))
 }
 
-pub fn outline(
+pub fn codes(
     input: PathBuf,
     version: Option<(u8, u8)>,
+    filter: Option<String>,
     name: Option<String>,
     index: Option<usize>,
     options: Options,
     perf: &mut Perf,
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
-    let limits = Limits {
-        input_bytes: crate::cli::input_limit(options.max_input_bytes),
-        entities: options.max_entities,
-        work: options.max_work,
-        records: options.max_records,
-        output_bytes: options.max_output_bytes,
-    };
+    let limits = options.limits();
     let mut analysis = Analysis::load(&input, version, limits, perf)?;
-    if index.is_some_and(|index| index >= analysis.codes.len()) {
-        return Err(Error::new("INVALID_QUERY", "code index does not exist"));
-    }
-    let selected = perf.measure("query", || -> Result<Vec<usize>> {
-        let mut selected = Vec::new();
-        for i in 0..analysis.codes.len() {
-            analysis.charge_work(1)?;
-            let name_matches = match name.as_deref() {
-                None => true,
-                Some(name) => {
-                    let candidate_length = analysis.text_field(i, "name").map(str::len);
-                    if candidate_length == Some(name.len()) {
-                        analysis.charge_work(name.len())?;
-                        analysis.text_field(i, "name") == Some(name)
-                    } else {
-                        false
-                    }
-                }
-            };
-            if index.is_none_or(|index| index == i) && name_matches {
-                if selected.len() >= limits.records {
-                    return Err(Error::new("RESOURCE_LIMIT", "record budget exceeded"));
-                }
-                selected.push(i);
-            }
-        }
-        Ok(selected)
+    let selected = perf.measure("query", || {
+        analysis.select_codes(filter.as_deref(), name.as_deref(), index)
     });
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;
@@ -288,8 +248,8 @@ pub fn outline(
     perf.counters.records = Some(selected.len());
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
-        append(&mut writer,&rxd_core::envelope::header("pyc","outline",Some(&analysis.source_id),Some(analysis.bytes.len()),
-            json!({"name":name,"index":index,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
+        append(&mut writer,&rxd_core::envelope::header("pyc","codes",Some(&analysis.source_id),Some(analysis.bytes.len()),
+            json!({"filter":filter,"name":name,"index":index,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
             json!({"analysis":"metadata","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
         for &index in &selected { append(&mut writer,&record(&analysis,index)?)?; }
         append(&mut writer,&rxd_core::envelope::summary(selected.len(),true,

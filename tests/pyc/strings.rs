@@ -46,7 +46,6 @@ fn pyc_strings_match_independent_lossless_constants_and_occurrence_ids() {
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("graph.oracle.json")).unwrap()).unwrap();
     let data = rows(&strings(&path, &[]));
-    let hash = format!("{:x}", Sha256::digest(&bytes));
     let mut observed = data[1..data.len() - 1].iter();
     let mut count = 0;
     for (owner, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
@@ -61,11 +60,9 @@ fn pyc_strings_match_independent_lossless_constants_and_occurrence_ids() {
                 .map(usize::to_string)
                 .collect::<Vec<_>>()
                 .join(".");
-            assert_eq!(
-                row["id"],
-                format!("rxd1:pyc:{hash}:const:{owner}:{id_path}")
-            );
-            assert_eq!(row["context_id"], format!("rxd1:pyc:{hash}:code:{owner}"));
+            assert_eq!(row["at"], format!("const:{owner}:{id_path}"));
+            assert_eq!(row["parent_at"], format!("code:{owner}"));
+            assert_eq!(row["context_at"], format!("code:{owner}"));
             assert_eq!(row["detail"]["code_index"], owner);
             assert_eq!(row["detail"]["constant_slot"], indices[0]);
             assert_eq!(row["detail"]["constant_path"], serde_json::json!(indices));
@@ -127,21 +124,21 @@ fn pyc_strings_filter_exact_text_and_raw_payload_without_losing_shared_occurrenc
     let path = corpus("graph.timestamp.pyc");
     let all = rows(&strings(&path, &[]));
     for (args, expected) in [
-        (vec!["--contains", "雪"], 3),
-        (vec!["--contains-hex", "EDA080"], 3),
-        (vec!["--contains-hex", "ff00"], 1),
-        (vec!["--contains", "shared-container-marker"], 5),
-        (vec!["--contains", "SHARED-CONTAINER-MARKER"], 0),
-        (vec!["--contains", "\u{fffd}"], 0),
+        (vec!["--filter", "雪"], 3),
+        (vec!["--filter-hex", "EDA080"], 3),
+        (vec!["--filter-hex", "ff00"], 1),
+        (vec!["--filter", "shared-container-marker"], 5),
+        (vec!["--filter", "SHARED-CONTAINER-MARKER"], 5),
+        (vec!["--filter", "\u{fffd}"], 0),
     ] {
         let matched = rows(&strings(&path, &args));
         assert_eq!(matched.last().unwrap()["records"], expected, "{args:?}");
         assert_eq!(matched.last().unwrap()["complete"], true);
         assert_eq!(
-            matched[0]["query"][if args[0] == "--contains" {
-                "contains"
+            matched[0]["query"][if args[0] == "--filter" {
+                "filter"
             } else {
-                "contains_hex"
+                "filter_hex"
             }],
             args[1]
         );
@@ -150,16 +147,16 @@ fn pyc_strings_filter_exact_text_and_raw_payload_without_losing_shared_occurrenc
         }
     }
     for hex in ["f", "xx", "0x00", "ff 00", "éé"] {
-        let invalid = strings(&path, &["--contains-hex", hex]);
+        let invalid = strings(&path, &["--filter-hex", hex]);
         assert_eq!(invalid.status.code(), Some(2));
         assert!(invalid.stdout.is_empty());
     }
-    let conflict = strings(&path, &["--contains", "a", "--contains-hex", "61"]);
+    let conflict = strings(&path, &["--filter", "a", "--filter-hex", "61"]);
     assert_eq!(conflict.status.code(), Some(2));
     assert!(conflict.stdout.is_empty());
-    let empty_hex = rows(&strings(&path, &["--contains-hex", ""]));
+    let empty_hex = rows(&strings(&path, &["--filter-hex", ""]));
     assert_eq!(&empty_hex[1..empty_hex.len() - 1], &all[1..all.len() - 1]);
-    let empty_text = rows(&strings(&path, &["--contains", ""]));
+    let empty_text = rows(&strings(&path, &["--filter", ""]));
     assert_eq!(
         empty_text.last().unwrap()["records"].as_u64().unwrap(),
         all.len() as u64 - 2 - 3
@@ -210,7 +207,7 @@ fn pyc_strings_distinguish_literal_definitions_container_aliases_and_shared_cons
         assert_eq!(row["detail"]["constant_path"], serde_json::json!(path));
         assert_eq!(row["detail"]["value"], "x");
         assert_eq!(row["detail"]["raw_bytes"], "78");
-        assert_eq!(row["parent_id"], row["context_id"]);
+        assert_eq!(row["parent_at"], row["context_at"]);
         assert_eq!(
             row["detail"]["definition_start"],
             all[1]["detail"]["definition_start"]
@@ -253,7 +250,7 @@ fn pyc_strings_budget_work_includes_actual_hex_generation_before_allocation() {
     let (_dir, path) = fixture(module(&bytes_field(&[]), &consts), "work.marshal");
     let zero = strings(
         &path,
-        &["--version", "3.12", "--contains", "missing", "--perf"],
+        &["--version", "3.12", "--filter", "missing", "--perf"],
     );
     let reports: Vec<Value> = String::from_utf8(zero.stderr)
         .unwrap()
@@ -299,34 +296,34 @@ fn pyc_strings_preserve_empty_control_unicode_bytes_and_duplicate_definitions() 
     assert!(all[2]["detail"]["value"].is_null());
     assert_eq!(all[3]["detail"]["value"], "\0\n雪");
     assert_eq!(all[4]["detail"]["raw_bytes"], "ff610062");
-    assert_ne!(all[5]["id"], all[6]["id"]);
+    assert_ne!(all[5]["at"], all[6]["at"]);
     assert_ne!(all[5]["start"], all[6]["start"]);
     assert_eq!(
-        rows(&strings(&path, &["--version", "3.12", "--contains", "a"]))[1],
+        rows(&strings(&path, &["--version", "3.12", "--filter", "a"]))[1],
         all[4]
     );
     assert_eq!(
         rows(&strings(
             &path,
-            &["--version", "3.12", "--contains-hex", "610062"]
+            &["--version", "3.12", "--filter-hex", "610062"]
         ))[1],
         all[4]
     );
     assert_eq!(
         rows(&strings(
             &path,
-            &["--version", "3.12", "--contains-hex", "000a"]
+            &["--version", "3.12", "--filter-hex", "000a"]
         ))[1],
         all[3]
     );
     assert_eq!(
-        rows(&strings(&path, &["--version", "3.12", "--contains", ""])).len(),
+        rows(&strings(&path, &["--version", "3.12", "--filter", ""])).len(),
         all.len()
     );
     assert_eq!(
         rows(&strings(
             &path,
-            &["--version", "3.12", "--contains", "ignored"]
+            &["--version", "3.12", "--filter", "ignored"]
         ))[1]["records"],
         0
     );
@@ -354,7 +351,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     assert_eq!(all[0]["schema_version"], 2);
     assert_eq!(
         all[0]["query"],
-        serde_json::json!({"contains":null,"contains_hex":null,"version":null})
+        serde_json::json!({"filter":null,"filter_hex":null,"version":null})
     );
     assert_js_keys(
         &all[0]["detail"],
@@ -375,10 +372,10 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
             row,
             &[
                 "record",
-                "id",
+                "at",
                 "source_id",
-                "parent_id",
-                "context_id",
+                "parent_at",
+                "context_at",
                 "start",
                 "end",
                 "detail",
@@ -428,48 +425,61 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     assert_eq!(perf["command"], "strings");
     assert!(perf["counters"]["instructions"].is_null());
     assert!(perf["counters"]["ast_depth"].is_null());
+    let budget = rxd_core::Budget::default();
     assert_eq!(
         perf["resource_limits"],
-        serde_json::json!({"input_bytes":8u64<<30,"entities":100_000,"work":16_777_216,"records":100_000,"output_bytes":32*1024*1024})
+        serde_json::json!({
+            "input_bytes": budget.input_bytes,
+            "entities": budget.entities,
+            "work": budget.work,
+            "records": budget.records,
+            "output_bytes": budget.output_bytes,
+        })
     );
     let bytes = fs::read(&path).unwrap();
     let (dir, renamed) = fixture(&bytes, "renamed.bin");
     assert_eq!(strings(&renamed, &[]).stdout, output.stdout);
     assert_eq!(strings(&path, &[]).stdout, output.stdout);
-    let destination = dir.path().join("strings.jsonl");
-    for (flag, amount) in [
-        ("--max-input-bytes", bytes.len()),
-        (
-            "--max-entities",
-            perf["counters"]["entities"].as_u64().unwrap() as usize,
-        ),
-        (
-            "--max-work",
-            perf["counters"]["work"].as_u64().unwrap() as usize,
-        ),
-        ("--max-records", all.len() - 2),
-        ("--max-output-bytes", output.stdout.len()),
+    assert_no_budget_flags(&path, "strings");
+    // Exact accounting lives in the library, which owns the shared ceilings.
+    let mut base = shared_static_limits();
+    base.input_bytes = bytes.len();
+    let (perf, literals) = strings_library(&path, None, None, None, base);
+    assert_eq!(literals.unwrap().len(), all.len() - 2);
+    let perf = perf_value(&perf);
+    let entities = perf["counters"]["entities"].as_u64().unwrap() as usize;
+    let work = perf["counters"]["work"].as_u64().unwrap() as usize;
+    for (field, amount) in [
+        ("input_bytes", bytes.len()),
+        ("entities", entities),
+        ("work", work),
+        ("records", all.len() - 2),
     ] {
-        assert_eq!(rows(&strings(&path, &[flag, &amount.to_string()])), all);
-        fs::write(&destination, b"keep").unwrap();
-        let failed = strings(
-            &path,
-            &[
-                flag,
-                &(amount - 1).to_string(),
-                "--perf",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
+        let mut exact = base;
+        match field {
+            "input_bytes" => exact.input_bytes = amount,
+            "entities" => exact.entities = amount,
+            "work" => exact.work = amount,
+            _ => exact.records = amount,
+        }
+        assert!(
+            strings_library(&path, None, None, None, exact).1.is_ok(),
+            "{field}"
         );
-        assert_eq!(failed.status.code(), Some(1));
-        assert!(failed.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&failed.stderr).contains("RESOURCE_LIMIT"));
-        assert_eq!(fs::read(&destination).unwrap(), b"keep");
-        let invalid = strings(&path, &[flag, "0"]);
-        assert_eq!(invalid.status.code(), Some(2));
-        assert!(invalid.stdout.is_empty());
+        let mut less = exact;
+        match field {
+            "input_bytes" => less.input_bytes = amount - 1,
+            "entities" => less.entities = amount - 1,
+            "work" => less.work = amount - 1,
+            _ => less.records = amount - 1,
+        }
+        let error = strings_library(&path, None, None, None, less)
+            .1
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "RESOURCE_LIMIT", "{field}");
     }
+    let destination = dir.path().join("strings.jsonl");
     let written = strings(&path, &["-o", destination.to_str().unwrap()]);
     success(&written);
     assert!(written.stdout.is_empty());
@@ -484,7 +494,9 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     changed[8] = 1; // Identity includes the input header even when literals are unchanged.
     let (_dir, changed) = fixture(changed, "changed.pyc");
     let changed = rows(&strings(&changed, &[]));
-    assert_ne!(changed[1]["id"], all[1]["id"]);
+    // Row coordinates are copy-only; source identity lives in the stream header.
+    assert_ne!(changed[0]["source_id"], all[0]["source_id"]);
+    assert_eq!(changed[1]["at"], all[1]["at"]);
     assert_eq!(changed[1]["detail"], all[1]["detail"]);
     let raw = rows(&strings(&corpus("graph.marshal"), &["--version", "3.12"]));
     assert_eq!(raw[0]["query"]["version"], "3.12");
@@ -495,13 +507,10 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
             pyc["detail"]["payload_start"]
         );
     }
-    assert_eq!(
-        rows(&strings(
-            &path,
-            &["--contains", "absent-value", "--max-records", "1"]
-        ))[1]["records"],
-        0
-    );
+    let mut one = shared_static_limits();
+    one.records = 1;
+    let (_, literals) = strings_library(&path, None, Some("absent-value"), None, one);
+    assert!(literals.unwrap().is_empty());
 }
 
 #[test]
@@ -555,44 +564,21 @@ fn pyc_strings_bound_long_match_work_and_deep_paths_without_false_output_limits(
         data[1]["detail"]["constant_path"].as_array().unwrap().len(),
         81
     );
-    assert_eq!(
-        strings(
-            &path,
-            &[
-                "--version",
-                "3.12",
-                "--max-output-bytes",
-                &all.stdout.len().to_string()
-            ]
-        )
-        .stdout,
-        all.stdout
+    assert_no_budget_flags(&path, "strings");
+    // Exact accounting lives in the library: a full-budget scan of the deep literal
+    // succeeds, and the long match must exhaust an explicit 5,000-unit work ceiling.
+    let all_limits = shared_static_limits();
+    assert!(
+        strings_library(&path, Some((3, 12)), None, None, all_limits)
+            .1
+            .is_ok()
     );
     let needle = format!("{}b", "a".repeat(200));
-    let result = strings(
-        &path,
-        &[
-            "--version",
-            "3.12",
-            "--contains",
-            &needle,
-            "--max-work",
-            "5000",
-            "--perf",
-        ],
-    );
-    assert_eq!(result.status.code(), Some(1));
-    assert!(result.stdout.is_empty());
-    let reports: Vec<Value> = String::from_utf8(result.stderr)
-        .unwrap()
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
-    let report = reports
-        .iter()
-        .find(|row| row["scope"] == "analysis")
-        .unwrap();
-    assert_eq!(report["error_code"], "RESOURCE_LIMIT");
-    assert_eq!(report["resource_limits"]["work"], 5000);
-    assert_eq!(report["counters"]["work"], 5000);
+    let mut limits = all_limits;
+    limits.work = 5_000;
+    let (perf, literals) = strings_library(&path, Some((3, 12)), Some(&needle), None, limits);
+    assert_eq!(literals.err().unwrap().code, "RESOURCE_LIMIT");
+    let perf = perf_value(&perf);
+    assert_eq!(perf["resource_limits"]["work"], 5_000);
+    assert_eq!(perf["counters"]["work"], 5_000);
 }

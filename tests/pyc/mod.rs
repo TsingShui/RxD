@@ -2,9 +2,9 @@
 use super::*;
 
 mod boundaries;
+mod codes;
 mod constant_refs;
 mod get_code;
-mod outline;
 mod refs;
 mod strings;
 mod versions;
@@ -24,6 +24,228 @@ fn run(path: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+/// Library-level budget harness: the CLI exposes no ceiling flags, so tests that assert
+/// exact accounting drive `rxd_pyc` directly with the same shared projections.
+fn pyc_perf(command: &'static str) -> rxd_core::perf::Perf {
+    rxd_core::perf::Perf::new(true, "analysis", "pyc", command)
+}
+
+fn perf_value(perf: &rxd_core::perf::Perf) -> Value {
+    serde_json::to_value(perf).unwrap()
+}
+
+fn shared_static_limits() -> rxd_pyc::static_analysis::Limits {
+    let budget = rxd_core::Budget::default();
+    rxd_pyc::static_analysis::Limits {
+        input_bytes: budget.input_bytes,
+        entities: budget.entities,
+        work: budget.work,
+        records: budget.records,
+        output_bytes: budget.output_bytes,
+    }
+}
+
+fn codes_library(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    filter: Option<&str>,
+    name: Option<&str>,
+    index: Option<usize>,
+    limits: rxd_pyc::static_analysis::Limits,
+) -> (rxd_core::perf::Perf, rxd_core::Result<Vec<usize>>) {
+    let mut perf = pyc_perf("codes");
+    let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
+        .and_then(|mut analysis| {
+            let selected = analysis.select_codes(filter, name, index);
+            perf.counters.work = Some(analysis.evidence.work);
+            perf.counters.records = selected.as_ref().ok().map(Vec::len);
+            selected
+        });
+    (perf, result)
+}
+
+fn strings_library(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    filter: Option<&str>,
+    filter_hex: Option<&str>,
+    limits: rxd_pyc::static_analysis::Limits,
+) -> (
+    rxd_core::perf::Perf,
+    rxd_core::Result<Vec<rxd_pyc::string_constants::Literal>>,
+) {
+    let mut perf = pyc_perf("strings");
+    let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
+        .and_then(|mut analysis| {
+            let hex = filter_hex.map(|value| {
+                value
+                    .as_bytes()
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|pair| {
+                        let nibble = |byte: u8| match byte {
+                            b'0'..=b'9' => byte - b'0',
+                            b'a'..=b'f' => byte - b'a' + 10,
+                            _ => byte - b'A' + 10,
+                        };
+                        nibble(pair[0]) * 16 + nibble(pair[1])
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let query = if let Some(text) = filter {
+                rxd_pyc::string_constants::Query::Text(text)
+            } else if let Some(bytes) = &hex {
+                rxd_pyc::string_constants::Query::Hex(bytes)
+            } else {
+                rxd_pyc::string_constants::Query::All
+            };
+            let literals = rxd_pyc::string_constants::enumerate(&mut analysis, &query);
+            perf.counters.work = Some(analysis.evidence.work);
+            perf.counters.records = literals.as_ref().ok().map(Vec::len);
+            literals
+        });
+    (perf, result)
+}
+
+fn xref_library(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    selector: &str,
+    within: Option<&str>,
+    limits: rxd_pyc::static_analysis::Limits,
+    instructions: usize,
+) -> (
+    rxd_core::perf::Perf,
+    rxd_core::Result<rxd_pyc::references::Scan>,
+) {
+    let mut perf = pyc_perf("xref");
+    let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
+        .and_then(|mut analysis| {
+            let selected = within.map(|at| analysis.parse_code_id(at)).transpose()?;
+            let constant = rxd_pyc::string_constants::resolve_id(&mut analysis, selector)?;
+            let mut scan = rxd_pyc::references::Scan::default();
+            let result = rxd_pyc::references::scan(
+                &mut analysis,
+                &rxd_pyc::references::Query::Constant {
+                    id: selector,
+                    selected: &constant,
+                },
+                selected,
+                instructions,
+                &mut scan,
+            );
+            perf.counters.work = Some(analysis.evidence.work);
+            perf.counters.instructions = Some(scan.instructions);
+            perf.counters.records = Some(scan.hits.len());
+            result.map(|()| scan)
+        });
+    (perf, result)
+}
+
+fn get_code_library(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    at: &str,
+    limits: rxd_pyc::static_analysis::Limits,
+    instructions: usize,
+) -> (
+    rxd_core::perf::Perf,
+    rxd_core::Result<rxd_pyc::code_view::Evidence>,
+) {
+    let mut perf = pyc_perf("get-code");
+    let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
+        .and_then(|mut analysis| {
+            let selected = analysis.parse_code_id(at)?;
+            let evidence = rxd_pyc::code_view::build(&mut analysis, selected, instructions);
+            perf.counters.work = Some(analysis.evidence.work);
+            perf.counters.instructions = evidence.as_ref().ok().map(|e| e.instructions.len());
+            evidence
+        });
+    (perf, result)
+}
+
+fn decompile_library(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    limits: rxd_pyc::Limits,
+) -> (
+    rxd_core::perf::Perf,
+    rxd_core::Result<rxd_pyc::Decompilation>,
+) {
+    let mut perf = pyc_perf("decompile");
+    let result = rxd_pyc::run(path, version, limits, &mut perf);
+    (perf, result)
+}
+
+fn shared_decompile_limits() -> rxd_pyc::Limits {
+    let budget = rxd_core::Budget::default();
+    rxd_pyc::Limits {
+        input_bytes: budget.input_bytes,
+        output_bytes: budget.output_bytes,
+        work: budget.work,
+        ast_depth: rxd_core::Limits::default().ast_depth,
+    }
+}
+
+fn xref_name_library(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    name: &str,
+    within: Option<&str>,
+    limits: rxd_pyc::static_analysis::Limits,
+    instructions: usize,
+) -> (
+    rxd_core::perf::Perf,
+    rxd_core::Result<rxd_pyc::references::Scan>,
+) {
+    let mut perf = pyc_perf("xref");
+    let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
+        .and_then(|mut analysis| {
+            let selected = within.map(|at| analysis.parse_code_id(at)).transpose()?;
+            let mut scan = rxd_pyc::references::Scan::default();
+            let result = rxd_pyc::references::scan(
+                &mut analysis,
+                &rxd_pyc::references::Query::Name(name),
+                selected,
+                instructions,
+                &mut scan,
+            );
+            perf.counters.work = Some(analysis.evidence.work);
+            perf.counters.instructions = Some(scan.instructions);
+            perf.counters.records = Some(scan.hits.len());
+            result.map(|()| scan)
+        });
+    (perf, result)
+}
+
+/// Assert every former `--max-*` spelling is refused as an unknown argument.
+fn assert_no_budget_flags(path: &Path, command: &str) {
+    for flag in [
+        "--max-input-bytes",
+        "--max-output-bytes",
+        "--max-work",
+        "--max-ast-depth",
+        "--max-entities",
+        "--max-records",
+        "--max-instructions",
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(["pyc", command])
+            .arg(path)
+            .args([flag, "1"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{command} {flag}");
+        assert!(output.stdout.is_empty(), "{command} {flag}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("unexpected argument"),
+            "{command} {flag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 fn assert_envelope(row: &Value) {
     assert_js_keys(
         row,
@@ -32,10 +254,10 @@ fn assert_envelope(row: &Value) {
             "backend",
             "command",
             "schema_version",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -45,7 +267,7 @@ fn assert_envelope(row: &Value) {
     assert_eq!(row["backend"], "pyc");
     assert_eq!(row["command"], "decompile");
     assert_eq!(row["record"], "source");
-    for key in ["id", "parent_id", "context_id", "start", "end"] {
+    for key in ["at", "parent_at", "context_at", "start", "end"] {
         assert!(row[key].is_null());
     }
     assert_js_keys(
@@ -126,19 +348,8 @@ fn pyc_rejects_malformed_and_budget_exceeding_inputs_without_output() {
     fs::write(&bomb, huge_tuple).unwrap();
     failure(run(&bomb, &["--version", "3.12"]), 1, "INVALID_INPUT");
 
-    failure(
-        run(&input("hello.3.12.pyc"), &["--max-input-bytes", "16"]),
-        1,
-        "RESOURCE_LIMIT",
-    );
-    failure(
-        run(
-            &input("hello.3.12.pyc"),
-            &["--json", "--max-output-bytes", "32"],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    // Ceilings live in the shared budget table; no command exposes a `--max-*` flag.
+    assert_no_budget_flags(&input("hello.3.12.pyc"), "decompile");
 }
 
 #[test]
@@ -148,18 +359,18 @@ fn pyc_outputs_reject_resolved_input_aliases_for_every_command() {
     let source = dir.path().join("input.pyc");
     fs::write(&source, &original).unwrap();
     fs::create_dir(dir.path().join("nested")).unwrap();
-    let outline = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["pyc", "outline"])
+    let codes = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["pyc", "codes"])
         .arg(&source)
         .output()
         .unwrap();
-    success(&outline);
-    let id = String::from_utf8(outline.stdout)
+    success(&codes);
+    let id = String::from_utf8(codes.stdout)
         .unwrap()
         .lines()
         .map(|s| serde_json::from_str::<Value>(s).unwrap())
         .find(|row| row["record"] == "code")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -183,10 +394,10 @@ fn pyc_outputs_reject_resolved_input_aliases_for_every_command() {
         }
     }
     for (command, selection) in [
-        ("outline", vec![]),
+        ("codes", vec![]),
         ("strings", vec![]),
         ("xref", vec!["--name", "fib"]),
-        ("get-code", vec![id.as_str()]),
+        ("get-code", vec!["--at", id.as_str()]),
         ("decompile", vec!["--json"]),
     ] {
         for alias in &aliases {

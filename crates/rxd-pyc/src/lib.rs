@@ -8,6 +8,7 @@ use std::path::Path;
 use pycdc::{PycError, codegen::generate_limited, decompiler::decompile, loader};
 use rxd_core::{Error, Result, perf::Perf};
 
+#[derive(Clone, Copy)]
 pub struct Limits {
     pub input_bytes: usize,
     pub output_bytes: usize,
@@ -39,10 +40,10 @@ pub fn run(
     perf: &mut Perf,
 ) -> Result<Decompilation> {
     perf.resource_limits = Some(std::collections::BTreeMap::from([
-        ("max_input_bytes", limits.input_bytes),
-        ("max_output_bytes", limits.output_bytes),
-        ("max_work", limits.work),
-        ("max_ast_depth", limits.ast_depth),
+        ("input_bytes", limits.input_bytes),
+        ("output_bytes", limits.output_bytes),
+        ("work", limits.work),
+        ("ast_depth", limits.ast_depth),
         ("marshal_depth", 128),
         ("marshal_objects", 1_000_000),
         ("marshal_expanded_objects", 1_000_000),

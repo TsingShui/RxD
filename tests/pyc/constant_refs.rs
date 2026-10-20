@@ -27,11 +27,11 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
     let path = corpus("graph.timestamp.pyc");
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("graph.oracle.json")).unwrap()).unwrap();
-    let strings = rows(&invoke("strings", &path, &["--contains", "marker"]));
-    let outline = rows(&invoke("outline", &path, &[]));
+    let strings = rows(&invoke("strings", &path, &["--filter", "marker"]));
+    let codes = rows(&invoke("codes", &path, &[]));
     assert!(strings.iter().any(|r| r["record"] == "string"));
     for literal in strings.iter().filter(|r| r["record"] == "string") {
-        let id = literal["id"].as_str().unwrap();
+        let id = literal["at"].as_str().unwrap();
         let owner = literal["detail"]["code_index"].as_u64().unwrap() as usize;
         let slot = &literal["detail"]["constant_slot"];
         let stream = rows(&invoke("xref", &path, &["--const-id", id]));
@@ -55,7 +55,7 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
         assert_eq!(stream[0]["query"]["const_id"], id);
         assert!(stream[0]["query"]["name"].is_null());
         for (hit, expected) in hits.iter().zip(expected) {
-            assert_eq!(hit["context_id"], literal["context_id"]);
+            assert_eq!(hit["context_at"], literal["context_at"]);
             assert_eq!(hit["detail"]["constant_id"], id);
             assert_eq!(
                 hit["detail"]["constant_path"],
@@ -76,8 +76,12 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
             assert_eq!(hit["detail"]["name"], expected["opname"]);
             assert_eq!(hit["detail"]["raw_operand"], expected["raw_arg_byte"]);
             assert_eq!(hit["detail"]["operand"], expected["arg"]);
-            assert!(outline.iter().any(|r| r["id"] == hit["context_id"]));
-            let fetched = invoke("get-code", &path, &[hit["context_id"].as_str().unwrap()]);
+            assert!(codes.iter().any(|r| r["at"] == hit["context_at"]));
+            let fetched = invoke(
+                "get-code",
+                &path,
+                &["--at", hit["context_at"].as_str().unwrap()],
+            );
             success(&fetched);
             let view: Value = serde_json::from_slice(&fetched.stdout).unwrap();
             assert_eq!(
@@ -102,14 +106,14 @@ fn pyc_constant_refs_preserve_real_extended_constant_operands() {
     let path = corpus("extended.timestamp.pyc");
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("extended.oracle.json")).unwrap()).unwrap();
-    let literals = rows(&invoke("strings", &path, &["--contains", "literal-299"]));
+    let literals = rows(&invoke("strings", &path, &["--filter", "literal-299"]));
     assert_eq!(literals.last().unwrap()["records"], 1);
     let literal = &literals[1];
     let owner = literal["detail"]["code_index"].as_u64().unwrap() as usize;
     let result = rows(&invoke(
         "xref",
         &path,
-        &["--const-id", literal["id"].as_str().unwrap()],
+        &["--const-id", literal["at"].as_str().unwrap()],
     ));
     assert_eq!(result.last().unwrap()["records"], 1);
     let expected = oracle["codes"][owner]["dis_instructions"]
@@ -124,7 +128,7 @@ fn pyc_constant_refs_preserve_real_extended_constant_operands() {
     let fetch = invoke(
         "get-code",
         &path,
-        &[result[1]["context_id"].as_str().unwrap()],
+        &["--at", result[1]["context_at"].as_str().unwrap()],
     );
     success(&fetch);
     let view: Value = serde_json::from_slice(&fetch.stdout).unwrap();
@@ -213,7 +217,7 @@ fn pyc_constant_refs_keep_equal_slots_owners_shared_paths_and_each_real_instruct
                 "--version",
                 "3.12",
                 "--const-id",
-                literal["id"].as_str().unwrap(),
+                literal["at"].as_str().unwrap(),
             ],
         ));
         let hits: Vec<_> = result
@@ -229,8 +233,8 @@ fn pyc_constant_refs_keep_equal_slots_owners_shared_paths_and_each_real_instruct
         assert_eq!(result.last().unwrap()["complete"], true);
         assert_eq!(result.last().unwrap()["detail"]["scanned_code_count"], 1);
         for hit in hits {
-            assert_eq!(hit["context_id"], literal["context_id"]);
-            assert_eq!(hit["detail"]["constant_id"], literal["id"]);
+            assert_eq!(hit["context_at"], literal["context_at"]);
+            assert_eq!(hit["detail"]["constant_id"], literal["at"]);
             assert_eq!(
                 hit["detail"]["constant_path"],
                 literal["detail"]["constant_path"]
@@ -263,7 +267,12 @@ fn pyc_constant_refs_keep_equal_slots_owners_shared_paths_and_each_real_instruct
             let fetched = invoke(
                 "get-code",
                 &path,
-                &["--version", "3.12", hit["context_id"].as_str().unwrap()],
+                &[
+                    "--at",
+                    hit["context_at"].as_str().unwrap(),
+                    "--version",
+                    "3.12",
+                ],
             );
             success(&fetched);
             let view: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -307,11 +316,11 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let (dir, path) = fixture(&bytes, "shared.marshal");
     let strings = rows(&invoke("strings", &path, &["--version", "3.12"]));
     let literal = &strings[1];
-    let id = literal["id"].as_str().unwrap();
-    let digest = literal["source_id"].as_str().unwrap();
-    let owner_id = literal["context_id"].as_str().unwrap();
-    let outline = rows(&invoke("outline", &path, &["--version", "3.12"]));
-    let other_id = outline.iter().find(|r| r["detail"]["index"] == 1).unwrap()["id"]
+    let id = literal["at"].as_str().unwrap();
+    let digest = strings[0]["source_id"].as_str().unwrap();
+    let owner_id = literal["context_at"].as_str().unwrap();
+    let codes = rows(&invoke("codes", &path, &["--version", "3.12"]));
+    let other_id = codes.iter().find(|r| r["detail"]["index"] == 1).unwrap()["at"]
         .as_str()
         .unwrap();
     let all = rows(&invoke(
@@ -365,11 +374,13 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     assert_eq!(excluded[1]["complete"], true);
     assert_eq!(excluded[1]["detail"]["scanned_code_count"], 0);
     assert_eq!(excluded[1]["detail"]["instructions"], 0);
+    let full = format!("rxd1:pyc:{digest}:{id}");
     for invalid in [
-        id.replace(":pyc:", ":wasm:"),
-        id.replace(":const:", ":code:"),
+        full.replace(":pyc:", ":wasm:"),
+        full.replace(":const:", ":code:"),
         format!("{id}:0"),
-        format!("rxd1:pyc:{}:const:0:0", "a".repeat(64)),
+        format!("rxd1:pyc:0:{id}"),
+        format!("{full}:0"),
         format!("rxd1:pyc:{digest}:const:01:0"),
         format!("rxd1:pyc:{digest}:const:99:0"),
         format!("rxd1:pyc:{digest}:const:0:"),
@@ -405,6 +416,16 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         2,
         "INVALID_QUERY",
     );
+    let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
+    failure(
+        invoke(
+            "xref",
+            &path,
+            &["--version", "3.12", "--const-id", &foreign],
+        ),
+        1,
+        "SOURCE_MISMATCH",
+    );
     for args in [
         vec!["--version", "3.12"],
         vec!["--version", "3.12", "--const-id", id, "--name", "x"],
@@ -426,10 +447,15 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         .unwrap();
     changed[pos] = b'F';
     fs::write(&copied, &changed).unwrap();
+    success(&invoke(
+        "xref",
+        &copied,
+        &["--version", "3.12", "--const-id", id],
+    ));
     failure(
-        invoke("xref", &copied, &["--version", "3.12", "--const-id", id]),
-        2,
-        "INVALID_QUERY",
+        invoke("xref", &copied, &["--version", "3.12", "--const-id", &full]),
+        1,
+        "SOURCE_MISMATCH",
     );
     let mutable = module(&[121, 0], b")\x01[\x01\0\0\0z\x01x");
     fs::write(&copied, &mutable).unwrap();
@@ -463,7 +489,7 @@ fn perf_row(output: &Output) -> Value {
 fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically() {
     let bytes = shared_input();
     let (dir, path) = fixture(&bytes, "shared.marshal");
-    let id = rows(&invoke("strings", &path, &["--version", "3.12"]))[1]["id"]
+    let id = rows(&invoke("strings", &path, &["--version", "3.12"]))[1]["at"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -478,54 +504,63 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     assert_eq!(perf["counters"]["instructions"], 14);
     assert_eq!(perf["counters"]["records"], 2);
     assert!(perf["counters"]["ast_depth"].is_null());
-    let out = dir.path().join("keep.jsonl");
-    for (flag, amount) in [
-        ("--max-input-bytes", bytes.len()),
-        ("--max-output-bytes", complete.stdout.len()),
-        (
-            "--max-work",
-            perf["counters"]["work"].as_u64().unwrap() as usize,
-        ),
-        (
-            "--max-entities",
-            perf["counters"]["entities"].as_u64().unwrap() as usize,
-        ),
-        ("--max-records", 2),
-        ("--max-instructions", 14),
+    assert_no_budget_flags(&path, "xref");
+    // Exact accounting lives in the library, which owns the shared ceilings.
+    let mut base = shared_static_limits();
+    base.input_bytes = bytes.len();
+    let (perf, scan) = xref_library(&path, Some((3, 12)), &id, None, base, 14);
+    let scan = scan.unwrap();
+    assert_eq!(scan.hits.len(), 2);
+    assert_eq!(scan.instructions, 14);
+    let perf = perf_value(&perf);
+    let work = perf["counters"]["work"].as_u64().unwrap() as usize;
+    let entities = perf["counters"]["entities"].as_u64().unwrap() as usize;
+    for (field, amount, instructions) in [
+        ("input_bytes", bytes.len(), 14),
+        ("entities", entities, 14),
+        ("work", work, 14),
+        ("records", 2, 14),
+        ("instructions", 0, 14),
     ] {
-        let exact = amount.to_string();
-        let less = (amount - 1).to_string();
-        let accepted = invoke(
-            "xref",
-            &path,
-            &["--version", "3.12", "--const-id", &id, flag, &exact],
-        );
-        success(&accepted);
-        assert_eq!(accepted.stdout, complete.stdout, "{flag}");
-        fs::write(&out, b"keep").unwrap();
-        let failed = invoke(
-            "xref",
-            &path,
-            &[
-                "--version",
-                "3.12",
-                "--const-id",
-                &id,
-                flag,
-                &less,
-                "--perf",
-                "-o",
-                out.to_str().unwrap(),
-            ],
-        );
-        let failed_perf = perf_row(&failed);
-        failure(failed, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&out).unwrap(), b"keep");
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-        if flag == "--max-work" {
-            assert!(failed_perf["counters"]["work"].as_u64().unwrap() <= (amount - 1) as u64);
+        let mut exact = base;
+        match field {
+            "input_bytes" => exact.input_bytes = amount,
+            "entities" => exact.entities = amount,
+            "work" => exact.work = amount,
+            "records" => exact.records = amount,
+            _ => {}
         }
+        let limit = if field == "instructions" {
+            14
+        } else {
+            instructions
+        };
+        assert!(
+            xref_library(&path, Some((3, 12)), &id, None, exact, limit)
+                .1
+                .is_ok(),
+            "{field}"
+        );
+        let mut less = exact;
+        match field {
+            "input_bytes" => less.input_bytes = amount - 1,
+            "entities" => less.entities = amount - 1,
+            "work" => less.work = amount - 1,
+            "records" => less.records = amount - 1,
+            _ => {}
+        }
+        let limit = if field == "instructions" {
+            13
+        } else {
+            instructions
+        };
+        let error = xref_library(&path, Some((3, 12)), &id, None, less, limit)
+            .1
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "RESOURCE_LIMIT", "{field}");
     }
+    let out = dir.path().join("keep.jsonl");
     let output = invoke(
         "xref",
         &path,
@@ -573,32 +608,26 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         literal["detail"]["constant_path"].as_array().unwrap().len(),
         71
     );
+    let deep_id = literal["at"].as_str().unwrap().to_owned();
     let selected = invoke(
         "xref",
         &deep_path,
-        &[
-            "--version",
-            "3.12",
-            "--const-id",
-            literal["id"].as_str().unwrap(),
-        ],
+        &["--version", "3.12", "--const-id", &deep_id],
     );
     success(&selected);
-    let exact = selected.stdout.len().to_string();
-    let bounded = invoke(
-        "xref",
+    let (_, scan) = xref_library(
         &deep_path,
-        &[
-            "--version",
-            "3.12",
-            "--const-id",
-            literal["id"].as_str().unwrap(),
-            "--max-output-bytes",
-            &exact,
-        ],
+        Some((3, 12)),
+        &deep_id,
+        None,
+        shared_static_limits(),
+        1_000,
     );
-    success(&bounded);
-    assert_eq!(bounded.stdout, selected.stdout);
+    assert!(scan.is_ok());
+    let mut tiny = shared_static_limits();
+    tiny.output_bytes = 1;
+    let (_, error) = xref_library(&deep_path, Some((3, 12)), &deep_id, None, tiny, 1_000);
+    assert_eq!(error.err().unwrap().code, "RESOURCE_LIMIT");
 }
 
 #[test]
@@ -616,7 +645,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
                 "--version",
                 "3.12",
                 "--const-id",
-                literal["id"].as_str().unwrap(),
+                literal["at"].as_str().unwrap(),
             ],
         ));
         assert_eq!(result.last().unwrap()["complete"], false);
@@ -654,7 +683,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
                     "--version",
                     "3.12",
                     "--const-id",
-                    literal["id"].as_str().unwrap(),
+                    literal["at"].as_str().unwrap(),
                     "-o",
                     out.to_str().unwrap(),
                 ],
@@ -681,7 +710,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
             "--version",
             "3.12",
             "--const-id",
-            child["id"].as_str().unwrap(),
+            child["at"].as_str().unwrap(),
         ],
     ));
     failure(
@@ -692,7 +721,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
                 "--version",
                 "3.12",
                 "--const-id",
-                root["id"].as_str().unwrap(),
+                root["at"].as_str().unwrap(),
             ],
         ),
         1,
@@ -705,9 +734,9 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
             "--version",
             "3.12",
             "--const-id",
-            root["id"].as_str().unwrap(),
+            root["at"].as_str().unwrap(),
             "--within",
-            child["context_id"].as_str().unwrap(),
+            child["context_at"].as_str().unwrap(),
         ],
     ));
     assert_eq!(excluded.last().unwrap()["complete"], true);

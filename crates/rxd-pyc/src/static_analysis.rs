@@ -133,20 +133,42 @@ impl Analysis {
     }
     pub fn parse_code_id(&mut self, id: &str) -> Result<usize> {
         self.charge_work(id.len())?;
-        let mut pieces = id.split(':');
-        let backend = pieces.next() == Some("rxd1") && pieces.next() == Some("pyc");
-        let digest = pieces.next();
-        let kind = pieces.next();
-        let ordinal = pieces.next().unwrap_or("");
-        if !backend
-            || digest != Some(self.source_id.as_str())
-            || kind != Some("code")
-            || pieces.next().is_some()
-            || ordinal.is_empty()
+        let invalid = || Error::new("INVALID_QUERY", "invalid or stale PYC code ID");
+        // A row prints the copy-only `code:<index>`; identity lives in the header, so the
+        // short form is expanded here instead of making a caller reassemble the hash.
+        let (digest, ordinal) = match id.strip_prefix("code:") {
+            Some(ordinal) if !ordinal.contains(':') => (None, ordinal),
+            Some(_) => return Err(invalid()),
+            None => {
+                let mut pieces = id.split(':');
+                let backend = pieces.next() == Some("rxd1") && pieces.next() == Some("pyc");
+                let digest = pieces.next().unwrap_or("");
+                let kind = pieces.next();
+                let ordinal = pieces.next().unwrap_or("");
+                if !backend
+                    || digest.len() != 64
+                    || !digest
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                    || kind != Some("code")
+                    || pieces.next().is_some()
+                {
+                    return Err(invalid());
+                }
+                (Some(digest), ordinal)
+            }
+        };
+        if digest.is_some_and(|digest| digest != self.source_id.as_str()) {
+            return Err(Error::new(
+                "SOURCE_MISMATCH",
+                "code ID belongs to different source content",
+            ));
+        }
+        if ordinal.is_empty()
             || (ordinal.len() > 1 && ordinal.starts_with('0'))
             || !ordinal.bytes().all(|b| b.is_ascii_digit())
         {
-            return Err(Error::new("INVALID_QUERY", "invalid or stale PYC code ID"));
+            return Err(invalid());
         }
         let index = ordinal
             .parse::<usize>()
@@ -155,6 +177,52 @@ impl Analysis {
             return Err(Error::new("INVALID_QUERY", "code index does not exist"));
         }
         Ok(index)
+    }
+    /// Select code rows by the closed listing surface: an optional case-insensitive
+    /// substring, an optional exact name, and an optional exact index.
+    pub fn select_codes(
+        &mut self,
+        filter: Option<&str>,
+        name: Option<&str>,
+        index: Option<usize>,
+    ) -> Result<Vec<usize>> {
+        if index.is_some_and(|index| index >= self.codes.len()) {
+            return Err(Error::new("INVALID_QUERY", "code index does not exist"));
+        }
+        let filter = filter.map(str::to_lowercase);
+        let mut selected = Vec::new();
+        for i in 0..self.codes.len() {
+            self.charge_work(1)?;
+            let name_matches = match name {
+                None => true,
+                Some(name) => {
+                    let candidate = self.text_field(i, "name").map(str::to_owned);
+                    if candidate.as_deref().map(str::len) == Some(name.len()) {
+                        self.charge_work(name.len())?;
+                        candidate.as_deref() == Some(name)
+                    } else {
+                        false
+                    }
+                }
+            };
+            let filter_matches = match filter.as_deref() {
+                None => true,
+                Some(filter) => {
+                    let Some(candidate) = self.text_field(i, "name").map(str::to_owned) else {
+                        continue;
+                    };
+                    self.charge_work(candidate.len().saturating_add(filter.len()))?;
+                    candidate.to_lowercase().contains(filter)
+                }
+            };
+            if index.is_none_or(|index| index == i) && name_matches && filter_matches {
+                if selected.len() >= self.limits.records {
+                    return Err(Error::new("RESOURCE_LIMIT", "record budget exceeded"));
+                }
+                selected.push(i);
+            }
+        }
+        Ok(selected)
     }
     pub fn code_index(&self, definition: usize) -> Option<usize> {
         self.code_indexes.get(&definition).copied()

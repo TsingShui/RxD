@@ -34,8 +34,8 @@ struct Detail<'a> {
 #[derive(Serialize)]
 struct Record<'a> {
     record: &'static str,
-    id: String,
-    source_id: &'a str,
+    at: String,
+    source_id: Option<&'a str>,
     parent_at: String,
     context_at: String,
     start: Option<usize>,
@@ -94,8 +94,13 @@ fn record<'a>(
     }
     Ok(Record {
         record: "string",
-        id: string_constants::constant_id(analysis, literal.owner, &literal.path),
-        source_id: &analysis.source_id,
+        at: rxd_core::envelope::at_of(&string_constants::constant_id(
+            analysis,
+            literal.owner,
+            &literal.path,
+        ))
+        .into_owned(),
+        source_id: None,
         parent_at: rxd_core::envelope::at_of(&analysis.code_id(literal.owner)).into_owned(),
         context_at: rxd_core::envelope::at_of(&analysis.code_id(literal.owner)).into_owned(),
         start: actual_payload.map(|span| span.start),
@@ -141,8 +146,8 @@ pub(super) fn valid_hex(value: &str) -> std::result::Result<String, String> {
 pub fn run(
     input: PathBuf,
     version: Option<(u8, u8)>,
-    contains: Option<String>,
-    contains_hex: Option<String>,
+    filter: Option<String>,
+    filter_hex: Option<String>,
     options: Options,
     perf: &mut Perf,
 ) -> Result<()> {
@@ -150,9 +155,9 @@ pub fn run(
     let limits = options.limits();
     let mut analysis = Analysis::load(&input, version, limits, perf)?;
     let result = perf.measure("query", || -> Result<_> {
-        let query_bytes = contains
+        let query_bytes = filter
             .as_ref()
-            .or(contains_hex.as_ref())
+            .or(filter_hex.as_ref())
             .map_or(0, String::len);
         analysis.charge_work(query_bytes)?;
         if query_bytes > limits.output_bytes {
@@ -161,7 +166,7 @@ pub fn run(
                 "query output byte budget exceeded",
             ));
         }
-        let hex = contains_hex.as_ref().map(|value| {
+        let hex = filter_hex.as_ref().map(|value| {
             value
                 .as_bytes()
                 .as_chunks::<2>()
@@ -179,7 +184,7 @@ pub fn run(
                 })
                 .collect::<Vec<_>>()
         });
-        let query = if let Some(text) = &contains {
+        let query = if let Some(text) = &filter {
             Query::Text(text)
         } else if let Some(bytes) = &hex {
             Query::Hex(bytes)
@@ -195,7 +200,7 @@ pub fn run(
     let serialized = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
         append(&mut writer, &envelope::header("pyc", "strings", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            json!({"contains":contains,"contains_hex":contains_hex,"version":version.map(|(major,minor)|format!("{major}.{minor}"))}),
+            json!({"filter":filter.as_deref(),"filter_hex":filter_hex.as_deref(),"version":version.map(|(major,minor)|format!("{major}.{minor}"))}),
             json!({"analysis":"constants","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned","containers":["tuple","frozenset"]}).as_object().unwrap().clone()))?;
         for literal in &literals {
             let raw_length = analysis.payload(literal.definition).unwrap().len();

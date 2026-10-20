@@ -5,18 +5,19 @@ fn corpus(name: &str) -> PathBuf {
         .join("tests/corpus/pyc/3.12.14")
         .join(name)
 }
-fn fetch(path: &Path, id: &str, args: &[&str]) -> Output {
+fn fetch(path: &Path, at: &str, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["pyc", "get-code"])
         .arg(path)
-        .arg(id)
+        .arg("--at")
+        .arg(at)
         .args(args)
         .output()
         .unwrap()
 }
 fn code_ids(path: &Path, args: &[&str]) -> Vec<Value> {
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["pyc", "outline"])
+        .args(["pyc", "codes"])
         .arg(path)
         .args(args)
         .output()
@@ -30,19 +31,19 @@ fn code_ids(path: &Path, args: &[&str]) -> Vec<Value> {
         .collect()
 }
 #[test]
-fn pyc_get_code_fetches_one_independent_instruction_view_from_outline() {
+fn pyc_get_code_fetches_one_independent_instruction_view_from_codes() {
     let path = corpus("graph.timestamp.pyc");
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("graph.oracle.json")).unwrap()).unwrap();
     let rows = code_ids(&path, &[]);
     for (index, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
-        let output = fetch(&path, rows[index]["id"].as_str().unwrap(), &[]);
+        let output = fetch(&path, rows[index]["at"].as_str().unwrap(), &[]);
         success(&output);
         let view: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(view["record"], "code_view");
         assert_eq!(view["schema_version"], 2);
         assert_eq!(view["command"], "get-code");
-        assert_eq!(view["id"], rows[index]["id"]);
+        assert_eq!(view["at"], rows[index]["at"]);
         assert_eq!(view["start"], rows[index]["start"]);
         assert_eq!(view["end"], rows[index]["end"]);
         assert_eq!(view["detail"]["bytecode_hex"], code["code_hex"]);
@@ -71,7 +72,7 @@ fn pyc_get_code_preserves_arbitrary_cache_payload_without_interpreting_it() {
     bytes[start + 61] = 255;
     let (_dir, path) = fixture(bytes, "cache.pyc");
     let ids = code_ids(&path, &[]);
-    let output = fetch(&path, ids[0]["id"].as_str().unwrap(), &[]);
+    let output = fetch(&path, ids[0]["at"].as_str().unwrap(), &[]);
     success(&output);
     let view: Value = serde_json::from_slice(&output.stdout).unwrap();
     let cache = view["detail"]["instructions"]
@@ -97,17 +98,19 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("graph.oracle.json")).unwrap()).unwrap();
     let rows = code_ids(&original, &[]);
-    let id = rows[0]["id"].as_str().unwrap();
+    let id = rows[0]["at"].as_str().unwrap();
     for bad in [
-        id.replace(":pyc:", ":wasm:"),
-        id.replace(":code:", ":const:"),
-        id.replace(":code:0", ":code:01"),
+        id.replace("code:", "const:"),
+        id.replace("code:0", "code:01"),
         format!("{id}x"),
-        id.replace(":code:0", ":code:99999"),
+        id.replace("code:0", "code:99999"),
+        "code:".into(),
         "rxd1:pyc:0:code:0".into(),
     ] {
         failure(fetch(&original, &bad, &[]), 2, "INVALID_QUERY");
     }
+    let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
+    failure(fetch(&original, &foreign, &[]), 1, "SOURCE_MISMATCH");
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("keep.json");
     let nested_start = oracle["marshal_ranges"]["code_ranges"][11]["pyc_bytecode_start"]
@@ -120,12 +123,12 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     let damaged = dir.path().join("operand.pyc");
     fs::write(&damaged, &broken).unwrap();
     let fresh = code_ids(&damaged, &[]);
-    success(&fetch(&damaged, fresh[0]["id"].as_str().unwrap(), &[])); // unrelated body stays unscanned.
+    success(&fetch(&damaged, fresh[0]["at"].as_str().unwrap(), &[])); // unrelated body stays unscanned.
     fs::write(&dest, b"keep").unwrap();
     failure(
         fetch(
             &damaged,
-            fresh[11]["id"].as_str().unwrap(),
+            fresh[11]["at"].as_str().unwrap(),
             &["-o", dest.to_str().unwrap()],
         ),
         1,
@@ -133,7 +136,9 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     );
     assert_eq!(fs::read(&dest).unwrap(), b"keep");
     assert_eq!(fs::read(&damaged).unwrap(), broken);
-    failure(fetch(&damaged, id, &[]), 2, "INVALID_QUERY");
+    let original_id = format!("rxd1:pyc:{:x}:{id}", Sha256::digest(&bytes));
+    failure(fetch(&damaged, &original_id, &[]), 1, "SOURCE_MISMATCH");
+    success(&fetch(&damaged, id, &[])); // A short coordinate is source-agnostic.
     // Every corruption is inside evidence from one independently produced code object.
     for (code, field, offset, value) in [
         (10, "code", 19, 255),
@@ -154,7 +159,7 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
         let codes = code_ids(&path, &[]);
         let output = fetch(
             &path,
-            codes[code]["id"].as_str().unwrap(),
+            codes[code]["at"].as_str().unwrap(),
             &["-o", dest.to_str().unwrap()],
         );
         failure(output, 1, "INVALID_INPUT");
@@ -175,76 +180,68 @@ fn perf_row(output: &Output) -> Value {
 fn pyc_get_code_budgets_are_exact_cumulative_and_fail_atomically_with_perf() {
     let path = corpus("graph.timestamp.pyc");
     let ids = code_ids(&path, &[]);
-    let id = ids[11]["id"].as_str().unwrap();
+    let id = ids[11]["at"].as_str().unwrap();
     let complete = fetch(&path, id, &["--perf"]);
     success(&complete);
     let perf = perf_row(&complete);
-    assert_eq!(perf["resource_limits"]["instructions"], 1_000_000);
+    let budget = rxd_core::Budget::default();
+    assert_eq!(
+        perf["resource_limits"]["instructions"],
+        Value::from(budget.instructions)
+    );
     assert_eq!(perf["counters"]["instructions"], 99);
     assert!(perf["counters"]["ast_depth"].is_null());
+    assert_no_budget_flags(&path, "get-code");
+    // Exact accounting lives in the library, which owns the shared ceilings.
+    let mut base = shared_static_limits();
+    base.input_bytes = fs::metadata(&path).unwrap().len() as usize;
+    let (exact_perf, evidence) = get_code_library(&path, None, id, base, 99);
+    let evidence = evidence.unwrap();
+    assert_eq!(evidence.instructions.len(), 99);
+    let exact_perf = perf_value(&exact_perf);
+    let work = exact_perf["counters"]["work"].as_u64().unwrap() as usize;
+    let entities = exact_perf["counters"]["entities"].as_u64().unwrap() as usize;
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("keep.json");
-    for (flag, amount) in [
-        (
-            "--max-input-bytes",
-            fs::metadata(&path).unwrap().len() as usize,
-        ),
-        ("--max-output-bytes", complete.stdout.len()),
-        ("--max-instructions", 99),
-        (
-            "--max-work",
-            perf["counters"]["work"].as_u64().unwrap() as usize,
-        ),
-        (
-            "--max-entities",
-            perf["counters"]["entities"].as_u64().unwrap() as usize,
-        ),
+    for (field, amount) in [
+        ("input_bytes", base.input_bytes),
+        ("entities", entities),
+        ("work", work),
+        ("instructions", 99),
     ] {
-        let exact = amount.to_string();
-        let less = (amount - 1).to_string();
-        assert_eq!(fetch(&path, id, &[flag, &exact]).stdout, complete.stdout);
-        fs::write(&out, b"keep").unwrap();
-        let output = fetch(
-            &path,
-            id,
-            &[flag, &less, "--perf", "-o", out.to_str().unwrap()],
-        );
-        let error_perf = perf_row(&output);
-        failure(output, 1, "RESOURCE_LIMIT");
-        if flag == "--max-input-bytes" {
-            assert!(error_perf["source_id"].is_null());
-        } else {
-            assert_eq!(error_perf["source_id"], perf["source_id"]);
+        let mut exact = base;
+        match field {
+            "input_bytes" => exact.input_bytes = amount,
+            "entities" => exact.entities = amount,
+            "work" => exact.work = amount,
+            _ => {}
         }
-        assert_eq!(
-            error_perf["resource_limits"]["instructions"],
-            if flag == "--max-instructions" {
-                Value::from(amount - 1)
-            } else {
-                Value::from(1_000_000)
-            }
+        assert!(
+            get_code_library(&path, None, id, exact, 99).1.is_ok(),
+            "{field}"
         );
-        assert_eq!(fs::read(&out).unwrap(), b"keep");
+        let mut less = exact;
+        match field {
+            "input_bytes" => less.input_bytes = amount - 1,
+            "entities" => less.entities = amount - 1,
+            "work" => less.work = amount - 1,
+            _ => {}
+        }
+        let instructions = if field == "instructions" { 98 } else { 99 };
+        let error = get_code_library(&path, None, id, less, instructions)
+            .1
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "RESOURCE_LIMIT", "{field}");
     }
-    let failure = fetch(
-        &path,
-        id,
-        &["--max-entities", "1", "--max-instructions", "5", "--perf"],
+    // A failed selection never replaces an existing output file.
+    fs::write(&out, b"keep").unwrap();
+    failure(
+        fetch(&path, "code:99999", &["-o", out.to_str().unwrap()]),
+        2,
+        "INVALID_QUERY",
     );
-    let failed = perf_row(&failure);
-    assert_eq!(failed["resource_limits"]["instructions"], 5);
-    for flag in [
-        "--max-input-bytes",
-        "--max-output-bytes",
-        "--max-records",
-        "--max-entities",
-        "--max-work",
-        "--max-instructions",
-    ] {
-        let output = fetch(&path, id, &[flag, "0"]);
-        assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
-    }
+    assert_eq!(fs::read(&out).unwrap(), b"keep");
 }
 
 #[test]
@@ -255,9 +252,10 @@ fn pyc_get_code_matches_extended_operands_tables_locations_and_file_spans() {
         let oracle: Value =
             serde_json::from_slice(&fs::read(corpus(&format!("{label}.oracle.json"))).unwrap())
                 .unwrap();
+        let hash = format!("{:x}", Sha256::digest(&input));
         let ids = code_ids(&path, &[]);
         for (index, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
-            let output = fetch(&path, ids[index]["id"].as_str().unwrap(), &[]);
+            let output = fetch(&path, ids[index]["at"].as_str().unwrap(), &[]);
             success(&output);
             let view: Value = serde_json::from_slice(&output.stdout).unwrap();
             let d = &view["detail"];
@@ -352,9 +350,10 @@ fn pyc_get_code_matches_extended_operands_tables_locations_and_file_spans() {
                     assert_eq!(value["raw_hex"], expected["hex"]);
                 }
                 if expected["type"] == "code" {
+                    let index = expected["index"].as_u64().unwrap() as usize;
                     assert_eq!(
                         value["code_id"],
-                        ids[expected["index"].as_u64().unwrap() as usize]["id"]
+                        format!("rxd1:pyc:{hash}:{}", ids[index]["at"].as_str().unwrap())
                     );
                 }
                 for range in [
@@ -386,7 +385,7 @@ fn pyc_get_code_keeps_unknown_raw_opcodes_and_raw_marshal_but_rejects_damaged_bo
         changed[start + 1] = 255;
         let (_dir, path) = fixture(&changed, "unknown.pyc");
         let ids = code_ids(&path, &[]);
-        let out = fetch(&path, ids[0]["id"].as_str().unwrap(), &[]);
+        let out = fetch(&path, ids[0]["at"].as_str().unwrap(), &[]);
         success(&out);
         let view: Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(view["detail"]["instructions"][0]["opcode"], opcode);
@@ -401,7 +400,7 @@ fn pyc_get_code_keeps_unknown_raw_opcodes_and_raw_marshal_but_rejects_damaged_bo
     let raw_ids = code_ids(&raw, &["--version", "3.12"]);
     let out = fetch(
         &raw,
-        raw_ids[0]["id"].as_str().unwrap(),
+        raw_ids[0]["at"].as_str().unwrap(),
         &["--version", "3.12"],
     );
     success(&out);
@@ -412,7 +411,7 @@ fn pyc_get_code_keeps_unknown_raw_opcodes_and_raw_marshal_but_rejects_damaged_bo
     let saved = dir.path().join("view.json");
     success(&fetch(
         &raw,
-        raw_ids[0]["id"].as_str().unwrap(),
+        raw_ids[0]["at"].as_str().unwrap(),
         &["--version", "3.12", "-o", saved.to_str().unwrap()],
     ));
     assert_eq!(fs::read(&saved).unwrap(), out.stdout);
@@ -424,19 +423,19 @@ fn pyc_get_code_keeps_unknown_raw_opcodes_and_raw_marshal_but_rejects_damaged_bo
     let (_dir, path) = fixture(damaged, "prefix.pyc");
     let fresh = code_ids(&path, &[]);
     failure(
-        fetch(&path, fresh[0]["id"].as_str().unwrap(), &[]),
+        fetch(&path, fresh[0]["at"].as_str().unwrap(), &[]),
         1,
         "INVALID_INPUT",
     );
     failure(
-        fetch(&raw, raw_ids[0]["id"].as_str().unwrap(), &[]),
+        fetch(&raw, raw_ids[0]["at"].as_str().unwrap(), &[]),
         1,
         "INVALID_INPUT",
     );
     failure(
         fetch(
             &raw,
-            raw_ids[0]["id"].as_str().unwrap(),
+            raw_ids[0]["at"].as_str().unwrap(),
             &["--version", "3.14"],
         ),
         1,
@@ -448,7 +447,7 @@ fn pyc_get_code_keeps_unknown_raw_opcodes_and_raw_marshal_but_rejects_damaged_bo
 fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error() {
     let path = corpus("graph.timestamp.pyc");
     let ids = code_ids(&path, &[]);
-    let out = fetch(&path, ids[0]["id"].as_str().unwrap(), &[]);
+    let out = fetch(&path, ids[0]["at"].as_str().unwrap(), &[]);
     success(&out);
     let view: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_js_keys(
@@ -458,10 +457,10 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "backend",
             "command",
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -596,7 +595,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
     failure(
         fetch(
             &path,
-            ids[0]["id"].as_str().unwrap(),
+            ids[0]["at"].as_str().unwrap(),
             &["--version", "3.12"],
         ),
         1,
@@ -659,7 +658,7 @@ fn pyc_get_code_rejects_truncated_and_overflowing_selected_instructions_and_tabl
         failure(
             fetch(
                 &path,
-                ids[0]["id"].as_str().unwrap(),
+                ids[0]["at"].as_str().unwrap(),
                 &["--version", "3.12"],
             ),
             1,
@@ -673,7 +672,7 @@ fn pyc_get_code_rejects_truncated_and_overflowing_selected_instructions_and_tabl
     let ids = code_ids(&path, &["--version", "3.12"]);
     let output = fetch(
         &path,
-        ids[0]["id"].as_str().unwrap(),
+        ids[0]["at"].as_str().unwrap(),
         &["--version", "3.12"],
     );
     success(&output);
