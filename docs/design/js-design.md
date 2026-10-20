@@ -5,7 +5,7 @@ Status: implemented.
 `rxd js` uses Rust and Oxc for compact bundles and ordinary JavaScript files without
 source maps. It provides `entities`/`functions`/`classes`/`methods`, `find`,
 `identifiers`, `calls`, `members`,
-`locate`, `get`, `xref --at`/`--byte` and `symbols`. The backend maps literals, identifiers,
+`locate`, `slice`, `xref --at`/`--byte` and `symbols`. The backend maps literals, identifiers,
 call sites and static member names to content-bound AST structures, lexical
 relationships and original source ranges. It never executes input, performs
 deobfuscation or string decryption, restores obfuscator intent, or promises runtime
@@ -45,15 +45,15 @@ A typical task locates an API and extracts its implementation:
 
 1. `find` the API string; the result includes the literal position and containing
    structure.
-2. `get` the target function's original source.
+2. `slice` the target function's original source.
 3. Read the function and identify outer closures or helpers.
-4. `get` the parent structure, or `locate` another position by known byte offset.
+4. `slice` the parent structure, or `locate` another position by known byte offset.
 5. `symbols --within` lists declarations, external bindings and unresolved references
    with exact declaration offsets.
 6. `xref --at` (or `--byte`) follows an explicit binding and returns declaration/reference
    structures, reducing same-name false matches.
 
-For an existing `rg` hit, `locate` can be used directly. `get` on a function preserves
+For an existing `rg` hit, `locate` can be used directly. `slice` on a function preserves
 its access to outer variables; the fragment may not run independently. `parent_at`
 provides the closure context.
 
@@ -76,9 +76,9 @@ rxd js members bundle.js --name 'checkFlag' --jsonl
 rxd js locate bundle.js --byte 183240 --json
 rxd js xref bundle.js --byte 183240 --jsonl
 rxd js symbols bundle.js --within '<entity-id>' --jsonl
-rxd js get bundle.js --at '<entity>'
-rxd js get bundle.js --at '<symbol>' --json
-rxd js get bundle.js --at '<parent>' --json
+rxd js slice bundle.js --at '<entity>'
+rxd js slice bundle.js --at '<symbol>' --json
+rxd js slice bundle.js --at '<parent>' --json
 ```
 
 | Command | Behavior | Default output |
@@ -92,7 +92,7 @@ rxd js get bundle.js --at '<parent>' --json
 | `calls` | Call sites by callee name (direct, member or `new`). | JSONL |
 | `members` | Static member names, property keys, JSX attribute names and statically resolvable computed keys. | JSONL |
 | `locate` | Innermost structure and ancestors containing a byte position. | JSON |
-| `get` | Validate a structure, symbol or fragment ID and extract original source. | Raw bytes |
+| `slice` | Validate a structure, symbol or fragment ID and extract original source. | Raw bytes |
 | `xref --at` | Single-file lexical binding and same-binding references at a name occurrence. `--byte` anchors on a raw offset instead, including one inside a multi-byte identifier. | JSONL |
 | `symbols` | Lexical bindings and unresolved references in a file or selected structure. | JSONL |
 
@@ -155,7 +155,7 @@ All three obey the record and output-byte budgets from `rxd_core::Budget`, sort 
 content-bound identity. They have no own ID; `parent_at` points at an extractable
 structure.
 
-`get` accepts structure IDs, symbol IDs and context fragment IDs and emits the exact
+`slice` accepts structure IDs, symbol IDs and context fragment IDs and emits the exact
 original range without reformatting or extra newlines. `--json` wraps source and
 structure metadata in one JSON object. Every command supports `-o FILE` with bytes
 identical to stdout. Diagnostics go to stderr; `--perf` reports phase timings as JSONL. Each
@@ -175,7 +175,7 @@ inputs, and therefore peak memory: each worker holds at most one input and AST. 
 and parallel `--perf` counters and phase totals agree (summed in one process; peak RSS
 is the maximum). `--depth`/`--kind`/`--name` apply per file; `--within` is single-file
 and returns `INVALID_QUERY` (exit 2) for directory input, including empty directories.
-`locate/get/xref/symbols/identifiers/calls/members` remain single-file.
+`locate/slice/xref/symbols/identifiers/calls/members` remain single-file.
 
 Regular-file input keeps its single-file output and does not restrict extension.
 `-r/--recursive` is retained for compatibility; directories behave identically with or
@@ -232,10 +232,10 @@ TS string literal types and template type static fragments are `type_string`/
 Type declaration names/hierarchy support source navigation; enum initializers remain
 original expressions without evaluation. Enum members are bindings in their
 initializer scope, and identifiers or static string/template member names can be
-xref/get source bindings; ordinary JS/JSX static property names remain
+xref/slice source bindings; ordinary JS/JSX static property names remain
 `INVALID_TARGET`.
 
-TS/TSX symbol records and get symbol metadata add `space: type|value|type_value`,
+TS/TSX symbol records and slice symbol metadata add `space: type|value|type_value`,
 meaning the lexical uses Oxc permits, not runtime existence or inferred type. Refs
 references and symbols unresolved references add `type_reference`/`value_reference`
 booleans; `typeof value` is a type use, which is not a runtime read. Ordinary JS/JSX
@@ -244,14 +244,14 @@ than guessing; these are not tsc results.
 
 TS merged/redeclared symbols keep Oxc's canonical first identifier; declaration/value/
 type facts are not textually merged into a new type. With multiple declarations,
-`symbols.detail`, resolved `xref` header detail and `get` symbol detail expose
-`declaration_ids` in original order as structure/fragment IDs. `get(symbol)` stdout
+`symbols.detail`, resolved `xref` header detail and `slice` symbol detail expose
+`declaration_ids` in original order as structure/fragment IDs. `slice(symbol)` stdout
 still extracts only the canonical declaration; the Agent can expand other
 declarations/overloads. Metadata declaration IDs and top-level records share the
 the record budget check before collection; summary/perf records only count top-level
 results. A forged canonical symbol range from a later declaration is rejected.
 
-`get(symbol)` also covers type aliases, interfaces, enums, namespaces, import-equals
+`slice(symbol)` also covers type aliases, interfaces, enums, namespaces, import-equals
 declarations, type parameters and enum members. Type parameters include original
 constraint/default source; an enum member can provide its original initializer span.
 TS type/namespace structures reset local fragment boundaries; property/call/construct/
@@ -274,7 +274,7 @@ rxd1:js:<source-sha256>:<kind>:<start>:<end>
 ```
 
 IDs are valid for the same content and schema. They are not promised across builds and
-do not rely on potentially duplicate minified names. `get` and `entities --within`
+do not rely on potentially duplicate minified names. `slice` and `entities --within`
 validate the source fingerprint, kind and real structure boundaries; a syntactically
 valid range without a matching entity is still an error. Paths are display metadata,
 not identity.
@@ -334,7 +334,7 @@ Data records always contain `record, id, source_id, parent_id, context_id, start
 detail`; all keys are present and inapplicable values are null. `source_id` is the
 owning fixed source SHA-256. Entity and symbol IDs are content-bound; match/reference/
 unresolved records have `id: null` and use `parent_at` for the containing structure,
-which can be passed to `get`. `symbol.parent_id` is the canonical declaration's
+which can be passed to `slice`. `symbol.parent_id` is the canonical declaration's
 containing structure. Entity `parent_at` keeps the structural parent. Match/reference
 `context_at` is the local fragment; entity/symbol/unresolved use null. Start/end are
 original half-open UTF-8 byte ranges.
@@ -352,9 +352,9 @@ Fixed detail fields:
 | symbol | `name, relation, space, declaration_ids` |
 | unresolved_reference | `name, type_reference, value_reference` |
 | locate | `complete, entity, ancestors, syntax, declaration_file, origin` |
-| source (`get --json`) | `complete, representation, source, entity, symbol, declaration, fragment, syntax, declaration_file, origin` |
-| binding (embedded in get) | `name, space, declaration_ids` |
-| fragment (embedded in get) | `kind, entity_id` |
+| source (`slice --json`) | `complete, representation, source, entity, symbol, declaration, fragment, syntax, declaration_file, origin` |
+| binding (embedded in slice) | `name, space, declaration_ids` |
+| fragment (embedded in slice) | `kind, entity_id` |
 
 `flags` always contains `async, generator, static`. `key_span` is `start, end` or null.
 `space`, `declaration_ids` and type/value booleans are null when inapplicable. Match
@@ -363,11 +363,11 @@ call/member have no own ID; identifier also carries `context_at`, while call/mem
 `context_at` is null. Names/labels/values preserve JS UTF-16 code units; unpaired
 surrogates remain valid JSON escapes and are never lossy-converted.
 
-`locate` returns one `record=locate`; `get --json` returns one `record=source`; neither
+`locate` returns one `record=locate`; `slice --json` returns one `record=source`; neither
 has header/summary and both add `backend=js, command, schema_version=2` outside.
 `locate` outer id/parent_id/start/end come from the innermost entity and `context_at`
 is the local fragment; `detail.entity`/`ancestors` are complete entity bodies ordered
-inner to outer. `get` outer id is the requested target, start/end the extracted range,
+inner to outer. `slice` outer id is the requested target, start/end the extracted range,
 context_id null; structure targets use the structural parent, symbol targets the
 declaration's containing structure, fragment targets the outer fragment.
 `detail.representation: original` and `detail.source` are byte-exact. Only the
@@ -375,7 +375,7 @@ requested entity/symbol/fragment is non-null. The symbol `binding` record uses t
 canonical declaration identifier range; `declaration` is typed (`kind, start, end,
 variable_kind, initializer`) and not enveloped; initializer is `start, end` or null.
 The fragment parent is the outer fragment, while `fragment.detail.entity_id` is the
-containing structure (a different relationship). Default `get` raw bytes stay outside
+containing structure (a different relationship). Default `slice` raw bytes stay outside
 the envelope and are never modified.
 
 Entities sort by start ascending, end descending, kind; matches by original start;
@@ -399,7 +399,7 @@ measure itself.
 
 The AST lives in an arena for the request lifetime. One traversal maintains a
 containing-structure stack and builds the entity table while collecting string
-positions as needed. `get` still parses and validates the real structure, canonical
+positions as needed. `slice` still parses and validates the real structure, canonical
 binding or fragment; it does not slice by ID alone. After validation it extracts from
 the fixed buffer without a source printer or print-only AST references.
 
@@ -452,8 +452,8 @@ structure. Summary records count reference records only; `complete: true` means 
 lexical query completed, not runtime reference completeness. Unused resolved
 declarations, unresolved and dynamic queries can all succeed with zero records.
 
-`xref`/`symbols` and get symbol paths enable the semantic pass as needed and return its
-diagnostics as `INVALID_INPUT`; structure listings/find/locate and get structure paths stay
+`xref`/`symbols` and slice symbol paths enable the semantic pass as needed and return its
+diagnostics as `INVALID_INPUT`; structure listings/find/locate and slice structure paths stay
 parser-only. Structural traversal checks entity and AST-depth budgets first; semantic
 nodes above the shared `semantic_nodes` ceiling (1,000,000) return `RESOURCE_LIMIT` before
 index allocation. Reference records are budgeted before collecting positions; output
@@ -497,8 +497,8 @@ Symbol IDs are `rxd1:js:<source-sha256>:symbol:<canonical-start>:<canonical-end>
 Oxc internal ordinals. They are stable for the same content, parse options and schema
 across calls, paths and within selections, but not across incompatible versions or
 different source content. Structure and symbol IDs have different target semantics:
-structure/symbols `--within` reject symbol IDs; xref does not accept an id selector; get accepts
-symbol IDs and extracts the canonical declaration; get accepts parent_id for the
+structure/symbols `--within` reject symbol IDs; xref does not accept an id selector; slice accepts
+symbol IDs and extracts the canonical declaration; slice accepts parent_id for the
 containing structure. A symbol record's `at` can be passed directly to `xref --at`, and its
 `start` to `xref --byte`.
 
@@ -507,11 +507,11 @@ unresolved references; complete means the query completed, not resolution/runtim
 completeness. Record budgets are checked before collecting identities/positions;
 output bytes include header/summary. The semantic node default is 1,000,000
 (the shared `semantic_nodes` ceiling); entity, depth, input and atomic-output contracts are
-unchanged. Perf adds the semantic phase/counts only for xref/symbols/get-symbol.
+unchanged. Perf adds the semantic phase/counts only for xref/symbols/slice-symbol.
 
 ## Declaration extraction by binding
 
-`get FILE --id SYMBOL_ID [--json]` accepts a canonical symbol ID. On the same fixed
+`slice FILE --at SYMBOL_AT [--json]` accepts a canonical symbol ID. On the same fixed
 buffer, after entity/depth checks, it builds a node-budgeted semantic index and
 validates version, backend, content fingerprint, symbol kind, exact canonical
 identifier range and real binding. Reference, later redeclaration, non-canonical
@@ -554,7 +554,7 @@ and `symbol`, `declaration`, `source`, not a structural entity:
   valid real binding can be extracted from a file containing eval/with as syntax only;
   dynamic binding is not recovered. The dynamic symbols query contract is unchanged.
 
-Common input, entity, depth, output and atomic-failure contracts apply. `get
+Common input, entity, depth, output and atomic-failure contracts apply. `slice
 the shared `semantic_nodes` ceiling is 1,000,000 and only symbol IDs build/limit the
 semantic index; structure IDs do not. Perf records is 1; symbol paths include the
 semantic phase and whole-file index counts.
@@ -585,14 +585,14 @@ Bare directives, function/class names and arrow shorthand without an inner node 
 Control-statement conditions/discriminants may associate the whole statement. Fragments
 are not promised small or complete runtime context.
 
-`get FILE --id CONTEXT_ID [--json]` re-parses the same fixed input, checks entity/AST
+`slice FILE --at CONTEXT_AT [--json]` re-parses the same fixed input, checks entity/AST
 depth budgets and validates version, backend, content identity, kind and real AST
 range. Missing nodes, wrong kinds, forged ranges and non-canonical numeric encoding
 return `INVALID_ID`; changed content returns `SOURCE_MISMATCH`. It uses parser
 traversal only, no semantic index; the semantic-node ceiling does not apply.
 Outline/symbols `--within` still accept only structure IDs. Symbol IDs remain separate.
 
-Default get emits raw fragment bytes without prefix/parentheses/newline. A variable
+Default slice emits raw fragment bytes without prefix/parentheses/newline. A variable
 declarator may omit `const/let/var`; an assignment expression may omit the statement
 semicolon; a template hit is associated with the complete enclosing fragment.
 Destructuring and dynamic property expressions retain raw source; no value or call
@@ -602,7 +602,7 @@ Fragment-path `--json` returns `record=source` with `complete/representation:
 original`, `fragment` and `source`. Fragment `id/start/end/parent_id` outside, detail
 `kind/entity_id`: start/end are the extracted range; entity_id is the containing
 structure; parent_id is the nearest outer supported fragment within the same context
-boundary, or null, and can be expanded by get. For example object property → single
+boundary, or null, and can be expanded by slice. For example object property → single
 declarator → whole variable declaration; return/throw can expand to an outer if/loop.
 Source is byte-exact; complete means extraction succeeded, not business meaning or
 runtime completeness.
@@ -667,7 +667,7 @@ and are mandatory for release; unlimited mode is not a substitute.
 Syntax errors fail atomically and emit no recovered partial structures. There is no
 permissive mode. Parser recursion depth, stack use and cancellation need separate
 verification; hostile-depth input is not promised until adequate protection or
-isolation exists. `get` is subject to the same parse depth and output checks.
+isolation exists. `slice` is subject to the same parse depth and output checks.
 
 | Code | Condition |
 | --- | --- |
@@ -696,7 +696,7 @@ functions, closures, object/class methods, constructors, getters/setters, async 
 generators, and confirm methods do not duplicate function records. Boundaries cover
 Unicode identifiers, multibyte text, unpaired surrogate escapes, CRLF, BOM, template
 interpolation, string escapes, dynamic keys, empty files, invalid offsets and syntax
-errors. Every original span must extract the exact code; `get --json` source must be
+errors. Every original span must extract the exact code; `slice --json` source must be
 byte-exact.
 
 Identity tests cover same-name functions, identical content at different paths, changed

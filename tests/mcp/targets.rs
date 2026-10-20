@@ -46,14 +46,14 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
         .iter()
         .find(|entity| entity["detail"]["name"] == "original")
         .unwrap();
-    let fetched = client.tool("js_get", json!({"input":input,"at":entity["at"]}));
+    let fetched = client.tool("js_slice", json!({"input":input,"at":entity["at"]}));
     assert_eq!(
         success(&fetched)["detail"]["source"],
         "function original(){return \"你好\";}"
     );
     let changed = client.tool("js_entities", json!({"input":{"path":path}}));
     assert_ne!(success(&changed)["header"]["source_id"], info["source_id"]);
-    let wrong_identity = client.tool("js_get", json!({"input":{"path":path},"at":entity["at"]}));
+    let wrong_identity = client.tool("js_slice", json!({"input":{"path":path},"at":entity["at"]}));
     assert_eq!(wrong_identity["isError"], true, "{wrong_identity}");
     success(&client.tool("rxd_close", json!({"target_id":target})));
     error(

@@ -62,7 +62,7 @@ and binwalk integration are planned, not available commands.
   no `--max-*` flag to tune. Budget failure is a failure, not evidence of absence,
   and partial output is never discarded silently.
   Zero hits in a complete query are valid within that query's stated scope.
-- Default JS `get` returns original bytes. Java/C#/C-like/Python reconstruction is
+- Default JS `slice` returns original bytes. Java/C#/C-like/Python reconstruction is
   an analysis representation, not original source or a universal semantic proof.
   Inspect reconstruction/fallback flags and original bytecode where available.
   Static references do not imply a complete runtime call graph.
@@ -75,14 +75,14 @@ offsets obtained from the preceding response. Keep each input fixed and use its 
 ```sh
 rxd js entities bundle.js -f login
 rxd js find bundle.js --string '/api/login'
-rxd js get bundle.js --at "$CONTEXT_AT" --json
+rxd js slice bundle.js --at "$CONTEXT_AT" --json
 rxd js identifiers bundle.js --name 'AIS3' --role reference
 rxd js calls bundle.js --name 'fetch'
 rxd js members bundle.js --name 'flag_correct'
 rxd js symbols bundle.js --within "$ENTITY_AT"
 rxd js xref bundle.js --at "$SYMBOL_AT"
 rxd js xref bundle.js --byte "$SYMBOL_BYTE"   # a raw offset, e.g. inside a multi-byte name
-rxd js get bundle.js --at "$SYMBOL_AT"
+rxd js slice bundle.js --at "$SYMBOL_AT"
 ```
 
 A find match has no coordinate of its own: use its `context_at` for a local syntax

@@ -47,7 +47,7 @@ fn mcp_complete_responses_and_worker_ipc_fail_explicitly_at_budgets() {
     let entities = client.tool("js_entities", json!({"input":{"path":path}}));
     assert_ne!(entities["isError"], true, "{entities}");
     let at = entities["structuredContent"]["records"][0]["at"].clone();
-    let fetched = client.tool("js_get", json!({"input":{"path":path},"at":at}));
+    let fetched = client.tool("js_slice", json!({"input":{"path":path},"at":at}));
     assert_eq!(fetched["isError"], true, "{fetched}");
     assert_eq!(
         fetched["structuredContent"]["error"]["code"],
@@ -212,7 +212,7 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
         "x".repeat(2 * 1024 * 1024)
     );
     fs::write(&path, &source).unwrap();
-    // The whole-file program coordinate is what a large `js_get` fetch needs.
+    // The whole-file program coordinate is what a large `js_slice` fetch needs.
     let at = format!("program:0:{}", source.len());
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["mcp", "serve", "--root", root.path().to_str().unwrap()])
@@ -225,7 +225,7 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
     for request in [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"backpressure-e2e","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"js_get","arguments":{"input":{"path":path},"at":at}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"js_slice","arguments":{"input":{"path":path},"at":at}}}),
     ] {
         serde_json::to_writer(&mut input, &request).unwrap();
         input.write_all(b"\n").unwrap();

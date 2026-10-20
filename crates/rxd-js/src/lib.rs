@@ -99,7 +99,7 @@ pub enum Query {
     Symbols {
         within: Option<String>,
     },
-    Get {
+    Slice {
         id: String,
         json: bool,
     },
@@ -152,7 +152,7 @@ impl Query {
             Self::Locate { .. } => "locate",
             Self::Refs { .. } => "xref",
             Self::Symbols { .. } => "symbols",
-            Self::Get { .. } => "get",
+            Self::Slice { .. } => "slice",
         }
     }
 }
@@ -366,13 +366,13 @@ pub fn run_source(
         },
         Query::Locate { byte } => json!({"byte":byte}),
         Query::Symbols { within } => json!({"within":within}),
-        Query::Get { id, json } => json!({"id":id,"json":json}),
+        Query::Slice { id, json } => json!({"id":id,"json":json}),
     };
     // Every id-shaped selector may arrive as the copy-only short coordinate a row prints
     // (`kind:start:end`); expand it against the header identity exactly once here so the
     // fragment, symbol and structure paths all see the content-bound form.
     let query = match query {
-        Query::Get { id, json } => Query::Get {
+        Query::Slice { id, json } => Query::Slice {
             id: expand_short_id(&source, &id),
             json,
         },
@@ -426,7 +426,7 @@ pub fn run_source(
             Some(fragment::Contexts::new(fragment::Target::Matches))
         }
         Query::Locate { byte } => Some(fragment::Contexts::new(fragment::Target::Byte(*byte))),
-        Query::Get { id, .. }
+        Query::Slice { id, .. }
             if id
                 .split(':')
                 .nth(3)
@@ -780,7 +780,7 @@ pub fn run_source(
                 output.json(&summary(records, true, Default::default()))
             })?;
         }
-        Query::Get { id, json } => {
+        Query::Slice { id, json } => {
             if let Some(contexts) = &collector.contexts {
                 let selected = (|| {
                     fragment::validate_id(&source, &id)?;

@@ -61,7 +61,7 @@ rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
     <pre><code>rxd js entities bundle.js --jsonl
 rxd js find bundle.js --string '/api/login'
 rxd js xref bundle.js --at 'symbol:118:126'
-rxd js get bundle.js --at '&lt;at&gt;'</code></pre>
+rxd js slice bundle.js --at '&lt;at&gt;'</code></pre>
     <p class="section-lede"><code>get</code> 默认返回精确原始字节；需要源码信封时加 <code>--json</code>。<code>entities</code> 提供内容绑定结构坐标；<code>find</code> 匹配解码字面量；<code>xref</code> 追踪词法绑定。</p>
   </section>
 

@@ -48,7 +48,7 @@ try {
   if (!hits.summary.complete) throw new Error("incomplete query");
   // `at` identifies a row; `context_at` names the structure that reported it.
   const sources = await Promise.all(hits.records.map(hit =>
-    call("js_get", {input, at: hit.context_at})));
+    call("js_slice", {input, at: hit.context_at})));
   const originalText = sources.map(source => source.detail.source);
 } finally {
   await call("rxd_close", {target_id: opened.target_id});

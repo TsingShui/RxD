@@ -12,11 +12,11 @@ executes input. It has nine commands:
 | `calls` | Find direct/member/`new` call sites by callee name | JSONL |
 | `members` | Find static member names, property keys, JSX attribute names and statically resolvable computed keys | JSONL |
 | `locate` | Find the innermost structure and ancestors at a byte offset | JSON |
-| `get` | Extract source by structure/fragment ID, or the canonical declaration by symbol ID | Raw source |
+| `slice` | Extract source by structure/fragment ID, or the canonical declaration by symbol ID | Raw source |
 | `xref --at` | Find the lexical binding, references and read/write roles at a name occurrence (`--byte` takes a raw offset instead) | JSONL |
 | `symbols` | Discover declarations, external bindings and unresolved references in a region | JSONL |
 
-structure listings and `find` accept a file or recursively scan a directory; `locate/get/xref/symbols/
+structure listings and `find` accept a file or recursively scan a directory; `locate/slice/xref/symbols/
 identifiers/calls/members` accept one file. ASAR uses the separate
 [`rxd asar` entry](asar.md) to extract a file, then these commands analyze it; identical
 bytes and parse options keep the same content-bound IDs.
@@ -31,7 +31,7 @@ dynamic property names.
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
 `schema_version=2`: navigation outside, format fields under `detail`; header input size is
-`input_bytes`, path is `detail.path`. Default `get` raw bytes are outside the envelope.
+`input_bytes`, path is `detail.path`. Default `slice` raw bytes are outside the envelope.
 
 ## Setup
 
@@ -52,7 +52,7 @@ mkdir -p "$DEMO"
 "$RXD" js calls --help
 "$RXD" js members --help
 "$RXD" js locate --help
-"$RXD" js get --help
+"$RXD" js slice --help
 "$RXD" js xref --help
 "$RXD" js symbols --help
 ```
@@ -139,12 +139,12 @@ structure wins; `detail.ancestors` is ordered inner to outer. A `rg --byte-offse
 --only-matching --fixed-strings '/api/login' bundle.js` hit can be passed directly to
 `locate`.
 
-## 4. get
+## 4. slice
 
 ```sh
-"$RXD" js get "$FILE" --at "$REQUEST_ID"
-"$RXD" js get "$FILE" --at "$REQUEST_ID" --json
-"$RXD" js get "$FILE" --at "$REQUEST_ID" -o "$DEMO/request.js"
+"$RXD" js slice "$FILE" --at "$REQUEST_ID"
+"$RXD" js slice "$FILE" --at "$REQUEST_ID" --json
+"$RXD" js slice "$FILE" --at "$REQUEST_ID" -o "$DEMO/request.js"
 ```
 
 Default output is exact original source bytes with no added newline or formatting.
@@ -164,7 +164,7 @@ strings, comments, keywords, static property keys and `foo` in `obj.foo` return
 `INVALID_TARGET`; `key` in `obj[key]` is a lexical reference. Header detail reports
 `resolution: resolved|unresolved|dynamic`, the selected name/range, and the canonical
 declaration. Reference detail has `read`, `write`, `member_write`, `type_reference` and
-`value_reference`. `parent_at` routes to `get`; the declaration and initializer are not
+`value_reference`. `parent_at` routes to `slice`; the declaration and initializer are not
 reference records. `dynamic` means the file contains `with`/direct `eval` and is
 conservatively unscanned.
 
@@ -184,8 +184,8 @@ different bindings stay separate; imports resolve only to the local binding.
 
 ```sh
 SYMBOL_ID=$(jq -r 'select(.record == "symbol" and .detail.name == "api") | .at' "$DEMO/symbols.jsonl")
-"$RXD" js get "$FILE" --at "$SYMBOL_ID"
-"$RXD" js get "$FILE" --at "$SYMBOL_ID" --json
+"$RXD" js slice "$FILE" --at "$SYMBOL_ID"
+"$RXD" js slice "$FILE" --at "$SYMBOL_ID" --json
 ```
 
 The raw output is only the canonical declaration, not later redeclarations/assignments.
@@ -197,7 +197,7 @@ to `xref --at`.
 
 Find, locate and xref results add `context_at` for the nearest supported syntax fragment
 (variable declarator, assignment, return/throw, control statement, parameter, import,
-etc.). `get` with that ID returns the exact fragment bytes; a variable declarator may omit
+etc.). `slice` with that ID returns the exact fragment bytes; a variable declarator may omit
 `const/let/var`, and an assignment may omit the statement semicolon. Functions/classes/
 methods are context boundaries; entering them reselects an inner fragment. Use
 `parent_at`/`entity.at` when no local fragment exists.

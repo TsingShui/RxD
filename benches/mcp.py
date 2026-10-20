@@ -174,7 +174,7 @@ def builtin_cases(root, dotnet, csharp):
                       'query': {'tool': 'js_find', 'arguments': {'string': case['needle']},
                                 'cli': ['js', 'find', '${path}', '--string', case['needle']],
                                 'projection': 'jsonl'},
-                      'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'js_get',
+                      'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'js_slice',
                                     'arguments': {'at': '${q.records.0.context_at}'},
                                     'cli': ['js', 'get', '${path}', '--at', '${q.records.0.context_at}', '--json'],
                                     'projection': 'json'}]})

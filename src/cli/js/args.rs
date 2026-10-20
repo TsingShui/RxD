@@ -200,13 +200,13 @@ pub(crate) enum Command {
         #[arg(long)]
         jsonl: bool,
     },
-    /// Extract original structure source or a symbol's source declaration.
-    Get {
+    /// Slice the original bytes at a coordinate: a structure body, a symbol's declaration,
+    /// or an explicit range.
+    Slice {
         #[command(flatten)]
         common: Common,
-        /// The `at` a structure or symbol row prints.
-        #[arg(long)]
-        at: String,
+        #[command(flatten)]
+        selector: super::super::xref::Selector,
         /// Bound semantic analysis for symbol IDs; structure IDs do not build it.
         #[arg(long)]
         json: bool,
@@ -282,7 +282,7 @@ impl Command {
                 },
             },
             Self::Symbols { within, .. } => Query::Symbols { within },
-            Self::Get { at, json, .. } => Query::Get { id: at, json },
+            Self::Slice { .. } => unreachable!("slice needs the resolved coordinate"),
         }
     }
 
@@ -299,7 +299,7 @@ impl Command {
             Self::Locate { .. } => "locate",
             Self::Xref { .. } => "xref",
             Self::Symbols { .. } => "symbols",
-            Self::Get { .. } => "get",
+            Self::Slice { .. } => "slice",
         }
     }
     pub(super) fn scan(&self) -> Option<&Scan> {
@@ -325,7 +325,7 @@ impl Command {
             | Self::Locate { common, .. }
             | Self::Xref { common, .. }
             | Self::Symbols { common, .. }
-            | Self::Get { common, .. } => common,
+            | Self::Slice { common, .. } => common,
         }
     }
 }

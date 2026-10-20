@@ -233,7 +233,7 @@ def main():
     controls = []
     jrows = rows(invoke([str(binary), "js", "find", str(js), "--string", "Expected a function"])[1].stdout)
     js_id = next(r for r in jrows if r["record"] == "match")["context_at"]
-    controls.extend([("js/find", ["js", "find", str(js), "--string", "Expected a function"]), ("js/get", ["js", "get", str(js), "--at", js_id])])
+    controls.extend([("js/find", ["js", "find", str(js), "--string", "Expected a function"]), ("js/slice", ["js", "slice", str(js), "--at", js_id])])
     jrows = rows(invoke([str(binary), "jar", "outline", str(jar), "--class", "com/google/gson/GsonBuilder", "--method", "serializeNulls"])[1].stdout)
     method_id = next(r for r in jrows if r["record"] == "method")["id"]
     controls.extend([("jvm/outline", ["jar", "outline", str(jar), "--class", "com/google/gson/GsonBuilder", "--method", "serializeNulls"]), ("jvm/get-method", ["jar", "get-method", str(jar), method_id])])

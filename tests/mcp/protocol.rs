@@ -24,7 +24,7 @@ fn mcp_catalog_filters_backends_and_publishes_input_output_schemas() {
     client.initialize();
     let response = client.request("tools/list", json!({}));
     let tools = response["result"]["tools"].as_array().unwrap();
-    assert!(tools.iter().any(|tool| tool["name"] == "js_get"));
+    assert!(tools.iter().any(|tool| tool["name"] == "js_slice"));
     assert!(tools.iter().any(|tool| tool["name"] == "rxd_open"));
     assert!(
         !tools

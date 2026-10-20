@@ -627,7 +627,7 @@ fn assert_js_stream(rows: &[Value]) {
 
 fn js_object(bytes: &[u8]) -> Value {
     let value: Value = serde_json::from_slice(bytes).unwrap();
-    if value["backend"] == "js" && matches!(value["command"].as_str(), Some("get" | "locate")) {
+    if value["backend"] == "js" && matches!(value["command"].as_str(), Some("slice" | "locate")) {
         assert_js_record(&value);
     }
     value
@@ -704,7 +704,7 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
             syntax.map(|_| name == "g.d.ts")
         );
         let root = rows[0]["detail"]["root_id"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--at", root]);
+        let raw = invoke("slice", &path, &["--at", root]);
         success(&raw);
         assert_eq!(raw.stdout, source.as_bytes());
     }
@@ -787,7 +787,7 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
         assert_eq!(rows[1]["detail"]["literal_kind"], kind);
         assert_eq!(rows[1]["detail"]["value"], value);
         let id = rows[1]["context_at"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--at", id]);
+        let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, original.as_bytes());
         let located = invoke("locate", &path, &["--byte", &rows[1]["start"].to_string()]);
@@ -829,7 +829,7 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
         .unwrap()["at"]
         .as_str()
         .unwrap();
-    let raw = invoke("get", &path, &["--at", id]);
+    let raw = invoke("slice", &path, &["--at", id]);
     success(&raw);
     assert_eq!(
         raw.stdout,
@@ -861,7 +861,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
             "Model={kind:'model'}",
         ])
     {
-        let raw = invoke("get", &path, &["--at", id.as_str().unwrap()]);
+        let raw = invoke("slice", &path, &["--at", id.as_str().unwrap()]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
     }
@@ -897,7 +897,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
             .find(|r| r["record"] == "symbol" && r["detail"]["name"] == name)
             .unwrap();
         assert_eq!(symbol["detail"]["space"], space);
-        let raw = invoke("get", &path, &["--at", symbol["at"].as_str().unwrap()]);
+        let raw = invoke("slice", &path, &["--at", symbol["at"].as_str().unwrap()]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
     }
@@ -923,7 +923,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         "external"
     );
     refused(invoke(
-        "get",
+        "slice",
         &path,
         &["--at", model["at"].as_str().unwrap(), "--max-records", "1"],
     ));
@@ -983,11 +983,11 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
         2
     );
     for id in send["detail"]["declaration_ids"].as_array().unwrap() {
-        success(&invoke("get", &path, &["--at", id.as_str().unwrap()]));
+        success(&invoke("slice", &path, &["--at", id.as_str().unwrap()]));
     }
     for symbol in symbols.iter().filter(|r| r["record"] == "symbol") {
         let output = invoke(
-            "get",
+            "slice",
             &path,
             &["--at", symbol["at"].as_str().unwrap(), "--json"],
         );
@@ -1005,7 +1005,7 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     let found = jsonl(&invoke("find", &path, &["--string", "/api/login"]));
     assert_eq!(found[1]["detail"]["literal_kind"], "type_string");
     let output = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", found[1]["context_at"].as_str().unwrap()],
     );
@@ -1026,7 +1026,7 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     let id = js_full_id(&found[0], send["at"].as_str().unwrap());
     fs::write(&path, format!("{source}\n// changed")).unwrap();
-    failure(invoke("get", &path, &["--at", &id]), 1, "SOURCE_MISMATCH");
+    failure(invoke("slice", &path, &["--at", &id]), 1, "SOURCE_MISMATCH");
     let (_tmp, path) = fixture("type Route=`/api/${'login'|'logout'}`;", "template.ts");
     let rows = jsonl(&invoke("find", &path, &["--string", "/api/"]));
     assert_eq!(rows[1]["detail"]["literal_kind"], "type_template");
@@ -1099,7 +1099,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
                         == serde_json::json!([entity["kind"], entity["start"], entity["end"]])
                 })
                 .unwrap();
-            let raw = invoke("get", &path, &["--at", record["at"].as_str().unwrap()]);
+            let raw = invoke("slice", &path, &["--at", record["at"].as_str().unwrap()]);
             success(&raw);
             assert_eq!(
                 raw.stdout,
@@ -1162,7 +1162,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
                 context["end"]
             );
             assert_eq!(row["context_at"], expected_id);
-            let raw = invoke("get", &path, &["--at", &expected_id]);
+            let raw = invoke("slice", &path, &["--at", &expected_id]);
             success(&raw);
             assert_eq!(
                 raw.stdout,
@@ -1217,7 +1217,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         let rows = jsonl(&invoke("find", &path, &["--string", needle]));
         let found = &rows[1];
         let id = found["context_at"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--at", id]);
+        let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
         let located = invoke("locate", &path, &["--byte", &found["start"].to_string()]);
@@ -1225,13 +1225,13 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         let located: Value = js_object(&located.stdout);
         assert_eq!(located["context_at"], id);
         let full = invoke(
-            "get",
+            "slice",
             &path,
             &["--at", found["parent_at"].as_str().unwrap()],
         );
         success(&full);
         assert!(full.stdout.len() > expected.len() * 1000);
-        let output = invoke("get", &path, &["--at", id, "--json"]);
+        let output = invoke("slice", &path, &["--at", id, "--json"]);
         success(&output);
         let output: Value = js_object(&output.stdout);
         assert_eq!(output["detail"]["complete"], true);
@@ -1247,7 +1247,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         assert_eq!(&source.as_bytes()[a..b], raw.stdout);
         if needle == "/api/local" {
             let parent = invoke(
-                "get",
+                "slice",
                 &path,
                 &[
                     "--at",
@@ -1262,7 +1262,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
                 "config={endpoint:'/api/local',retry:3}"
             );
             let declaration = invoke(
-                "get",
+                "slice",
                 &path,
                 &[
                     "--at",
@@ -1294,10 +1294,10 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
             .find(|row| row["record"] == "reference" && row["detail"][flag] == true)
             .unwrap();
         let id = reference["context_at"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--at", id]);
+        let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
-        let output = invoke("get", &path, &["--at", id, "--json"]);
+        let output = invoke("slice", &path, &["--at", id, "--json"]);
         success(&output);
         let output: Value = js_object(&output.stdout);
         assert_eq!(output["detail"]["fragment"]["detail"]["kind"], kind);
@@ -1376,7 +1376,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
         assert_eq!(located["context_at"], found["context_at"], "{source}");
         if let Some(expected) = expected {
             let raw = invoke(
-                "get",
+                "slice",
                 &path,
                 &["--at", found["context_at"].as_str().unwrap()],
             );
@@ -1399,7 +1399,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
     let rows = jsonl(&invoke("xref", &path, &["--byte", "0"]));
     assert_eq!(rows[0]["detail"]["resolution"], "unresolved");
     let context = invoke(
-        "get",
+        "slice",
         &path,
         &[
             "--at",
@@ -1422,7 +1422,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let full_id = format!("rxd1:js:{fingerprint}:{id}");
     let destination = dir.path().join("context.js");
     let written = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", id, "-o", destination.to_str().unwrap()],
     );
@@ -1437,7 +1437,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     ] {
         fs::write(&destination, "preserved").unwrap();
         refused(invoke(
-            "get",
+            "slice",
             &path,
             &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
         ));
@@ -1451,7 +1451,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         format!("rxd1:js:{fingerprint}:fragment.object_property:011:32"),
         format!("rxd1:js:{fingerprint}:fragment.object_property:32:11"),
     ] {
-        failure(invoke("get", &path, &["--at", &forged]), 1, "INVALID_ID");
+        failure(invoke("slice", &path, &["--at", &forged]), 1, "INVALID_ID");
     }
     for command in ["entities", "symbols"] {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
@@ -1459,7 +1459,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     for (command, args) in [
         ("find", vec!["--string", "/api/check"]),
         ("locate", vec!["--byte", "21"]),
-        ("get", vec!["--at", id]),
+        ("slice", vec!["--at", id]),
     ] {
         let plain = invoke(command, &path, &args);
         success(&plain);
@@ -1477,13 +1477,13 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let copy = path.with_file_name("copy.js");
     fs::copy(&path, &copy).unwrap();
     assert_eq!(
-        invoke("get", &copy, &["--at", id]).stdout,
+        invoke("slice", &copy, &["--at", id]).stdout,
         b"endpoint:'/api/check'"
     );
     let stale = js_full_id(&found[0], id);
     fs::write(&path, "const obj={changed:true};").unwrap();
     failure(
-        invoke("get", &path, &["--at", &stale]),
+        invoke("slice", &path, &["--at", &stale]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -1582,12 +1582,12 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
                 context["end"]
             );
             assert_eq!(row["context_at"], id);
-            let raw = invoke("get", &path, &["--at", &id]);
+            let raw = invoke("slice", &path, &["--at", &id]);
             success(&raw);
             let a = context["start"].as_u64().unwrap() as usize;
             let b = context["end"].as_u64().unwrap() as usize;
             assert_eq!(raw.stdout, bytes[a..b]);
-            let output = invoke("get", &path, &["--at", &id, "--json"]);
+            let output = invoke("slice", &path, &["--at", &id, "--json"]);
             success(&output);
             let output: Value = js_object(&output.stdout);
             assert_eq!(
@@ -1609,7 +1609,7 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
                     parent["end"]
                 );
                 assert_eq!(output["detail"]["fragment"]["parent_at"], id);
-                let raw = invoke("get", &path, &["--at", &id]);
+                let raw = invoke("slice", &path, &["--at", &id]);
                 success(&raw);
                 assert_eq!(
                     raw.stdout,
@@ -1667,10 +1667,10 @@ fn get_symbol_extracts_declarators_without_siblings_or_large_enclosing_functions
             .find(|r| r["record"] == "symbol" && r["start"] == start)
             .unwrap();
         let id = symbol["at"].as_str().unwrap();
-        let raw = invoke("get", &path, &["--at", id]);
+        let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes());
-        let output = invoke("get", &path, &["--at", id, "--json"]);
+        let output = invoke("slice", &path, &["--at", id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(extracted["detail"]["complete"], true);
@@ -1695,7 +1695,7 @@ fn get_symbol_extracts_declarators_without_siblings_or_large_enclosing_functions
             assert_eq!(source[a..b].trim_matches(['(', ')']), initializer);
         }
         let containing = invoke(
-            "get",
+            "slice",
             &path,
             &["--at", symbol["parent_at"].as_str().unwrap()],
         );
@@ -1831,10 +1831,10 @@ fn get_symbol_preserves_complete_patterns_parameters_imports_and_canonical_decla
             .unwrap()["at"]
             .as_str()
             .unwrap();
-        let raw = invoke("get", &path, &["--at", id]);
+        let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, expected.as_bytes(), "{source}");
-        let output = invoke("get", &path, &["--at", id, "--json"]);
+        let output = invoke("slice", &path, &["--at", id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(extracted["detail"]["declaration"]["kind"], kind);
@@ -1886,7 +1886,7 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
         let symbols = jsonl(&invoke("symbols", &path, &[]));
         let symbol = symbols.iter().find(|r| r["at"] == id).unwrap();
         assert_eq!(symbol["detail"]["name"], case["binding_name"]);
-        let output = invoke("get", &path, &["--at", &id, "--json"]);
+        let output = invoke("slice", &path, &["--at", &id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(
@@ -1908,7 +1908,7 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
         );
         let a = case["declaration"]["start"].as_u64().unwrap() as usize;
         let b = case["declaration"]["end"].as_u64().unwrap() as usize;
-        let raw = invoke("get", &path, &["--at", &id]);
+        let raw = invoke("slice", &path, &["--at", &id]);
         success(&raw);
         assert_eq!(raw.stdout, source[a..b]);
         assert_eq!(
@@ -1916,7 +1916,7 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
             &source[a..b]
         );
         let containing = invoke(
-            "get",
+            "slice",
             &path,
             &["--at", symbol["parent_at"].as_str().unwrap()],
         );
@@ -1940,7 +1940,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let expected = b"config={url:'/api/login'}";
     let destination = dir.path().join("definition.js");
     let written = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", id, "-o", destination.to_str().unwrap()],
     );
@@ -1956,7 +1956,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     ] {
         fs::write(&destination, "preserved").unwrap();
         refused(invoke(
-            "get",
+            "slice",
             &path,
             &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
         ));
@@ -1974,7 +1974,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     ] {
         failure(
             invoke(
-                "get",
+                "slice",
                 &path,
                 &["--at", &format!("rxd1:js:{fingerprint}:symbol:{a}:{b}")],
             ),
@@ -1989,12 +1989,12 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         format!("rxd1:js:{fingerprint}:symbol:06:12"),
         format!("rxd1:js:{fingerprint}:symbol:12:6"),
     ] {
-        failure(invoke("get", &path, &["--at", &forged]), 1, "INVALID_ID");
+        failure(invoke("slice", &path, &["--at", &forged]), 1, "INVALID_ID");
     }
     for command in ["entities", "symbols"] {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
     }
-    let profile = invoke("get", &path, &["--at", id, "--perf"]);
+    let profile = invoke("slice", &path, &["--at", id, "--perf"]);
     success(&profile);
     assert_eq!(profile.stdout, expected);
     let reports = perf_reports(&profile);
@@ -2005,7 +2005,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     // CLI knob, so the test asserts the reported work instead of tuning it.
     assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     let legacy = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", symbol["parent_at"].as_str().unwrap(), "--perf"],
     );
@@ -2018,11 +2018,11 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     );
     let copied = path.with_file_name("copy.js");
     fs::copy(&path, &copied).unwrap();
-    assert_eq!(invoke("get", &copied, &["--at", id]).stdout, expected);
+    assert_eq!(invoke("slice", &copied, &["--at", id]).stdout, expected);
     let stale = js_full_id(&rows[0], id);
     fs::write(&path, "const config={changed:true};").unwrap();
     failure(
-        invoke("get", &path, &["--at", &stale]),
+        invoke("slice", &path, &["--at", &stale]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -2031,7 +2031,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     fs::write(&path, dynamic).unwrap();
     let fingerprint = format!("{:x}", Sha256::digest(dynamic.as_bytes()));
     let extracted = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
     );
@@ -2041,7 +2041,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let fingerprint = format!("{:x}", Sha256::digest(b"let x; let x;"));
     failure(
         invoke(
-            "get",
+            "slice",
             &path,
             &["--at", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
         ),
@@ -2100,7 +2100,7 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
             row["parent_at"]
         );
         let extracted = invoke(
-            "get",
+            "slice",
             &path,
             &["--at", row["parent_at"].as_str().unwrap(), "--json"],
         );
@@ -2345,7 +2345,7 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
     );
     assert_eq!(from_reference[1..], inner[1..]);
     let extracted = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", inner[2]["parent_at"].as_str().unwrap()],
     );
@@ -2686,7 +2686,7 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
     let extracted = invoke(
-        "get",
+        "slice",
         &module,
         &["--at", rows[1]["parent_at"].as_str().unwrap()],
     );
@@ -2744,7 +2744,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         "INVALID_INPUT",
     );
     failure(
-        invoke("get", dir.path(), &["--at", "dummy"]),
+        invoke("slice", dir.path(), &["--at", "dummy"]),
         1,
         "INVALID_INPUT",
     );
@@ -2754,7 +2754,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         "unexpected argument",
     );
     failure(
-        invoke("get", dir.path(), &["-r", "--at", "dummy"]),
+        invoke("slice", dir.path(), &["-r", "--at", "dummy"]),
         2,
         "unexpected argument",
     );
@@ -2937,7 +2937,7 @@ fn search_then_extract_and_locate_complete_function() {
     assert_eq!(found.len(), 4);
     assert_eq!(found[1]["parent_at"], found[0]["detail"]["root_id"]);
     let id = found[2]["parent_at"].as_str().unwrap();
-    let original = invoke("get", &path, &["--at", id]);
+    let original = invoke("slice", &path, &["--at", id]);
     success(&original);
     assert_eq!(
         original.stdout,
@@ -2998,7 +2998,7 @@ fn outline_entities_have_exact_spans_and_no_duplicate_methods() {
         1
     );
     for entity in entities {
-        let get = invoke("get", &path, &["--at", entity["at"].as_str().unwrap()]);
+        let get = invoke("slice", &path, &["--at", entity["at"].as_str().unwrap()]);
         success(&get);
         assert_eq!(
             get.stdout,
@@ -3055,7 +3055,7 @@ fn get_json_preserves_original_source_for_functions_arrows_classes_and_members()
     let records = outline_rows(&path, &[]);
     for entity in &records[1..records.len() - 1] {
         let output = invoke(
-            "get",
+            "slice",
             &path,
             &["--at", entity["at"].as_str().unwrap(), "--json"],
         );
@@ -3078,7 +3078,7 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     let (_dir, path) = fixture(source, "bundle.js");
     let found = jsonl(&invoke("find", &path, &["--string", "你好😀"]));
     let id = found[1]["parent_at"].as_str().unwrap();
-    let get = invoke("get", &path, &["--at", id]);
+    let get = invoke("slice", &path, &["--at", id]);
     success(&get);
     assert_eq!(get.stdout, "function 登录(){return \"你好😀\";}".as_bytes());
     let position = source.find("你好").unwrap() + 1;
@@ -3089,7 +3089,12 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     assert_eq!(records[1]["start"], 0);
     assert_eq!(records[1]["end"], source.len());
     assert_eq!(
-        invoke("get", &path, &["--at", records[1]["at"].as_str().unwrap()]).stdout,
+        invoke(
+            "slice",
+            &path,
+            &["--at", records[1]["at"].as_str().unwrap()]
+        )
+        .stdout,
         source.as_bytes()
     );
 }
@@ -3456,7 +3461,7 @@ fn same_content_has_same_identity_and_changed_content_rejects_old_ids() {
     let stale = js_full_id(&records[0], id);
     fs::write(&path, "function b(){}").unwrap();
     failure(
-        invoke("get", &path, &["--at", &stale]),
+        invoke("slice", &path, &["--at", &stale]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -3473,7 +3478,7 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
         format!("rxd2:js:{source_id}:program:0:14"),
         "garbage".into(),
     ] {
-        failure(invoke("get", &path, &["--at", &id]), 1, "INVALID_ID");
+        failure(invoke("slice", &path, &["--at", &id]), 1, "INVALID_ID");
         failure(
             invoke("entities", &path, &["--within", &id]),
             1,
@@ -3565,13 +3570,13 @@ fn cli_argument_errors_exit_with_two() {
     ] {
         failure(invoke("entities", &example(), args), 2, "error:");
     }
-    failure(invoke("get", &example(), &[]), 2, "error:");
+    failure(invoke("slice", &example(), &[]), 2, "error:");
     let dir = tempfile::tempdir().unwrap();
     let destination = dir.path().join("source.js");
     fs::write(&destination, "keep me").unwrap();
     failure(
         invoke(
-            "get",
+            "slice",
             &example(),
             &[
                 "--at",
@@ -3586,7 +3591,7 @@ fn cli_argument_errors_exit_with_two() {
         "unexpected argument",
     );
     assert_eq!(fs::read(destination).unwrap(), b"keep me");
-    let help = invoke("get", &example(), &["--help"]);
+    let help = invoke("slice", &example(), &["--help"]);
     success(&help);
     assert!(!String::from_utf8_lossy(&help.stdout).contains("--pretty"));
 }
@@ -3690,7 +3695,7 @@ fn raw_get_output_file_matches_stdout_without_an_added_newline() {
     let id = records[2]["at"].as_str().unwrap();
     let destination = dir.path().join("fragment.js");
     let saved = invoke(
-        "get",
+        "slice",
         &path,
         &["--at", id, "-o", destination.to_str().unwrap()],
     );
@@ -3768,8 +3773,8 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
         ("entities", vec![]),
         ("find", vec!["--string", "/api/login"]),
         ("locate", vec!["--byte", "100"]),
-        ("get", vec!["--at", id]),
-        ("get", vec!["--at", id, "--json"]),
+        ("slice", vec!["--at", id]),
+        ("slice", vec!["--at", id, "--json"]),
     ] {
         let plain = invoke(command, &path, &arguments);
         success(&plain);
@@ -3825,7 +3830,7 @@ fn perf_reports_failed_stages_without_partial_stdout() {
     // Ceilings are internal, so the failures a caller can still provoke are query failures;
     // each must still report its stage twice (analysis + write) with no partial stdout.
     for (command, arguments, error, stage) in [
-        ("get", vec!["--at", "invalid"], "INVALID_ID", "query"),
+        ("slice", vec!["--at", "invalid"], "INVALID_ID", "query"),
         (
             "locate",
             vec!["--byte", "999999"],
@@ -4086,7 +4091,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             "{}",
             case["name"]
         );
-        let extracted = invoke("get", &path, &["--at", &entity_id]);
+        let extracted = invoke("slice", &path, &["--at", &entity_id]);
         success(&extracted);
         assert_eq!(
             extracted.stdout,
@@ -4184,7 +4189,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
                 })
                 .unwrap();
             let id = entity["at"].as_str().unwrap();
-            let source = invoke("get", &path, &["--at", id]);
+            let source = invoke("slice", &path, &["--at", id]);
             success(&source);
             let start = expected["start"].as_u64().unwrap() as usize;
             let end = expected["end"].as_u64().unwrap() as usize;
@@ -4199,7 +4204,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
                 matched["entity"]
             );
             let extracted = invoke(
-                "get",
+                "slice",
                 &path,
                 &[
                     "--at",
@@ -4605,7 +4610,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
     // The short coordinate a row prints is content-agnostic; a stale-input check needs the
     // content-bound form, which the header identity lets a caller rebuild.
     let id_full = format!("rxd1:js:{}:{id}", rows[0]["source_id"].as_str().unwrap());
-    let get = invoke("get", &destination, &["--at", &id]);
+    let get = invoke("slice", &destination, &["--at", &id]);
     success(&get);
     assert_eq!(
         get.stdout,
@@ -4640,7 +4645,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     ));
     failure(
-        invoke("get", &destination, &["--at", &id_full]),
+        invoke("slice", &destination, &["--at", &id_full]),
         1,
         "SOURCE_MISMATCH",
     );

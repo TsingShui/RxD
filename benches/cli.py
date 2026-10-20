@@ -241,7 +241,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             raise RuntimeError("encrypted corpus unexpectedly exposes the plaintext needle")
         entity_id = matches[0]["parent_at"]
         locate_byte = matches[0]["start"]
-    _, payload = checked(command("get", ["--at", entity_id, "--json"]), options.timeout)
+    _, payload = checked(command("slice", ["--at", entity_id, "--json"]), options.timeout)
     extracted = json.loads(payload)
     entity = extracted["detail"]["entity"]
     span = [entity["start"], entity["end"]]
@@ -258,7 +258,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         ("entities", command("entities")),
         ("find", command("find", ["--string", needle])),
         ("locate", command("locate", ["--byte", str(locate_byte)])),
-        ("get", command("get", ["--at", entity_id])),
+        ("get", command("slice", ["--at", entity_id])),
         ("symbols", command("symbols")),
         ("symbols_within", command("symbols", ["--within", entity_id])),
     ]
@@ -269,7 +269,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         identifier = definition_expected["identifier"]
         declaration = definition_expected["declaration"]
         symbol_id = f"rxd1:js:{manifest['source_id']}:symbol:{identifier['start']}:{identifier['end']}"
-        _, payload = checked(command("get", ["--at", symbol_id, "--json"]), options.timeout)
+        _, payload = checked(command("slice", ["--at", symbol_id, "--json"]), options.timeout)
         binding = json.loads(payload)
         with path.open("rb") as source:
             source.seek(declaration["start"])
@@ -278,7 +278,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
                 or binding["detail"]["declaration"] != declaration or binding["detail"]["symbol"]["detail"]["name"] != definition_expected["binding_name"]):
             raise RuntimeError("binding extraction differs from independent declaration expectation")
         parent_id = binding["detail"]["symbol"]["parent_at"]
-        _, payload = checked(command("get", ["--at", parent_id, "--json"]), options.timeout)
+        _, payload = checked(command("slice", ["--at", parent_id, "--json"]), options.timeout)
         parent = json.loads(payload)
         with path.open("rb") as source:
             source.seek(parent["detail"]["entity"]["start"])
@@ -293,9 +293,9 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             "measurement": "raw UTF-8 source bytes; no token estimate",
         }
         cases.extend([
-            ("get_symbol", command("get", ["--at", symbol_id])),
-            ("get_symbol_json", command("get", ["--at", symbol_id, "--json"])),
-            ("get_symbol_parent", command("get", ["--at", parent_id])),
+            ("get_symbol", command("slice", ["--at", symbol_id])),
+            ("get_symbol_json", command("slice", ["--at", symbol_id, "--json"])),
+            ("get_symbol_parent", command("slice", ["--at", parent_id])),
         ])
     else:
         manifest.setdefault("cases", []).append({"name": "get_symbol", "status": "not_applicable",
@@ -308,7 +308,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
     context_original = None
     context_metadata = None
     if context_id:
-        _, payload = checked(command("get", ["--at", context_id, "--json"]), options.timeout)
+        _, payload = checked(command("slice", ["--at", context_id, "--json"]), options.timeout)
         context_metadata = json.loads(payload)
         fragment = context_metadata["detail"]["fragment"]
         with path.open("rb") as source:
@@ -324,15 +324,15 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
                          if parent else None)
             if fragment["parent_at"] != parent_id:
                 raise RuntimeError("local context parent differs from independent AST expectation")
-        _, payload = checked(command("get", ["--at", fragment["detail"]["entity_id"]]), options.timeout)
+        _, payload = checked(command("slice", ["--at", fragment["detail"]["entity_id"]]), options.timeout)
         manifest["context_extraction"] = {
             "context_id": context_id, "kind": fragment["detail"]["kind"], "context_bytes": len(context_original),
             "entity_bytes": len(payload), "output_reduction_proportion": 1 - len(context_original) / len(payload),
             "expectation": "independent AST/generator" if context_expected is not None else "CLI span and byte consistency only",
             "selection": "first supported literal context, otherwise independent parameter",
         }
-        cases.extend([("get_context", command("get", ["--at", context_id])),
-                      ("get_context_json", command("get", ["--at", context_id, "--json"]))])
+        cases.extend([("get_context", command("slice", ["--at", context_id])),
+                      ("get_context_json", command("slice", ["--at", context_id, "--json"]))])
         if matches and matches[0].get("context_id"):
             cases.append(("find_context_get", None))
     else:
@@ -368,7 +368,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             records = jsonl(found_payload, manifest["source_id"])
             selected = next(r["context_at" if name == "find_context_get" else "parent_at"]
                             for r in records if r.get("record") == "match")
-            second, output = checked(command("get", ["--at", selected], profiled), options.timeout)
+            second, output = checked(command("slice", ["--at", selected], profiled), options.timeout)
             elapsed = time.perf_counter_ns() - started
             peaks = [s["wait4_max_process_rss_bytes"] for s in [first, second]
                      if s["wait4_max_process_rss_bytes"] is not None]

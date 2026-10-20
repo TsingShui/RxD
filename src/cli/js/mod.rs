@@ -36,7 +36,39 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let scan = command.scan().map(|s| (s.recursive, s.threads));
     let mut perf = Perf::new(emit_perf, "analysis", "js", command.name());
     perf.limits = Some(limits);
-    let query = command.into_query();
+    let query = match &command {
+        Command::Slice { selector, json, .. } => {
+            // The stream is checked against this file's content id. The hash is computed
+            // only on the `--from` path, so a direct `--at` fetch still reads once.
+            let id = if selector.from.is_some() {
+                let bytes = std::fs::read(&input)
+                    .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?;
+                Some(rxd_core::identity::content_id(&input, &bytes))
+            } else {
+                None
+            };
+            let at = match id.as_deref() {
+                Some(id) => selector.resolve(
+                    &["entity", "symbol", "fragment"],
+                    super::xref::Expect::Content(id),
+                ),
+                None => selector.resolve(
+                    &["entity", "symbol", "fragment"],
+                    super::xref::Expect::Bytes(
+                        std::fs::metadata(&input)
+                            .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?
+                            .len(),
+                    ),
+                ),
+            }
+            .map_err(|error| rxd_core::Error::new("INVALID_QUERY", format!("{error:#}")))?;
+            rxd_js::Query::Slice {
+                id: at,
+                json: *json,
+            }
+        }
+        _ => command.into_query(),
+    };
     let result = (|| {
         let bytes = if let Some((requested, threads)) = scan
             && (requested || input.symlink_metadata().is_ok_and(|m| m.is_dir()))

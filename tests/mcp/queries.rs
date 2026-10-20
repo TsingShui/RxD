@@ -57,12 +57,12 @@ fn mcp_js_navigation_preserves_cli_identity_and_source() {
     }
     let entity = &structured["records"][1];
     let fetched = client.tool(
-        "js_get",
+        "js_slice",
         json!({"input":{"path":fixture},"at":entity["at"]}),
     );
     assert_ne!(fetched["isError"], true, "{fetched}");
     compare_cli(
-        "js_get",
+        "js_slice",
         &json!({"input":{"path":fixture},"at":entity["at"]}),
         &fetched["structuredContent"],
     );
@@ -103,7 +103,7 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("js_locate", "js", "locate"),
     ("js_xref", "js", "xref"),
     ("js_symbols", "js", "symbols"),
-    ("js_get", "js", "get"),
+    ("js_slice", "js", "slice"),
     ("asar_entries", "asar", "entries"),
     ("asar_extract", "asar", "extract"),
     ("html_entries", "html", "entries"),
@@ -194,7 +194,7 @@ fn cli_query(
         }
     }
     // `reflect::argv` always requests the machine-readable switch when the CLI declares one.
-    if matches!(name, "js_locate" | "js_get" | "pyc_decompile") || name.starts_with("evm_") {
+    if matches!(name, "js_locate" | "js_slice" | "pyc_decompile") || name.starts_with("evm_") {
         argv.push("--json".into());
     }
     if !tail.is_empty() {
@@ -839,17 +839,17 @@ fn mcp_asar_extraction_returns_original_bytes_for_js_navigation() {
     let fetched = checked(
         &mut client,
         &tools,
-        "js_get",
+        "js_slice",
         json!({"input":{"target_id":target},"at":at}),
     );
     let cli = cli_query(
-        "js_get",
+        "js_slice",
         &json!({"at":at}),
         "main.js",
         Some(directory.path()),
     );
     assert!(cli.status.success());
-    assert_eq!(fetched, cli_projection("js_get", &cli.stdout));
+    assert_eq!(fetched, cli_projection("js_slice", &cli.stdout));
     assert_eq!(
         fetched["detail"]["source"],
         std::str::from_utf8(source).unwrap()
