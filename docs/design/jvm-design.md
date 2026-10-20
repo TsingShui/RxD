@@ -29,7 +29,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 
 | Command | Output |
 | --- | --- |
-| `jar outline INPUT [--class CLASS] [--method NAME] [-o FILE]` | header/class/field/method/summary JSONL, `detail.analysis: metadata` |
+| `jar classes|methods|fields INPUT [--class CLASS] [--method NAME] [-o FILE]` | header/match/summary JSONL, one object kind per command, `detail.analysis: metadata` |
 | `jar get-method INPUT METHOD_ID [-o FILE]` | Decompiled Java declaration for one method |
 | `jar get-method INPUT METHOD_ID --bytecode [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
@@ -216,7 +216,7 @@ conditions. The 150 ms requirement applies; JVM adds no performance exception (r
 
 ## MCP projection
 
-`jar_outline/strings/xref/get_method/get_class` keep the CLI namespace `jar` and
+`jar_classes/methods/fields/strings/xref/get_method/get_class` keep the CLI namespace `jar` and
 record `backend: jvm`. JSONL becomes header/records/summary; Java text gains a
 representation/source/complete/source_id wrapper, while bytecode and Java fallback keep
 their single-record shape. A container `target_id` does not replace class SHA-256 or

@@ -88,7 +88,7 @@ silently ignore corrupt data.
 ## Commands and protocol
 
 ```sh
-rxd dotnet outline app.dll --type Example.Worker --method Run
+rxd dotnet methods app.dll --type Example.Worker --method Run
 rxd dotnet get-method app.dll --at 0x06000001
 rxd dotnet get-method app.dll --at 0x06000001 --il
 rxd dotnet get-class app.dll --at 0x02000002 --il
@@ -96,7 +96,7 @@ rxd dotnet strings app.dll --contains 'example'
 rxd dotnet xref app.dll --at 0x0a000001
 rxd dotnet xref app.dll --string 'example'
 rxd dotnet xref app.dll --at 0x06000001
-rxd dotnet outline app.dll --method Run | rxd dotnet get-method app.dll --from -
+rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
 ```
 
 - `get-method` and `get-class` take exactly one selector: `--at <token>` or
@@ -483,7 +483,7 @@ JS deobfuscation and string decryption remain permanent non-goals.
 
 ## MCP projection
 
-`dotnet_outline/strings/xref/get_method/get_class` reuse metadata, semantic reference
+`dotnet_classes/fields/methods/strings/xref/get_method/get_class` reuse metadata, semantic reference
 and FETCH implementations. JSONL projects to header/records/summary; single FETCH keeps
 its original record. Actual MethodDef/TypeDef IDs, original UTF-16 code units, original
 IL/EH and C# representation/decompiled/reason/mapping are preserved; `complete` does

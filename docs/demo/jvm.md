@@ -2,7 +2,7 @@
 
 ```sh
 cargo build --release
-target/release/rxd jar outline tests/fixtures/jvm/flow-deflated.jar --class fixture.FlowFixture --method add -o target/jvm-outline.jsonl
+target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar --class fixture.FlowFixture -o target/jvm-methods.jsonl
 ```
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),

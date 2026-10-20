@@ -105,7 +105,7 @@ convention.
 ## Codemode shape (target)
 
 ```js
-const out = await tools.bash({ command: "rxd jar outline app.jar" });
+const out = await tools.bash({ command: "rxd jar classes app.jar" });
 const rows = out.output.trim().split("\n").map(JSON.parse);
 
 const header = rows[0];

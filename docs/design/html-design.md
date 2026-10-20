@@ -233,7 +233,7 @@ exception; any exception needs explicit scope, measurements and approval.
 
 ## MCP projection
 
-`html_list`/`html_extract` reuse the same query and result construction. `html_list`
+`html_entries`/`html_extract` reuse the same query and result construction. `html_entries`
 projects header/records/summary, preserving CLI values, identity, order and
 completeness (logical path restoration, not byte-identical JSONL). HTML capture is a
 regular immutable file (path or file target); directories/bundles are rejected.

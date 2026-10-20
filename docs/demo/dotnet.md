@@ -7,17 +7,17 @@ no method is executed.
 cargo build --release
 python3 tests/fixtures/dotnet/generate.py
 rxd=target/release/rxd
-$rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add
+$rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method Add
 ```
 
 Copy the `at` coordinate from a `method` record and query; the stream can also be
 piped straight into the FETCH command, which validates that it came from this input:
 
 ```sh
-at=$($rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
+at=$($rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method Add | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --il
-$rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method Add | $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --from -
+$rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method Add | $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --from -
 $rxd dotnet strings tests/fixtures/dotnet/Fixture.dll --contains hello
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --perf
@@ -65,7 +65,7 @@ Exception methods are fetched by the same member ID; with the engine enabled the
 reconstruction and the preserved EH table are both visible:
 
 ```sh
-at=$($rxd dotnet outline tests/fixtures/dotnet/Fixture.dll --method NestedFinally | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
+at=$($rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method NestedFinally | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 ```
 
@@ -95,7 +95,7 @@ the platform toolchain; Cargo never calls dotnet. Analysis only reads assemblies
 ```sh
 sugar=tests/fixtures/dotnet/sugar/Sugar.dll
 for method in AsyncAwait Iterator ClosureAndLocalFunction Linq Initializers Using Lock NullPropagation Interpolation; do
-  at=$($rxd dotnet outline "$sugar" --type Rxd.Sugar.Probe --method "$method" | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
+  at=$($rxd dotnet methods "$sugar" --type Rxd.Sugar.Probe --method "$method" | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
   $rxd dotnet get-method "$sugar" --at "$at"
   $rxd dotnet get-method "$sugar" --at "$at" --il
 done
@@ -122,7 +122,7 @@ the handle itself. Outline/xref follow the header/records/summary completeness c
 
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
-type_at=$($rxd dotnet outline "$closure" --type 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="type"))')
+type_at=$($rxd dotnet methods "$closure" --type 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="type"))')
 $rxd dotnet get-class "$closure" --at "$type_at" --il
 $rxd dotnet get-class "$closure" --at "$type_at" --il -o target/closure-il.json --perf
 $rxd dotnet get-class "$closure" --at "$type_at"

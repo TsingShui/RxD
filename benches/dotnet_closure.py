@@ -185,7 +185,7 @@ def main():
     ]
     if args.phase and 'other-backends' in args.phase:
         phases.append(('other-backends', 'dotnet.py', ['--native-library', args.native_library, '--framework', args.framework, '--references', args.upstream.parents[2],
-                      '--case', 'unaffected_js_outline', '--case', 'unaffected_asar_list', '--case', 'unaffected_jar_outline']))
+                      '--case', 'unaffected_js_entities', '--case', 'unaffected_asar_entries', '--case', 'unaffected_jar_methods']))
     for name, script, options in phases:
         if args.phase and name not in args.phase:
             continue

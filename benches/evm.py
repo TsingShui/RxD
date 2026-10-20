@@ -106,9 +106,11 @@ def main():
     def evm(path, encoding, verb, *extra):
         return [str(binary), "evm", verb, str(path), "--encoding", encoding, *extra]
 
-    def context(path, encoding, id_, raw=False):
-        verb = "get-function" if id_.split(":")[4] == "function" else "get-block"
-        return evm(path, encoding, verb, id_, *(["--raw"] if raw and verb == "get-function" else []))
+    def context(path, encoding, at, raw=False):
+        # The coordinate a row prints names its own object kind: `...:function:` or
+        # `...:block:`, so the fetch verb and `--at` follow from it.
+        verb = "get-function" if ":function:" in at else "get-block"
+        return evm(path, encoding, verb, "--at", at, *(["--raw"] if raw and verb == "get-function" else []))
 
     def original(row, path, sample, encoding):
         carrier, decoded = path.read_bytes(), (CORPUS / f"{sample}.runtime.bin").read_bytes()
@@ -133,11 +135,11 @@ def main():
             path = CORPUS / f"{sample}.runtime.{suffix}"
             decoded = (CORPUS / f"{sample}.runtime.bin").read_bytes()
             report["inputs"].append({"sample": sample, "encoding": encoding, "path": str(path), "bytes": path.stat().st_size, "sha256": digest(path.read_bytes()), "decoded_bytes": len(decoded), "decoded_sha256": digest(decoded), "provenance": "synthetic authored compiler output" if sample.startswith("authored") else "compiled published OZ5.1.0 library source"})
-            outlined = rows(measure(f"{sample}/{encoding}/outline", evm(path, encoding, "outline"), "evm_informational"))
+            functions = rows(measure(f"{sample}/{encoding}/interface", evm(path, encoding, "interface"), "evm_informational"))
             for selector, status in selectors.items():
                 assert selector in oracle["method_identifiers"].values()
-                unit = next(r for r in outlined if r["record"] == "function" and r["detail"]["selector"] == selector)
-                argv = context(path, encoding, unit["id"])
+                unit = next(r for r in functions if r["record"] == "function" and r["detail"]["selector"] == selector)
+                argv = context(path, encoding, unit["at"])
                 row = json.loads(invoke(argv)[1].stdout)
                 original(row, path, sample, encoding)
                 rec = row["detail"]["reconstruction"]
@@ -150,54 +152,54 @@ def main():
                     assert rec["control_flow_status"] == "contextual_gotos" and rec["complete"] and "goto" in rec["text"]
                 else:
                     assert rec["complete"] and rec["control_flow_status"] == "structured_acyclic"
-                selected = {"id": unit["id"], "selector": selector, "entry": row["detail"]["decoded_entry"], "decoded_bytes": sum(s["decoded_end"]-s["decoded_start"] for s in row["detail"]["segments"]), "physical_instructions": row["detail"]["instruction_count"], "contexts": row["detail"]["context_count"], "reconstruction": {k: v for k, v in rec.items() if k != "text"}}
+                selected = {"id": unit["at"], "selector": selector, "entry": row["detail"]["decoded_entry"], "decoded_bytes": sum(s["decoded_end"]-s["decoded_start"] for s in row["detail"]["segments"]), "physical_instructions": row["detail"]["instruction_count"], "contexts": row["detail"]["context_count"], "reconstruction": {k: v for k, v in rec.items() if k != "text"}}
                 measure(f"{sample}/{encoding}/{selector}/default", argv, "evm_informational", selected)
-                raw = json.loads(measure(f"{sample}/{encoding}/{selector}/raw", context(path, encoding, unit["id"], True), "evm_informational", selected))
+                raw = json.loads(measure(f"{sample}/{encoding}/{selector}/raw", context(path, encoding, unit["at"], True), "evm_informational", selected))
                 assert raw["detail"]["instructions"] == row["detail"]["instructions"] and raw["detail"]["reconstruction"]["status"] == "not_requested"
             if sample.startswith("authored"):
                 query = ["--kind", "text", "--query", "RXD_DATA_NAVIGATION"]
                 found = rows(measure(f"{sample}/{encoding}/search-text", evm(path, encoding, "strings", *query), "evm_informational"))
                 kind = "data_literal" if sample.endswith("legacy") else "literal"
                 hit = next(r for r in found if r["record"] == kind)
-                refs = rows(measure(f"{sample}/{encoding}/refs-text", evm(path, encoding, "refs", "--id", hit["id"]), "evm_informational"))
+                refs = rows(measure(f"{sample}/{encoding}/refs-text", evm(path, encoding, "xref", "--at", hit["at"]), "evm_informational"))
                 reference = next(r for r in refs if r["record"] == ("data_reference" if kind == "data_literal" else "literal_reference"))
                 if kind == "data_literal":
                     assert hit["detail"]["decoded_start"] == 492 and hit["detail"]["decoded_end"] == 592
                     assert reference["detail"]["instruction_offset"] == 397 and reference["detail"]["length_hex"] == f"{100:064x}"
                 else:
                     assert hit["detail"]["instruction_offset"] == 213
-                target = next(r for r in outlined if r["record"] == "function" and r["detail"]["selector"] == "1ba64846")
-                measure(f"{sample}/{encoding}/refs-code", evm(path, encoding, "refs", "--id", target["id"]), "evm_informational")
+                target = next(r for r in functions if r["record"] == "function" and r["detail"]["selector"] == "1ba64846")
+                measure(f"{sample}/{encoding}/refs-code", evm(path, encoding, "xref", "--at", target["at"]), "evm_informational")
                 for query_kind, needle in [("number", "7"), ("bytes", "07")]:
                     probe = rows(measure(f"{sample}/{encoding}/search-{query_kind}", evm(path, encoding, "strings", "--kind", query_kind, "--query", needle), "evm_informational"))
                     occurrence = next(r for r in probe if r["record"] == "literal")
-                    measure(f"{sample}/{encoding}/refs-{query_kind}", evm(path, encoding, "refs", "--id", occurrence["id"]), "evm_informational")
-                for flow_kind in ["outline", "search", "search_number", "search_bytes", "code_refs"]:
+                    measure(f"{sample}/{encoding}/refs-{query_kind}", evm(path, encoding, "xref", "--at", occurrence["at"]), "evm_informational")
+                for flow_kind in ["blocks", "search", "search_number", "search_bytes", "code_refs"]:
                     durations, command_sums, evidence = [], [], None
                     for _ in range(args.samples):
                         start = time.perf_counter_ns()
                         process_ns = 0
-                        if flow_kind == "outline":
-                            ns, res = invoke(evm(path, encoding, "outline")); process_ns += ns
+                        if flow_kind == "blocks":
+                            ns, res = invoke(evm(path, encoding, "blocks")); process_ns += ns
                             route = next(r for r in rows(res.stdout) if r["record"] == "function" and r["detail"]["selector"] == "1ba64846")["id"]
                         elif flow_kind.startswith("search"):
                             flow_query = query if flow_kind == "search" else ["--kind", "number" if flow_kind == "search_number" else "bytes", "--query", "7" if flow_kind == "search_number" else "07"]
                             ns, res = invoke(evm(path, encoding, "strings", *flow_query)); process_ns += ns
                             literal = next(r for r in rows(res.stdout) if r["record"] == (kind if flow_kind == "search" else "literal"))
-                            ns, res = invoke(evm(path, encoding, "refs", "--id", literal["id"])); process_ns += ns
-                            route = next(r for r in rows(res.stdout) if r["record"] in ["literal_reference", "data_reference"])["context_id"]
+                            ns, res = invoke(evm(path, encoding, "xref", "--at", literal["at"])); process_ns += ns
+                            route = next(r for r in rows(res.stdout) if r["record"] in ["literal_reference", "data_reference"])["context_at"]
                         else:
-                            ns, res = invoke(evm(path, encoding, "outline")); process_ns += ns
+                            ns, res = invoke(evm(path, encoding, "interface")); process_ns += ns
                             unit = next(r for r in rows(res.stdout) if r["record"] == "function" and r["detail"]["selector"] == "1ba64846")
                             block = next(r for r in unit["detail"]["blocks"] if r["detail"]["shared"])
                             assert decoded[block["detail"]["decoded_start"]] == 0x5b
-                            ns, res = invoke(evm(path, encoding, "refs", "--id", block["id"])); process_ns += ns
-                            route = next(r for r in rows(res.stdout) if r["record"] == "code_reference" and r["detail"]["context_kind"] == "function")["context_id"]
+                            ns, res = invoke(evm(path, encoding, "xref", "--at", block["at"])); process_ns += ns
+                            route = next(r for r in rows(res.stdout) if r["record"] == "code_reference" and r["detail"]["context_kind"] == "function")["context_at"]
                         ns, fetched = invoke(context(path, encoding, route)); process_ns += ns
                         row = json.loads(fetched.stdout); original(row, path, sample, encoding)
                         assert row["detail"]["reconstruction"]["status"] == "success"
                         durations.append(time.perf_counter_ns()-start); command_sums.append(process_ns)
-                        evidence = {"context_id": route, "fetch_sha256": digest(fetched.stdout), "fetch_bytes": len(fetched.stdout), "status": row["detail"]["reconstruction"]["status"]}
+                        evidence = {"context_at": route, "fetch_sha256": digest(fetched.stdout), "fetch_bytes": len(fetched.stdout), "status": row["detail"]["reconstruction"]["status"]}
                     report["flows"].append({"sample": sample, "encoding": encoding, "kind": flow_kind, "fresh_processes_per_flow": 2 if flow_kind == "outline" else 3, "includes_route_parsing_and_evidence_validation": True, "command_sum_ns": command_sums, "last_evidence": evidence, **statistics_for(durations)})
             for verb in ["analyze", "interface", "storage", "disassemble", "basic-blocks", "cfg", "metadata"]:
                 argv = evm(path, encoding, verb)
@@ -214,9 +216,9 @@ def main():
     for path in [original_path, padded]:
         outline = rows(invoke(evm(path, "raw", "outline"))[1].stdout)
         unit = next(r for r in outline if r["record"] == "function" and r["detail"]["selector"] == "1ba64846")
-        data = measure(f"scale/{path.name}/addSeven", context(path, "raw", unit["id"]), "evm_informational")
+        data = measure(f"scale/{path.name}/addSeven", context(path, "raw", unit["at"]), "evm_informational")
         row = json.loads(data)
-        _, prof = invoke(context(path, "raw", unit["id"]) + ["--perf"])
+        _, prof = invoke(context(path, "raw", unit["at"]) + ["--perf"])
         analysis = next(json.loads(l) for l in prof.stderr.splitlines() if json.loads(l)["scope"] == "analysis")
         scale.append({"input_bytes": path.stat().st_size, "input_sha256": digest(path.read_bytes()), "instructions": row["detail"]["instructions"], "reconstruction": row["detail"]["reconstruction"], "counters": analysis["counters"], "output_bytes": len(data)})
     assert scale[0]["instructions"] == scale[1]["instructions"] and scale[0]["reconstruction"] == scale[1]["reconstruction"]
@@ -230,8 +232,8 @@ def main():
     pyc = ROOT / "tests/corpus/pyc/matrix/3.13.2/email-policy.hash-checked.pyc"
     controls = []
     jrows = rows(invoke([str(binary), "js", "find", str(js), "--string", "Expected a function"])[1].stdout)
-    js_id = next(r for r in jrows if r["record"] == "match")["context_id"]
-    controls.extend([("js/find", ["js", "find", str(js), "--string", "Expected a function"]), ("js/get", ["js", "get", str(js), "--id", js_id])])
+    js_id = next(r for r in jrows if r["record"] == "match")["context_at"]
+    controls.extend([("js/find", ["js", "find", str(js), "--string", "Expected a function"]), ("js/get", ["js", "get", str(js), "--at", js_id])])
     jrows = rows(invoke([str(binary), "jar", "outline", str(jar), "--class", "com/google/gson/GsonBuilder", "--method", "serializeNulls"])[1].stdout)
     method_id = next(r for r in jrows if r["record"] == "method")["id"]
     controls.extend([("jvm/outline", ["jar", "outline", str(jar), "--class", "com/google/gson/GsonBuilder", "--method", "serializeNulls"]), ("jvm/get-method", ["jar", "get-method", str(jar), method_id])])

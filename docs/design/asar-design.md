@@ -104,7 +104,7 @@ real protected application packages.
 
 ## MCP projection
 
-`asar_list`/`asar_extract` reuse the same index and extraction implementation.
+`asar_entries`/`asar_extract` reuse the same index and extraction implementation.
 `list` projects header/records/summary without reading unrelated unpacked
 dependencies. `open`/`extract` capture declared dependencies and validate roots and
 lengths; links are not followed. `extract` keeps the original receipt with

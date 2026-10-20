@@ -144,9 +144,9 @@ def main():
     pack(archive, {"main.js": js.read_bytes()})
     jar = ROOT / "tests/corpus/jvm/gson-2.11.0.jar"
     workloads += [
-        ("unaffected_js_outline", js, ["js", "outline", js], False, False, ()),
-        ("unaffected_asar_list", archive, ["asar", "list", archive], True, False, ()),
-        ("unaffected_jar_outline", jar, ["jar", "outline", jar, "--class", "com/google/gson/GsonBuilder"], False, False, ()),
+        ("unaffected_js_entities", js, ["js", "entities", js], False, False, ()),
+        ("unaffected_asar_entries", archive, ["asar", "entries", archive], True, False, ()),
+        ("unaffected_jar_outline", jar, ["jar", "methods", jar, "--class", "com/google/gson/GsonBuilder"], False, False, ()),
     ]
     if args.case:
         available = {case[0] for case in workloads}
