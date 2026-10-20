@@ -15,17 +15,27 @@ RXD=./target/debug/rxd
 DEMO=target/demo/asar
 mkdir -p "$DEMO"
 python3 -B - <<'PY'
-import importlib.util
+import json, struct
 from pathlib import Path
-spec = importlib.util.spec_from_file_location('asar_benchmark', 'benches/asar.py')
-module = importlib.util.module_from_spec(spec)
-import sys
-sys.path.insert(0, 'benches')
-spec.loader.exec_module(module)
-module.pack(Path('target/demo/asar/app.asar'), {
+files = {
     'main.cjs': Path('tests/fixtures/example.js').read_bytes(),
     'addon.node': b'\x7fELF\0\xff\x80native',
-}, {'decoy': {'offset': str((1 << 53)-1-(1 << 30)), 'size': 1 << 30}})
+}
+tree, data = {"files": {}}, bytearray()
+for entry, source in sorted(files.items()):
+    node = tree
+    parts = entry.split('/')
+    for part in parts[:-1]:
+        node = node["files"].setdefault(part, {"files": {}})
+    node["files"][parts[-1]] = {"size": len(source), "offset": str(len(data))}
+    data.extend(source)
+# One artificial 1 GiB entry the archive does not hold: the index claims it, no payload.
+tree["files"]["decoy"] = {"size": 1 << 30, "offset": str((1 << 53) - 1 - (1 << 30))}
+header = json.dumps(tree, separators=(",", ":")).encode()
+payload = (len(header) + 7) // 4 * 4
+Path('target/demo/asar/app.asar').write_bytes(
+    struct.pack('<IIII', 4, payload + 4, payload, len(header))
+    + header + bytes(payload - 4 - len(header)) + data)
 PY
 ASAR="$DEMO/app.asar"
 ```
@@ -99,7 +109,7 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 ```sh
 "$RXD" asar entries "$ASAR" --jsonl | head
 "$RXD" asar extract "$ASAR" --at main.cjs -o "$DEMO/profile-main.cjs" --perf
-python3 -B benches/asar.py --samples 20 --output target/benchmarks/asar
+# The ASAR runner was removed; see benches/README.md "Removed per-backend runners".
 ```
 
 Defaults: header 8 MiB, 10,000 container entries, 4,096 UTF-8 path bytes. Input defaults

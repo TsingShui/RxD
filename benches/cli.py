@@ -51,7 +51,7 @@ def generate(path, requested_bytes, needle, syntax="auto"):
     target = count // 2
     offset = 0
     target_span = None
-    refs_byte = None
+    xref_byte = None
     definition_expected = None
     hasher = hashlib.sha256()
     with path.open("wb") as output:
@@ -69,7 +69,7 @@ def generate(path, requested_bytes, needle, syntax="auto"):
             hasher.update(block)
             if i == target:
                 target_span = [offset, offset + len(block) - 1]
-                refs_byte = offset + len(f"function f{i}(")
+                xref_byte = offset + len(f"function f{i}(")
                 declaration_start = offset + block.index(b"marker=")
                 initializer_start = declaration_start + len(b"marker=")
                 declaration_end = initializer_start + len(marker.encode())
@@ -88,7 +88,7 @@ def generate(path, requested_bytes, needle, syntax="auto"):
         "requested_bytes": requested_bytes, "input_bytes": path.stat().st_size,
         "source_id": hasher.hexdigest(), "expected_entities": count * 2 + 1,
         "target_span": target_span, "path": str(path),
-        "refs_byte": refs_byte, "refs_identifier": "x",
+        "xref_byte": xref_byte, "xref_identifier": "x",
         "definition_expected": definition_expected,
         "context_expected": {"kind": "variable_declarator", "start": definition_expected["declaration"]["start"],
                              "end": definition_expected["declaration"]["end"],
@@ -258,7 +258,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         ("entities", command("entities")),
         ("find", command("find", ["-f", needle])),
         ("locate", command("locate", ["--byte", str(locate_byte)])),
-        ("get", command("slice", ["--at", entity_id])),
+        ("slice", command("slice", ["--at", entity_id])),
         ("symbols", command("symbols")),
         ("symbols_within", command("symbols", ["--within", entity_id])),
     ]
@@ -293,12 +293,12 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             "measurement": "raw UTF-8 source bytes; no token estimate",
         }
         cases.extend([
-            ("get_symbol", command("slice", ["--at", symbol_id])),
-            ("get_symbol_json", command("slice", ["--at", symbol_id, "--json"])),
-            ("get_symbol_parent", command("slice", ["--at", parent_id])),
+            ("slice_symbol", command("slice", ["--at", symbol_id])),
+            ("slice_symbol_json", command("slice", ["--at", symbol_id, "--json"])),
+            ("slice_symbol_parent", command("slice", ["--at", parent_id])),
         ])
     else:
-        manifest.setdefault("cases", []).append({"name": "get_symbol", "status": "not_applicable",
+        manifest.setdefault("cases", []).append({"name": "slice_symbol", "status": "not_applicable",
             "reason": "No independently selected source declaration for this input."})
     context_expected = manifest.get("context_expected")
     context_id = matches[0].get("context_at") if matches else None
@@ -331,22 +331,22 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             "expectation": "independent AST/generator" if context_expected is not None else "CLI span and byte consistency only",
             "selection": "first supported literal context, otherwise independent parameter",
         }
-        cases.extend([("get_context", command("slice", ["--at", context_id])),
-                      ("get_context_json", command("slice", ["--at", context_id, "--json"]))])
+        cases.extend([("slice_context", command("slice", ["--at", context_id])),
+                      ("slice_context_json", command("slice", ["--at", context_id, "--json"]))])
         if matches and matches[0].get("context_id"):
-            cases.append(("find_context_get", None))
+            cases.append(("find_context_slice", None))
     else:
-        manifest.setdefault("cases", []).append({"name": "get_context", "status": "not_applicable",
+        manifest.setdefault("cases", []).append({"name": "slice_context", "status": "not_applicable",
             "reason": "The selected position has no supported local syntax context."})
-    if manifest.get("refs_byte") is not None:
-        cases.append(("refs_byte", command("xref", ["--byte", str(manifest["refs_byte"])])))
+    if manifest.get("xref_byte") is not None:
+        cases.append(("xref_byte", command("xref", ["--byte", str(manifest["xref_byte"])])))
     else:
-        manifest.setdefault("cases", []).append({"name": "refs_byte", "status": "not_applicable",
+        manifest.setdefault("cases", []).append({"name": "xref_byte", "status": "not_applicable",
             "reason": "No independently selected binding offset for this input."})
     if matches:
-        cases.append(("find_get", None))
+        cases.append(("find_slice", None))
     else:
-        manifest.setdefault("cases", []).append({"name": "find_get", "status": "not_applicable",
+        manifest.setdefault("cases", []).append({"name": "find_slice", "status": "not_applicable",
             "reason": "The needle is encrypted; static literal search cannot recover its runtime value. Structural queries use an independently selected entity."})
     if rg:
         cases.append(("rg", [rg, "--no-config", "--color", "never", "--no-heading", "-boF", "--", needle, str(path)]))
@@ -357,7 +357,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         manifest.setdefault("cases", []).append(entry)
 
         def execute(profiled=False):
-            if name not in ("find_get", "find_context_get"):
+            if name not in ("find_slice", "find_context_slice"):
                 args = argv + (["--perf"] if profiled and name != "rg" else [])
                 sample, output = run_command(args, options.timeout)
                 if sample["timed_out"] or sample["exit_code"] not in ([0, 1] if name == "rg" else [0]):
@@ -385,10 +385,10 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         try:
             initial, output = execute()
             entry["initial_case_sample"] = initial
-            if name in ("find", "entities", "refs_byte", "symbols", "symbols_within"):
+            if name in ("find", "entities", "xref_byte", "symbols", "symbols_within"):
                 records = jsonl(output, manifest["source_id"])
-                if name == "refs_byte":
-                    if records[0]["detail"].get("resolution") != "resolved" or records[0]["detail"]["selected"]["name"] != manifest["refs_identifier"]:
+                if name == "xref_byte":
+                    if records[0]["detail"].get("resolution") != "resolved" or records[0]["detail"]["selected"]["name"] != manifest["xref_identifier"]:
                         raise RuntimeError("independent binding query did not resolve")
                     expected = manifest.get("refs_expected")
                     if expected is not None:
@@ -409,31 +409,31 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
                     ids = [row["at"] for row in records[1:-1] if row["record"] == "symbol"]
                     if len(ids) != len(set(ids)):
                         raise RuntimeError("symbol identities are not unique")
-                    if name == "symbols" and manifest.get("refs_byte") is not None:
+                    if name == "symbols" and manifest.get("xref_byte") is not None:
                         symbol = next(row for row in records[1:-1]
-                                      if row["record"] == "symbol" and row["start"] == manifest["refs_byte"])
-                        if symbol["detail"]["name"] != manifest["refs_identifier"] or symbol["detail"]["relation"] != "declared":
+                                      if row["record"] == "symbol" and row["start"] == manifest["xref_byte"])
+                        if symbol["detail"]["name"] != manifest["xref_identifier"] or symbol["detail"]["relation"] != "declared":
                             raise RuntimeError("symbol mismatch against independently selected binding")
                 if name == "entities":
                     manifest["observed_entities"] = len(records) - 2
                 if name == "entities" and manifest.get("expected_entities") is not None:
                     if len(records) - 2 != manifest["expected_entities"]:
                         raise RuntimeError("entities returned an unexpected structure count")
-            elif name in ("get_context", "find_context_get") and output != context_original:
+            elif name in ("slice_context", "find_context_slice") and output != context_original:
                 raise RuntimeError("local context extraction changed original bytes")
             elif name == "get_context_json":
                 if json.loads(output) != context_metadata:
                     raise RuntimeError("local context metadata changed from validated setup")
-            elif name == "get_symbol" and output != definition_original:
+            elif name == "slice_symbol" and output != definition_original:
                 raise RuntimeError("binding declaration extraction changed original bytes")
             elif name == "get_symbol_parent" and output != parent_original:
                 raise RuntimeError("binding parent extraction changed original bytes")
-            elif name == "get_symbol_json":
+            elif name == "slice_symbol_json":
                 binding = json.loads(output)
                 if (binding["detail"].get("complete") is not True or binding["detail"]["declaration"] != definition_expected["declaration"]
                         or binding["detail"]["source"].encode() != definition_original):
                     raise RuntimeError("binding metadata differs from independent declaration expectation")
-            elif name in ("get", "find_get") and output != original:
+            elif name in ("slice", "find_slice") and output != original:
                 raise RuntimeError("source extraction changed original bytes")
             elif name == "locate" and json.loads(output)["detail"]["entity"]["at"] != entity_id:
                 raise RuntimeError("locate disagrees with find/get")
@@ -450,7 +450,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             if name != "rg":
                 entry["profiles"] = [verified(True) for _ in range(options.profile_samples)]
                 for sample in entry["profiles"]:
-                    expected = 4 if name in ("find_get", "find_context_get") else 2
+                    expected = 4 if name in ("find_slice", "find_context_slice") else 2
                     if (len(sample.get("perf", [])) != expected
                             or any(r.get("perf_version") != 1 or r.get("status") != "ok" for r in sample["perf"])):
                         raise RuntimeError("missing or invalid perf sidecar")
@@ -494,7 +494,7 @@ def render_markdown(report):
         context = fixture.get("context_extraction")
         if context:
             lines.append(f"| {fixture.get('name', Path(fixture['path']).name)} | {context['kind']} | {context['context_bytes']} | {context['entity_bytes']} | {context['output_reduction_proportion']:.2%} |")
-    lines += ["", "RSS is the largest individual process high-water mark in the waited process tree, not simultaneous total tree memory. Published library artifacts are not a production business application's complete bundle; generated transformations are labeled separately. Synthetic scale inputs are not evidence of real bundle performance.", "", "`rg` searches raw bytes and returns offsets; `find` searches decoded literals and returns structured records. These outputs and capabilities differ. Encrypted needles produce complete zero-match results; find_get is not applicable and structural get/locate use an independent entity selection.", "", "## Instrumented phase medians", "", "These diagnostics are collected separately from headline latency samples.", "", "| Input | Case / command | Scope | Stage | Median ms |", "| --- | --- | --- | --- | ---: |"]
+    lines += ["", "RSS is the largest individual process high-water mark in the waited process tree, not simultaneous total tree memory. Published library artifacts are not a production business application's complete bundle; generated transformations are labeled separately. Synthetic scale inputs are not evidence of real bundle performance.", "", "`rg` searches raw bytes and returns offsets; `find` searches decoded literals and returns structured records. These outputs and capabilities differ. Encrypted needles produce complete zero-match results; a find-then-slice workflow is not applicable and structural slice/locate use an independent entity selection.", "", "## Instrumented phase medians", "", "These diagnostics are collected separately from headline latency samples.", "", "| Input | Case / command | Scope | Stage | Median ms |", "| --- | --- | --- | --- | ---: |"]
     for fixture in report["fixtures"]:
         for case in fixture.get("cases", []):
             for profile in case.get("profile_summary", []):
@@ -606,7 +606,7 @@ def main():
                    "file_cache": "primed by generation/setup; not flushed or controlled",
                    "sink": "temporary files; serialization and writes included in child wall time",
                    "memory": "wait4 largest individual process high-water mark; not simultaneous tree RSS",
-                   "workflow": "find_get/find_context_get include ID decoding, routing and output capture between fresh CLI processes",
+                   "workflow": "find_slice/find_context_slice include ID decoding, routing and output capture between fresh CLI processes",
                    "p95": "nearest rank; fewer than 20 samples make p95 the maximum",
                    "latency_instrumented": False,
                    # One budget table (rxd_core::Budget) owns every ceiling; benchmarks
@@ -646,7 +646,7 @@ def main():
                 if query is not None:
                     if query["source_id"] != source_id or query["resolution"] != "resolved":
                         raise ValueError("invalid independent refs expectation for corpus")
-                    manifest.update(refs_byte=query["byte"], refs_identifier=query["identifier"],
+                    manifest.update(xref_byte=query["byte"], xref_identifier=query["identifier"],
                                     refs_expected=query["references"])
                 definition = definition_queries.get(case["name"])
                 if definition is not None:

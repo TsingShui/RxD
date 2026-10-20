@@ -68,19 +68,19 @@ Generated files and prepared IDs warm the file cache; the script does not clear 
 caches, and the initial sample is not a cold-file-cache claim. P95 uses nearest rank;
 below 20 samples it equals the maximum.
 
-Coverage includes `outline`, `find`, `locate`, raw `get`, single-file `refs --byte`,
-`symbols`, `symbols --within`, raw/JSON symbol declaration get and its containing
-structure, raw/JSON local-fragment get, find → context get, applicable `find → get`,
-and `rg -boF`. Preparation validates real IDs and original fragments; outline/find/
+Coverage includes `entities`, `find -f`, `locate`, raw `slice`, single-file `xref --byte`,
+`symbols`, `symbols --within`, raw/JSON symbol declaration slice and its containing
+structure, raw/JSON local-fragment slice, find → context slice, applicable find → slice,
+and `rg -boF`. Preparation validates real IDs and original fragments; entities/find/
 locate check completeness, structure counts or entity identity; later samples check
 output consistency. Full workflows include ID decoding, routing and two process calls,
 and are also reported as sums of command time. RC4 scenarios expect zero plaintext hits
-and mark find→get not applicable; structural queries use independent entity
+and mark find→slice not applicable; structural queries use independent entity
 expectations and are not described as recovering business functions. `rg` searches raw
 text and returns offsets; `find` searches decoded literals and returns structures; they
 are not equivalent queries.
 
-`refs_byte` uses independent Acorn identifier positions/references from the adjacent
+`xref_byte` uses independent Acorn identifier positions/references from the adjacent
 `refs-expectations.json` and checks resolved state, name, ranges and read/write flags;
 authored inputs use generator-known local parameters. Custom inputs without refs
 expectations mark the scenario not applicable rather than guessing. Typed manifests use
@@ -96,49 +96,27 @@ limits are never silently raised. `--max-input-bytes`, `--max-entities`,
 (default 1,000,000, passed to refs/symbols/get; get only indexes symbol paths) are
 reported. Each call has a 120-second timeout (`--timeout`).
 
-`get_symbol/get_symbol_json/get_symbol_parent` use independent Acorn declarations from
+`slice_symbol/slice_symbol_json/slice_symbol_parent` use independent Acorn declarations from
 `definitions-expectations.json`: raw symbol, declarator, kind and initializer ranges must
 match exactly. Authored inputs use a generator-known marker; custom inputs without
 expectations are not applicable. Reports record declaration bytes, containing-structure
 bytes and reduction ratio. The JS production sample deliberately chooses the largest
 containing/declaration ratio among unique 32–2048-byte bindings to demonstrate extraction
 benefit; it is not an average task or token claim. Typed manifests use the first
-initialized identifier declaration; without one the scenario is not applicable. All get
+initialized identifier declaration; without one the scenario is not applicable. All slice
 paths still parse, validate and output completely without a resident index.
 
-`get_context/get_context_json/find_context_get` use independent Acorn local ancestor
+`slice_context/slice_context_json/find_context_slice` use independent Acorn local ancestor
 ranges/parents from `contexts-expectations.json`, choosing the first literal hit;
 zero-hit corpora use independent parameter positions only for get_context and do not run
-find_context_get or recover encrypted literals. Authored inputs use a known marker's
+find_context_slice or recover encrypted literals. Authored inputs use a known marker's
 declarator and variable declaration; custom inputs only check returned span/byte
 consistency and the report states the verification source. Workloads are timed
-separately; the full find_context_get includes two fresh processes, ID routing and real
+separately; the full find_context_slice includes two fresh processes, ID routing and real
 output. Reports also list fragment and containing-structure raw bytes for each selected
 sample, not average task/token benefit.
 
 ## 150 ms design gate
-
-PYC decompilation: `python3 benches/pyc.py --input /path/to/module.pyc` (default
-`--command decompile`). Static code navigation uses `--command outline`, constant search
-`--command strings`, and literal/hex filters with repeated
-`--query-arg=--contains --query-arg=URL`. Name references use `--command refs
---query-arg=--name --query-arg=node`; constant XREF uses `--command refs
---query-arg=--const-id --query-arg="$CONST_ID"` where CONST_ID comes from the same
-input's strings response. The strings→refs→get-code workflow is timed separately
-including three fresh processes, JSON parsing and returned-ID routing. `--input` is
-repeatable and `--source` records origin. Each file is prepared once, then 20 fresh
-CLI/worker samples are checked for completeness/output consistency. Raw samples,
-median/P95, >150 ms share, input/output hashes, hardware and cache conditions go to
-`target/benchmarks/pyc/results.json`. Fixtures are regression diagnostics only;
-acceptance uses sourced real modules and never treats pycdc upstream measurements as
-rxd results.
-
-JVM: `python3 benches/jvm.py` measures pinned Gson 2.11.0 and Rhino 1.7.15 JARs after
-`cargo build --release`; the script does not install/run Java tools. Each workload has 30
-fresh CLI/worker samples covering whole-JAR outline, selected-method Java/original
-bytecode and real atomic file output. Reports, samples, input/binary hashes, hardware and
-cache conditions go to ignored `target/benchmarks/jvm/`; samples are never pooled across
-workloads.
 
 Within backend scope, ordinary representative release CLI queries must complete within
 **150 ms** in most cases. This is complete fresh-process wall time: process startup,
@@ -227,133 +205,27 @@ structured_contexts/edges and structuring_work; other backends/commands/raw use 
 decompile fills counters.work/ast_depth and resource_limits; other backends null.
 Instrumentation is off by default and reads no clock per node/record.
 
-## ASAR
+## Removed per-backend runners
 
-```sh
-python3 -B benches/asar.py --samples 20 --cpu-model 'Apple M3 Pro' --output target/benchmarks/asar
-```
+`asar.py`, `html.py`, `jvm.py`, `pyc.py`, `pyc_versions.py`, `pyc_closure.py`,
+`evm.py`, `dex.py`, `dotnet.py`, `dotnet_ilspy.py`, `dotnet_class.py`,
+`dotnet_closure.py`, `dotnet_coverage.py`, `dotnet_refs.py` and `dotnet_strings.py`
+were written against a CLI generation this repository no longer has: they invoke
+`list`, `outline`, `refs`, `js get`, positional fetch arguments, `--id`, `--contains`,
+`--token`, `--il` and `--bytecode`, and read rows through `id`. None of them could run,
+so they were deleted instead of being kept as measurement evidence that does not
+reproduce.
 
-Builds release by default. It uses pinned jQuery/Lodash/Vue production JS plus explicitly
-artificial binary bytes to generate an ordinary ASAR and one with 100 fake 1 GiB entries.
-Inflated entries follow asarmor `createBloatPatch` offset/size shape without payloads and
-do not run the protection tool or sample. It measures list and extract of each original
-file, checks all index entries/range_valid/range_error, byte-identical output, receipt
-SHA-256 and atomic write, and measures extract → js find (two fresh processes, receipt
-decode/routing) against independent expectations.
+The measurement contract above is unchanged and still applies to every backend: fresh
+processes, complete stdout/stderr, real output writes, raw samples with median and
+nearest-rank P95, the >150 ms share, input/output sizes and hashes, hardware and cache
+conditions, and validation after timing. A backend that needs a runner gets one written
+against the current command surface (`entries`/`classes`/`codes`, `--at`/`--from`,
+`-f`/`--case`, `--name`) rather than a resurrected copy of the removed generation.
 
-Each workload is validated/warmed once, then 20 samples with instrumentation off; three
-`--perf` samples are separate. Real atomic file writes and stdout receipts count in child
-wall time; checks run after timing. Generated/prepared files warm OS caches; caches are
-not cleared. Reports keep raw samples, median/P95, >150 ms share, input/output bytes,
-origin, hashes, hardware and cache conditions. `--binary` skips the build and marks
-custom; `--cpu-model` records a separately verified host CPU. Outputs go to ignored
-`target/benchmarks/asar/` with app.asar, bloat.asar, prepared files, results.json and
-results.md. The corpus is an artificial container, not a real protected application;
-real apps, very large archives, installers and other packing schemes need separate
-validation.
-
-ASAR perf uses backend `asar`: container handles the header, read/hash the target bytes,
-serialize the metadata, write the atomic file plus receipt. Extract
-analysis.output_bytes includes file plus receipt; CLI.output_bytes is receipt only;
-`list -o` reports zero CLI output. input_bytes excludes the index header. There is no
-AST/semantic/directory-recursion stage.
-
-## HTML
-
-```sh
-python3 -B benches/html.py --samples 20 --cpu-model 'Apple M3 Pro' --output target/benchmarks/html
-```
-
-Builds release by default; `--binary` skips and marks custom. Inputs include authored
-ordinary pages (document, entities/duplicate attributes, inline script), generated
-large/markup-dense pages (20,000 flat elements, 500 levels), and pinned real npm pages
-when `tests/corpus/node_modules` is installed (`tslib` 2.8.1, `terser` 5.51.2
-`tools/props.html`, `string-template` 1.0.0, `md5` 2.3.0; versions from
-`tests/corpus/package-lock.json`, per-file SHA-256), labeled corpus/authored/synthetic.
-`node_modules` is gitignored (`npm ci`); when absent the script records a skip and tests
-only authored/synthetic pages. The repository embeds no production HTML and uses no
-network; pages are not executed and external resources are not loaded. It measures list
-and small-script `--content` extract, checks header identity, lexical_profile, closed
-record fields, ID/container hash, receipt SHA-256 and atomic write, and measures
-list → returned ID → extract → rxd js outline (three fresh processes, ID routing, one
-atomic write).
-
-Each workload is validated/warmed once, then 20 samples with instrumentation off; three
-`--perf` samples are separate. Reports keep raw samples, median/nearest-rank P95,
->150 ms share, input/output bytes, origin, hashes, hardware and cache conditions.
-Ordinary representative list/extract must meet the 150 ms fresh-process requirement;
-tokenizer microbenchmarks are not acceptance. Outputs go to ignored
-`target/benchmarks/html/` with pages, prepared files, results.json and results.md. Pinned
-npm pages are real package files but not a complete production site; authored/synthetic
-pages are not real protected markup.
-
-HTML perf uses backend `html` with read/hash/utf8/tokenize/query/serialize/write.
-Extract analysis.output_bytes includes artifact plus receipt; CLI.output_bytes is the
-receipt; `list -o` reports zero CLI output.
-
-## DEX
-
-```sh
-python3 -B benches/dex.py --input /authorized/app.apk --class com.example.Main ...
-```
-
-Uses explicitly supplied authorized APK/DEX inputs, fresh CLI processes and per-query
-samples, median/P95, >150 ms share, input hashes/sizes, hardware and cache conditions.
-It covers ordinary index/reference/manifest/member queries and whole-class
-decompilation separately. rasc schema-v1 byte comparisons are not used for schema-v2
-JSON. Whole-class decompilation exceptions need a scoped input hash, selected target,
-release measurements and approval; ordinary index/reference queries are not exempt.
-
-## .NET
-
-Build the pinned NativeAOT engine with `benches/ilspy/build-native.sh` (or use a verified
-`prebuilt/ilspy` bundle), then `cargo build --release --features csharp-decompiler`.
-Cargo never calls dotnet. Set `RXD_REFDIR` to trusted .NET 10.0.12 framework metadata
-when using an external library; see [ilspy/README.md](ilspy/README.md). Current local
-measurements are macOS-only.
-
-- `benches/dotnet.py` / `benches/dotnet_ilspy.py` measure the actual CLI and pinned
-  v11.1.0.9782 engine with at least 20 fresh CLI/worker processes per workload. They
-  check original IL/EH, retain C# and syntax-sugar evidence, and record
-  median/P95/>150 ms, input/output sizes, input/binary/dylib hashes, hardware and cache
-  conditions. WindowsBase Accessibility cross-assembly degradation is a correctness
-  scenario, not C# latency evidence.
-- `benches/dotnet_strings.py` validates complete string navigation against independent
-  `#US`/PEReader expectations, unfiltered and filtered, with stdout/atomic-file variants
-  and a separate three-process strings → method/class IL workflow.
-- `benches/dotnet_refs.py` uses an independent selective PEReader method/field/type
-  operand oracle for raw and semantic XREF, stdout and atomic files, with nonzero
-  complete site sets and schema-v2 output.
-- `benches/dotnet_coverage.py` samples methods at even MethodDef-token intervals and
-  records C# success/degradation reasons; success rate is not semantic correctness.
-
-Reports pin binary/input identity, every sample, median/P95/>150 ms, sizes, hardware and
-warm-cache conditions. Whole-class decompilation exceptions follow the two grounds in
-[AGENTS.md](../AGENTS.md#performance-requirements); the exact scope and bound must be
-recorded. Expected fallback and resource failures never count as successful latency
-evidence.
-
-## PYC
-
-`benches/pyc.py` covers decompile/outline/strings/name refs/constant refs/get-code with
-repeatable `--input` and `--query-arg`. `benches/pyc_versions.py` consumes the pinned
-six-version compile-only stdlib pack, audits independent source/PYC/raw/marshal oracle
-hashes, and checks original instructions/operands/cache/line/exception evidence per code
-body. It measures outline/strings/name refs/returned-ID small-target FETCH and existing
-decompile, with at least 20 fresh CLI/worker samples. `benches/pyc_closure.py` covers all
-30 actual stdlib modules, full/selected scopes and three returned-ID workflows, and
-requires a frozen release binary plus build-provenance JSON. `--smoke` tests one
-email-policy per format and is explicitly not full acceptance. Complete response token
-accounting requires a separately pinned tiktoken 0.12.0 environment and `o200k_base`
-cache; `--tokenizer-provenance` records package/encoding/cache hashes. Token accounting
-is not a Codex tokenizer or billing claim.
-
-Every workload keeps raw samples, median/nearest-rank P95, >150 ms count/share,
-input/output/binary hashes, hardware/cache conditions, target scales/perf and tokens.
-Command and workflow timings are separate; workflow totals add process launches, JSON
-routing and residual harness cost with no aggregate numeric bound. Failures/slow samples
-return non-zero while other rows continue; known incomplete source retains its own
-stdout/stderr/exit semantics and never counts as successful complete recovery.
+`benches/dotnet_strings_oracle.py` and `benches/pyc_oracle.py` are not runners: they
+derive independent `#US`/PEReader and PYC instruction expectations from inputs, and the
+surviving runners use them for validation.
 
 ## MCP
 
@@ -413,26 +285,3 @@ capture workload; existing CLI exemptions grant no implicit MCP capture/workflow
 exception. Synthetic ASAR/DEX/WABT modules stay labeled and cannot replace production
 measurements. EVM remains informational with no numeric gate.
 
-## EVM
-
-`benches/evm.py` uses two immutable release executables and records final source
-SHA-256 manifest, tracked diff, binary/Cargo.lock/Kuna pin, input/output hashes,
-hardware, load, cache, argv, per-sample wall time, median/P95/>150 ms share and separate
-perf stages/counters. Every command/workflow starts a fresh CLI/worker; workflow totals
-include ID parsing, routing, evidence checks and the sum of command wall time. EVM is
-informational only with no numeric gate.
-
-```sh
-python3 benches/evm.py --binary target/benchmarks/evm-final/rxd-final \
-  --baseline target/evm-baseline/rxd-baseline --samples 20 \
-  --output target/benchmarks/evm-final
-```
-
-The runner does not compile/deploy/execute input; it reads only the pinned corpus.
-Authored viaIR/legacy inputs are synthetic solc 0.8.26 compiler output; OpenZeppelin is
-a pinned 5.1.0 published library-source runtime and is not deployed mainnet bytecode.
-It checks seven native EVMole cases × three samples × raw/hex exact exit/stdout/stderr,
-actual returned-ID outline/SEARCH/XREF/default FETCH workflows, and that unrelated
-padding does not change selected raw instructions/reconstruction or selected
-reconstruction/structuring counters. Whole-input navigation and selected reconstruction
-costs are recorded separately.

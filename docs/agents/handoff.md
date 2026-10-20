@@ -180,8 +180,11 @@ them by name, which is why the module filter is not used as evidence for those t
 
 ## Known follow-ups (not in this goal)
 
-- `benches/evm.py` was migrated to `interface`/`blocks`/`xref`/`--at` and `[at]` keys and
-  compiles, but it has not been re-run against the release binary; EVM has no latency gate.
+- The per-backend bench runners (`asar`, `html`, `jvm`, `pyc`, `evm`, `dex`, `dotnet*`)
+  were deleted: they invoked removed commands (`list`, `outline`, `refs`, `js get`),
+  positional fetch arguments and removed fields, so none could run. `benches/cli.py`
+  (JS), `benches/mcp.py` and `benches/skill.py` remain current; a backend runner needs
+  rewriting against the current surface before any number from it can be quoted.
 - `src/query/mod.rs` still carries the MCP `status == 3 || 4 → NOT_FOUND/AMBIGUOUS`
   branch, which the unified DEX surface can no longer produce; `candidates` is documented as
   nullable rather than removed. Decide whether to delete it when the DEX `lookup_status`

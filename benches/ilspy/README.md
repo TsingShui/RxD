@@ -251,8 +251,9 @@ remain visible. Both selected successes and failures are retained. Synthetic
 fixtures and pinned upstream test artifacts are not broad independent production
 acceptance.
 
-The selected production class runner `benches/dotnet_class.py --csharp` keeps
-each workload's raw >150 ms proportion and records its applicable bound. Whole-
+A selected whole-class measurement keeps each workload's raw >150 ms proportion and
+records its applicable bound. The runner that used to do this was removed with the rest
+of the per-backend runners (`benches/README.md`). Whole-
 class/whole-function decompilation exceptions follow the two grounds in
 [AGENTS.md](../../AGENTS.md#performance-requirements); each exception must record
 its input hash, selected target, release measurements and numeric bound. Ordinary

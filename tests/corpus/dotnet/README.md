@@ -29,7 +29,8 @@ git clone https://github.com/ATRAPSLLC/dotscope target/dotnet-research/reference
 git -C target/dotnet-research/references/dotscope checkout 3028b1ab92ec1b0ad15f046b3b70d5ee82336a00
 benches/ilspy/build-native.sh osx-arm64
 export RXD_REFDIR="$HOME/.dotnet10/shared/Microsoft.NETCore.App/10.0.12"
-python3 benches/dotnet.py --cpu-model 'verified host CPU' --memory-gb 36
+# The runner that measured this corpus was removed (benches/README.md); reproduce
+# with fresh CLI processes against the commands in docs/demo/dotnet.md.
 ```
 
 The benchmark builds Rust release with `csharp-decompiler` and measures the
@@ -54,11 +55,9 @@ method tokens, exact IL hashes, no-body declarations and ordered EH. It comes
 from trusted System.Reflection.Metadata PEReader plus OpCodes operand descriptors,
 never rxd; the analyzed assembly is not loaded or executed.
 
-```sh
-python3 benches/dotnet_class.py --binary target/release/rxd \
-  --input target/dotnet-closure-corpus/newtonsoft-json-13.0.3/Newtonsoft.Json.dll \
-  --cpu-model 'verified host CPU' --memory-gb 36
-```
+`tests/dotnet/class_csharp.rs` loads this oracle and checks the same selected
+whole-class IL and C# through the CLI; the runner that measured it was removed
+(`benches/README.md`).
 
 This measures independent production outline → type ID and complete selected
 class IL to stdout/atomic files, at least 20 fresh-process samples per workload.
@@ -81,9 +80,7 @@ python3 benches/dotnet_strings_oracle.py \
   --input target/dotnet-closure-corpus/newtonsoft-json-13.0.3/Newtonsoft.Json.dll \
   --metadata-oracle target/dotnet-closure-corpus/newtonsoft-json-13.0.3/independent-all.json \
   --output tests/corpus/dotnet/string-expectations.json
-python3 benches/dotnet_strings.py --binary target/release/rxd \
-  --input target/dotnet-closure-corpus/newtonsoft-json-13.0.3/Newtonsoft.Json.dll \
-  --cpu-model 'verified host CPU' --memory-gb 36
+# Measurement now runs the same queries with fresh CLI processes (benches/README.md).
 ```
 
 Each unfiltered/filtered/direct query measures 20 fresh processes both to stdout
@@ -103,11 +100,8 @@ Scope/alias/generic broadening is covered separately by the original semantic
 fixture, not claimed from these production targets. The source/identity pins
 match the class oracle and runtime hashes above.
 
-```sh
-python3 benches/dotnet_refs.py --binary target/release/rxd \
-  --production target/dotnet-closure-corpus/newtonsoft-json-13.0.3/Newtonsoft.Json.dll \
-  --cpu-model 'verified host CPU' --memory-gb 36
-```
+The measurement runner was removed (`benches/README.md`); `tests/dotnet/` loads the
+same manifest and checks the same raw/semantic site sets through the CLI.
 
 Every ordinary raw/semantic stdout/atomic-file workload has at least 20 fresh
 CLI/worker processes and exact site-set hash, context IDs, output determinism,
@@ -128,13 +122,9 @@ byte-assembler E2E fixture, not claimed from these benchmark targets. Full stati
 metadata, trusted inspector source/hash and original-site oracles stay under
 ignored target; target assemblies are never loaded or executed.
 
-```sh
-python3 benches/dotnet_refs.py --binary target/release/rxd \
-  --manifest tests/corpus/dotnet/field-type-refs-expectations.json \
-  --production target/dotnet-closure-corpus/newtonsoft-json-13.0.3/Newtonsoft.Json.dll \
-  --cpu-model 'verified host CPU' --memory-gb 36 \
-  --output target/benchmarks/field-type-xref
-```
+The runner for this manifest was removed with the other per-backend runners
+(`benches/README.md`); `tests/dotnet/field_type_refs.rs` loads the same manifest and
+checks the same raw/semantic field and type site sets through the CLI.
 
 Each of six field/type workloads runs raw/semantic modes to stdout and atomic
 files with at least 20 fresh CLI/worker samples, nonzero exact sites, complete
@@ -154,7 +144,7 @@ every selected JsonReader method and original IL/EH. The independent original
 load offset, cross-checked with PEReader. Full exploratory oracle/source/build
 outputs stay under ignored target, not in the source corpus.
 
-`benches/dotnet_closure.py` consumes this manifest for both complete workflows;
+The removed closure runner consumed this manifest for both complete workflows;
 only navigation IDs returned by CLI records are passed to later queries. It
 requires successful method/class C# recovery before claiming component latency
 acceptance. The manifest's metadata tokens select independent expectations,

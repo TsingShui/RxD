@@ -181,7 +181,7 @@ single-file offline installation are covered by root CLI E2E. Small binary fixtu
 come from authorized handwritten generators. Existing backend/dependency regression
 tests remain; real APK tests stay explicit opt-in and a skip is not a pass.
 
-`benches/dex.py` measures fresh-process end-to-end wall time on explicitly supplied
+The DEX runner measured fresh-process end-to-end wall time on explicitly supplied
 authorized APK/DEX inputs and records per-query samples, median, P95, >150 ms share,
 input hashes/sizes, hardware and cache conditions. The 150 ms requirement applies to
 ordinary index/reference/manifest/member queries. Whole-class decompilation may exceed

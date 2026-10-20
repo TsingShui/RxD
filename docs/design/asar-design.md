@@ -96,7 +96,7 @@ the stdout receipt; `list -o` reports zero CLI output bytes. `entries` has no si
 `source_id`; `extract` uses the selected content identity. A worker is not an OS
 security sandbox.
 
-`benches/asar.py` measures ordinary ASARs and an ASAR with 100 fake 1 GiB entries,
+The ASAR runner measured ordinary ASARs and an ASAR with 100 fake 1 GiB entries,
 using fixed production JavaScript and explicitly artificial binary bytes. It covers
 `entries`, `extract` and `extract → js find` with fresh CLI/worker processes, real atomic
 writes and per-workload samples, median, P95 and >150 ms share. These fixtures are not

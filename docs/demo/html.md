@@ -122,16 +122,17 @@ selected by the Agent's syntax; arbitrary script content is not promised to pars
   "$RXD" html extract "$DEMO/page.html" --from - --content -o "$DEMO/inline.js"
 "$RXD" html extract "$DEMO/page.html" --at '<SCRIPT_AT>' --content \
   -o "$DEMO/profile-inline.js" --perf
-python3 -B benches/html.py --samples 20 --output target/benchmarks/html
+# The HTML runner was removed; see benches/README.md "Removed per-backend runners".
 ```
 
 Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
 4 GiB), 100,000 catalog nodes, 32 MiB output (extract is artifact plus receipt), lexical
 depth 512. `--perf` stages are read/hash/utf8/tokenize/query/serialize/write. Overflow
 returns `RESOURCE_LIMIT` and never truncates or silently skips nodes. Ordinary
-representative list/extract follows the 150 ms fresh-process rule; `benches/html.py`
-measures authored/synthetic and optional real npm pages, preserving samples, median/P95,
->150 ms share, sizes/hashes, hardware and cache conditions.
+representative list/extract follows the 150 ms fresh-process rule: fresh processes,
+preserved samples, median/P95, >150 ms share, sizes/hashes, hardware and cache
+conditions. The runner written for this backend predates the current command surface
+and was removed (see `benches/README.md`).
 
 ## MCP
 

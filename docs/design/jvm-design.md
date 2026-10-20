@@ -217,7 +217,7 @@ Trusted fixture Java is recompiled with `javac -proc:none` as an additional synt
 samples are not executed. This does not prove semantic equivalence. Production corpus
 and independent javap expectations are in `tests/corpus/jvm/README.md`.
 
-`benches/jvm.py` measures complete fresh CLI/worker wall time including real output,
+The JVM runner measured complete fresh CLI/worker wall time including real output,
 per-workload samples, median, P95, >150 ms share, input sizes/hashes, hardware and cache
 conditions. The 150 ms requirement applies; JVM adds no performance exception (rules in
 [AGENTS.md](../../AGENTS.md#performance-requirements)).

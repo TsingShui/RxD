@@ -106,7 +106,8 @@ large single module may use the "inherently large target" ground in
 [AGENTS.md](../../AGENTS.md#performance-requirements) with input hash, selected target,
 code-object count, native bytecode/instruction volume, output size, release measurements
 and a small-target control within 150 ms. Eligibility is not approval. There is no
-blanket PYC exception. Benchmarks/pins are in `benches/pyc.py`.
+blanket PYC exception. The PYC runner was removed with the other per-backend runners
+(`benches/README.md`); its pins and expectations live under `tests/corpus/pyc/`.
 
 ## Static formats and code identity
 
@@ -216,7 +217,7 @@ Independent offline oracle/provenance/generator hashes/licenses are in
 `tests/corpus/pyc/README.md`. E2E covers graphs, duplicate names, filters, shared/cyclic
 data, raw input, Unicode, original spans, shared-budget accounting (driven through the
 library because the CLI has no ceiling flag), schema, atomic output and header ranges.
-`benches/pyc.py --command codes` measures release codes on fresh processes.
+`pyc codes` is measured on release with fresh processes.
 
 ## Constant search
 
@@ -308,7 +309,7 @@ literals, duplicate definitions, container/co_consts multi-layer aliases with re
 raw input offsets, filters/zero results, schema, rename/new process/content changes,
 shared-budget accounting through the library and atomic output. Release measurements use
 real pinned stdlib
-modules; `benches/pyc.py --command strings` supports repeated `--query-arg`.
+modules; `pyc strings` takes repeatable `-f`/`--filter-hex`.
 
 ## Code FETCH
 

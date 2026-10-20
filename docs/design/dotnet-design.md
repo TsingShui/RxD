@@ -441,16 +441,18 @@ sizes and fresh-worker cost including dlopen/NativeAOT initialization. Release
 acceptance uses ordinary real assemblies and reports per-workload samples, median, P95,
 >150 ms share, sizes, hardware and cache conditions; artificial fixtures are boundary
 regressions only. Failed correctness/reconstruction results never prove decompiler
-performance. Benchmarks and pins are in `benches/dotnet.py` and
+performance. Pins live under `tests/corpus/dotnet/`; the retired runners are described
+in `benches/README.md` and
 [ADR 0009](../adr/0009-dotnet-ilspy-v11.md). The engine is pinned to v11.1.0.9782.
 Whole-function/class reconstruction may exceed 150 ms only under the third-party
 engine or inherently-large-target grounds in
 [AGENTS.md](../../AGENTS.md#performance-requirements); a small target must remain fast
 and any exception needs its own input hash, selected target, measurements and bound.
 
-`benches/dotnet_class.py` validates selected whole-class IL and C# using an independent
-Newtonsoft.Json 13.0.3 net6.0 DLL and PEReader expectations; `benches/dotnet_xref.py`
-and the field/type XREF runner use independent metadata expectations. `--perf` reports
+Whole-class IL/C# and XREF expectations are validated against independent metadata by the
+E2E suites in `tests/dotnet/`, on the same pins (`tests/corpus/dotnet/`). The runners that
+used to wrap those checks came from the retired CLI generation and were removed
+(`benches/README.md`). `--perf` reports
 stage timings separately from real serialization and stdout/atomic writes. C#
 reconstruction success rates from coverage runs do not prove correctness and are never
 inflated by filtering successful methods.
@@ -473,10 +475,11 @@ inflated by filtering successful methods.
   x86_64/arm64, Windows x86_64 and macOS arm64.
 - The marshal layer exports the C ABI above; Rust uses feature-gated `libloading` with
   each platform's native loader. See [ADR 0009](../adr/0009-dotnet-ilspy-v11.md).
-- `benches/dotnet.py` and `benches/dotnet_ilspy.py` measure the shipped native engine
-  through the real CLI. Each workload has at least 20 fresh processes; dylib identity,
-  C# evidence and original IL/EH preservation are recorded. Unexpected degradation or
-  a bound violation is reported, never counted as performance success.
+- The shipped native engine is measured through the real CLI with at least 20 fresh
+  processes per workload; dylib identity, C# evidence and original IL/EH preservation
+  are recorded. Unexpected degradation or a bound violation is reported, never counted
+  as performance success. The old runners were removed with the CLI generation they
+  targeted (`benches/README.md`).
 - Exception continuation rules cross-check Microsoft `leave`/`endfinally`; legal but
   unsupported cross-region jumps degrade completely.
 - Handwritten PE/CLI fixtures, independent IL expectations, generators and fixed-SDK

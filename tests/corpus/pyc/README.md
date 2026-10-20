@@ -109,10 +109,10 @@ Tuple order and original reference/code ranges are independently recorded;
 raw prefix/cache bytes and operand/line/exception expectations come from CPython
 format tools, never from rxd or the imported decompiler.
 
-`benches/pyc_versions.py` audits original artifact hashes, verifies every original
+The removed PYC runner audited original artifact hashes, verified every original
 body in all30 actual release modules against saved independent code/operand/
 location/exception expectations, checks name/literal navigation and measures
-outline/strings/refs/small returned-ID FETCH as separate workloads. Each command
+`codes`/`strings`/`xref`/returned-ID FETCH as separate workloads. Each command
 uses at least20 new CLI/worker processes; decompile exit/stdout is compared with
 an immutable prior binary and incomplete/failed outcomes stay explicit. Every
 sample and any failure/>150ms workload remain under ignored target; no source

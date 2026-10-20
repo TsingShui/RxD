@@ -59,9 +59,12 @@ The current layout is:
   parser expectations, and the WABT wasm-decompile differential suite;
   provenance and generation instructions are in `tests/corpus/README.md` and
   per-backend corpus READMEs.
-- `benches/`: per-backend end-to-end benchmarks (`cli.py`, `dex.py`,
-  `dotnet.py`, `jvm.py`, `asar.py`, …) and measurement/perf contracts in
-  `benches/README.md`.
+- `benches/`: end-to-end benchmarks (`cli.py` for JS, `mcp.py`, `skill.py`),
+  the pinned ILSpy build in `benches/ilspy/`, and measurement/perf contracts in
+  `benches/README.md`. The per-backend runners written for the earlier CLI
+  generation were removed; a backend that needs one gets it written against the
+  current surface (`entries`/`classes`/`codes`, `--at`/`--from`, `-f`/`--case`,
+  `--name`).
 - `docs/design/`: one `*-design.md` per backend plus the app, MCP and
   external-tools contracts, scope, command semantics, output contracts,
   resource constraints, and validation.

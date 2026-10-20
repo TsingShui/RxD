@@ -26,7 +26,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from mcp_client import Client, structured
-from pyc_versions import name_hits, validate_view
+from pyc_oracle import name_hits, validate_view
 from dotnet_strings_oracle import canonical_hash
 
 

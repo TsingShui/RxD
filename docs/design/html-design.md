@@ -218,7 +218,7 @@ artifact plus receipt and `CLI.output_bytes` is the stdout receipt; `list -o` re
 zero CLI output bytes. Extract `source_id` is the artifact identity; list `source_id`
 is the container hash.
 
-`benches/html.py` uses fixed authored pages (ordinary and synthetic large/markup-dense),
+The HTML runner used fixed authored pages (ordinary and synthetic large/markup-dense),
 plus pinned real npm pages when `tests/corpus/node_modules` exists (`tslib` 2.8.1,
 `terser` 5.51.2 `tools/props.html`, `string-template` 1.0.0, `md5` 2.3.0; versions from
 `tests/corpus/package-lock.json`, per-file SHA-256), labeled corpus/authored/synthetic.
