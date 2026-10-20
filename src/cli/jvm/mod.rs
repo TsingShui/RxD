@@ -6,6 +6,8 @@ use rxd_core::{Error, Result};
 use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
+use super::xref::{Anchor, Kind as XrefKind, Target, TargetArgs};
+
 #[derive(Subcommand)]
 pub enum Command {
     /// List the class metadata an archive defines as JSONL.
@@ -91,44 +93,11 @@ pub enum Command {
     /// Find code references to a string, type, method or field across all classes.
     Xref {
         input: PathBuf,
-        #[command(subcommand)]
-        kind: RefKind,
+        #[command(flatten)]
+        target: TargetArgs,
         #[command(flatten)]
         options: Options,
     },
-}
-
-#[derive(Subcommand)]
-pub enum RefKind {
-    /// Instructions loading a string literal containing VALUE (case-sensitive substring).
-    String { value: String },
-    /// Instructions referencing a type whose name contains NAME (case-sensitive substring).
-    Type { name: String },
-    /// Call sites of a method named NAME, optionally within owner classes matching --class.
-    Method {
-        name: String,
-        /// Owner class substring filter (case-sensitive).
-        #[arg(long)]
-        class: Option<String>,
-    },
-    /// Access sites of a field named NAME, optionally within owner classes matching --class.
-    Field {
-        name: String,
-        /// Owner class substring filter (case-sensitive).
-        #[arg(long)]
-        class: Option<String>,
-    },
-}
-
-impl RefKind {
-    fn query_json(&self) -> serde_json::Value {
-        match self {
-            Self::String { value } => json!({"kind":"string","value":value}),
-            Self::Type { name } => json!({"kind":"type","name":name}),
-            Self::Method { name, class } => json!({"kind":"method","name":name,"class":class}),
-            Self::Field { name, class } => json!({"kind":"field","name":name,"class":class}),
-        }
-    }
 }
 
 #[derive(Args)]
@@ -169,6 +138,96 @@ impl Listing {
             Self::Fields => "fields",
             Self::Methods => "methods",
         }
+    }
+}
+
+/// Owns the normalized class spellings a query borrows, so the query can be built from
+/// temporary strings without leaking them.
+struct Normalized {
+    owned: Vec<String>,
+}
+
+impl Normalized {
+    /// The internal spelling the constant pool holds (`com/google/gson/Gson`).
+    fn class(&mut self, class: &str) -> &str {
+        self.owned.push(rxd_jvm::normalize_class_name(class));
+        self.owned.last().expect("just pushed")
+    }
+
+    /// The descriptor spelling a type row prints (`Lcom/google/gson/Gson;`).
+    fn descriptor(&mut self, class: &str) -> &str {
+        if class.starts_with('[') {
+            self.owned.push(class.to_owned());
+        } else {
+            self.owned
+                .push(format!("L{};", rxd_jvm::normalize_class_name(class)));
+        }
+        self.owned.last().expect("just pushed")
+    }
+}
+
+/// The backend query a resolved target asks for.
+///
+/// The owner class is compared against internal names, so a descriptor or dotted spelling is
+/// normalized the same way `get-class` already accepts it.
+fn ref_query<'a>(target: &'a Target, names: &'a mut Normalized) -> rxd_jvm::RefQuery<'a> {
+    use rxd_jvm::{RefPattern, RefQuery};
+    match (&target.anchor, target.filter.as_deref()) {
+        (
+            Some(Anchor::Method {
+                class,
+                name,
+                descriptor,
+            }),
+            _,
+        ) => RefQuery::Method {
+            name: RefPattern::coordinate(name),
+            class: Some(RefPattern::coordinate(names.class(class))),
+            descriptor: Some(descriptor),
+        },
+        (
+            Some(Anchor::Field {
+                class,
+                name,
+                descriptor,
+            }),
+            _,
+        ) => RefQuery::Field {
+            name: RefPattern::coordinate(name),
+            class: Some(RefPattern::coordinate(names.class(class))),
+            descriptor: Some(descriptor),
+        },
+        (Some(Anchor::Type(name)), _) => {
+            RefQuery::Type(RefPattern::coordinate(names.descriptor(name)))
+        }
+        (Some(Anchor::String(value)), _) => RefQuery::String(RefPattern::coordinate(value)),
+        (None, Some(pattern)) => match target.kind {
+            XrefKind::String => RefQuery::String(RefPattern::search(pattern)),
+            // A descriptor never contains a dot, so a dotted type pattern is a package
+            // separator: `java.lang.String` must find `Ljava/lang/String;`.
+            XrefKind::Type => RefQuery::Type(RefPattern::search(names.class(pattern))),
+            XrefKind::Method | XrefKind::Field => {
+                let name = RefPattern::search(pattern);
+                let class = target
+                    .class
+                    .as_deref()
+                    .map(|class| RefPattern::search(names.class(class)));
+                if target.kind == XrefKind::Method {
+                    RefQuery::Method {
+                        name,
+                        class,
+                        descriptor: None,
+                    }
+                } else {
+                    RefQuery::Field {
+                        name,
+                        class,
+                        descriptor: None,
+                    }
+                }
+            }
+        },
+        (None, None) => unreachable!("resolve() rejects an empty target"),
     }
 }
 
@@ -305,33 +364,23 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     }
     if let Command::Xref {
         input,
-        kind,
+        target,
         options,
     } = command
     {
         let limits = options.limits();
+        let target = target
+            .resolve()
+            .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?;
         let input = Input::read(&input, limits, options.release)?;
-        // The filter matches internal slashed names, so accept the same dotted and
-        // descriptor spellings `get-class` already accepts instead of returning zero hits.
-        let owner_class = match &kind {
-            RefKind::Method { class, .. } | RefKind::Field { class, .. } => {
-                class.as_deref().map(rxd_jvm::normalize_class_name)
-            }
-            RefKind::String { .. } | RefKind::Type { .. } => None,
-        };
-        let query = match &kind {
-            RefKind::String { value } => rxd_jvm::RefQuery::String(value),
-            RefKind::Type { name } => rxd_jvm::RefQuery::Type(name),
-            RefKind::Method { name, .. } => rxd_jvm::RefQuery::Method {
-                name,
-                class: owner_class.as_deref(),
-            },
-            RefKind::Field { name, .. } => rxd_jvm::RefQuery::Field {
-                name,
-                class: owner_class.as_deref(),
-            },
-        };
+        let mut names = Normalized { owned: Vec::new() };
+        let query = ref_query(&target, &mut names);
         let hits = rxd_jvm::find_refs(&input, &query, limits)?;
+        // A coordinate names one identity: if no class carries it, the answer is NOT_FOUND
+        // rather than an empty reference list.
+        if query.is_anchor() && !rxd_jvm::resolves(&input, &query) {
+            anyhow::bail!("{}", query.anchor_not_found());
+        }
         let mut output = Vec::new();
         append(
             &mut output,
@@ -340,7 +389,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 "xref",
                 Some(&input.source_id),
                 Some(input.file_bytes),
-                kind.query_json(),
+                target.json(),
                 json!({"analysis":"xref","release":options.release})
                     .as_object()
                     .unwrap()

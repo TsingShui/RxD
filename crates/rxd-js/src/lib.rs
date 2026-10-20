@@ -46,6 +46,17 @@ pub enum IdentifierRole {
     Reference,
 }
 
+/// How `xref` anchors on the name occurrence it resolves.
+///
+/// The two are not the same question. A coordinate is what a row prints and addresses the
+/// occurrence's start; a byte offset may land *inside* a multi-byte identifier, which is what
+/// a cursor position is. Both resolve to the same binding, so both stay.
+#[derive(Clone, Debug)]
+pub enum RefsTarget {
+    Coordinate(String),
+    Byte(u64),
+}
+
 #[derive(Clone)]
 pub enum Query {
     Outline {
@@ -79,7 +90,8 @@ pub enum Query {
         byte: u64,
     },
     Refs {
-        byte: u64,
+        /// Where the name occurrence is: the coordinate a row prints, or a raw byte offset.
+        target: RefsTarget,
     },
     Symbols {
         within: Option<String>,
@@ -153,6 +165,51 @@ pub fn expand_short_id(source: &Source, id: &str) -> String {
         return id.to_owned();
     }
     format!("rxd1:js:{}:{id}", source.id)
+}
+
+/// The byte an occurrence coordinate starts at.
+///
+/// `xref` anchors on a *name occurrence*, so the accepted coordinates are the ones that
+/// print one: a `symbols` row's declaration (`symbol:6:9`) or an occurrence position
+/// (`identifier:26:31`). A structure coordinate names a node, not a name, and is rejected
+/// here rather than silently resolving to whatever identifier happens to start at the same
+/// byte.
+fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
+    let expanded = expand_short_id(source, at);
+    let parts: Vec<&str> = expanded.split(':').collect();
+    if parts.len() != 6
+        || parts[0] != "rxd1"
+        || parts[1] != "js"
+        || parts[2].len() != 64
+        || !parts[2]
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(Error::new(
+            "INVALID_ID",
+            format!("{at} is not a `<kind>:<start>:<end>` coordinate"),
+        ));
+    }
+    if parts[2] != source.id {
+        return Err(Error::new(
+            "SOURCE_MISMATCH",
+            "coordinate belongs to different source content",
+        ));
+    }
+    let kind = parts[3];
+    if kind != "symbol" && kind != "identifier" {
+        return Err(Error::new(
+            "INVALID_ID",
+            format!(
+                "{at} is a {kind} node, not a name occurrence; xref anchors on a `symbols` row \
+                 (`symbol:6:9`) or an occurrence position (`identifier:26:31`)"
+            ),
+        ));
+    }
+    let start = parts[4]
+        .parse::<u64>()
+        .map_err(|_| Error::new("INVALID_ID", format!("{at} has no byte offset")))?;
+    Ok(start)
 }
 
 /// Serialize into a bounded buffer before exposing any query result.
@@ -299,7 +356,11 @@ pub fn run_source(
         }),
         Query::Calls { name, within } => json!({"name":name,"within":within}),
         Query::Members { name, within } => json!({"name":name,"within":within}),
-        Query::Refs { byte } | Query::Locate { byte } => json!({"byte":byte}),
+        Query::Refs { target } => match target {
+            RefsTarget::Coordinate(at) => json!({"at":at}),
+            RefsTarget::Byte(byte) => json!({"byte":byte}),
+        },
+        Query::Locate { byte } => json!({"byte":byte}),
         Query::Symbols { within } => json!({"within":within}),
         Query::Get { id, json } => json!({"id":id,"json":json}),
     };
@@ -675,8 +736,15 @@ pub fn run_source(
                 output.json(&summary(records, true, Default::default()))
             })?;
         }
-        Query::Refs { byte } => {
+        Query::Refs { target } => {
             perf.record("query", query_start);
+            // A row's coordinate is `<kind>:<start>:<end>`; the name occurrence starts at
+            // `start`, and the kind stays in the coordinate so a nested node with the same
+            // start cannot be confused for the anchor.
+            let byte = match target {
+                RefsTarget::Coordinate(at) => occurrence_start(&source, at.as_str())?,
+                RefsTarget::Byte(byte) => byte,
+            };
             let result = refs::run(&parsed.program, &source, &collector, byte, limits, perf)?;
             let mut header = header;
             header["detail"]["analysis"] = json!("lexical");

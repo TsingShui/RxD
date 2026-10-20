@@ -5,7 +5,7 @@ Status: implemented.
 `rxd js` uses Rust and Oxc for compact bundles and ordinary JavaScript files without
 source maps. It provides `entities`/`functions`/`classes`/`methods`, `find`,
 `identifiers`, `calls`, `members`,
-`locate`, `get`, `xref --byte` and `symbols`. The backend maps literals, identifiers,
+`locate`, `get`, `xref --at`/`--byte` and `symbols`. The backend maps literals, identifiers,
 call sites and static member names to content-bound AST structures, lexical
 relationships and original source ranges. It never executes input, performs
 deobfuscation or string decryption, restores obfuscator intent, or promises runtime
@@ -50,7 +50,7 @@ A typical task locates an API and extracts its implementation:
 4. `get` the parent structure, or `locate` another position by known byte offset.
 5. `symbols --within` lists declarations, external bindings and unresolved references
    with exact declaration offsets.
-6. `xref --byte` follows an explicit binding and returns declaration/reference
+6. `xref --at` (or `--byte`) follows an explicit binding and returns declaration/reference
    structures, reducing same-name false matches.
 
 For an existing `rg` hit, `locate` can be used directly. `get` on a function preserves
@@ -93,7 +93,7 @@ rxd js get bundle.js --at '<parent>' --json
 | `members` | Static member names, property keys, JSX attribute names and statically resolvable computed keys. | JSONL |
 | `locate` | Innermost structure and ancestors containing a byte position. | JSON |
 | `get` | Validate a structure, symbol or fragment ID and extract original source. | Raw bytes |
-| `xref --byte` | Single-file lexical binding and same-binding references at a byte position. | JSONL |
+| `xref --at` | Single-file lexical binding and same-binding references at a name occurrence. `--byte` anchors on a raw offset instead, including one inside a multi-byte identifier. | JSONL |
 | `symbols` | Lexical bindings and unresolved references in a file or selected structure. | JSONL |
 
 `entities` returns the program and all descendants by default. `--within` returns
@@ -499,7 +499,8 @@ across calls, paths and within selections, but not across incompatible versions 
 different source content. Structure and symbol IDs have different target semantics:
 structure/symbols `--within` reject symbol IDs; xref does not accept an id selector; get accepts
 symbol IDs and extracts the canonical declaration; get accepts parent_id for the
-containing structure. A symbol record's `start` can be passed directly to `xref --byte`.
+containing structure. A symbol record's `at` can be passed directly to `xref --at`, and its
+`start` to `xref --byte`.
 
 Both record kinds mix in ascending `(start, end)`. Summary records count symbols plus
 unresolved references; complete means the query completed, not resolution/runtime

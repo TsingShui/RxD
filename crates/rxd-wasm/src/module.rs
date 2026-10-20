@@ -395,7 +395,26 @@ impl Module {
     /// module's own hash here instead of making a caller reassemble it. A full
     /// `rxd1:wasm:<sha256>:func:<index>` id keeps its own hash, so one naming a
     /// different module fails as `SOURCE_MISMATCH` rather than being rewritten.
+    /// The function index a `func:N` coordinate names.
+    ///
+    /// The index space is what call operands carry; a body position is not, so a query that
+    /// scans call sites needs this and not the position. An imported function has no body but
+    /// does have callers, so only the index space bounds it.
+    pub fn function_index_at(&self, at: &str) -> Result<u32> {
+        let func_index = self.coordinate_function(at)?;
+        ensure!(
+            func_index < self.total_functions(),
+            "INVALID_QUERY: function index out of range"
+        );
+        Ok(func_index)
+    }
+
+    /// The position of a `func:N` coordinate's body in the code section.
     pub fn defined_position_at(&self, at: &str) -> Result<usize> {
+        self.defined_position(self.coordinate_function(at)?)
+    }
+
+    fn coordinate_function(&self, at: &str) -> Result<u32> {
         let expanded;
         let id = if at.starts_with("rxd1:") {
             at
@@ -425,10 +444,9 @@ impl Module {
             parts[3] == "func",
             "INVALID_QUERY: --at requires a function coordinate"
         );
-        let func_index: u32 = parts[4]
+        parts[4]
             .parse()
-            .map_err(|_| anyhow::anyhow!("INVALID_ID: function index"))?;
-        self.defined_position(func_index)
+            .map_err(|_| anyhow::anyhow!("INVALID_ID: function index"))
     }
 
     pub fn defined_position(&self, func_index: u32) -> Result<usize> {

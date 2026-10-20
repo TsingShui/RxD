@@ -34,7 +34,7 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
         let id = literal["at"].as_str().unwrap();
         let owner = literal["detail"]["code_index"].as_u64().unwrap() as usize;
         let slot = &literal["detail"]["constant_slot"];
-        let stream = rows(&invoke("xref", &path, &["--const-id", id]));
+        let stream = rows(&invoke("xref", &path, &["--at", id]));
         let expected: Vec<_> = oracle["codes"][owner]["dis_instructions"]
             .as_array()
             .unwrap()
@@ -52,7 +52,7 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
             .collect();
         assert_eq!(hits.len(), expected.len());
         assert_eq!(stream.last().unwrap()["complete"], true);
-        assert_eq!(stream[0]["query"]["const_id"], id);
+        assert_eq!(stream[0]["query"]["at"], id);
         assert!(stream[0]["query"]["name"].is_null());
         for (hit, expected) in hits.iter().zip(expected) {
             assert_eq!(hit["context_at"], literal["context_at"]);
@@ -113,7 +113,7 @@ fn pyc_constant_refs_preserve_real_extended_constant_operands() {
     let result = rows(&invoke(
         "xref",
         &path,
-        &["--const-id", literal["at"].as_str().unwrap()],
+        &["--at", literal["at"].as_str().unwrap()],
     ));
     assert_eq!(result.last().unwrap()["records"], 1);
     let expected = oracle["codes"][owner]["dis_instructions"]
@@ -213,12 +213,7 @@ fn pyc_constant_refs_keep_equal_slots_owners_shared_paths_and_each_real_instruct
         let result = rows(&invoke(
             "xref",
             &path,
-            &[
-                "--version",
-                "3.12",
-                "--const-id",
-                literal["at"].as_str().unwrap(),
-            ],
+            &["--version", "3.12", "--at", literal["at"].as_str().unwrap()],
         ));
         let hits: Vec<_> = result
             .iter()
@@ -323,21 +318,17 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let other_id = codes.iter().find(|r| r["detail"]["index"] == 1).unwrap()["at"]
         .as_str()
         .unwrap();
-    let all = rows(&invoke(
-        "xref",
-        &path,
-        &["--version", "3.12", "--const-id", id],
-    ));
+    let all = rows(&invoke("xref", &path, &["--version", "3.12", "--at", id]));
     let scoped = rows(&invoke(
         "xref",
         &path,
-        &["--version", "3.12", "--const-id", id, "--within", owner_id],
+        &["--version", "3.12", "--at", id, "--within", owner_id],
     ));
     assert_eq!(all[1..all.len() - 1], scoped[1..scoped.len() - 1]);
     assert_eq!(all[0]["detail"]["scope"], "constant_owner");
     assert_eq!(scoped[0]["detail"]["scope"], "selected_code");
-    assert_js_keys(&all[0]["query"], &["name", "const_id", "within", "version"]);
-    assert_eq!(all[0]["query"]["const_id"], id);
+    assert_js_keys(&all[0]["query"], &["name", "at", "within", "version"]);
+    assert_eq!(all[0]["query"]["at"], id);
     assert_eq!(all[0]["query"]["version"], "3.12");
     assert!(all[0]["query"]["name"].is_null());
     assert!(all[0]["query"]["within"].is_null());
@@ -367,7 +358,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let excluded = rows(&invoke(
         "xref",
         &path,
-        &["--version", "3.12", "--const-id", id, "--within", other_id],
+        &["--version", "3.12", "--at", id, "--within", other_id],
     ));
     assert_eq!(excluded.len(), 2);
     assert_eq!(excluded[1]["records"], 0);
@@ -398,11 +389,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         format!("rxd1:pyc:{digest}:const:0:6"),
     ] {
         failure(
-            invoke(
-                "xref",
-                &path,
-                &["--version", "3.12", "--const-id", &invalid],
-            ),
+            invoke("xref", &path, &["--version", "3.12", "--at", &invalid]),
             2,
             "INVALID_QUERY",
         );
@@ -411,24 +398,20 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         invoke(
             "xref",
             &path,
-            &["--version", "3.12", "--const-id", id, "--within", id],
+            &["--version", "3.12", "--at", id, "--within", id],
         ),
         2,
         "INVALID_QUERY",
     );
     let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
     failure(
-        invoke(
-            "xref",
-            &path,
-            &["--version", "3.12", "--const-id", &foreign],
-        ),
+        invoke("xref", &path, &["--version", "3.12", "--at", &foreign]),
         1,
         "SOURCE_MISMATCH",
     );
     for args in [
         vec!["--version", "3.12"],
-        vec!["--version", "3.12", "--const-id", id, "--name", "x"],
+        vec!["--version", "3.12", "--at", id, "--name", "x"],
     ] {
         let failed = invoke("xref", &path, &args);
         assert_eq!(failed.status.code(), Some(2));
@@ -437,8 +420,8 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let copied = dir.path().join("renamed.marshal");
     fs::write(&copied, &bytes).unwrap();
     assert_eq!(
-        invoke("xref", &copied, &["--version", "3.12", "--const-id", id]).stdout,
-        invoke("xref", &path, &["--version", "3.12", "--const-id", id]).stdout
+        invoke("xref", &copied, &["--version", "3.12", "--at", id]).stdout,
+        invoke("xref", &path, &["--version", "3.12", "--at", id]).stdout
     );
     let mut changed = bytes.clone();
     let pos = changed
@@ -447,13 +430,9 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         .unwrap();
     changed[pos] = b'F';
     fs::write(&copied, &changed).unwrap();
-    success(&invoke(
-        "xref",
-        &copied,
-        &["--version", "3.12", "--const-id", id],
-    ));
+    success(&invoke("xref", &copied, &["--version", "3.12", "--at", id]));
     failure(
-        invoke("xref", &copied, &["--version", "3.12", "--const-id", &full]),
+        invoke("xref", &copied, &["--version", "3.12", "--at", &full]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -461,11 +440,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     fs::write(&copied, &mutable).unwrap();
     let forged = format!("rxd1:pyc:{:x}:const:0:0.0", Sha256::digest(&mutable));
     failure(
-        invoke(
-            "xref",
-            &copied,
-            &["--version", "3.12", "--const-id", &forged],
-        ),
+        invoke("xref", &copied, &["--version", "3.12", "--at", &forged]),
         2,
         "INVALID_QUERY",
     );
@@ -474,7 +449,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         &path,
         &["--version", "3.12", "--name", "x"],
     ));
-    assert!(names[0]["query"]["const_id"].is_null());
+    assert!(names[0]["query"]["at"].is_null());
 }
 
 fn perf_row(output: &Output) -> Value {
@@ -493,11 +468,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         .as_str()
         .unwrap()
         .to_owned();
-    let complete = invoke(
-        "xref",
-        &path,
-        &["--version", "3.12", "--const-id", &id, "--perf"],
-    );
+    let complete = invoke("xref", &path, &["--version", "3.12", "--at", &id, "--perf"]);
     let stream = rows(&complete);
     let perf = perf_row(&complete);
     assert_eq!(stream.last().unwrap()["records"], 2);
@@ -567,7 +538,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         &[
             "--version",
             "3.12",
-            "--const-id",
+            "--at",
             &id,
             "-o",
             out.to_str().unwrap(),
@@ -583,7 +554,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
             &[
                 "--version",
                 "3.12",
-                "--const-id",
+                "--at",
                 &id,
                 "-o",
                 path.to_str().unwrap(),
@@ -609,11 +580,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         71
     );
     let deep_id = literal["at"].as_str().unwrap().to_owned();
-    let selected = invoke(
-        "xref",
-        &deep_path,
-        &["--version", "3.12", "--const-id", &deep_id],
-    );
+    let selected = invoke("xref", &deep_path, &["--version", "3.12", "--at", &deep_id]);
     success(&selected);
     let (_, scan) = xref_library(
         &deep_path,
@@ -641,12 +608,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
         let result = rows(&invoke(
             "xref",
             &path,
-            &[
-                "--version",
-                "3.12",
-                "--const-id",
-                literal["at"].as_str().unwrap(),
-            ],
+            &["--version", "3.12", "--at", literal["at"].as_str().unwrap()],
         ));
         assert_eq!(result.last().unwrap()["complete"], false);
         assert_eq!(result.last().unwrap()["detail"]["unsupported_count"], 1);
@@ -682,7 +644,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
                 &[
                     "--version",
                     "3.12",
-                    "--const-id",
+                    "--at",
                     literal["at"].as_str().unwrap(),
                     "-o",
                     out.to_str().unwrap(),
@@ -706,23 +668,13 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
     success(&invoke(
         "xref",
         &path,
-        &[
-            "--version",
-            "3.12",
-            "--const-id",
-            child["at"].as_str().unwrap(),
-        ],
+        &["--version", "3.12", "--at", child["at"].as_str().unwrap()],
     ));
     failure(
         invoke(
             "xref",
             &path,
-            &[
-                "--version",
-                "3.12",
-                "--const-id",
-                root["at"].as_str().unwrap(),
-            ],
+            &["--version", "3.12", "--at", root["at"].as_str().unwrap()],
         ),
         1,
         "INVALID_INPUT",
@@ -733,7 +685,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
         &[
             "--version",
             "3.12",
-            "--const-id",
+            "--at",
             root["at"].as_str().unwrap(),
             "--within",
             child["context_at"].as_str().unwrap(),

@@ -13,7 +13,7 @@ executes input. It has nine commands:
 | `members` | Find static member names, property keys, JSX attribute names and statically resolvable computed keys | JSONL |
 | `locate` | Find the innermost structure and ancestors at a byte offset | JSON |
 | `get` | Extract source by structure/fragment ID, or the canonical declaration by symbol ID | Raw source |
-| `xref --byte` | Find the lexical binding, references and read/write roles at a byte position | JSONL |
+| `xref --at` | Find the lexical binding, references and read/write roles at a name occurrence (`--byte` takes a raw offset instead) | JSONL |
 | `symbols` | Discover declarations, external bindings and unresolved references in a region | JSONL |
 
 structure listings and `find` accept a file or recursively scan a directory; `locate/get/xref/symbols/
@@ -191,7 +191,7 @@ SYMBOL_ID=$(jq -r 'select(.record == "symbol" and .detail.name == "api") | .at' 
 The raw output is only the canonical declaration, not later redeclarations/assignments.
 `--json` exposes the symbol, declaration kind/range/initializer and source; it never
 claims runtime values or data-flow completeness. The symbol record's `start` can be passed
-to `xref --byte`.
+to `xref --at`.
 
 ### Extract a local fragment
 

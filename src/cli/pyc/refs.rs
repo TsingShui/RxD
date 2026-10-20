@@ -34,7 +34,7 @@ fn append(out: &mut BoundedOutput, value: &impl Serialize) -> Result<()> {
 pub fn run(
     input: PathBuf,
     name: Option<String>,
-    const_id: Option<String>,
+    at: Option<String>,
     within: Option<String>,
     version: Option<(u8, u8)>,
     options: RefsOptions,
@@ -50,7 +50,7 @@ pub fn run(
     let mut analysis = loaded?;
     let mut scan = Scan::default();
     let result = perf.measure("query", || -> Result<()> {
-        let selector_bytes = name.as_ref().or(const_id.as_ref()).map_or(0, String::len);
+        let selector_bytes = name.as_ref().or(at.as_ref()).map_or(0, String::len);
         if selector_bytes > limits.output_bytes {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
@@ -61,11 +61,11 @@ pub fn run(
             .as_deref()
             .map(|id| analysis.parse_code_id(id))
             .transpose()?;
-        let constant = const_id
+        let constant = at
             .as_deref()
             .map(|id| string_constants::resolve_id(&mut analysis, id))
             .transpose()?;
-        let query = match (name.as_deref(), const_id.as_deref(), constant.as_ref()) {
+        let query = match (name.as_deref(), at.as_deref(), constant.as_ref()) {
             (Some(name), None, None) => {
                 analysis.charge_work(name.len())?;
                 references::Query::Name(name)
@@ -74,7 +74,7 @@ pub fn run(
             _ => {
                 return Err(Error::new(
                     "INVALID_QUERY",
-                    "exactly one of --name or --const-id is required",
+                    "exactly one of --name or --at is required",
                 ));
             }
         };
@@ -91,14 +91,14 @@ pub fn run(
     perf.counters.records = Some(scan.hits.len());
     perf.counters.matches = Some(scan.hits.len());
     result?;
-    let analysis_kind = if const_id.is_some() {
+    let analysis_kind = if at.is_some() {
         "explicit_constant_references"
     } else {
         "explicit_name_references"
     };
     let scope = if within.is_some() {
         "selected_code"
-    } else if const_id.is_some() {
+    } else if at.is_some() {
         "constant_owner"
     } else {
         "all_codes"
@@ -106,7 +106,7 @@ pub fn run(
     let bytes = perf.measure("serialize", || -> Result<_> {
         let mut out = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
         append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            json!({"name":name,"const_id":const_id,"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
+            json!({"name":name,"at":at,"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;

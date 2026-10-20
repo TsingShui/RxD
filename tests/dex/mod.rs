@@ -1,6 +1,6 @@
 //! End-to-end contracts for the migrated rasc CLI, without MCP.
 pub(super) mod support;
-use super::{fixture, refused, success};
+use super::{failure, fixture, refused, success};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -148,7 +148,14 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
             let output = query(
                 "xref",
                 &path,
-                &["--thread", threads, "string", "Authorization"],
+                &[
+                    "--thread",
+                    threads,
+                    "-f",
+                    "Authorization",
+                    "--kind",
+                    "string",
+                ],
             );
             success(&output);
             let hits: Vec<(String, String)> = dex_records(&output)
@@ -167,14 +174,79 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     success(&output);
     assert_eq!(dex_records(&output).len(), 1);
     assert!(text(&output).contains("LFixture1;"));
-    let output = query("xref", &bare, &["string", "no-match"]);
+    let output = query("xref", &bare, &["-f", "no-match", "--kind", "string"]);
     success(&output);
     assert!(dex_records(&output).is_empty());
     for kind in ["type", "method", "field"] {
-        let output = query("xref", &bare, &[kind, "no-match"]);
+        let output = query("xref", &bare, &["-f", "no-match", "--kind", kind]);
         success(&output);
         assert!(dex_records(&output).is_empty());
     }
+}
+
+/// `--at` names one identity; `-f` searches content. The two faces are different questions,
+/// and a coordinate that no table carries is a failure rather than an empty result set.
+#[test]
+fn dex_xref_separates_coordinate_anchors_from_content_searches() {
+    let dex = const_string_dex(3);
+    let (_dir, path) = fixture(&dex, "input.dex");
+    let searched = query("xref", &path, &["-f", "Authorization", "--kind", "string"]);
+    success(&searched);
+    let anchored = query(
+        "xref",
+        &path,
+        &["--at", "Authorization", "--kind", "string"],
+    );
+    success(&anchored);
+    // The header echoes which face was used, so the rows are what must agree.
+    assert_eq!(dex_records(&anchored), dex_records(&searched));
+
+    // A literal is the one target that cannot describe itself, so `--at` alone cannot read
+    // it: without `--kind` the value has to parse as a class coordinate.
+    failure(
+        query("xref", &path, &["--at", "Authorization"]),
+        1,
+        "no type is named LAuthorization;",
+    );
+    failure(
+        query(
+            "xref",
+            &path,
+            &["--at", "NoSuchLiteral", "--kind", "string"],
+        ),
+        1,
+        "no string literal is exactly \"NoSuchLiteral\"",
+    );
+    // A coordinate's kind is not negotiable: it says what it is, so a contradicting
+    // `--kind` is an error rather than an empty answer.
+    failure(
+        query(
+            "xref",
+            &path,
+            &["--at", "LFixture0;->m0()V", "--kind", "field"],
+        ),
+        1,
+        "is a method coordinate, but --kind field was given",
+    );
+    failure(
+        query("xref", &path, &["--at", "LFixture0;", "--class", "Fixture"]),
+        1,
+        "already names the owner class",
+    );
+    failure(
+        query("xref", &path, &["-f", "Authorization"]),
+        1,
+        "--filter searches content, so it needs --kind",
+    );
+    failure(
+        query(
+            "xref",
+            &path,
+            &["-f", "Authorization", "--kind", "type", "--class", "F"],
+        ),
+        1,
+        "it needs --kind method or --kind field",
+    );
 }
 
 #[test]

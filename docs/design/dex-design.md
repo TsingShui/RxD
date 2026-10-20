@@ -19,8 +19,8 @@ preserved; argument positions and exit-code semantics are.
 | --- | --- |
 | `entries INPUT` | Archive entries in central-directory order with compression and sizes; duplicate names are preserved. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
-| `xref INPUT string\|type VALUE` | Literal string or type references: `context_at` is the referring member, `detail.target` the match, `detail.entry` the DEX it lives in. |
-| `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class, both case-sensitive substrings (dots in `--class` are separators); at least one of name/class is required; rows carry `detail.entry`. |
+| `xref INPUT --at COORD` | References to one identity, matched exactly: `Lx/y;` a type, `Lx/y;->name(proto)` a method, `Lx/y;->name:type` a field, and, with `--kind string`, a literal. `--kind` is inferred from the coordinate and must agree with it. `context_at` is the referring member, `detail.target` the matched coordinate, `detail.entry` the DEX it lives in. |
+| `xref INPUT -f PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` over a member's owner; both are case-sensitive substrings (dots are separators). `--kind` is required because a content search cannot say what kind it looks for. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`. |
@@ -29,8 +29,7 @@ preserved; argument positions and exit-code semantics are.
 Dalvik-name form was removed so every FETCH has one selector spelling. APK/DEX commands
 keep `--threads` / `--thread`
 alias and supported range. The default thread count comes from
-`available_parallelism`; zero threads is an error. `xref -o` sits in the
-string/type/method/field subcommand arguments. All diagnostics go to stderr. `--debug`
+`available_parallelism`; zero threads is an error. All diagnostics go to stderr. `--debug`
 is preserved; DEX adds no `--perf` flag.
 
 `--debug` also reports the library's own stage profile, one deterministic line each for
@@ -94,7 +93,7 @@ The header contains `record, backend, command, source_id, input_bytes, schema_ve
 query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}`.
 `input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
 `query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
-`xref` string/type=`kind, value`, method/field=`kind, name, class`;
+`xref`=`kind, at, filter, class`;
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 
@@ -126,7 +125,7 @@ list is comparable with `js`/`jar` output and never depends on a global sort. A 
 defined by more than one entry appears once per entry; duplicate detection is the caller's
 `uniq`, not a hidden merge.
 
-| reference | xref | `entry, class, member, matched` |
+| reference | xref | `target, entry` |
 | entry | entries | `name, compression, compressed_size, uncompressed_size` |
 
 `class.name` is dotted; `package` keeps DEX slash separators. `string.index` is the
@@ -214,7 +213,7 @@ median:
 | `classes` | 928,795 | 78 MB | 0.165 s |
 | `methods` | 5,194,250 | 679 MB | 0.36 s |
 | `methods --class <one class>` | 1 | tiny | 0.11 s |
-| `xref type java/lang/String` | 108,126 | 15 MB | 0.20 s |
+| `xref -f java/lang/String --kind type` | 108,126 | 15 MB | 0.20 s |
 
 `xref` matching was unified to case-sensitive substrings for the member name and for
 `--class` (see above). Measured after that change, same APK, release, five runs, median
@@ -222,11 +221,11 @@ median:
 
 | command | wall |
 | --- | ---: |
-| `xref method LIZ --class 'Lkotlinx/coroutines/internal/StackTraceRecoveryKt;'` | 0.156 s (0.148 s) |
-| `xref method LIZ --class a/a` (wide substring) | 0.219 s (0.196 s) |
-| `xref method Toast` (name only) | 0.206 s (0.185 s) |
-| `xref type String` | 0.250 s (0.245 s) |
-| `xref string Authorization` | 0.196 s (0.165 s) |
+| `xref -f LIZ --class 'Lkotlinx/coroutines/internal/StackTraceRecoveryKt;' --kind method` | 0.156 s (0.148 s) |
+| `xref -f LIZ --class a/a --kind method` (wide substring) | 0.219 s (0.196 s) |
+| `xref -f Toast --kind method` (name only) | 0.206 s (0.185 s) |
+| `xref -f String --kind type` | 0.250 s (0.245 s) |
+| `xref -f Authorization --kind string` | 0.196 s (0.165 s) |
 | `classes` (same run, for reference) | 0.180 s (0.172 s) |
 
 The class-constrained query stays the cheap shape (0.156 s against 0.206 s for a name-only

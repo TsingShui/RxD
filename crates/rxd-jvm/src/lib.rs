@@ -239,16 +239,90 @@ pub fn render_class(input: &Input, name: &str, limits: Limits) -> anyhow::Result
 /// name. `method`/`field` match the member name exactly, optionally constrained
 /// to an owner class by case-sensitive substring (`class`).
 pub enum RefQuery<'a> {
-    String(&'a str),
-    Type(&'a str),
+    String(RefPattern<'a>),
+    Type(RefPattern<'a>),
     Method {
-        name: &'a str,
-        class: Option<&'a str>,
+        name: RefPattern<'a>,
+        class: Option<RefPattern<'a>>,
+        /// The prototype of an exact coordinate anchor, e.g. `(I)V`; `None` for a search.
+        descriptor: Option<&'a str>,
     },
     Field {
-        name: &'a str,
-        class: Option<&'a str>,
+        name: RefPattern<'a>,
+        class: Option<RefPattern<'a>>,
+        /// The type of an exact coordinate anchor, e.g. `I`; `None` for a search.
+        descriptor: Option<&'a str>,
     },
+}
+
+/// One selector face: a content substring, or an exact identity.
+///
+/// `-f/--filter` asks whether the value contains the needle; `--at` asks whether the value
+/// *is* the identity. Both are case-sensitive, and the difference is the whole answer: a
+/// search that matches nothing answers with an empty result, an anchor that resolves nowhere
+/// is an error.
+#[derive(Clone, Copy, Debug)]
+pub struct RefPattern<'a> {
+    pub text: &'a str,
+    pub exact: bool,
+}
+
+impl<'a> RefPattern<'a> {
+    pub fn search(text: &'a str) -> Self {
+        Self { text, exact: false }
+    }
+
+    pub fn coordinate(text: &'a str) -> Self {
+        Self { text, exact: true }
+    }
+
+    fn matches(&self, value: &str) -> bool {
+        if self.exact {
+            value == self.text
+        } else {
+            value.contains(self.text)
+        }
+    }
+}
+
+impl RefQuery<'_> {
+    /// Whether this query came from an `--at` coordinate rather than a content search.
+    pub fn is_anchor(&self) -> bool {
+        match self {
+            Self::String(pattern) | Self::Type(pattern) => pattern.exact,
+            Self::Method { descriptor, .. } | Self::Field { descriptor, .. } => {
+                descriptor.is_some()
+            }
+        }
+    }
+
+    /// The error text for an anchor whose identity no class carries.
+    pub fn anchor_not_found(&self) -> String {
+        match self {
+            Self::String(pattern) => format!("no string literal is exactly {:?}", pattern.text),
+            Self::Type(pattern) => format!("no type is named {}", pattern.text),
+            Self::Method {
+                name,
+                class,
+                descriptor,
+            } => format!(
+                "no method {}{} matches {}",
+                name.text,
+                descriptor.unwrap_or_default(),
+                class.map_or("the input".to_owned(), |class| class.text.to_owned())
+            ),
+            Self::Field {
+                name,
+                class,
+                descriptor,
+            } => format!(
+                "no field {}:{} matches {}",
+                name.text,
+                descriptor.unwrap_or_default(),
+                class.map_or("the input".to_owned(), |class| class.text.to_owned())
+            ),
+        }
+    }
 }
 
 /// One `findrefs` hit, carrying the owning class and method so a reader can
@@ -322,48 +396,165 @@ pub fn find_refs(input: &Input, query: &RefQuery, limits: Limits) -> anyhow::Res
 /// a routable target description on a hit.
 fn ref_target(class: &ClassFile, index: u16, query: &RefQuery) -> Option<String> {
     match query {
-        RefQuery::String(needle) => {
+        RefQuery::String(pattern) => {
             // Only `ldc`/`ldc_w` (0x12/0x13) load a String constant.
             let literal = class.string(index).ok()?;
-            let text = literal.as_str();
-            text.contains(*needle).then(|| format!("\"{text}\""))
+            // The literal prints as the bytes it is, so `--at` takes the same text back.
+            pattern
+                .matches(literal.as_str())
+                .then(|| literal.as_str().to_owned())
         }
-        RefQuery::Type(needle) => match class.reference_at(index)? {
-            Reference::Type { name } => name.contains(*needle).then_some(name),
-            // A member reference also names a type through its owner.
+        RefQuery::Type(pattern) => match class.reference_at(index)? {
+            // A type operand already prints as a descriptor; a member operand names its owner
+            // in internal form, so both are compared in the descriptor spelling a row prints.
+            Reference::Type { name } => pattern.matches(&name).then_some(name),
             Reference::Member { owner, .. } => {
-                owner.contains(*needle).then(|| format!("L{owner};"))
+                let descriptor = format!("L{owner};");
+                pattern.matches(&descriptor).then_some(descriptor)
             }
         },
         RefQuery::Method {
             name,
             class: owner_filter,
+            descriptor: wanted,
         } => match class.reference_at(index)? {
             Reference::Member {
                 kind: MemberKind::Method,
                 owner,
                 name: member,
                 descriptor,
-            } if member == *name && owner_filter.is_none_or(|needle| owner.contains(needle)) => {
-                Some(format!("{owner}.{member}{descriptor}"))
+            } if name.matches(&member)
+                && wanted.is_none_or(|wanted| wanted == descriptor)
+                && owner_filter.is_none_or(|pattern| pattern.matches(&owner)) =>
+            {
+                // `Lowner;->name(proto)` is what `get-method --at` takes, so a hit routes
+                // straight back into the decompiler.
+                Some(format!("L{owner};->{member}{descriptor}"))
             }
             _ => None,
         },
         RefQuery::Field {
             name,
             class: owner_filter,
+            descriptor: wanted,
         } => match class.reference_at(index)? {
             Reference::Member {
                 kind: MemberKind::Field,
                 owner,
                 name: member,
                 descriptor,
-            } if member == *name && owner_filter.is_none_or(|needle| owner.contains(needle)) => {
-                Some(format!("{owner}.{member}:{descriptor}"))
+            } if name.matches(&member)
+                && wanted.is_none_or(|wanted| wanted == descriptor)
+                && owner_filter.is_none_or(|pattern| pattern.matches(&owner)) =>
+            {
+                Some(format!("L{owner};->{member}:{descriptor}"))
             }
             _ => None,
         },
     }
+}
+
+/// Whether the input carries the query's anchor at all.
+///
+/// A coordinate names one identity, and "no class carries it" is a different answer from "no
+/// instruction references it": the first is an error naming what was looked for, the second is
+/// a true empty result. An identity counts as carried when a class declares it or when some
+/// constant pool holds it, which is what lets an external member (a `StringBuilder.append`
+/// call) be anchored even though no class in the input declares it.
+pub fn resolves(input: &Input, query: &RefQuery) -> bool {
+    if !query.is_anchor() {
+        return true;
+    }
+    input.classes.iter().any(|selected| {
+        let class = &selected.class;
+        carries(class, query)
+    })
+}
+
+fn carries(class: &ClassFile, query: &RefQuery) -> bool {
+    match query {
+        RefQuery::String(pattern) => class
+            .string_constants()
+            .iter()
+            .any(|(_, literal)| pattern.matches(literal.as_str())),
+        RefQuery::Type(pattern) => {
+            class
+                .reference_at_index_iter()
+                .any(|reference| match reference {
+                    Reference::Type { name } => pattern.matches(&name),
+                    Reference::Member { owner, .. } => pattern.matches(&format!("L{owner};")),
+                })
+                || pattern.matches(&format!("L{};", class.name))
+        }
+        RefQuery::Method {
+            name,
+            class: owner_filter,
+            descriptor,
+        } => {
+            declares_member(class, name, owner_filter, descriptor, true)
+                || pool_member(class, name, owner_filter, descriptor, true)
+        }
+        RefQuery::Field {
+            name,
+            class: owner_filter,
+            descriptor,
+        } => {
+            declares_member(class, name, owner_filter, descriptor, false)
+                || pool_member(class, name, owner_filter, descriptor, false)
+        }
+    }
+}
+
+fn declares_member(
+    class: &ClassFile,
+    name: &RefPattern<'_>,
+    owner_filter: &Option<RefPattern<'_>>,
+    descriptor: &Option<&str>,
+    methods: bool,
+) -> bool {
+    if owner_filter.is_some_and(|pattern| !pattern.matches(&class.name)) {
+        return false;
+    }
+    let matches = |member_name: &str, member_descriptor: &str| {
+        name.matches(member_name) && descriptor.is_none_or(|wanted| wanted == member_descriptor)
+    };
+    if methods {
+        class
+            .methods
+            .iter()
+            .any(|method| matches(&method.name, &method.descriptor))
+    } else {
+        class
+            .fields
+            .iter()
+            .any(|field| matches(&field.name, &field.descriptor))
+    }
+}
+
+/// A member the class *references* but may not declare: an external call.
+fn pool_member(
+    class: &ClassFile,
+    name: &RefPattern<'_>,
+    owner_filter: &Option<RefPattern<'_>>,
+    descriptor: &Option<&str>,
+    methods: bool,
+) -> bool {
+    class
+        .reference_at_index_iter()
+        .any(|reference| match reference {
+            Reference::Member {
+                kind,
+                owner,
+                name: member,
+                descriptor: member_descriptor,
+            } => {
+                (kind == MemberKind::Method) == methods
+                    && name.matches(&member)
+                    && descriptor.is_none_or(|wanted| wanted == member_descriptor)
+                    && owner_filter.is_none_or(|pattern| pattern.matches(&owner))
+            }
+            Reference::Type { .. } => false,
+        })
 }
 
 #[derive(Clone, Copy, Debug)]

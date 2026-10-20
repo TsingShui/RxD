@@ -332,6 +332,9 @@ pub fn find_reference_hits_with_policy(
     // almost every entry, where the same prefix read is pure overhead - so it is not
     // pre-checked at all (see `Query::bounded_by_class`).
     let needs_targets = query.bounded_by_class();
+    // An anchor names one identity; "no entry resolved it" is a different answer from "no
+    // reference points at it", and only the entries themselves can tell them apart.
+    let anchor_resolved = std::sync::atomic::AtomicBool::new(false);
     let rows = map_dex_entries(
         path,
         policy,
@@ -354,7 +357,9 @@ pub fn find_reference_hits_with_policy(
             }
             let mut rows = Vec::new();
             for logical in dex::container::logical_dexes(&inflated.entry.name, inflated.data()?)? {
-                for row in dex::find_references(&logical.data, query)? {
+                let (found, resolved) = dex::find_references_with_anchor(&logical.data, query)?;
+                anchor_resolved.fetch_or(resolved, std::sync::atomic::Ordering::Relaxed);
+                for row in found {
                     rows.push(ReferenceHit {
                         dex_name: logical.name.clone(),
                         member: row.member,
@@ -374,6 +379,9 @@ pub fn find_reference_hits_with_policy(
             Ok(rows)
         },
     )?;
+    if query.is_anchor() && !anchor_resolved.load(std::sync::atomic::Ordering::Relaxed) {
+        bail!("{}", query.anchor_not_found());
+    }
     Ok(rows)
 }
 

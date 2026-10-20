@@ -237,7 +237,7 @@ concatenation or f-strings are not evaluated.
 
 Constant ID:
 `rxd1:pyc:<full-input-sha256>:const:<code-index>:<dot-separated-index-path>`; each row
-prints the copy-only coordinate `const:<code-index>:<path>`, which `xref --const-id`
+prints the copy-only coordinate `const:<code-index>:<path>`, which `xref --at`
 expands against the header identity. Different owner/slot/path is a different ID; equal
 text or shared objects do not deduplicate. Tuple/frozenset and whole-`co_consts` shared
 xref still expand every owner/path; raw payload shares a definition handle; path/alias
@@ -433,7 +433,7 @@ rxd pyc xref module.pyc --name marker --within code:9
 rxd pyc xref graph.marshal --version 3.12 --name cell -o target/xref.jsonl
 ```
 
-`--name` and `--const-id` are mutually exclusive and exactly one is required. Name
+`--name` and `--at` are mutually exclusive and exactly one is required. Name
 selection matches the original name payload against query UTF-8 bytes exactly, without
 substring, case-fold, Unicode normalization or replacement-character comparison. Empty
 names are allowed; ordinary zero hits exit 0 with header/summary records=0. The same
@@ -523,8 +523,8 @@ do not replace output or modify input; failed perf preserves actual work/instruc
 ## Constant references
 
 ```sh
-rxd pyc xref module.pyc --const-id 'const:9:2.0'
-rxd pyc xref graph.marshal --version 3.12 --const-id "$CONST_ID" --within "$CODE_AT"
+rxd pyc xref module.pyc --at 'const:9:2.0'
+rxd pyc xref graph.marshal --version 3.12 --at "$CONST_AT" --within "$CODE_AT"
 ```
 
 CONST_ID comes from a real strings row `at`, not a literal value. It accepts the short

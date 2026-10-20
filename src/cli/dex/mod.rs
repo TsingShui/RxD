@@ -112,6 +112,7 @@ fn run_command(
     let status = 0;
     match command {
         Command::Xref(args) => {
+            let target = args.target()?;
             let query = args.query()?;
             let scan_started = Instant::now();
             let hits = apk::find_reference_hits_with_policy(
@@ -132,11 +133,8 @@ fn run_command(
             // Assembling the payload line by line: a pre-sized buffer measured no faster
             // than letting the String grow (macOS's allocator re-extends the large block in
             // place), so the length pass is not worth it.
-            let mut payload = stream_header(
-                "xref",
-                std::slice::from_ref(&args.apk_path),
-                args.query_json(),
-            )?;
+            let mut payload =
+                stream_header("xref", std::slice::from_ref(&args.apk_path), target.json())?;
             for hit in &hits {
                 push_reference(&mut payload, &hit.dex_name, &hit.member, &hit.matched)?;
             }

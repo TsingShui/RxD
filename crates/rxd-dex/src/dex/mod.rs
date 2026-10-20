@@ -16,7 +16,7 @@ mod opcodes;
 pub(crate) mod prefix;
 
 use crate::bytes::{read_u16, read_u32};
-use crate::query::{MemberQuery, Query};
+use crate::query::{MemberQuery, Pattern, Query};
 use anyhow::{Context, Result, bail};
 use filter::Targets;
 use memchr::memmem::Finder;
@@ -192,20 +192,38 @@ pub struct ReferenceRow {
     pub matched: String,
 }
 
+/// The last rendered target name, so a repeated target is not decoded again.
+#[derive(Default)]
+struct TargetMemo {
+    last: Option<(usize, String)>,
+}
+
+#[cfg(test)]
 pub fn find_references(data: &[u8], query: &Query) -> Result<Vec<ReferenceRow>> {
+    Ok(find_references_with_anchor(data, query)?.0)
+}
+
+/// Reference rows, plus whether this DEX carries the query's anchor at all.
+///
+/// A content search answers with rows or nothing; a coordinate anchor additionally promises
+/// that the identity exists, which only an empty resolution can disprove.
+pub fn find_references_with_anchor(
+    data: &[u8],
+    query: &Query,
+) -> Result<(Vec<ReferenceRow>, bool)> {
     use crate::profile::{Counter, Stage, count, measure};
     count(Counter::DexFiles, 1);
     count(Counter::Bytes, data.len() as u64);
     let dex = measure(Stage::Header, || Dex::parse(data))?;
     let (kind, targets) = measure(Stage::Members, || dex.resolve_targets(query))?;
     if targets.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), false));
     }
     let targets = Targets::new(targets);
     let hits = measure(Stage::Scan, || dex.scan_all_classes(kind, &targets))?;
     let rows = measure(Stage::Render, || render_reference_rows(&dex, kind, &hits))?;
     count(Counter::Hits, rows.len() as u64);
-    Ok(rows)
+    Ok((rows, true))
 }
 
 /// Visit reference rows in deterministic method-index order without retaining
@@ -290,6 +308,7 @@ pub(crate) fn for_each_reference(
 
 fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<Vec<ReferenceRow>> {
     let mut rows: Vec<ReferenceRow> = Vec::new();
+    let mut memo = TargetMemo::default();
     // The hits arrive sorted by method and deduplicated, so one pass groups them: a run
     // of equal method indices is that method's matched set, in ascending index order.
     let mut at = 0usize;
@@ -304,7 +323,7 @@ fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<V
             if !matched_names.is_empty() {
                 matched_names.push_str("; ");
             }
-            dex.push_target_name(kind, index as usize, &mut matched_names)?;
+            dex.push_target_name(kind, index as usize, &mut memo, &mut matched_names)?;
         }
         rows.push(ReferenceRow {
             method_index: method_idx,
@@ -333,6 +352,32 @@ pub fn prefix_has_targets(prefix: &[u8], query: &Query) -> Result<Option<bool>> 
     match dex.resolve_targets(query) {
         Ok((_kind, targets)) => Ok(Some(!targets.is_empty())),
         Err(_error) => Ok(None),
+    }
+}
+
+/// One needle matched against table bytes, in either face.
+///
+/// The two faces are the whole difference between a content search and a coordinate anchor:
+/// `--filter` asks whether the needle occurs, `--at` asks whether the value *is* the needle.
+/// Both encode the needle to MUTF-8 once, outside the table walk.
+struct Selector<'a> {
+    needle: &'a [u8],
+    finder: Option<Finder<'a>>,
+}
+
+impl<'a> Selector<'a> {
+    fn new(needle: &'a [u8], exact: bool) -> Self {
+        Self {
+            needle,
+            finder: (!exact).then(|| Finder::new(needle)),
+        }
+    }
+
+    fn matches(&mut self, value: &[u8]) -> bool {
+        match &self.finder {
+            Some(finder) => finder.find(value).is_some(),
+            None => value == self.needle,
+        }
     }
 }
 
@@ -444,6 +489,17 @@ impl<'a> Dex<'a> {
         self.string(self.type_string_idx(index)?)
     }
 
+    /// A member's descriptor without a table write: the prototype of a method or the type of
+    /// a field, from the u16 slot the two member kinds share.
+    fn member_descriptor(&self, base: usize, index: usize, methods: bool) -> Result<String> {
+        let descriptor_idx = read_u16(self.data, base + index * 8 + 2)? as usize;
+        if methods {
+            self.proto(descriptor_idx)
+        } else {
+            self.type_name(descriptor_idx)
+        }
+    }
+
     /// A method prototype in DEX descriptor form, e.g. `(ILjava/lang/String;)V`.
     ///
     /// This is the only way to name *one* method exactly: a name plus its prototype is
@@ -491,15 +547,15 @@ impl<'a> Dex<'a> {
         })
     }
 
-    fn matching_strings_bounded(&self, pattern: &str, max_targets: usize) -> Result<Vec<u32>> {
-        if pattern.is_empty() {
+    fn matching_strings_bounded(&self, pattern: &Pattern, max_targets: usize) -> Result<Vec<u32>> {
+        if pattern.text.is_empty() {
             return Ok(Vec::new());
         }
-        let needle = mutf8::encode_mutf8(pattern);
-        let finder = Finder::new(&needle);
+        let needle = mutf8::encode_mutf8(&pattern.text);
+        let mut selector = Selector::new(&needle, pattern.exact);
         let mut out = Vec::new();
         for index in 0..self.header.strings_size {
-            if finder.find(self.string_bytes(index)?).is_some() {
+            if selector.matches(self.string_bytes(index)?) {
                 if out.len() == max_targets {
                     return Err(ReferenceScratchLimit.into());
                 }
@@ -509,16 +565,16 @@ impl<'a> Dex<'a> {
         Ok(out)
     }
 
-    fn matching_types_bounded(&self, pattern: &str, max_targets: usize) -> Result<Vec<u32>> {
-        if pattern.is_empty() {
+    fn matching_types_bounded(&self, pattern: &Pattern, max_targets: usize) -> Result<Vec<u32>> {
+        if pattern.text.is_empty() {
             return Ok(Vec::new());
         }
-        let needle = mutf8::encode_mutf8(pattern);
-        let finder = Finder::new(&needle);
+        let needle = mutf8::encode_mutf8(&pattern.text);
+        let mut selector = Selector::new(&needle, pattern.exact);
         let mut out = Vec::new();
         for index in 0..self.header.types_size {
             let string_index = self.type_string_idx(index)?;
-            if finder.find(self.string_bytes(string_index)?).is_some() {
+            if selector.matches(self.string_bytes(string_index)?) {
                 if out.len() == max_targets {
                     return Err(ReferenceScratchLimit.into());
                 }
@@ -580,21 +636,26 @@ impl<'a> Dex<'a> {
         } else {
             (self.header.fields_off, self.header.fields_size)
         };
-        let name_finder = query
+        // The needles outlive the selectors that borrow them.
+        let name_needle = query
             .name
-            .as_deref()
-            .map(|pattern| Finder::new(pattern.as_bytes()));
-        let class_finder = query
+            .as_ref()
+            .map(|pattern| (mutf8::encode_mutf8(&pattern.text), pattern.exact));
+        let class_needle = query
             .class
             .as_ref()
-            .map(|class| Finder::new(class.pattern.as_bytes()));
+            .map(|pattern| (mutf8::encode_mutf8(&pattern.text), pattern.exact));
+        let mut name_selector = name_needle
+            .as_ref()
+            .map(|(needle, exact)| Selector::new(needle, *exact));
+        let mut class_selector = class_needle
+            .as_ref()
+            .map(|(needle, exact)| Selector::new(needle, *exact));
         let mut out = Vec::new();
         for index in 0..size {
             let member = self.member(base, size, index)?;
-            let name_matches = match &name_finder {
-                Some(finder) => finder
-                    .find(self.string_bytes(member.name_idx as usize)?)
-                    .is_some(),
+            let name_matches = match &mut name_selector {
+                Some(selector) => selector.matches(self.string_bytes(member.name_idx as usize)?),
                 None => true,
             };
             if !name_matches {
@@ -602,16 +663,22 @@ impl<'a> Dex<'a> {
             }
             let class_name_idx = self.type_string_idx(member.class_idx as usize)?;
             let class_bytes = self.string_bytes(class_name_idx)?;
-            let class_matches = match &class_finder {
-                Some(finder) => finder.find(class_bytes).is_some(),
+            let class_matches = match &mut class_selector {
+                Some(selector) => selector.matches(class_bytes),
                 None => true,
             };
-            if class_matches {
-                if out.len() == max_targets {
-                    return Err(ReferenceScratchLimit.into());
-                }
-                out.push(index as u32);
+            if !class_matches {
+                continue;
             }
+            if let Some(descriptor) = &query.descriptor
+                && self.member_descriptor(base, index, methods)? != *descriptor
+            {
+                continue;
+            }
+            if out.len() == max_targets {
+                return Err(ReferenceScratchLimit.into());
+            }
+            out.push(index as u32);
         }
         Ok(out)
     }
@@ -636,7 +703,37 @@ impl<'a> Dex<'a> {
         }
     }
 
-    fn push_target_name(&self, kind: RefKind, index: usize, out: &mut String) -> Result<()> {
+    fn push_target_name(
+        &self,
+        kind: RefKind,
+        index: usize,
+        memo: &mut TargetMemo,
+        out: &mut String,
+    ) -> Result<()> {
+        // The descriptor is what makes the printed target a coordinate: `La/a;->LIZ()V`
+        // selects one overload, where `La/a;->LIZ` selects none. Decoding it per row would
+        // repeat the same work for every call site of the same target, so the last one is
+        // kept: a row's matched set is a short ascending run, and consecutive rows tend to
+        // name the same target.
+        if let Some((memoized, name)) = &memo.last
+            && *memoized == index
+        {
+            out.push_str(name);
+            return Ok(());
+        }
+        let mut name = String::new();
+        self.push_target_name_uncached(kind, index, &mut name)?;
+        out.push_str(&name);
+        memo.last = Some((index, name));
+        Ok(())
+    }
+
+    fn push_target_name_uncached(
+        &self,
+        kind: RefKind,
+        index: usize,
+        out: &mut String,
+    ) -> Result<()> {
         match kind {
             RefKind::String => {
                 mutf8::push_decoded(out, self.string_bytes(index)?);
@@ -660,6 +757,21 @@ impl<'a> Dex<'a> {
                 mutf8::push_decoded(out, class);
                 out.push_str("->");
                 mutf8::push_decoded(out, name);
+                let descriptor_idx = read_u16(
+                    self.data,
+                    if kind == RefKind::Method {
+                        self.header.methods_off
+                    } else {
+                        self.header.fields_off
+                    } + index * 8
+                        + 2,
+                )? as usize;
+                if kind == RefKind::Method {
+                    out.push_str(&self.proto(descriptor_idx)?);
+                } else {
+                    out.push(':');
+                    out.push_str(&self.type_name(descriptor_idx)?);
+                }
                 Ok(())
             }
         }

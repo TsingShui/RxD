@@ -15,15 +15,15 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --byte` / byte-exact `get --at` |
+| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `get --at` |
 | Electron ASAR | `rxd asar` | `entries` / extract a selected file with `extract --at`, then use its code backend |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
-| Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref string\|type\|method\|field` / `get-class`/`get-method --at` |
-| JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref` / `get-method`/`get-class --at`, `--raw` for original instructions |
+| Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-f PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
+| JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-f … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref` / `get-function`/`get-block --at` |
-| Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --func` / `get-function --at` |
-| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --name\|--const-id` / `get-code --at`, whole-module `decompile` |
+| Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
+| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row) or `--name`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
@@ -80,15 +80,17 @@ rxd js identifiers bundle.js --name 'AIS3' --role reference
 rxd js calls bundle.js --name 'fetch'
 rxd js members bundle.js --name 'flag_correct'
 rxd js symbols bundle.js --within "$ENTITY_AT"
-rxd js xref bundle.js --byte "$SYMBOL_BYTE"
+rxd js xref bundle.js --at "$SYMBOL_AT"
+rxd js xref bundle.js --byte "$SYMBOL_BYTE"   # a raw offset, e.g. inside a multi-byte name
 rxd js get bundle.js --at "$SYMBOL_AT"
 ```
 
 A find match has no coordinate of its own: use its `context_at` for a local syntax
 fragment, falling back to `parent_at` for the enclosing entity. `ENTITY_AT` is a
 row from `entities` or a match's `parent_at`; a fragment coordinate is not valid
-for `symbols --within`. Use a symbol row's `start` byte for `xref` and its `at`
-for the canonical declaration. `xref` resolves lexical bindings within one file,
+for `symbols --within`. A symbol row's `at` anchors `xref`; its `start` byte is the
+`--byte` spelling when the anchor is a raw position. `xref` resolves lexical bindings
+within one file,
 not properties or cross-file calls; `unresolved`/`dynamic` resolution remains
 explicit. For directory find,
 route each hit with its header's `detail.path` into single-file commands.
@@ -136,11 +138,13 @@ rxd js entities inline.js
 
 ```sh
 rxd dex strings app.apk -f Authorization --limit 20
-rxd dex xref app.apk string Authorization
+rxd dex xref app.apk -f Authorization --kind string
+rxd dex xref app.apk --at "$METHOD_AT"
 rxd dex manifest app.apk
 rxd dex get-method app.apk --at "$METHOD_AT"
 rxd jar strings library.jar -f Authorization
-rxd jar xref library.jar string Authorization
+rxd jar xref library.jar -f Authorization --kind string
+rxd jar xref library.jar --at "$METHOD_AT"
 rxd jar get-method library.jar --at "$METHOD_AT" --raw
 rxd jar get-method library.jar --at "$METHOD_AT"
 rxd jar get-class library.jar --at "$CLASS_AT"
@@ -203,7 +207,7 @@ this binary core-module analyzer.
 ```sh
 rxd pyc codes module.pyc -f token
 rxd pyc strings module.pyc -f Authorization
-rxd pyc xref module.pyc --const-id "$CONSTANT_AT"
+rxd pyc xref module.pyc --at "$CONSTANT_AT"
 rxd pyc get-code module.pyc --at "$CODE_AT"
 rxd pyc xref module.pyc --name token --within "$CODE_AT"
 rxd pyc decompile module.pyc --json

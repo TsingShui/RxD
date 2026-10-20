@@ -40,18 +40,12 @@ pub(super) struct ArgSpec {
     pub enum_values: Vec<String>,
 }
 
-pub(super) struct SubSpec {
-    pub name: String,
-    pub args: Vec<ArgSpec>,
-}
-
 pub(super) struct ToolSpec {
     pub name: String,
     pub backend: String,
     pub command: String,
     pub description: String,
     pub args: Vec<ArgSpec>,
-    pub subcommands: Vec<SubSpec>,
     /// `--apk`-style commands take an ordered input list instead of one path.
     pub multi_input: bool,
 }
@@ -145,14 +139,6 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
             .or_else(|| command.get_long_about().map(|about| about.to_string()))
             .unwrap_or_default(),
         args: args(command, true),
-        subcommands: command
-            .get_subcommands()
-            .filter(|sub| sub.get_name() != "help")
-            .map(|sub| SubSpec {
-                name: sub.get_name().to_owned(),
-                args: args(sub, false),
-            })
-            .collect(),
         multi_input,
     }
 }
@@ -195,8 +181,10 @@ fn input_reference() -> Value {
         {"type":"object","properties":{"target_id":{"type":"string","minLength":1}},"required":["target_id"],"additionalProperties":false}]})
 }
 
-/// The tool's input schema: captured inputs, the reflected arguments, and the
-/// subcommand selector for commands such as `dex xref`.
+/// The tool's input schema: captured inputs and the reflected arguments.
+///
+/// A command's own flags describe the whole surface: `xref` takes `--at`/`--filter`/`--kind`
+/// like every other command takes its options, so there is no per-kind selector to project.
 pub(super) fn input_schema(spec: &ToolSpec) -> Value {
     let mut properties = Map::new();
     let mut required = Vec::new();
@@ -209,25 +197,6 @@ pub(super) fn input_schema(spec: &ToolSpec) -> Value {
     } else {
         properties.insert("input".into(), input_reference());
         required.push("input");
-    }
-    if !spec.subcommands.is_empty() {
-        let names: Vec<&str> = spec
-            .subcommands
-            .iter()
-            .map(|sub| sub.name.as_str())
-            .collect();
-        properties.insert(
-            "kind".into(),
-            json!({"type":"string","enum":names,"description":"Reference kind to query."}),
-        );
-        required.push("kind");
-        for sub in &spec.subcommands {
-            for arg in &sub.args {
-                properties
-                    .entry(arg.key.clone())
-                    .or_insert_with(|| property(arg));
-            }
-        }
     }
     for arg in spec.exposed() {
         properties.insert(arg.key.clone(), property(arg));
@@ -293,31 +262,6 @@ pub(super) fn argv(
             }
             Some(long) => argv.push(format!("--{long}={}", value_text(value)).into()),
             None => positionals.push(value_text(value).into()),
-        }
-    }
-    if !spec.subcommands.is_empty() {
-        let kind = arguments["kind"].as_str().ok_or_else(|| {
-            super::QueryError::new("INVALID_QUERY", "a reference kind is required")
-        })?;
-        let sub = spec
-            .subcommands
-            .iter()
-            .find(|sub| sub.name == kind)
-            .ok_or_else(|| super::QueryError::new("INVALID_QUERY", "unknown reference kind"))?;
-        argv.push(kind.into());
-        for arg in &sub.args {
-            let Some(value) = arguments.get(&arg.key) else {
-                continue;
-            };
-            match arg.long.as_deref() {
-                Some(long) if arg.kind == Kind::Bool => {
-                    if value.as_bool() == Some(true) {
-                        argv.push(format!("--{long}").into());
-                    }
-                }
-                Some(long) => argv.push(format!("--{long}={}", value_text(value)).into()),
-                None => positionals.push(value_text(value).into()),
-            }
         }
     }
     // Typed tools always request machine-readable output when the CLI offers the switch.

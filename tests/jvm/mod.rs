@@ -689,7 +689,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     let path = input("flow-deflated.jar");
 
     // String literal reference: the ldc site in FlowFixture.text().
-    let string_hits = jvm_jsonl(&run(&["xref", "string", "前端"], &path));
+    let string_hits = jvm_jsonl(&run(&["xref", "-f", "前端", "--kind", "string"], &path));
     assert_eq!(string_hits[0]["command"], "xref");
     let refs: Vec<&Value> = string_hits
         .iter()
@@ -719,7 +719,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     let gson = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/jvm/gson-2.11.0.jar");
 
     // Method call sites, with every hit carrying its owning class and method.
-    let methods = jvm_jsonl(&run(&["xref", "method", "toJson"], &gson));
+    let methods = jvm_jsonl(&run(&["xref", "-f", "toJson", "--kind", "method"], &gson));
     let method_refs: Vec<&Value> = methods
         .iter()
         .filter(|v| v["record"] == "reference")
@@ -732,7 +732,15 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
 
     // Owner-class substring filter narrows method hits to the matching owner.
     let filtered = jvm_jsonl(&run(
-        &["xref", "method", "append", "--class", "StringBuilder"],
+        &[
+            "xref",
+            "-f",
+            "append",
+            "--kind",
+            "method",
+            "--class",
+            "StringBuilder",
+        ],
         &gson,
     ));
     let filtered_refs: Vec<&Value> = filtered
@@ -744,11 +752,11 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         v["detail"]["target"]
             .as_str()
             .unwrap()
-            .contains("StringBuilder.append")
+            .contains("Ljava/lang/StringBuilder;->append")
     }));
 
     // Type reference by substring.
-    let types = jvm_jsonl(&run(&["xref", "type", "JsonReader"], &gson));
+    let types = jvm_jsonl(&run(&["xref", "-f", "JsonReader", "--kind", "type"], &gson));
     assert!(
         types
             .iter()
@@ -761,7 +769,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     assert!(types.iter().any(|v| v["record"] == "reference"));
 
     // Field access sites.
-    let fields = jvm_jsonl(&run(&["xref", "field", "factories"], &gson));
+    let fields = jvm_jsonl(&run(&["xref", "-f", "factories", "--kind", "field"], &gson));
     let field_refs: Vec<&Value> = fields
         .iter()
         .filter(|v| v["record"] == "reference")
@@ -771,11 +779,14 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         v["detail"]["target"]
             .as_str()
             .unwrap()
-            .contains(".factories:")
+            .contains("->factories:")
     }));
 
     // No match is a clean, complete empty result.
-    let empty = jvm_jsonl(&run(&["xref", "method", "zzzznotexist"], &gson));
+    let empty = jvm_jsonl(&run(
+        &["xref", "-f", "zzzznotexist", "--kind", "method"],
+        &gson,
+    ));
     assert!(!empty.iter().any(|v| v["record"] == "reference"));
     assert_eq!(empty.last().unwrap()["complete"], true);
 }

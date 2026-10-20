@@ -40,10 +40,12 @@ Search cross-class references (string/type/method/field; method/field may use `-
 owner substring):
 
 ```sh
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar method toJson
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar type JsonReader
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar method append --class StringBuilder
-target/release/rxd jar xref tests/fixtures/jvm/flow-deflated.jar string hello
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -f toJson --kind method
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -f JsonReader --kind type
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -f append --kind method --class StringBuilder
+target/release/rxd jar xref tests/fixtures/jvm/flow-deflated.jar -f hello --kind string
+# An identity, exactly: one method overload, as a `xref` row prints it.
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar --at 'Lcom/google/gson/Gson;->toJson(Ljava/lang/Object;)Ljava/lang/String;' 
 ```
 
 Runnable returned-ID routing:

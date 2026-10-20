@@ -376,7 +376,7 @@ fn pyc_final_versions_trace_every_explicit_name_and_packed_target_to_fetch() {
             for name in names {
                 let all = rows(&command("xref", &path, &["--name", name]));
                 assert_eq!(all[0]["query"]["name"], name);
-                assert!(all[0]["query"]["const_id"].is_null());
+                assert!(all[0]["query"]["at"].is_null());
                 assert_eq!(all.last().unwrap()["complete"], true);
                 let hits: Vec<_> = all.iter().filter(|r| r["record"] == "reference").collect();
                 let mut wanted = Vec::new();
@@ -547,9 +547,9 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                     continue;
                 }
                 let mut args = base_args.clone();
-                args.extend(["--const-id", literal["at"].as_str().unwrap()]);
+                args.extend(["--at", literal["at"].as_str().unwrap()]);
                 let refs = rows(&command("xref", &path, &args));
-                assert_eq!(refs[0]["query"]["const_id"], literal["at"]);
+                assert_eq!(refs[0]["query"]["at"], literal["at"]);
                 assert_eq!(refs.last().unwrap()["complete"], true);
                 let owner = d["code_index"].as_u64().unwrap() as usize;
                 let wanted: Vec<_> = expected["codes"][owner]["dis_instructions"]
@@ -683,12 +683,7 @@ fn pyc_final_versions_use_original_frozenset_child_order_for_occurrence_ids() {
             let refs = rows(&command(
                 "xref",
                 &path,
-                &[
-                    "--version",
-                    minor,
-                    "--const-id",
-                    literal["at"].as_str().unwrap(),
-                ],
+                &["--version", minor, "--at", literal["at"].as_str().unwrap()],
             ));
             assert_eq!(refs.last().unwrap()["records"], 1);
             assert_eq!(refs[1]["detail"]["relation"], "containing_constant");
@@ -1255,7 +1250,7 @@ fn pyc_final_versions_navigate_pinned_actual_email_policy_modules_offline() {
             let refs = rows(&command(
                 "xref",
                 &path,
-                &["--const-id", literal["at"].as_str().unwrap()],
+                &["--at", literal["at"].as_str().unwrap()],
             ));
             assert_eq!(refs.last().unwrap()["complete"], true);
             for hit in refs.iter().filter(|r| r["record"] == "reference") {

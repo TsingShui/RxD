@@ -173,20 +173,9 @@ fn cli_query(
 ) -> std::process::Output {
     let (_, backend, command) = CLI_ROUTES.iter().find(|route| route.0 == name).unwrap();
     let mut argv = vec![backend.to_string(), command.to_string(), path.to_owned()];
-    let refs = matches!(name, "dex_xref" | "jar_xref");
-    if refs {
-        argv.push(arguments["kind"].as_str().unwrap().to_owned());
-    }
-    let mut tail = Vec::new();
+    let tail = Vec::new();
     for (field, value) in arguments.as_object().unwrap() {
         if matches!(field.as_str(), "input" | "include_bytes") {
-            continue;
-        }
-        if refs && field == "kind" {
-            continue;
-        }
-        if refs && (field == "value" || field == "name") {
-            tail.push(value.as_str().unwrap().to_owned());
             continue;
         }
         let flag = field.replace('_', "-");
@@ -901,13 +890,16 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
             "dex_strings",
             json!({"filter":"Authorization","limit":1,"offset":0}),
         ),
-        ("dex_xref", json!({"kind":"string","value":"Authorization"})),
-        ("dex_xref", json!({"kind":"type","value":"Fixture"})),
         (
             "dex_xref",
-            json!({"kind":"method","name":"m0","class":"Fixture0"}),
+            json!({"kind":"string","filter":"Authorization"}),
         ),
-        ("dex_xref", json!({"kind":"field","name":"missing"})),
+        ("dex_xref", json!({"kind":"type","filter":"Fixture"})),
+        (
+            "dex_xref",
+            json!({"kind":"method","filter":"m0","class":"Fixture0"}),
+        ),
+        ("dex_xref", json!({"kind":"field","filter":"missing"})),
         ("dex_manifest", json!({})),
         ("dex_get_class", json!({"at":"LFixture0;"})),
         ("dex_get_method", json!({"at":method})),
@@ -977,10 +969,10 @@ fn mcp_jvm_navigation_preserves_original_instruction_fetch() {
             json!({"class":"Lfixture/FlowFixture;","filter":"v"}),
         ),
         ("jar_strings", json!({"filter":""})),
-        ("jar_xref", json!({"kind":"string","value":""})),
-        ("jar_xref", json!({"kind":"type","name":"Object"})),
-        ("jar_xref", json!({"kind":"method","name":"println"})),
-        ("jar_xref", json!({"kind":"field","name":"counter"})),
+        ("jar_xref", json!({"kind":"string","filter":""})),
+        ("jar_xref", json!({"kind":"type","filter":"Object"})),
+        ("jar_xref", json!({"kind":"method","filter":"println"})),
+        ("jar_xref", json!({"kind":"field","filter":"counter"})),
         ("jar_get_method", json!({"at":method["at"],"raw":true})),
         ("jar_get_method", json!({"at":method["at"]})),
         ("jar_get_class", json!({"at":"Lfixture/FlowFixture;"})),
@@ -1095,10 +1087,7 @@ fn mcp_wasm_navigation_retains_raw_body_and_explicit_references() {
         ("wasm_data", json!({})),
         ("wasm_elements", json!({})),
         ("wasm_strings", json!({"filter":""})),
-        (
-            "wasm_xref",
-            json!({"func":function["detail"]["func_index"]}),
-        ),
+        ("wasm_xref", json!({"at":function["at"]})),
         ("wasm_get_function", json!({"at":function["at"],"raw":true})),
         ("wasm_get_function", json!({"at":function["at"]})),
     ] {
@@ -1313,16 +1302,16 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     ]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","name":format!("--output={}",victim.display())}));
+    let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","filter":format!("--output={}",victim.display())}));
     assert!(
         !victim.exists(),
-        "typed name was incorrectly interpreted as a host output destination: {result}"
+        "a typed filter was incorrectly interpreted as a host output destination: {result}"
     );
     checked(
         &mut client,
         &tools,
         "dex_xref",
-        json!({"input":{"path":input},"kind":"string","value":"-needle"}),
+        json!({"input":{"path":input},"kind":"string","filter":"-needle"}),
     );
 }
 

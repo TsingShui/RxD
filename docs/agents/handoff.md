@@ -23,7 +23,12 @@ exposes `--max-*`.
 3. **`--at` selects a row.** Every fetch/extract command takes `--at` with the coordinate a
    row prints; the short form expands against the header identity inside the backend
    library. A full `rxd1:<backend>:<sha256>:...` id is still accepted and still fails with
-   `SOURCE_MISMATCH` when the hash differs. Positional ids and `--id` are gone.
+   `SOURCE_MISMATCH` when the hash differs. Positional ids and `--id` are gone. `xref` is
+   not an exception: `--at` anchors on the identity a row prints (dex/jar member and type
+   coordinates, `symbol:6:9`, `func:42`, `const:0:3`), while `-f PATTERN --kind KIND` is the
+   content search. js keeps `--byte` beside `--at` because a position *inside* a multi-byte
+   identifier is not a coordinate any row prints, and pyc keeps `--name` because an exact
+   bytecode name is not a coordinate either.
 4. **`--raw` is the only spelling** for the original instructions/bytes view of a fetch
    (`get-method`, `get-function`, `get-code`). Backends with no second representation
    (dex, pyc) have no `--raw` because there is nothing to switch away from.
@@ -35,7 +40,11 @@ exposes `--max-*`.
    backend's own identifier for that string: DEX `string_ids`, JVM constant pool, pyc
    constant slot, .NET literal inventory position, wasm/evm inventory position.
 7. **`xref` rows are `context_at` + `detail.target`** plus the backend's own evidence
-   (offsets, opcodes, resolution status, generic arguments, ...). Nothing was dropped.
+   (offsets, opcodes, resolution status, generic arguments, ...). Nothing was dropped, and
+   `detail.target` is a *coordinate*: dex/jar print `Lx/y;->name(proto)` (methods) and
+   `Lx/y;->name:type` (fields), which `--at` takes back unchanged. The prototype/type was
+   added for exactly that round trip; jar's old dotted `owner.name(desc)` spelling and
+   quoted string targets were replaced so one spelling reaches both faces.
 8. **Budgets** live only in `rxd_core::Budget` (input, entry, metadata, entries, entities,
    instructions, work, records, output, AST depth, semantic nodes) and every backend
    projects it into its own `Limits`. The CLI exposes no ceiling flag; a `--max-*` argument
@@ -51,6 +60,12 @@ exposes `--max-*`.
   coordinates, budgets, tests and docs.
 - `069ac54` `strings.index` everywhere + nested detail ids short.
 - `706f125` docs/skill/site synchronisation.
+- `63c359a`/`84fb398` dex `--class` became a substring like every other backend, and the
+  per-entry pre-check became a cost heuristic (`bounded_by_class`) instead of "names one
+  class"; release measurement recorded in `dex-design.md`.
+- `xref` two faces: `src/cli/xref.rs` (shared surface) + dex/jar projection, `detail.target`
+  became a full coordinate, js `--at`/`--byte`, wasm `xref --at func:N`, pyc `xref --at`,
+  and the MCP subcommand-selector machinery removed.
 
 ## MCP surface (done, merge `a3068e1`)
 
@@ -119,6 +134,21 @@ them by name, which is why the module filter is not used as evidence for those t
    mnemonic; jar/dotnet/pyc/evm all keep theirs. Adding them means threading the offset
    through the dex scan path, which is the performance-critical one. User decision: do not
    add.
+
+5. **`xref` target surface.** Resolved: one `xref` command with two faces, never a
+   per-kind subcommand. `--at` names one identity exactly and infers its kind from the
+   coordinate (`Lx/y;` type, `Lx/y;->m()V` method, `Lx/y;->f:T` field); `-f/--filter` is a
+   case-sensitive substring and requires `--kind` because it cannot say what it looks for; a
+   literal anchor is the one case where `--kind string` is required. Contradicting the
+   coordinate is an argument error naming both kinds (user decision: accurate errors, not an
+   empty result), and an anchor no table carries is `NOT_FOUND`. The shared implementation
+   is `src/cli/xref.rs`; dex and jar both project it, and the MCP subcommand-selector
+   machinery in `src/query/reflect.rs` was deleted because no command has subcommands any
+   more (`dex_xref`/`jar_xref` are one tool each, down from four).
+6. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
+   substring, including the member name and `--class` (dex previously compared both
+   exactly). `--fuzzy-class` is gone; there is no exact-search mode, because exactness is
+   what `--at` is for.
 
 ## Known follow-ups (not in this goal)
 

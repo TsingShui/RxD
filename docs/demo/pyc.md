@@ -142,10 +142,10 @@ Use the row coordinate, not filenames/names.
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name shared
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name shared --within code:4
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc \
-  --const-id 'const:<code-index>:<path>'
+  --at 'const:<code-index>:<path>'
 ```
 
-`--name` and `--const-id` are mutually exclusive and exactly one is required. Name
+`--name` and `--at` are mutually exclusive and exactly one is required. Name
 matching is exact original-payload equality, not substring/case-fold/normalization.
 Constant IDs come from actual `strings` output; their path may traverse only tuple/
 frozenset and end at str/bytes. Without `--within`, only the constant's owner is scanned;

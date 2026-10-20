@@ -80,7 +80,7 @@ section exactly (duplicates preserved).
   without lossy replacement, and `-f/--filter` then matches their lossy text.
   Data-segment linear-memory layout is reported as the declared offset expression;
   no constant folding or runtime evaluation is performed.
-- `xref --func N` finds instructions in all defined function bodies that explicitly
+- `xref --at func:N` finds instructions in all defined function bodies that explicitly
   reference the target function index (`call`, `return_call`, `ref.func`) and retains
   the caller index and code-body offset. It does not resolve `call_indirect` runtime
   table targets and never claims a statically determined indirect callee;

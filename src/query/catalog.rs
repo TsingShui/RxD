@@ -116,12 +116,6 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
             "exactly one input selector is required",
         ));
     }
-    if !spec.subcommands.is_empty() && arguments.get("kind").is_none() {
-        return Err(QueryError::new(
-            "INVALID_QUERY",
-            "a reference kind is required",
-        ));
-    }
     Ok(())
 }
 

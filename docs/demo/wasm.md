@@ -43,7 +43,7 @@ that view. Both retain code-body offsets and original file ranges.
 Listings are single-kind: header → records of that one kind → summary, so no row stream
 mixes types with functions. Identity is the row's `at` coordinate (`type:0`, `func:1`,
 `data:1`, …); the header carries the input SHA-256 and rows never repeat it.
-`xref --func` rows carry the caller coordinate in `context_at` and the referenced
+`xref --at` rows carry the caller coordinate in `context_at` and the referenced
 function in `detail.target`, and report only direct calls and `ref.func`;
 `call_indirect` is marked indirect and its runtime table target is not resolved.
 Changing any input byte invalidates old coordinates. Budgets come from the shared

@@ -1,7 +1,8 @@
 use super::super::default_threads;
-use anyhow::{Result, bail};
+use super::super::xref::{Anchor, Kind as XrefKind, Target, TargetArgs};
+use anyhow::Result;
 use clap::{Args, Subcommand};
-use rxd_dex::query::{ClassQuery, MemberQuery, Query, fuzzy_class_pattern};
+use rxd_dex::query::{MemberQuery, Pattern, Query, format_class_name};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Subcommand)]
@@ -197,93 +198,101 @@ pub struct XrefArgs {
     pub debug: bool,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
+    #[command(flatten)]
+    pub target: TargetArgs,
     pub apk_path: PathBuf,
-    #[command(subcommand)]
-    pub kind: FindKind,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 impl XrefArgs {
+    /// The backend query a resolved target asks for.
+    ///
+    /// A coordinate becomes an exact identity: the class is normalized to the descriptor
+    /// form the tables hold, and the descriptor selects one overload. A content search stays
+    /// a substring. The two never mix in one query.
     pub fn query(&self) -> Result<Query> {
-        match &self.kind {
-            FindKind::String(q) => Ok(Query::String(q.value.clone())),
-            FindKind::Type(q) => Ok(Query::Type(q.value.clone())),
-            FindKind::Method(q) => Ok(Query::Method(q.member_query("method")?)),
-            FindKind::Field(q) => Ok(Query::Field(q.member_query("field")?)),
-        }
+        let target = self.target.resolve()?;
+        target_query(&target)
     }
 
-    pub fn query_json(&self) -> serde_json::Value {
-        use serde_json::json;
-        match &self.kind {
-            FindKind::String(q) => json!({"kind":"string", "value":q.value}),
-            FindKind::Type(q) => json!({"kind":"type", "value":q.value}),
-            FindKind::Method(q) => {
-                json!({"kind":"method", "name":q.name, "class":q.class_name})
-            }
-            FindKind::Field(q) => {
-                json!({"kind":"field", "name":q.name, "class":q.class_name})
-            }
-        }
+    pub fn target(&self) -> Result<Target> {
+        self.target.resolve()
     }
 
     pub fn output_path(&self) -> Option<&Path> {
-        match &self.kind {
-            FindKind::String(q) | FindKind::Type(q) => q.output.as_deref(),
-            FindKind::Method(q) | FindKind::Field(q) => q.output.as_deref(),
-        }
+        self.output.as_deref()
     }
 }
 
-#[derive(Debug, Subcommand)]
-pub enum FindKind {
-    /// Instructions loading a string literal containing the value (case-sensitive).
-    String(ValueQuery),
-    /// Instructions referencing a type whose name contains the value (case-sensitive).
-    Type(ValueQuery),
-    /// Call sites of a method, optionally restricted to an owner class.
-    Method(MemberArgs),
-    /// Access sites of a field, optionally restricted to an owner class.
-    Field(MemberArgs),
-}
-
-#[derive(Debug, Args)]
-pub struct ValueQuery {
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-    /// Literal substring to search for (case-sensitive).
-    pub value: String,
-}
-
-#[derive(Debug, Args)]
-pub struct MemberArgs {
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-    /// Member name substring to search for (case-sensitive).
-    pub name: Option<String>,
-    /// Owner class substring, as `com/foo/Bar` or `Lcom/foo/Bar;` (case-sensitive; dots
-    /// are accepted as separators).
-    #[arg(long = "class")]
-    pub class_name: Option<String>,
-}
-
-impl MemberArgs {
-    fn member_query(&self, kind: &str) -> Result<MemberQuery> {
-        let name = self
-            .name
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned);
-        let class = self
-            .class_name
-            .as_deref()
-            .filter(|name| !name.is_empty())
-            .map(|name| ClassQuery {
-                pattern: fuzzy_class_pattern(name),
-            });
-        if name.is_none() && class.is_none() {
-            bail!("{kind} query needs at least one of class or {kind} name");
+fn target_query(target: &Target) -> Result<Query> {
+    let member =
+        |name: &str, class: &str, descriptor: Option<&str>, exact: bool| -> Result<MemberQuery> {
+            Ok(MemberQuery {
+                name: Some(if exact {
+                    Pattern::coordinate(name)
+                } else {
+                    Pattern::search(name)
+                }),
+                class: Some(Pattern {
+                    text: format_class_name(class)?,
+                    exact,
+                }),
+                descriptor: descriptor.map(str::to_owned),
+            })
+        };
+    match (&target.anchor, target.filter.as_deref()) {
+        (
+            Some(Anchor::Method {
+                class,
+                name,
+                descriptor,
+            }),
+            _,
+        ) => Ok(Query::Method(member(name, class, Some(descriptor), true)?)),
+        (
+            Some(Anchor::Field {
+                class,
+                name,
+                descriptor,
+            }),
+            _,
+        ) => Ok(Query::Field(member(name, class, Some(descriptor), true)?)),
+        (Some(Anchor::Type(name)), _) => {
+            Ok(Query::Type(Pattern::coordinate(type_coordinate(name))))
         }
-        Ok(MemberQuery { name, class })
+        (Some(Anchor::String(value)), _) => Ok(Query::String(Pattern::coordinate(value.clone()))),
+        (None, Some(pattern)) => match target.kind {
+            XrefKind::String => Ok(Query::String(Pattern::search(pattern))),
+            // A descriptor never contains a dot, so a dot in a type pattern is a package
+            // separator: `java.lang.String` must find `java/lang/String`.
+            XrefKind::Type => Ok(Query::Type(Pattern::search(pattern.replace('.', "/")))),
+            XrefKind::Method | XrefKind::Field => {
+                let query = MemberQuery {
+                    name: Some(Pattern::search(pattern)),
+                    class: target
+                        .class
+                        .as_deref()
+                        .map(|class| Pattern::search(class.replace('.', "/"))),
+                    descriptor: None,
+                };
+                Ok(if target.kind == XrefKind::Method {
+                    Query::Method(query)
+                } else {
+                    Query::Field(query)
+                })
+            }
+        },
+        (None, None) => unreachable!("resolve() rejects an empty target"),
+    }
+}
+
+/// A type coordinate: a descriptor is used as written, a dotted name is normalized.
+fn type_coordinate(coordinate: &str) -> String {
+    if coordinate.starts_with('[') || (coordinate.starts_with('L') && coordinate.ends_with(';')) {
+        coordinate.to_owned()
+    } else {
+        format_class_name(coordinate).unwrap_or_else(|_| coordinate.to_owned())
     }
 }
 

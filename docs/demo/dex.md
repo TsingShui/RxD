@@ -9,10 +9,14 @@ target/release/rxd dex entries /path/to/app.apk
 target/release/rxd dex classes /path/to/app.apk -f example
 target/release/rxd dex strings /path/to/app.apk --filter Authorization --limit 20
 target/release/rxd dex strings /path/to/app.apk --filter Authorization --offset 20 --limit 20
-target/release/rxd dex xref /path/to/app.apk string Authorization
-target/release/rxd dex xref /path/to/app.apk type Gson
-target/release/rxd dex xref /path/to/app.apk method onCreate --class com.example.Main
-target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example
+target/release/rxd dex xref /path/to/app.apk -f Authorization --kind string
+target/release/rxd dex xref /path/to/app.apk -f Gson --kind type
+target/release/rxd dex xref /path/to/app.apk -f onCreate --kind method --class com.example.Main
+target/release/rxd dex xref /path/to/app.apk -f INSTANCE --kind field --class example
+# An identity, exactly: every call site of one overload.
+target/release/rxd dex xref /path/to/app.apk --at 'Lcom/example/Main;->onCreate(Landroid/os/Bundle;)V'
+# A literal, exactly (the one anchor `--kind` has to name).
+target/release/rxd dex xref /path/to/app.apk --at Authorization --kind string
 target/release/rxd dex get-class /path/to/app.apk --at com.example.Main
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
 target/release/rxd dex classes /path/to/classes.dex --threads 2
@@ -48,7 +52,7 @@ from indices. Route from `classes` rows (their `at` is `Lx/y;`) or from a `metho
 `context_at`/`at` into `get-class`/`get-method`:
 
 ```sh
-target/release/rxd dex xref /path/to/app.apk string Authorization > target/dex-xref.jsonl
+target/release/rxd dex xref /path/to/app.apk -f Authorization --kind string > target/dex-xref.jsonl
 jq -r 'select(.record == "reference") | .context_at' target/dex-xref.jsonl
 target/release/rxd dex get-class /path/to/app.apk --at 'Lcom/example/Main;' > target/Main.java
 ```

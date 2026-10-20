@@ -6,32 +6,58 @@
 
 use anyhow::{Result, bail};
 
-/// What a `findrefs` invocation looks for.
+/// What an `xref` invocation looks for.
 #[derive(Clone, Debug)]
 pub enum Query {
-    String(String),
-    Type(String),
+    String(Pattern),
+    Type(Pattern),
     Method(MemberQuery),
     Field(MemberQuery),
 }
 
-/// A member query: at least one of a member name or a class constraint.
+/// One selector face.
+///
+/// The two faces answer different questions, so they are spelled differently on the command
+/// line. `-f/--filter` is a content search: a case-sensitive substring, where any entry whose
+/// table holds a match may answer and zero rows is a true answer. `--at` is a coordinate that
+/// a row already printed: it names one identity, matched exactly, and an identity that no
+/// entry carries is an error rather than an empty result.
 #[derive(Clone, Debug)]
-pub struct MemberQuery {
-    pub name: Option<String>,
-    pub class: Option<ClassQuery>,
+pub struct Pattern {
+    pub text: String,
+    pub exact: bool,
 }
 
-/// How a member query constrains the defining class.
-///
-/// One rule for every member lookup: a case-sensitive substring of the descriptor, with
-/// dots accepted as separators. An exact-descriptor mode used to exist beside it and made
-/// `--class` mean two things across backends; `get-class`/`get-method` remain the exact,
-/// coordinate-addressed path.
+impl Pattern {
+    /// A content search: a case-sensitive substring.
+    pub fn search(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            exact: false,
+        }
+    }
+
+    /// A coordinate a row printed: one identity, matched exactly.
+    pub fn coordinate(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            exact: true,
+        }
+    }
+}
+
+/// A member query: at least one of a member name, a declaring class, or the descriptor an
+/// exact coordinate carries.
 #[derive(Clone, Debug)]
-pub struct ClassQuery {
-    /// A literal substring of the descriptor, in `pkg/Name` form.
-    pub pattern: String,
+pub struct MemberQuery {
+    pub name: Option<Pattern>,
+    /// A case-sensitive substring of the descriptor, in `pkg/Name` form, where dots are
+    /// separators.
+    pub class: Option<Pattern>,
+    /// The prototype of a method coordinate (`(I)V`) or the type of a field coordinate
+    /// (`Ljava/lang/String;`). Only an exact anchor sets it: a name plus its prototype is
+    /// what names one method exactly.
+    pub descriptor: Option<String>,
 }
 
 /// Normalizes a class name to the `Lpkg/Name;` descriptor form that `findrefs`
@@ -71,6 +97,55 @@ pub fn fuzzy_class_pattern(pattern: &str) -> String {
 }
 
 impl Query {
+    /// The kind this query reports, as the CLI spells it.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Query::String(_) => "string",
+            Query::Type(_) => "type",
+            Query::Method(_) => "method",
+            Query::Field(_) => "field",
+        }
+    }
+
+    /// Whether this query came from an `--at` coordinate rather than a content search.
+    ///
+    /// Only an anchor promises that its identity exists: a content search that matches
+    /// nothing answers with an empty result set, while an anchor that resolves nowhere is a
+    /// `NOT_FOUND` error naming what was looked for.
+    pub fn is_anchor(&self) -> bool {
+        match self {
+            Query::String(pattern) | Query::Type(pattern) => pattern.exact,
+            Query::Method(query) | Query::Field(query) => query.descriptor.is_some(),
+        }
+    }
+
+    /// The error text for an anchor that no entry resolved, naming what was looked for.
+    pub fn anchor_not_found(&self) -> String {
+        match self {
+            Query::String(pattern) => {
+                format!("no string literal is exactly {:?}", pattern.text)
+            }
+            Query::Type(pattern) => {
+                format!("no type is named {}", pattern.text)
+            }
+            Query::Method(query) | Query::Field(query) => {
+                let name = match self {
+                    Query::Method(_) => "method",
+                    _ => "field",
+                };
+                let member = match (&query.name, &query.descriptor) {
+                    (Some(name), Some(descriptor)) => format!("{}{}", name.text, descriptor),
+                    (Some(name), None) => name.text.clone(),
+                    (None, _) => String::new(),
+                };
+                match &query.class {
+                    Some(class) => format!("no {name} {} matches {}", member, class.text),
+                    None => format!("no {name} named {member}"),
+                }
+            }
+        }
+    }
+
     /// Whether a class constraint makes the member table small enough that a per-entry
     /// prefix pre-check pays for its read.
     ///

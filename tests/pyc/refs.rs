@@ -276,10 +276,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             "detail",
         ],
     );
-    assert_js_keys(
-        &stream[0]["query"],
-        &["name", "const_id", "within", "version"],
-    );
+    assert_js_keys(&stream[0]["query"], &["name", "at", "within", "version"]);
     assert_js_keys(
         &stream[0]["detail"],
         &[
@@ -291,7 +288,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         ],
     );
     assert!(stream[0]["query"]["within"].is_null());
-    assert!(stream[0]["query"]["const_id"].is_null());
+    assert!(stream[0]["query"]["at"].is_null());
     assert!(stream[0]["query"]["version"].is_null());
     assert_eq!(stream[0]["query"]["name"], "value");
     assert_eq!(stream[0]["command"], "xref");

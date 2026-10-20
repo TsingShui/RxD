@@ -200,6 +200,14 @@ exact selectors sit next to it and narrow the same listing (`--class`, `--type`,
 `--method`), and `--at` is the only way to select a row that already exists. Two
 spellings for the same question are a defect, not a preference.
 
+`xref` takes the same two faces as every other query, never a per-kind subcommand. `--at`
+names one identity, exactly as a row prints it (`Lx/y;`, `Lx/y;->name(proto)`,
+`Lx/y;->name:type`, `symbol:6:9`, `func:42`, `const:0:3`, …), and the coordinate says its own
+kind, so `--kind` is only needed to read `--at` as a literal. `-f/--filter` searches content
+(case-sensitive substring), which cannot say what kind it looks for, so it requires `--kind`.
+A coordinate that no table carries is `NOT_FOUND`, never an empty result; a `--kind` that
+contradicts the coordinate is an argument error naming both kinds, never an empty result.
+
 Original instructions versus reconstructed source is one flag, `--raw`, on every
 backend that can emit both; `--bytecode`, `--il` and future spellings are not separate
 flags.

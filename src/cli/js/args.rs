@@ -1,6 +1,6 @@
 use super::super::{default_threads, positive};
 use clap::{Args, Subcommand, ValueEnum};
-use rxd_js::Query;
+use rxd_js::{Query, RefsTarget};
 use std::path::PathBuf;
 #[derive(Clone, Copy, ValueEnum)]
 pub(crate) enum Mode {
@@ -180,8 +180,13 @@ pub(crate) enum Command {
     Xref {
         #[command(flatten)]
         common: Common,
+        /// The coordinate of the name occurrence to resolve: a `symbols` row
+        /// (`symbol:6:9`) or an occurrence position (`identifier:26:31`).
+        #[arg(long, conflicts_with = "byte", required_unless_present = "byte")]
+        at: Option<String>,
+        /// A byte offset to anchor on instead, including one inside a multi-byte identifier.
         #[arg(long)]
-        byte: u64,
+        byte: Option<u64>,
         #[arg(long)]
         jsonl: bool,
     },
@@ -265,7 +270,13 @@ impl Command {
             Self::Calls { name, within, .. } => Query::Calls { name, within },
             Self::Members { name, within, .. } => Query::Members { name, within },
             Self::Locate { byte, .. } => Query::Locate { byte },
-            Self::Xref { byte, .. } => Query::Refs { byte },
+            Self::Xref { at, byte, .. } => Query::Refs {
+                target: match (at, byte) {
+                    (Some(at), _) => RefsTarget::Coordinate(at.clone()),
+                    (None, Some(byte)) => RefsTarget::Byte(byte),
+                    (None, None) => unreachable!("clap requires one of --at/--byte"),
+                },
+            },
             Self::Symbols { within, .. } => Query::Symbols { within },
             Self::Get { at, json, .. } => Query::Get { id: at, json },
         }

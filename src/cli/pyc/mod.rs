@@ -25,14 +25,12 @@ pub enum Command {
     /// Find explicit name or constant-occurrence references, with enclosing code IDs.
     Xref {
         input: PathBuf,
-        #[arg(
-            long,
-            conflicts_with = "const_id",
-            required_unless_present = "const_id"
-        )]
+        /// Exact name referenced by an instruction (`LOAD_NAME`, `LOAD_GLOBAL`, …).
+        #[arg(long, conflicts_with = "at", required_unless_present = "at")]
         name: Option<String>,
+        /// The `at` a `strings` row prints: `const:0:3`.
         #[arg(long)]
-        const_id: Option<String>,
+        at: Option<String>,
         #[arg(long)]
         within: Option<String>,
         #[arg(long, value_parser = parse_version)]
@@ -242,11 +240,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
         Command::Xref {
             input,
             name,
-            const_id,
+            at,
             within,
             version,
             options,
-        } => return refs::run(input, name, const_id, within, version, options, perf),
+        } => return refs::run(input, name, at, within, version, options, perf),
         Command::Strings {
             input,
             version,

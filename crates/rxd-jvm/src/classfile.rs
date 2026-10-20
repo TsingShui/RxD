@@ -375,6 +375,15 @@ impl ClassFile {
         out
     }
 
+    /// Every type and member reference in the constant pool, in pool order.
+    ///
+    /// This is the identity inventory a class carries: a member may be referenced without
+    /// being declared here (an external call), so a coordinate anchor is resolved against
+    /// the pool as well as the member tables.
+    pub fn reference_at_index_iter(&self) -> impl Iterator<Item = Reference> + '_ {
+        (0..self.pool.len()).filter_map(|index| self.reference_at(index as u16))
+    }
+
     /// Resolve a constant-pool entry a code instruction references into a typed
     /// cross-reference target, or `None` when the entry is not a type/member
     /// reference. Used by `findrefs` to classify instruction operands.

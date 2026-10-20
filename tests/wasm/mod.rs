@@ -448,7 +448,7 @@ fn wasm_filter_matches_each_kinds_name_or_coordinate() {
 #[test]
 fn wasm_xref_rows_carry_the_caller_coordinate_and_target() {
     let path = input();
-    let rows = wasm_jsonl(&run("xref", &path, &["--func", "1"]));
+    let rows = wasm_jsonl(&run("xref", &path, &["--at", "func:1"]));
     let refs = records_of(&rows, "reference");
     // `run` (index 2) references `sum` (index 1) via both ref.func and call.
     let opcodes: Vec<&str> = refs
@@ -549,7 +549,7 @@ fn wasm_listings_expose_no_budget_flags() {
 fn wasm_unmatched_selector_is_not_an_error() {
     let path = input();
     // Index 0 is an imported function with no code body; scanning callers is valid.
-    success(&run("xref", &path, &["--func", "0"]));
+    success(&run("xref", &path, &["--at", "func:0"]));
     // Out-of-range function index for a listing selector yields an empty catalog.
     let rows = wasm_jsonl(&run("functions", &path, &["--func", "9999"]));
     assert!(records_of(&rows, "function").is_empty());

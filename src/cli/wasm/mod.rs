@@ -121,8 +121,9 @@ pub enum Command {
     Xref {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        #[arg(long = "func")]
-        func: u32,
+        /// The `at` a `functions` row prints: `func:42`.
+        #[arg(long)]
+        at: String,
         #[command(flatten)]
         options: Options,
     },
@@ -419,8 +420,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 &mut records,
             )?;
         }
-        Command::Xref { func, .. } => {
-            let references = perf.measure("xref", || rxd_wasm::refs(&module, *func))?;
+        Command::Xref { at, .. } => {
+            // The coordinate names one function in the index space, which is what call
+            // operands carry; it is not the position of the body in the code section.
+            let target = module.function_index_at(at)?;
+            let references = perf.measure("xref", || rxd_wasm::refs(&module, target))?;
             for reference in references {
                 let mut detail = Map::new();
                 detail.insert(
@@ -470,7 +474,7 @@ fn command_query(command: &Command) -> Value {
         Command::Functions {
             func, func_name, ..
         } => json!({"func": func, "func_name": func_name, "filter": command.filter()}),
-        Command::Xref { func, .. } => json!({"func": func}),
+        Command::Xref { at, .. } => json!({"at": at}),
         _ => json!({"filter": command.filter()}),
     }
 }
