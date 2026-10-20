@@ -326,12 +326,12 @@ pub fn find_reference_hits_with_policy(
 ) -> Result<Vec<ReferenceHit>> {
     // One probe decides the prefix policy for the archive, for the pre-check below.
     let prefix_policy: OnceLock<PrefixPolicy> = OnceLock::new();
-    // A query that names one class is the case where a per-entry pre-check pays: the
+    // A query with a class constraint is the case where a per-entry pre-check pays: the
     // class usually lives in one entry of dozens, so every other entry can be skipped
-    // after a prefix read instead of an inflate and a full scan. Wide queries match
-    // almost every entry, where the same prefix read is pure overhead - so they are not
-    // pre-checked at all (see `Query::names_one_class`).
-    let needs_targets = query.names_one_class();
+    // after a prefix read instead of an inflate and a full scan. A name-only query matches
+    // almost every entry, where the same prefix read is pure overhead - so it is not
+    // pre-checked at all (see `Query::bounded_by_class`).
+    let needs_targets = query.bounded_by_class();
     let rows = map_dex_entries(
         path,
         policy,

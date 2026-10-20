@@ -71,14 +71,18 @@ pub fn fuzzy_class_pattern(pattern: &str) -> String {
 }
 
 impl Query {
-    /// Whether the query is bounded to one member class.
+    /// Whether a class constraint makes the member table small enough that a per-entry
+    /// prefix pre-check pays for its read.
     ///
-    /// A name match and a class substring are both content matches whose reach is unknown,
-    /// so no query shape is selective per entry and every scan is a full scan.
-    pub fn names_one_class(&self) -> bool {
-        // A substring pattern never bounds the query to one entry, so the per-entry
-        // prefix pre-check is not worth its read; every query scans in full.
-        false
+    /// This is a cost heuristic, not a correctness rule: `prefix_has_targets` resolves the
+    /// same query against the entry's tables, so its answer is exactly "would this entry
+    /// produce a row". A name-only query matches most entries of a real APK, where the
+    /// prefix read is pure overhead, so it is skipped.
+    pub fn bounded_by_class(&self) -> bool {
+        match self {
+            Query::Method(query) | Query::Field(query) => query.class.is_some(),
+            Query::String(_) | Query::Type(_) => false,
+        }
     }
 }
 

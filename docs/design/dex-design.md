@@ -216,6 +216,24 @@ median:
 | `methods --class <one class>` | 1 | tiny | 0.11 s |
 | `xref type java/lang/String` | 108,126 | 15 MB | 0.20 s |
 
+`xref` matching was unified to case-sensitive substrings for the member name and for
+`--class` (see above). Measured after that change, same APK, release, five runs, median
+(minimum in parentheses):
+
+| command | wall |
+| --- | ---: |
+| `xref method LIZ --class 'Lkotlinx/coroutines/internal/StackTraceRecoveryKt;'` | 0.156 s (0.148 s) |
+| `xref method LIZ --class a/a` (wide substring) | 0.219 s (0.196 s) |
+| `xref method Toast` (name only) | 0.206 s (0.185 s) |
+| `xref type String` | 0.250 s (0.245 s) |
+| `xref string Authorization` | 0.196 s (0.165 s) |
+| `classes` (same run, for reference) | 0.180 s (0.172 s) |
+
+The class-constrained query stays the cheap shape (0.156 s against 0.206 s for a name-only
+query) because `bounded_by_class` still enables the per-entry prefix pre-check; that
+pre-check resolves the same query against the entry tables, so it remains correct now that
+`--class` is a substring. Wide `xref` shapes were already 0.20 s before this change.
+
 The fixed cost is inflating the entries: ~115 ms of wall time across 10-12
 threads. Everything above that scales with the bytes a command prints, so
 `sorted`/`deduped` output would only have added cost - a class index is reported
