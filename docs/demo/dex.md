@@ -17,6 +17,11 @@ target/release/rxd dex xref /path/to/app.apk -f INSTANCE --kind field --class ex
 target/release/rxd dex xref /path/to/app.apk --at 'Lcom/example/Main;->onCreate(Landroid/os/Bundle;)V'
 # A literal, exactly (the one anchor `--kind` has to name).
 target/release/rxd dex xref /path/to/app.apk --at Authorization --kind string
+target/release/rxd dex get-method /path/to/app.apk --at 'Lcom/example/Main;->onCreate(Landroid/os/Bundle;)V'
+# locate → fetch without copying a coordinate (the stream's header carries the size,
+# which is the only identity a DEX archive has)
+target/release/rxd dex methods /path/to/app.apk | \
+  target/release/rxd dex get-method /path/to/app.apk --from -
 target/release/rxd dex get-class /path/to/app.apk --at com.example.Main
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
 target/release/rxd dex classes /path/to/classes.dex --threads 2

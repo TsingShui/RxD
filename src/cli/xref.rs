@@ -146,8 +146,9 @@ pub struct Selector {
 }
 
 impl Selector {
-    /// Resolve the coordinate to fetch; `units` are the record kinds the stream may carry.
-    pub fn resolve(&self, units: &[&str], source_id: &str) -> anyhow::Result<String> {
+    /// Resolve the coordinate to fetch; `units` are the record kinds the stream may carry
+    /// and `expect` is the identity evidence this backend has for its input.
+    pub fn resolve(&self, units: &[&str], expect: Expect<'_>) -> anyhow::Result<String> {
         match &self.at {
             Some(at) => Ok(at.clone()),
             None => selector_stream(
@@ -155,7 +156,7 @@ impl Selector {
                     .as_deref()
                     .expect("clap requires exactly one selector"),
                 units,
-                Expect::Content(source_id),
+                expect,
             ),
         }
     }

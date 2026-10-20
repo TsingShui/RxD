@@ -1,6 +1,8 @@
 use super::super::default_threads;
 use super::super::filter::CaseArgs;
-use super::super::xref::{Anchor, Expect, Kind as XrefKind, Target, TargetArgs, selector_stream};
+use super::super::xref::{
+    Anchor, Expect, Kind as XrefKind, Selector, Target, TargetArgs, selector_stream,
+};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rxd_dex::query::{MemberQuery, Pattern, Query, format_class_name};
@@ -39,9 +41,8 @@ pub enum Command {
 #[derive(Debug, Args)]
 pub struct GetMethodArgs {
     pub apk_path: PathBuf,
-    /// `Lx/y;->name(proto)`: the `descriptor` of a `methods` row.
-    #[arg(long)]
-    pub at: String,
+    #[command(flatten)]
+    pub selector: Selector,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -190,9 +191,8 @@ pub struct ManifestArgs {
 
 #[derive(Debug, Args)]
 pub struct GetClassArgs {
-    /// `Lx/y;` or `x.y`: the `at` a `classes` row prints.
-    #[arg(long)]
-    pub at: String,
+    #[command(flatten)]
+    pub selector: Selector,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,

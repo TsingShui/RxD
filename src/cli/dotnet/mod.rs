@@ -297,7 +297,10 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         },
     };
     if let Command::Get { selector, raw, .. } = &command {
-        let at = selector.resolve(&["method"], &input.source_id)?;
+        let at = selector.resolve(
+            &["method"],
+            crate::cli::xref::Expect::Content(&input.source_id),
+        )?;
         let method = input.method_by_id(&at)?;
         let body = perf.measure("decode", || input.body(method))?;
         let decompilation = if *raw {
@@ -341,7 +344,10 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         );
         append(&mut output, &value, limits.output_bytes)?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
-        let at = selector.resolve(&["type"], &input.source_id)?;
+        let at = selector.resolve(
+            &["type"],
+            crate::cli::xref::Expect::Content(&input.source_id),
+        )?;
         let class = perf.measure("decode", || input.class_body(&at))?;
         let rendered = if *raw {
             rxd_dotnet::ClassDecompilation {

@@ -314,7 +314,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     {
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
-        let coordinate = selector.resolve(&["class"], &input.source_id)?;
+        let coordinate = selector.resolve(&["class"], Expect::Content(&input.source_id))?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
         anyhow::ensure!(
             source.len() <= limits.output_bytes,
@@ -618,7 +618,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
     if let Some((selector, raw)) = request {
-        let at = selector.resolve(&["method"], &input.source_id)?;
+        let at = selector.resolve(&["method"], Expect::Content(&input.source_id))?;
         if raw {
             let (selected, index) = input.method_by_at(&at)?;
             let method = &selected.class.methods[index];

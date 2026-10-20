@@ -10,6 +10,7 @@ use output::{emit, emit_rows};
 use rxd_core::envelope::{header, summary};
 use serde_json::{Map, Value, json};
 
+use crate::cli::xref::Expect;
 use anyhow::{Result, bail};
 pub(crate) use args::Command;
 use rayon::prelude::*;
@@ -293,7 +294,11 @@ fn run_command(
             emit(&payload, args.output.as_deref())?;
         }
         Command::GetMethod(args) => {
-            let (class, name, prototype) = apk::parse_method_coordinate(&args.at)?;
+            // A DEX archive carries no content hash, so the stream is checked against the
+            // archive size; that is a mismatch guard, not an identity.
+            let bytes = std::fs::metadata(&args.apk_path)?.len();
+            let at = args.selector.resolve(&["method"], Expect::Bytes(bytes))?;
+            let (class, name, prototype) = apk::parse_method_coordinate(&at)?;
             let source = apk::decompile_method_with_policy(
                 &args.apk_path,
                 archive_policy,
@@ -411,7 +416,13 @@ fn run_command(
             emit(&xml, args.output.as_deref())?;
         }
         Command::Getclass(args) => {
-            let class_name = query::format_class_name(&args.at)?;
+            // A DEX archive carries no content hash, so the stream is checked against the
+            // archive size; that is a mismatch guard, not an identity.
+            let archive_bytes = std::fs::metadata(&args.apk_path)?.len();
+            let at = args
+                .selector
+                .resolve(&["class"], Expect::Bytes(archive_bytes))?;
+            let class_name = query::format_class_name(&at)?;
             if status == 0 {
                 let hit = apk::decompile_class_with_policy(
                     &args.apk_path,

@@ -26,8 +26,11 @@ preserved; argument positions and exit-code semantics are.
 | `classes INPUT` | Class descriptors; `-f/--filter` is a substring over the dotted name, folded unless `--case sensitive`. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`. |
 
-`get-class` selects by `--at` only (the `Lx/y;` a `classes` row prints); the positional
-Dalvik-name form was removed so every FETCH has one selector spelling. APK/DEX commands
+`get-class` and `get-method` select by `--at` (the coordinate a `classes`/`methods` row
+prints) or `--from JSONL`, which reads that coordinate from a previous stream. The stream
+is checked against the archive size, because a DEX header carries no content hash; that is
+a mismatch guard, not an identity. The positional Dalvik-name form was removed so every
+FETCH has one selector spelling. APK/DEX commands
 keep `--threads` / `--thread`
 alias and supported range. The default thread count comes from
 `available_parallelism`; zero threads is an error. All diagnostics go to stderr. `--perf`
