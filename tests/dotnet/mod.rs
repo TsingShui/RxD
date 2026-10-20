@@ -182,7 +182,8 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
     for key in ["at", "parent_at", "context_at", "start", "end"] {
         assert!(literal.as_object().unwrap().contains_key(key));
     }
-    assert!(literal["at"].is_null());
+    // The `#US` token is the literal's identity, so it is the row's `at`.
+    assert_eq!(literal["at"], format!("0x{:08x}", 0x7000_0001u32));
     assert!(literal["start"].is_null());
     assert!(literal["end"].is_null());
     assert_eq!(literal["detail"]["status"], "referenced");

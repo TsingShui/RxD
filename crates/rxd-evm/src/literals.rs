@@ -390,7 +390,7 @@ impl LiteralInventory {
         navigation: &Navigation,
         functions: &FunctionNavigation,
         query: &LiteralQuery,
-        filter: Option<&str>,
+        filter: Option<&rxd_core::filter::Contains>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<(Vec<LiteralMatch<'a>>, usize)> {
@@ -444,7 +444,7 @@ impl LiteralInventory {
             if !matched {
                 continue;
             }
-            if filter.is_some_and(|needle| !literal_value(bytes).to_lowercase().contains(needle)) {
+            if filter.is_some_and(|needle| !needle.matches(literal_value(bytes).as_str())) {
                 continue;
             }
             let route_count = functions.owners[literal.block].len().max(1);
@@ -485,21 +485,17 @@ impl LiteralInventory {
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
-        let needle = listing.filter.map(str::to_lowercase);
+        let needle = listing
+            .filter
+            .map(|needle| rxd_core::filter::Contains::new(needle, listing.case_sensitive));
         let stage = perf.start_stage();
-        let found = self.search_matches(
-            navigation,
-            functions,
-            query,
-            needle.as_deref(),
-            limits,
-            perf,
-        );
+        let found =
+            self.search_matches(navigation, functions, query, needle.as_ref(), limits, perf);
         perf.record("search", stage);
         let (found, immediate_records) = found?;
         let data = crate::data::DataInventory::discover(navigation, functions, limits, perf)?;
         let stage = perf.start_stage();
-        let data_found = data.search(navigation, query, needle.as_deref(), limits, perf);
+        let data_found = data.search(navigation, query, needle.as_ref(), limits, perf);
         perf.record("search", stage);
         let (data_found, data_records) = data_found?;
         let records = immediate_records.saturating_add(data_records);
@@ -571,12 +567,14 @@ impl LiteralInventory {
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
-        let needle = listing.filter.map(str::to_lowercase);
+        let needle = listing
+            .filter
+            .map(|needle| rxd_core::filter::Contains::new(needle, listing.case_sensitive));
         let id = crate::canonical_id(&navigation.carrier.source_id, at);
         if id.split(':').nth(5) == Some("data") {
             let data = crate::data::DataInventory::discover(navigation, functions, limits, perf)?;
             let stage = perf.start_stage();
-            let selected = data.refs(navigation, functions, &id, needle.as_deref(), limits, perf);
+            let selected = data.refs(navigation, functions, &id, needle.as_ref(), limits, perf);
             perf.record("references", stage);
             let (literal, routes, status) = selected?;
             perf.counters.records = Some(routes.len());
@@ -689,7 +687,7 @@ impl LiteralInventory {
             let mut emitted = 0;
             for owner in routes {
                 let record = self.record(navigation, functions, literal, owner, None);
-                if !references::keeps(&record, needle.as_deref()) {
+                if !references::keeps(&record, needle.as_ref()) {
                     continue;
                 }
                 write_record(&mut output, &record)?;

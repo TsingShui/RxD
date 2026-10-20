@@ -104,7 +104,7 @@ reports static member/property keys and JSX attribute names, plus computed keys
 whose key is a string literal or a constant expression the bounded evaluator can
 prove (`member_kind: computed_key` with `key_resolution: literal|static`); a
 dynamic `obj[expr]` key never matches. `entities --kind` takes one kind or a
-comma-separated list, `--name` filters exactly, and `-f` is a case-insensitive
+comma-separated list, `--name` filters exactly, and `-f` is a substring by default
 substring over the name/label; `functions`, `classes` and `methods` are the same
 rows restricted to one kind group. `find
 --resolve-static` additionally matches bounded AST constant evaluation; those

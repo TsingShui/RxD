@@ -21,7 +21,7 @@ listing commands emit a JSONL row stream. One command answers one object kind: `
 emits only blocks, `interface` only function candidates, and every xref stream only
 references to the queried object. `strings` is one literal question over two origins and
 keeps the pre-existing `literal`/`data_literal` discriminators for push-immediate and
-data-candidate evidence. `-f/--filter` narrows a listing by a case-insensitive substring
+data-candidate evidence. `-f/--filter` narrows a listing by a substring (folded unless `--case sensitive`)
 of the value the row is named by.
 
 | Command | Output kind | EVMole request |
@@ -153,7 +153,7 @@ fields.
 ## Basic blocks
 
 `evm blocks INPUT --encoding raw|hex [-f FILTER]` emits a schema-v2 JSONL header, zero or
-more `basic_block` records and a summary; the filter is a case-insensitive substring of
+more `basic_block` records and a summary; the filter is a substring of
 the block coordinate. `evm get-block INPUT --encoding raw|hex --at COORDINATE` returns one
 `block` JSON record with only the selected block's raw bytes/instructions. The native
 `basic-blocks` command remains the original EVMole range array.
@@ -214,7 +214,7 @@ summary counts them in `functions`. Each row additionally carries EVMole's own
 `arguments` (comma-joined Solidity type names or null) and `stateMutability` (producer
 spelling, or null for a candidate only witnessed by its dispatcher comparison), taken from
 the same single in-memory analysis that seeds discovery. The filter is a
-case-insensitive substring of the selector. `get-function INPUT --encoding raw|hex --at
+substring of the selector (folded unless `--case sensitive`). `get-function INPUT --encoding raw|hex --at
 COORDINATE [--raw]` returns one `function_code` record (identity kind remains function),
 or selects a unique candidate with `--selector HEX8` (optional 0x/0X, mixed case). `--at`
 and `--selector` are mutually exclusive; malformed selector is `INVALID_QUERY`, zero
@@ -323,7 +323,7 @@ zero or more reference records and a summary. Grammar/canonical validation/carri
 encoding/unit validation follow the corresponding FETCH, and a short coordinate is
 expanded against the analysed carrier first; stale/forged/wrong-kind IDs are errors, not
 zero hits. Copy/rename remains valid for the copy-only coordinate. `-f` is a
-case-insensitive substring of the caller coordinate (`context_at`).
+substring of the caller coordinate (`context_at`), folded unless `--case sensitive`.
 
 Block queries match that block's exact decoded start; function queries match only a
 validated candidate's decoded entry, not every owned block. A producer-candidate entry
@@ -411,7 +411,7 @@ semantic_references is scanned edges; resource_limits echoes work/states/stack_c
 
 `evm strings INPUT --encoding raw|hex --kind text|bytes|number [--query QUERY] [-f FILTER]`
 emits three-part JSONL. kind is required; without query it inventories that kind's
-immediates and explicit data-candidate evidence. `-f` is a case-insensitive substring of
+immediates and explicit data-candidate evidence. `-f` is a substring of
 the row's `value`.
 
 - text: substring match within contiguous valid UTF-8, non-control-character runs of one

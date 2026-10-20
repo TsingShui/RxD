@@ -21,7 +21,11 @@ pub struct Literal {
 }
 pub enum Query<'a> {
     All,
-    Text(&'a str),
+    /// A text substring, folded unless `case_sensitive`.
+    Text {
+        text: &'a str,
+        case_sensitive: bool,
+    },
     Hex(&'a [u8]),
 }
 pub fn constant_id(analysis: &Analysis, owner: usize, path: &[usize]) -> String {
@@ -187,16 +191,19 @@ fn visit(
         analysis.charge_work(payload.end - payload.start)?;
         let matched = match query {
             Query::All => true,
-            Query::Text(text) => {
+            Query::Text {
+                text,
+                case_sensitive,
+            } => {
                 if kind == "str" {
                     let Ok(value) = std::str::from_utf8(analysis.payload(definition).unwrap())
                         .map(str::to_owned)
                     else {
                         return Ok(());
                     };
-                    // Listing filters are case-insensitive; charge the folded comparisons.
+                    // Charge the comparison, folded or not.
                     analysis.charge_work(value.len().saturating_add(text.len()))?;
-                    value.to_lowercase().contains(&text.to_lowercase())
+                    rxd_core::filter::Contains::new(text, *case_sensitive).matches(&value)
                 } else {
                     contains(analysis, payload, text.as_bytes())?
                 }

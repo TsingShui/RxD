@@ -23,8 +23,9 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let mut perf = Perf::new(debug || emit_perf, "analysis", "asar", command.name());
     perf.limits = Some(limits);
     let query = match command {
-        Command::Entries { filter, .. } => rxd_asar::Query::Entries {
+        Command::Entries { filter, case, .. } => rxd_asar::Query::Entries {
             contains: filter.clone(),
+            case_sensitive: case.sensitive(),
         },
         Command::Extract { at, .. } => rxd_asar::Query::Extract { at: at.clone() },
     };

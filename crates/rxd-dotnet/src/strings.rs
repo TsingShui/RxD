@@ -24,7 +24,11 @@ fn scan(input: &Input) -> Result<Scan> {
     })
 }
 
-pub(crate) fn uses(input: &Input, contains: Option<&str>) -> Result<StringUses> {
+pub(crate) fn uses(
+    input: &Input,
+    contains: Option<&str>,
+    case_sensitive: bool,
+) -> Result<StringUses> {
     let Scan {
         literals,
         sites,
@@ -39,20 +43,42 @@ pub(crate) fn uses(input: &Input, contains: Option<&str>) -> Result<StringUses> 
             .or_default()
             .push(site.il_offset);
     }
+    // A folded needle is the same comparison in UTF-16, so the fold happens once here
+    // instead of per literal.
     let needle = contains
-        .map(|text| Utf16Needle::new(text, &mut work, input.limits.output_bytes))
+        .map(|text| {
+            let text = if case_sensitive {
+                text.to_owned()
+            } else {
+                text.to_lowercase()
+            };
+            Utf16Needle::new(&text, &mut work, input.limits.output_bytes)
+        })
         .transpose()?;
     let mut groups = Vec::new();
     for (literal_index, literal) in literals.iter().enumerate() {
         work.charge(1)?;
         if let Some(needle) = &needle {
-            let matches = if let Some(units) = &literal.utf16_units {
+            let folded;
+            let units: &[u16] = if let Some(units) = &literal.utf16_units {
+                units
+            } else {
+                folded = literal
+                    .value
+                    .as_deref()
+                    .unwrap_or_default()
+                    .encode_utf16()
+                    .collect::<Vec<_>>();
+                &folded
+            };
+            let matches = if case_sensitive {
                 needle.matches(units.iter().copied(), &mut work)?
             } else {
-                needle.matches(
-                    literal.value.as_deref().unwrap_or_default().encode_utf16(),
-                    &mut work,
-                )?
+                let lowered: Vec<u16> = String::from_utf16_lossy(units)
+                    .to_lowercase()
+                    .encode_utf16()
+                    .collect();
+                needle.matches(lowered.into_iter(), &mut work)?
             };
             if !matches {
                 continue;
@@ -92,11 +118,17 @@ pub(crate) fn uses(input: &Input, contains: Option<&str>) -> Result<StringUses> 
     Ok(StringUses { literals, groups })
 }
 
-/// References to every literal *containing* `pattern`.
+/// References to the literals `pattern` names.
 ///
-/// The search face is a case-sensitive substring on every backend, so a pattern that is
-/// part of a longer literal still finds the sites that load it.
-pub(crate) fn references(input: &Input, pattern: &str) -> Result<Vec<StringReference>> {
+/// `exact` is the coordinate face (`--at '<literal>' --kind string`): one literal, matched
+/// byte for byte. Otherwise the pattern is a case-sensitive substring, which is the search
+/// face on every backend, so a pattern inside a longer literal still finds its load sites.
+pub(crate) fn references(
+    input: &Input,
+    pattern: &str,
+    exact: bool,
+    case_sensitive: bool,
+) -> Result<Vec<StringReference>> {
     let Scan {
         literals,
         sites,
@@ -108,10 +140,13 @@ pub(crate) fn references(input: &Input, pattern: &str) -> Result<Vec<StringRefer
     let tokens: BTreeSet<_> = literals
         .iter()
         .filter(|literal| {
-            literal
-                .value
-                .as_deref()
-                .is_some_and(|value| value.contains(pattern))
+            literal.value.as_deref().is_some_and(|value| {
+                if exact {
+                    rxd_core::filter::equals(value, pattern, case_sensitive)
+                } else {
+                    rxd_core::filter::Contains::new(pattern, case_sensitive).matches(value)
+                }
+            })
         })
         .map(|literal| literal.offset)
         .collect();

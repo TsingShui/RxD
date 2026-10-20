@@ -356,12 +356,21 @@ impl Input {
         crate::metadata::strings(self)
     }
 
-    pub fn string_uses(&self, contains: Option<&str>) -> Result<crate::StringUses> {
-        crate::strings::uses(self, contains)
+    pub fn string_uses(
+        &self,
+        contains: Option<&str>,
+        case_sensitive: bool,
+    ) -> Result<crate::StringUses> {
+        crate::strings::uses(self, contains, case_sensitive)
     }
 
-    pub fn string_references(&self, value: &str) -> Result<Vec<crate::StringReference>> {
-        crate::strings::references(self, value)
+    pub fn string_references(
+        &self,
+        pattern: &str,
+        exact: bool,
+        case_sensitive: bool,
+    ) -> Result<Vec<crate::StringReference>> {
+        crate::strings::references(self, pattern, exact, case_sensitive)
     }
 
     pub fn user_string_references(&self, token: u32) -> Result<Vec<crate::StringReference>> {

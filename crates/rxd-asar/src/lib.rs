@@ -18,8 +18,14 @@ use sha2::{Digest, Sha256};
 use local::invalid;
 
 pub enum Query {
-    Entries { contains: Option<String> },
-    Extract { at: String },
+    Entries {
+        contains: Option<String>,
+        /// Whether `contains` folds case; the CLI's `--case` decides it.
+        case_sensitive: bool,
+    },
+    Extract {
+        at: String,
+    },
 }
 
 pub struct Options<'a> {
@@ -110,7 +116,10 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
         archive::Archive::open(input, max_header_bytes, max_entries)
     })?;
     match query {
-        Query::Entries { contains } => {
+        Query::Entries {
+            contains,
+            case_sensitive,
+        } => {
             if entries.len() > limits.records {
                 return Err(Error::new(
                     "RESOURCE_LIMIT",
@@ -136,10 +145,9 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                 ))?;
                 let mut invalid_ranges = 0;
                 for (path, entry) in &entries {
-                    if contains
-                        .as_ref()
-                        .is_some_and(|needle| !path.to_lowercase().contains(&needle.to_lowercase()))
-                    {
+                    if contains.as_ref().is_some_and(|needle| {
+                        !rxd_core::filter::Contains::new(needle, case_sensitive).matches(path)
+                    }) {
                         continue;
                     }
                     let mut detail =

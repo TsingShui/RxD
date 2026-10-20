@@ -238,7 +238,9 @@ impl<'a> References<'a> {
         listing: Listing<'_>,
         limits: Limits,
     ) -> Result<Vec<u8>> {
-        let needle = listing.filter.map(str::to_lowercase);
+        let needle = listing
+            .filter
+            .map(|needle| rxd_core::filter::Contains::new(needle, listing.case_sensitive));
         let header = references::header(
             navigation,
             self.id,
@@ -269,7 +271,7 @@ impl<'a> References<'a> {
         let mut emitted = 0;
         for hit in &self.hits {
             let record = self.record(navigation, functions, hit);
-            if !references::keeps(&record, needle.as_deref()) {
+            if !references::keeps(&record, needle.as_ref()) {
                 continue;
             }
             write_record(&mut output, &record)?;

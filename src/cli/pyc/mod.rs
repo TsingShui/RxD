@@ -5,6 +5,7 @@ mod strings;
 
 use std::path::{Path, PathBuf};
 
+use super::filter::CaseArgs;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
@@ -43,10 +44,12 @@ pub enum Command {
         input: PathBuf,
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
-        /// Case-insensitive substring over literal text or raw bytes.
+        /// Substring over literal text or raw bytes, folded unless `--case sensitive`.
         #[arg(short = 'f', long, conflicts_with = "filter_hex")]
         filter: Option<String>,
-        /// Case-insensitive substring over raw bytes, given as even hexadecimal digits.
+        #[command(flatten)]
+        case: CaseArgs,
+        ///  substring over raw bytes, given as even hexadecimal digits. Folded unless `--case sensitive`.
         #[arg(long, value_parser = strings::valid_hex)]
         filter_hex: Option<String>,
         #[command(flatten)]
@@ -68,9 +71,11 @@ pub enum Command {
         input: PathBuf,
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
-        /// Case-insensitive substring over the code name.
+        /// Substring over the code name, folded unless `--case sensitive`.
         #[arg(short = 'f', long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[arg(long, conflicts_with = "index")]
         name: Option<String>,
         #[arg(long)]
@@ -249,9 +254,20 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             input,
             version,
             filter,
+            case,
             filter_hex,
             options,
-        } => return strings::run(input, version, filter, filter_hex, options, perf),
+        } => {
+            return strings::run(
+                input,
+                version,
+                filter,
+                case.sensitive(),
+                filter_hex,
+                options,
+                perf,
+            );
+        }
         Command::GetCode {
             input,
             at,
@@ -262,10 +278,22 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             input,
             version,
             filter,
+            case,
             name,
             index,
             options,
-        } => return static_commands::codes(input, version, filter, name, index, options, perf),
+        } => {
+            return static_commands::codes(
+                input,
+                version,
+                filter,
+                case.sensitive(),
+                name,
+                index,
+                options,
+                perf,
+            );
+        }
         command => command,
     };
     let Command::Decompile {

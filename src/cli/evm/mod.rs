@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::filter::CaseArgs;
 use clap::{Args, Subcommand, ValueEnum};
 use rxd_core::{Budget, Error, Result, perf::Perf};
 use rxd_evm::{
@@ -51,9 +52,11 @@ pub struct StringsOptions {
     /// Text substring, exact hex bytes, or decimal/0x U256; omit to inventory this kind.
     #[arg(long, allow_hyphen_values = true)]
     query: Option<String>,
-    /// Case-insensitive substring over the value a literal row is named by.
+    /// Substring over the value a literal row is named by, folded unless `--case sensitive`.
     #[arg(short = 'f', long)]
     filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
 }
 
 #[derive(Args)]
@@ -63,9 +66,11 @@ pub struct XrefOptions {
     /// The coordinate a block, function or literal row prints.
     #[arg(long)]
     at: String,
-    /// Case-insensitive substring over the caller coordinate of each reference.
+    /// Substring over the caller coordinate of each reference, folded unless `--case sensitive`.
     #[arg(short = 'f', long)]
     filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -106,9 +111,11 @@ pub struct FunctionOptions {
 pub struct ListOptions {
     #[command(flatten)]
     options: Options,
-    /// Case-insensitive substring over the value a row is named by.
+    /// Substring over the value a row is named by, folded unless `--case sensitive`.
     #[arg(short = 'f', long)]
     filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
 }
 
 #[derive(Args)]
@@ -282,16 +289,22 @@ pub fn execute(command: Command) -> Result<()> {
                 Command::Blocks(blocks) => navigation.blocks_json(
                     options.include_bytecode,
                     blocks.filter.as_deref(),
+                    blocks.case.sensitive(),
                     limits,
                     &mut perf,
                 ),
-                Command::Interface(interface) => functions.as_ref().unwrap().interface_json(
-                    &navigation,
-                    options.include_bytecode,
-                    interface.filter.as_deref(),
-                    limits,
-                    &mut perf,
-                ),
+                Command::Interface(interface) => {
+                    let filter = interface.filter.as_deref().map(|needle| {
+                        rxd_core::filter::Contains::new(needle, interface.case.sensitive())
+                    });
+                    functions.as_ref().unwrap().interface_json(
+                        &navigation,
+                        options.include_bytecode,
+                        filter.as_ref(),
+                        limits,
+                        &mut perf,
+                    )
+                }
                 Command::Strings(strings) => {
                     LiteralInventory::discover(&navigation, limits, &mut perf)?.strings_json(
                         &navigation,
@@ -307,6 +320,7 @@ pub fn execute(command: Command) -> Result<()> {
                         Listing {
                             include_bytecode: options.include_bytecode,
                             filter: strings.filter.as_deref(),
+                            case_sensitive: strings.case.sensitive(),
                         },
                         limits,
                         &mut perf,
@@ -319,6 +333,7 @@ pub fn execute(command: Command) -> Result<()> {
                     Listing {
                         include_bytecode: options.include_bytecode,
                         filter: refs.filter.as_deref(),
+                        case_sensitive: refs.case.sensitive(),
                     },
                     limits,
                     &mut perf,

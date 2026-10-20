@@ -150,6 +150,7 @@ pub fn run(
     input: PathBuf,
     version: Option<(u8, u8)>,
     filter: Option<String>,
+    case_sensitive: bool,
     filter_hex: Option<String>,
     options: Options,
     perf: &mut Perf,
@@ -188,7 +189,10 @@ pub fn run(
                 .collect::<Vec<_>>()
         });
         let query = if let Some(text) = &filter {
-            Query::Text(text)
+            Query::Text {
+                text,
+                case_sensitive,
+            }
         } else if let Some(bytes) = &hex {
             Query::Hex(bytes)
         } else {

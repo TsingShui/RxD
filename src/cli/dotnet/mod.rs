@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use super::filter::CaseArgs;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
@@ -56,9 +57,11 @@ pub enum Command {
         /// Exact full type name.
         #[arg(long = "type")]
         type_name: Option<String>,
-        /// Case-insensitive substring over the full type name.
+        ///  substring over the full type name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -68,9 +71,11 @@ pub enum Command {
         /// Exact full type name.
         #[arg(long = "type")]
         type_name: Option<String>,
-        /// Case-insensitive substring over the field or declaring type name.
+        ///  substring over the field or declaring type name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -83,9 +88,11 @@ pub enum Command {
         /// Exact method name.
         #[arg(long)]
         method: Option<String>,
-        /// Case-insensitive substring over the method or declaring type name.
+        ///  substring over the method or declaring type name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -116,9 +123,11 @@ pub enum Command {
     /// Query decoded user-string heap literals without executing input.
     Strings {
         input: PathBuf,
-        /// Case-insensitive substring over the decoded literal.
+        ///  substring over the decoded literal. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -137,6 +146,9 @@ pub enum Command {
         /// `--filter`, which can only search literals.
         #[arg(long, value_enum)]
         kind: Option<Kind>,
+        /// Whether `-f` folds case: `insensitive` (default) or `sensitive`.
+        #[arg(long, value_enum, default_value_t = crate::cli::filter::CaseMode::Insensitive)]
+        case: crate::cli::filter::CaseMode,
         /// Read the target from a previous JSONL stream (a file, or `-` for stdin);
         /// `method`, `field` and `type` records are accepted.
         #[arg(long, value_name = "JSONL", conflicts_with_all = ["at", "filter"])]
@@ -269,6 +281,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         at,
         filter,
         kind,
+        case,
         from,
         ..
     } = &command
@@ -278,6 +291,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 at.as_deref(),
                 filter.as_deref(),
                 *kind,
+                *case,
                 from.as_deref(),
                 &input.source_id,
             )
@@ -301,8 +315,12 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             None => Value::Null,
         },
         (None, _) => match xref_target.as_ref() {
-            Some(Target::Literal(pattern)) => {
-                json!({"target_kind": "user_string", "filter": pattern})
+            Some(Target::Literal { pattern, exact, .. }) => {
+                if *exact {
+                    json!({"target_kind": "user_string", "value": pattern})
+                } else {
+                    json!({"target_kind": "user_string", "filter": pattern})
+                }
             }
             Some(Target::Token { token, .. }) => {
                 let mut target =
@@ -482,8 +500,10 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
                 list(&input, &command, options, &mut output, &mut records)?;
             }
-            Command::Strings { filter, .. } => {
-                let uses = perf.measure("strings", || input.string_uses(filter.as_deref()))?;
+            Command::Strings { filter, case, .. } => {
+                let uses = perf.measure("strings", || {
+                    input.string_uses(filter.as_deref(), case.sensitive())
+                })?;
                 for group in &uses.groups {
                     let literal = &uses.literals[group.literal_index];
                     // `index` is the backend's own identifier for this string in its
@@ -495,22 +515,24 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                             .binary_search_by_key(&token, |method| method.token)
                             .expect("checked string owner")]
                     });
-                    record(
-                        &mut output,
-                        &mut records,
-                        options,
-                        &envelope::record(
+                    record(&mut output, &mut records, options, &{
+                        // The `#US` token is the literal's identity, so it is the row's
+                        // `at`: that is what `--at`/`--from` take back, and what the
+                        // reference rows point at.
+                        let token = format!("0x{:08x}", 0x7000_0000u32 | literal.offset);
+                        envelope::record(
                             "string",
                             RecordMeta {
+                                at: Some(&token),
                                 parent_at: method.map(|method| method.declaring_type_id.as_str()),
                                 context_at: method.map(|method| method.id.as_str()),
                                 ..metadata(&input)
                             },
                             detail(
-                                json!({"index":index,"offset":literal.offset,"token":0x70000000u32 | literal.offset,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"declaring_type_id":method.map(|method| envelope::at_of(&method.declaring_type_id)),"il_offsets":group.il_offsets}),
+                                json!({"index":index,"offset":literal.offset,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"declaring_type_id":method.map(|method| envelope::at_of(&method.declaring_type_id)),"il_offsets":group.il_offsets}),
                             ),
-                        ),
-                    )?;
+                        )
+                    })?;
                 }
             }
             Command::Xref { .. } => {
@@ -520,24 +542,39 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                             &input,
                             &reference.site,
                             reference.target.as_deref(),
+                            None,
                             limits.output_bytes.saturating_sub(output.len()),
                         )?;
                         record(&mut output, &mut records, options, &value)?;
                     }
                 } else {
-                    let sites = match xref_target.as_ref().expect("resolved for this command") {
-                        Target::Literal(pattern) => {
-                            perf.measure("strings", || input.string_references(pattern))?
-                        }
-                        Target::Token { token, .. } => {
-                            perf.measure("strings", || input.user_string_references(*token))?
-                        }
+                    // A string-route row names the text it loads, so the literal inventory is
+                    // built once instead of resolving a token per row.
+                    let (sites, literals) = match xref_target.as_ref().expect("resolved here") {
+                        Target::Literal {
+                            pattern,
+                            exact,
+                            case_sensitive,
+                        } => (
+                            perf.measure("strings", || {
+                                input.string_references(pattern, *exact, *case_sensitive)
+                            })?,
+                            Some(literal_values(&input)),
+                        ),
+                        Target::Token { token, .. } => (
+                            perf.measure("strings", || input.user_string_references(*token))?,
+                            None,
+                        ),
                     };
                     for site in sites {
+                        let literal = literals
+                            .as_ref()
+                            .and_then(|map| map.get(&(site.target_token & 0x00ff_ffff)));
                         let value = reference_record(
                             &input,
                             &site,
                             None,
+                            literal.map(String::as_str),
                             limits.output_bytes.saturating_sub(output.len()),
                         )?;
                         record(&mut output, &mut records, options, &value)?;
@@ -585,6 +622,9 @@ fn reference_record(
     input: &Input,
     site: &rxd_dotnet::TokenSite,
     target: Option<&rxd_dotnet::SemanticTarget>,
+    // The decoded `#US` literal this site loads, when the query went through the string
+    // route: a token alone does not say which text the row is about.
+    literal: Option<&str>,
     remaining: usize,
 ) -> anyhow::Result<Value> {
     if let Some(target) = target {
@@ -602,7 +642,7 @@ fn reference_record(
             ..metadata(input)
         },
         detail(
-            json!({"target":target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of).map_or_else(||format!("0x{:08x}",site.target_token),|id|id.into_owned()),"method_token":method.token,"declaring_type":method.declaring_type,"declaring_type_id":envelope::at_of(&method.declaring_type_id),"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"canonical_target_id":target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of),"canonical_target_token":target.and_then(|target|target.canonical_token),"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
+            json!({"target":literal.map(str::to_owned).or_else(||target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of).map(|id|id.into_owned())).unwrap_or_else(||format!("0x{:08x}",site.target_token)),"method_token":method.token,"declaring_type":method.declaring_type,"declaring_type_id":envelope::at_of(&method.declaring_type_id),"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"canonical_target_id":target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of),"canonical_target_token":target.and_then(|target|target.canonical_token),"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
         ),
     ))
 }
@@ -762,6 +802,19 @@ fn describe_class_reason(reason: &str, methods: usize) -> String {
 }
 
 /// Decode one `#US` literal by token so a record can carry the text, not just the token.
+/// Decoded `#US` literals keyed by their heap offset, for one query.
+fn literal_values(input: &Input) -> BTreeMap<u32, String> {
+    input
+        .strings()
+        .map(|records| {
+            records
+                .into_iter()
+                .filter_map(|record| record.value.map(|value| (record.offset, value)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn user_string(input: &Input, token: u32) -> Option<rxd_dotnet::StringRecord> {
     input
         .strings()
@@ -996,26 +1049,35 @@ fn list(
     output: &mut Vec<u8>,
     records: &mut usize,
 ) -> anyhow::Result<()> {
-    let (listing, type_name, method, filter) = match command {
+    let (listing, type_name, method, filter, case) = match command {
         Command::Classes {
-            type_name, filter, ..
-        } => (Listing::Classes, type_name, None, filter),
+            type_name,
+            filter,
+            case,
+            ..
+        } => (Listing::Classes, type_name, None, filter, case),
         Command::Fields {
-            type_name, filter, ..
-        } => (Listing::Fields, type_name, None, filter),
+            type_name,
+            filter,
+            case,
+            ..
+        } => (Listing::Fields, type_name, None, filter, case),
         Command::Methods {
             type_name,
             method,
             filter,
+            case,
             ..
-        } => (Listing::Methods, type_name, method.as_ref(), filter),
+        } => (Listing::Methods, type_name, method.as_ref(), filter, case),
         _ => unreachable!("only listing commands reach here"),
     };
-    let pattern = filter.as_deref().map(str::to_lowercase);
+    let pattern = filter
+        .as_deref()
+        .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
     let matches = |name: &str, owner: &str| {
-        pattern.as_ref().is_none_or(|pattern| {
-            name.to_lowercase().contains(pattern) || owner.to_lowercase().contains(pattern)
-        })
+        pattern
+            .as_ref()
+            .is_none_or(|pattern| pattern.matches(name) || pattern.matches(owner))
     };
     let mut fields_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
     let mut methods_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
@@ -1081,15 +1143,19 @@ fn detail(value: Value) -> Map<String, Value> {
 enum Target {
     /// A metadata or `#US` token: an identity, matched exactly.
     Token { token: u32, kind: Kind },
-    /// A case-sensitive substring of a decoded user-string literal.
-    Literal(String),
+    /// A decoded user-string literal: an exact anchor, or a substring search.
+    Literal {
+        pattern: String,
+        exact: bool,
+        case_sensitive: bool,
+    },
 }
 
 impl Target {
     fn kind(&self) -> Kind {
         match self {
             Self::Token { kind, .. } => *kind,
-            Self::Literal(_) => Kind::String,
+            Self::Literal { .. } => Kind::String,
         }
     }
 }
@@ -1103,6 +1169,7 @@ fn dotnet_target(
     at: Option<&str>,
     filter: Option<&str>,
     kind: Option<Kind>,
+    case: crate::cli::filter::CaseMode,
     from: Option<&Path>,
     source_id: &str,
 ) -> anyhow::Result<Target> {
@@ -1120,18 +1187,33 @@ fn dotnet_target(
              `-f` can only search literals: give `--kind string`, or anchor with `--at TOKEN` / \
              `--from JSONL`"
         );
-        return Ok(Target::Literal(pattern.to_owned()));
+        return Ok(Target::Literal {
+            pattern: pattern.to_owned(),
+            exact: false,
+            case_sensitive: case.is_sensitive(),
+        });
     }
     let coordinate = match (at, from) {
         (Some(coordinate), _) => coordinate.to_owned(),
         (None, Some(path)) => crate::cli::xref::selector_stream(
             path,
-            &["method", "field", "type"],
+            &["method", "field", "type", "string"],
             crate::cli::xref::Expect::Content(source_id),
         )?,
         (None, None) => unreachable!("checked above"),
     };
-    let token = parse_token(&coordinate)?;
+    // A literal has no token of its own, so `--kind string` is what reads `--at` as one:
+    // the same shape dex and jar use for `--at '<literal>' --kind string`.
+    if kind == Some(crate::cli::xref::Kind::String) {
+        return Ok(Target::Literal {
+            pattern: coordinate,
+            exact: true,
+            case_sensitive: true,
+        });
+    }
+    let token = parse_token(&coordinate).map_err(|error| {
+        anyhow::anyhow!("{error:#}; pass `--kind string` to read `--at` as an exact literal")
+    })?;
     let inferred = token_kind(token);
     if let (Some(given), Some(inferred)) = (kind, inferred)
         && given != inferred

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::filter::CaseArgs;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{RecordMeta, attach_protocol, header, record, summary};
 use rxd_core::perf::Perf;
@@ -15,9 +16,11 @@ pub enum Command {
     Types {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over the rendered signature.
+        ///  substring over the rendered signature. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -25,9 +28,11 @@ pub enum Command {
     Imports {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over `module.name`.
+        ///  substring over `module.name`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -35,9 +40,11 @@ pub enum Command {
     Exports {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over the export name.
+        ///  substring over the export name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -51,9 +58,11 @@ pub enum Command {
         /// Keep only functions whose name-section label matches exactly.
         #[arg(long = "func-name")]
         func_name: Option<String>,
-        /// Case-insensitive substring over the name-section label or `func:<index>`.
+        ///  substring over the name-section label or `func:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -61,9 +70,11 @@ pub enum Command {
     Tables {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over `table:<index>`.
+        ///  substring over `table:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -71,9 +82,11 @@ pub enum Command {
     Memories {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over `memory:<index>`.
+        ///  substring over `memory:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -81,9 +94,11 @@ pub enum Command {
     Globals {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over the name-section label or `global:<index>`.
+        ///  substring over the name-section label or `global:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -91,9 +106,11 @@ pub enum Command {
     Data {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over `data:<index>`.
+        ///  substring over `data:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -101,9 +118,11 @@ pub enum Command {
     Elements {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over `element:<index>`.
+        ///  substring over `element:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -111,9 +130,11 @@ pub enum Command {
     Strings {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Case-insensitive substring over the decoded literal.
+        ///  substring over the decoded literal. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -186,6 +207,23 @@ impl Command {
             | Self::Strings { options, .. }
             | Self::Xref { options, .. }
             | Self::Get { options, .. } => options,
+        }
+    }
+
+    /// Whether this command's filter folds case.
+    fn case_sensitive(&self) -> bool {
+        match self {
+            Self::Types { case, .. }
+            | Self::Imports { case, .. }
+            | Self::Exports { case, .. }
+            | Self::Functions { case, .. }
+            | Self::Tables { case, .. }
+            | Self::Memories { case, .. }
+            | Self::Globals { case, .. }
+            | Self::Data { case, .. }
+            | Self::Elements { case, .. }
+            | Self::Strings { case, .. } => case.sensitive(),
+            Self::Xref { .. } | Self::Get { .. } => false,
         }
     }
 
@@ -348,6 +386,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Types { .. } => emit_rows(
             type_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -355,6 +394,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Imports { .. } => emit_rows(
             import_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -362,6 +402,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Exports { .. } => emit_rows(
             export_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -371,6 +412,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         } => emit_rows(
             function_rows(&module, *func, func_name.as_deref()),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -378,6 +420,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Tables { .. } => emit_rows(
             table_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -385,6 +428,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Memories { .. } => emit_rows(
             memory_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -392,6 +436,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Globals { .. } => emit_rows(
             global_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -399,6 +444,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Data { .. } => emit_rows(
             data_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -406,6 +452,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Elements { .. } => emit_rows(
             element_rows(&module),
             filter,
+            command.case_sensitive(),
             limits,
             &mut output,
             &mut records,
@@ -415,6 +462,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             emit_rows(
                 string_rows(&strings),
                 filter,
+                command.case_sensitive(),
                 limits,
                 &mut output,
                 &mut records,
@@ -751,14 +799,15 @@ fn string_rows(strings: &[rxd_wasm::StringRecord]) -> Vec<Row> {
 fn emit_rows(
     rows: Vec<Row>,
     filter: Option<&str>,
+    case_sensitive: bool,
     limits: Limits,
     output: &mut Vec<u8>,
     records: &mut usize,
 ) -> anyhow::Result<()> {
-    let needle = filter.map(str::to_lowercase);
+    let needle = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
     for row in rows {
         if let Some(needle) = &needle
-            && !row.label.to_lowercase().contains(needle.as_str())
+            && !needle.matches(&row.label)
         {
             continue;
         }

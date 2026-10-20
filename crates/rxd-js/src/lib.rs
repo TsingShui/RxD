@@ -66,8 +66,11 @@ pub enum Query {
         depth: Option<usize>,
         kind: Option<String>,
         name: Option<String>,
-        /// Case-insensitive substring over the entity name or context label.
+        /// Substring over the entity name or context label, folded unless
+        /// `contains_case_sensitive`.
         contains: Option<String>,
+        /// Whether `contains` folds case; the CLI's `--case` decides it.
+        contains_case_sensitive: bool,
     },
     Find {
         string: String,
@@ -338,8 +341,9 @@ pub fn run_source(
             kind,
             name,
             contains,
+            contains_case_sensitive,
         } => {
-            json!({"group":group,"within":within,"depth":depth,"kind":kind,"name":name,"contains":contains})
+            json!({"group":group,"within":within,"depth":depth,"kind":kind,"name":name,"contains":contains,"case":if *contains_case_sensitive {"sensitive"} else {"insensitive"}})
         }
         Query::Find {
             string,
@@ -379,6 +383,7 @@ pub fn run_source(
             kind,
             name,
             contains,
+            contains_case_sensitive,
         } => Query::Outline {
             group,
             within: Some(expand_short_id(&source, &id)),
@@ -386,6 +391,7 @@ pub fn run_source(
             kind,
             name,
             contains,
+            contains_case_sensitive,
         },
         Query::Identifiers {
             name,
@@ -485,6 +491,7 @@ pub fn run_source(
             kind,
             name,
             contains,
+            contains_case_sensitive,
         } => {
             let group_kinds = match group {
                 None => None,
@@ -532,15 +539,11 @@ pub fn run_source(
                             .is_none_or(|kinds| kinds.contains(&entity.kind));
                         let group_ok = group_kinds.is_none_or(|kinds| kinds.contains(&entity.kind));
                         let contains_ok = contains.as_ref().is_none_or(|needle| {
-                            let needle = needle.to_lowercase();
-                            entity
-                                .name
-                                .as_ref()
-                                .is_some_and(|value| value.contains_ci(&needle))
-                                || entity
-                                    .label
-                                    .as_ref()
-                                    .is_some_and(|value| value.contains_ci(&needle))
+                            entity.name.as_ref().is_some_and(|value| {
+                                value.contains_filter(needle, contains_case_sensitive)
+                            }) || entity.label.as_ref().is_some_and(|value| {
+                                value.contains_filter(needle, contains_case_sensitive)
+                            })
                         });
                         let name_ok = name.as_deref().is_none_or(|n| {
                             entity

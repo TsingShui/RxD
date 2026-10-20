@@ -32,6 +32,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
             within,
             depth,
             filter,
+            case,
         } => {
             let bytes = rxd_html::list(
                 &common.input,
@@ -42,6 +43,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
                     within,
                     depth,
                     contains: filter,
+                    case_sensitive: case.sensitive(),
                 },
                 limits,
                 &mut perf,

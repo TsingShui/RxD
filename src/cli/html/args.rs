@@ -1,3 +1,4 @@
+use super::super::filter::CaseArgs;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
@@ -37,9 +38,12 @@ pub(crate) enum Command {
         /// Maximum depth relative to --within (or top level), including zero.
         #[arg(long)]
         depth: Option<usize>,
-        /// Case-insensitive substring over the element name or the text it holds.
+        /// Substring over the element name or the text it holds, folded unless
+        /// `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
     },
     /// Fetch original bytes from an exact catalog record.
     Extract {

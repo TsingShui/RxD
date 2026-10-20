@@ -265,22 +265,34 @@ pub enum RefQuery<'a> {
 pub struct RefPattern<'a> {
     pub text: &'a str,
     pub exact: bool,
+    /// Whether the substring search folds case. A coordinate is matched exactly, so this
+    /// only governs the `-f` face; the CLI's `--case` decides it.
+    pub case_sensitive: bool,
 }
 
 impl<'a> RefPattern<'a> {
-    pub fn search(text: &'a str) -> Self {
-        Self { text, exact: false }
+    pub fn search(text: &'a str, case_sensitive: bool) -> Self {
+        Self {
+            text,
+            exact: false,
+            case_sensitive,
+        }
     }
 
     pub fn coordinate(text: &'a str) -> Self {
-        Self { text, exact: true }
+        Self {
+            text,
+            exact: true,
+            case_sensitive: true,
+        }
     }
 
     fn matches(&self, value: &str) -> bool {
+        let compare = rxd_core::filter::Contains::new(self.text, self.case_sensitive);
         if self.exact {
-            value == self.text
+            rxd_core::filter::equals(value, self.text, self.case_sensitive)
         } else {
-            value.contains(self.text)
+            compare.matches(value)
         }
     }
 }

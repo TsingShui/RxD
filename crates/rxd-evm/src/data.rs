@@ -325,7 +325,7 @@ impl DataInventory {
         &'a self,
         navigation: &Navigation,
         query: &LiteralQuery,
-        filter: Option<&str>,
+        filter: Option<&rxd_core::filter::Contains>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<(Vec<DataMatch<'a>>, usize)> {
@@ -358,9 +358,7 @@ impl DataInventory {
                 continue;
             }
             if filter.is_some_and(|needle| {
-                !crate::literals::literal_value(bytes)
-                    .to_lowercase()
-                    .contains(needle)
+                !needle.matches(crate::literals::literal_value(bytes).as_str())
             }) {
                 continue;
             }
@@ -463,7 +461,7 @@ impl DataInventory {
         navigation: &Navigation,
         functions: &FunctionNavigation,
         id: &str,
-        filter: Option<&str>,
+        filter: Option<&rxd_core::filter::Contains>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<(DataLiteral, Vec<usize>, &'static str)> {
@@ -486,9 +484,7 @@ impl DataInventory {
             .filter(|&route| {
                 filter.is_none_or(|needle| {
                     self.context(navigation, functions, Some(route))
-                        .is_some_and(|context| {
-                            crate::coordinate(&context).to_lowercase().contains(needle)
-                        })
+                        .is_some_and(|context| needle.matches(&crate::coordinate(&context)))
                 })
             })
             .collect();

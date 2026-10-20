@@ -146,7 +146,7 @@ instruction validity. Empty `co_code` is `body_status: empty`; non-bytes fields 
 metadata and original field evidence with `unavailable` and `bytecode_bytes: null`. A
 later single-code FETCH rejects an unreadable body.
 
-`-f/--filter` is a case-insensitive substring over the code name and `--name` matches
+`-f/--filter` is a substring over the code name (folded unless `--case sensitive`) and `--name` matches
 the original UTF-8 name exactly, both preserving global indexes; zero matches is a
 complete empty result. `--index` missing is `INVALID_QUERY` (exit 2), and `--name`
 cannot be combined with `--index`. Marshal surrogatepass payloads keep raw bytes: valid
@@ -251,7 +251,7 @@ value is always null. `raw_bytes` gives lowercase hex for every str/bytes litera
 including empty/non-UTF-8 bytes, read only from the real fixed-input payload range, never
 from `PyObject::Str`'s decompiler compatibility view.
 
-Mutually exclusive `-f/--filter` is a case-insensitive substring over decodable str
+Mutually exclusive `-f/--filter` is a substring over decodable str (folded unless `--case sensitive`)
 literals (Unicode lowercase folding) and a byte-exact UTF-8 query-byte subsequence over
 bytes literals; undecodable str does not match text. `--filter-hex` does raw
 payload-byte subsequence, accepts mixed-case even-length hex without prefix/separators;

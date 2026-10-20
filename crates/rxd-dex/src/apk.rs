@@ -803,33 +803,6 @@ fn raw_contains_ignore_case(raw: &[u8], needle_lower: &str) -> Option<bool> {
     }))
 }
 
-/// Whether `haystack` contains `needle`, ignoring case, without allocating.
-///
-/// The straightforward version - lowercase the value, then search - allocates once per
-/// string, and a search over the corpus is half a million of them. ASCII is the case
-/// that happens (descriptors, member names, URLs, messages) and it lowercases byte by
-/// byte, so it needs no copy at all; anything non-ASCII falls back to the Unicode fold,
-/// preserving the existing case-insensitive filter semantics.
-fn contains_ignore_case(haystack: &str, needle_lower: &str) -> bool {
-    if haystack.is_ascii() && needle_lower.is_ascii() {
-        let hay = haystack.as_bytes();
-        let needle = needle_lower.as_bytes();
-        if needle.is_empty() {
-            return true;
-        }
-        if needle.len() > hay.len() {
-            return false;
-        }
-        return hay.windows(needle.len()).any(|window| {
-            window
-                .iter()
-                .zip(needle)
-                .all(|(left, right)| left.to_ascii_lowercase() == *right)
-        });
-    }
-    haystack.to_lowercase().contains(needle_lower)
-}
-
 /// One string, and which DEX it came from.
 #[derive(Clone, Debug)]
 pub struct StringEntry {
@@ -845,7 +818,7 @@ pub struct StringEntry {
 /// Not sorted: a string table is indexed, the index is what a `findrefs` row resolves
 /// through, and the order the file declares is the only order that means anything.
 ///
-/// `filter` is a case-insensitive substring of the value, `limit` keeps the first that
+/// `filter` is a substring of the value (folded unless `case_sensitive`), `limit` keeps the first that
 /// many matches in the order this function returns them, and `offset` starts that page
 /// later in the same order.
 #[cfg(test)]
@@ -863,6 +836,7 @@ pub fn list_strings(
         threads,
         debug,
         filter,
+        false,
         limit,
         offset,
     )
@@ -874,13 +848,16 @@ pub fn list_strings_with_policy(
     threads: usize,
     debug: bool,
     filter: Option<&str>,
+    case_sensitive: bool,
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Vec<StringEntry>> {
     if threads == 0 {
         bail!("worker count must be greater than zero");
     }
-    let needle = filter.map(str::to_lowercase);
+    // The folded needle and the mode travel together, so one place decides what matching
+    // means: `rxd_core::filter`.
+    let filter = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
     let take = limit.unwrap_or(usize::MAX);
     let skip = offset.unwrap_or(0);
     // The walk may stop once it holds everything the page needs, which is the skipped matches
@@ -925,13 +902,16 @@ pub fn list_strings_with_policy(
                     if stop_early && found.load(stop) >= fill {
                         return Ok(false);
                     }
-                    let matches = match needle.as_deref() {
+                    let matches = match &filter {
                         None => true,
                         // An ASCII needle against ASCII bytes is a comparison, not a decode;
                         // anything else takes the Unicode fold.
-                        Some(needle) => match raw_contains_ignore_case(raw, needle) {
+                        Some(filter) => match filter
+                            .ascii_needle()
+                            .and_then(|needle| raw_contains_ignore_case(raw, needle))
+                        {
                             Some(found) => found,
-                            None => contains_ignore_case(&dex::decode_string(raw), needle),
+                            None => filter.matches(&dex::decode_string(raw)),
                         },
                     };
                     if matches {
@@ -1165,7 +1145,7 @@ mod tests {
             ("漢字", "漢", true),
         ] {
             assert_eq!(
-                contains_ignore_case(haystack, &needle.to_lowercase()),
+                rxd_core::filter::Contains::new(needle, false).matches(haystack),
                 expected,
                 "{haystack:?} / {needle:?}"
             );

@@ -6,6 +6,7 @@ use rxd_core::{Error, Result};
 use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
+use super::filter::CaseArgs;
 use super::xref::{Anchor, Expect, Kind as XrefKind, Target, TargetArgs, selector_stream};
 
 #[derive(Subcommand)]
@@ -16,18 +17,22 @@ pub enum Command {
         /// Exact internal, dotted or descriptor class name.
         #[arg(long)]
         class: Option<String>,
-        /// Case-insensitive substring over the internal class name; dots are accepted.
+        ///  substring over the internal class name; dots are accepted. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
     /// List the entries an archive holds, in central-directory order.
     Entries {
         input: PathBuf,
-        /// Case-insensitive substring over the entry name.
+        ///  substring over the entry name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -37,9 +42,11 @@ pub enum Command {
         /// Only list fields of this class: internal, dotted or descriptor name.
         #[arg(long)]
         class: Option<String>,
-        /// Case-insensitive substring over the field name.
+        ///  substring over the field name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -49,9 +56,11 @@ pub enum Command {
         /// Only list methods of this class: internal, dotted or descriptor name.
         #[arg(long)]
         class: Option<String>,
-        /// Case-insensitive substring over the method name.
+        ///  substring over the method name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -84,9 +93,11 @@ pub enum Command {
         /// Exact internal, dotted or descriptor class name to scope the listing.
         #[arg(long)]
         class: Option<String>,
-        /// Only strings containing this text, matched case-insensitively.
+        /// Only strings containing this text. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -202,16 +213,21 @@ fn ref_query<'a>(target: &'a Target, names: &'a mut Normalized) -> rxd_jvm::RefQ
         }
         (Some(Anchor::String(value)), _) => RefQuery::String(RefPattern::coordinate(value)),
         (None, Some(pattern)) => match target.kind {
-            XrefKind::String => RefQuery::String(RefPattern::search(pattern)),
+            XrefKind::String => {
+                RefQuery::String(RefPattern::search(pattern, target.case_sensitive))
+            }
             // A descriptor never contains a dot, so a dotted type pattern is a package
             // separator: `java.lang.String` must find `Ljava/lang/String;`.
-            XrefKind::Type => RefQuery::Type(RefPattern::search(names.class(pattern))),
+            XrefKind::Type => RefQuery::Type(RefPattern::search(
+                names.class(pattern),
+                target.case_sensitive,
+            )),
             XrefKind::Method | XrefKind::Field => {
-                let name = RefPattern::search(pattern);
+                let name = RefPattern::search(pattern, target.case_sensitive);
                 let class = target
                     .class
                     .as_deref()
-                    .map(|class| RefPattern::search(names.class(class)));
+                    .map(|class| RefPattern::search(names.class(class), target.case_sensitive));
                 if target.kind == XrefKind::Method {
                     RefQuery::Method {
                         name,
@@ -286,13 +302,16 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         input,
         class,
         filter,
+        case,
         options,
     } = command
     {
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
         let wanted = class.as_deref().map(rxd_jvm::normalize_class_name);
-        let needle = filter.as_deref().map(str::to_lowercase);
+        let needle = filter
+            .as_deref()
+            .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
         let mut output = Vec::new();
         append(
             &mut output,
@@ -320,7 +339,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             for (index, value) in selected.class.string_constants() {
                 let text = value.to_string_lossy();
                 if let Some(needle) = &needle
-                    && !text.to_lowercase().contains(needle)
+                    && !needle.matches(&text)
                 {
                     continue;
                 }
@@ -442,6 +461,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         input,
         options,
         filter,
+        case,
     } = command
     {
         let limits = options.limits();
@@ -463,11 +483,11 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             limits.output_bytes,
         )?;
         let mut records = 0usize;
-        let pattern = filter.map(|value| value.to_lowercase());
+        let pattern = filter.map(|value| rxd_core::filter::Contains::new(&value, case.sensitive()));
         for entry in &input.entries {
             if pattern
                 .as_ref()
-                .is_some_and(|pattern| !entry.name.to_lowercase().contains(pattern))
+                .is_some_and(|pattern| !pattern.matches(&entry.name))
             {
                 continue;
             }
@@ -503,64 +523,72 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
-    let (path, options, request, class_filter, method_filter, listing) = match command {
-        Command::Classes {
-            input,
-            options,
-            class,
-            filter,
-        } => (
-            input,
-            options,
-            None,
-            class,
-            filter.map(|value| value.to_lowercase()),
-            Listing::Classes,
-        ),
-        Command::Fields {
-            input,
-            options,
-            class,
-            filter,
-        } => (
-            input,
-            options,
-            None,
-            class,
-            filter.map(|value| value.to_lowercase()),
-            Listing::Fields,
-        ),
-        Command::Methods {
-            input,
-            options,
-            class,
-            filter,
-        } => (
-            input,
-            options,
-            None,
-            class,
-            filter.map(|value| value.to_lowercase()),
-            Listing::Methods,
-        ),
-        Command::Get {
-            input,
-            at,
-            raw,
-            options,
-        } => (
-            input,
-            options,
-            Some((at, raw)),
-            None,
-            None,
-            Listing::Classes,
-        ),
-        Command::GetClass { .. } => unreachable!("handled above"),
-        Command::Entries { .. } => unreachable!("handled above"),
-        Command::Strings { .. } => unreachable!("handled above"),
-        Command::Xref { .. } => unreachable!("handled above"),
-    };
+    let (path, options, request, class_filter, method_filter, case_sensitive, listing) =
+        match command {
+            Command::Classes {
+                input,
+                options,
+                class,
+                filter,
+                case,
+            } => (
+                input,
+                options,
+                None,
+                class,
+                filter,
+                case.sensitive(),
+                Listing::Classes,
+            ),
+            Command::Fields {
+                input,
+                options,
+                class,
+                filter,
+                case,
+            } => (
+                input,
+                options,
+                None,
+                class,
+                filter,
+                case.sensitive(),
+                Listing::Fields,
+            ),
+            Command::Methods {
+                input,
+                options,
+                class,
+                filter,
+                case,
+            } => (
+                input,
+                options,
+                None,
+                class,
+                filter,
+                case.sensitive(),
+                Listing::Methods,
+            ),
+            Command::Get {
+                input,
+                at,
+                raw,
+                options,
+            } => (
+                input,
+                options,
+                Some((at, raw)),
+                None,
+                None,
+                false,
+                Listing::Classes,
+            ),
+            Command::GetClass { .. } => unreachable!("handled above"),
+            Command::Entries { .. } => unreachable!("handled above"),
+            Command::Strings { .. } => unreachable!("handled above"),
+            Command::Xref { .. } => unreachable!("handled above"),
+        };
     let command_name = listing.name();
     let limits = options.limits();
     let input = Input::read(&path, limits, options.release)?;
@@ -639,19 +667,17 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             let class = &selected.class;
             if listing == Listing::Classes
                 && let Some(pattern) = method_filter.as_ref()
-                && !class
-                    .name
-                    .to_lowercase()
-                    .contains(&pattern.replace('.', "/"))
+                && !rxd_core::filter::Contains::new(&pattern.replace('.', "/"), case_sensitive)
+                    .matches(&class.name)
             {
                 continue;
             }
             if listing == Listing::Fields {
                 for field in &class.fields {
-                    if method_filter
-                        .as_ref()
-                        .is_some_and(|pattern| !field.name.to_lowercase().contains(pattern))
-                    {
+                    if method_filter.as_ref().is_some_and(|pattern| {
+                        !rxd_core::filter::Contains::new(pattern, case_sensitive)
+                            .matches(&field.name)
+                    }) {
                         continue;
                     }
                     let at = format!("L{};->{}:{}", class.name, field.name, field.descriptor);
@@ -681,10 +707,10 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             }
             if listing == Listing::Methods {
                 for (index, method) in class.methods.iter().enumerate() {
-                    if method_filter
-                        .as_ref()
-                        .is_some_and(|pattern| !method.name.to_lowercase().contains(pattern))
-                    {
+                    if method_filter.as_ref().is_some_and(|pattern| {
+                        !rxd_core::filter::Contains::new(pattern, case_sensitive)
+                            .matches(&method.name)
+                    }) {
                         continue;
                     }
                     append(
@@ -741,10 +767,9 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 continue;
             }
             for (index, method) in class.methods.iter().enumerate() {
-                if method_filter
-                    .as_ref()
-                    .is_some_and(|pattern| !method.name.to_lowercase().contains(pattern))
-                {
+                if method_filter.as_ref().is_some_and(|pattern| {
+                    !rxd_core::filter::Contains::new(pattern, case_sensitive).matches(&method.name)
+                }) {
                     continue;
                 }
                 append(

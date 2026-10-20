@@ -14,6 +14,7 @@
 //! names both kinds, never an empty result set: a silently empty answer reads exactly like a
 //! true one, which is the failure mode both faces exist to prevent.
 
+use super::filter::CaseMode;
 use anyhow::{Context, Result, bail};
 use clap::{Args, ValueEnum};
 use serde_json::Value;
@@ -101,6 +102,8 @@ pub struct Target {
     pub filter: Option<String>,
     /// An owner class constraint, for a member search.
     pub class: Option<String>,
+    /// Whether `filter`/`class` fold case. A coordinate is always matched exactly.
+    pub case_sensitive: bool,
 }
 
 impl Target {
@@ -112,6 +115,7 @@ impl Target {
             "at": anchor,
             "filter": self.filter,
             "class": self.class,
+            "case": if self.case_sensitive { "sensitive" } else { "insensitive" },
         })
     }
 }
@@ -130,10 +134,13 @@ pub struct TargetArgs {
     /// `--filter`, and required to read `--at` as a literal.
     #[arg(long, value_enum)]
     pub kind: Option<Kind>,
-    /// Owner class substring, in `pkg/Name` form (case-sensitive; dots are separators).
-    /// A member query only.
+    /// Owner class substring, in `pkg/Name` form (dots are separators). A member query only.
     #[arg(long = "class", value_name = "CLASS")]
     pub class_name: Option<String>,
+    /// Whether matching folds case: `insensitive` (default) or `sensitive`. A coordinate's
+    /// own identity is always exact; this governs `-f` and `--class`.
+    #[arg(long, value_enum, default_value_t = CaseMode::Insensitive)]
+    pub case: CaseMode,
     /// Read the target from a previous JSONL stream instead: a file, or `-` for stdin. The
     /// first record carrying an `at` for this backend is used.
     #[arg(long, value_name = "JSONL", conflicts_with_all = ["at", "filter"])]
@@ -192,6 +199,7 @@ impl TargetArgs {
                 anchor: Some(Anchor::String(coordinate.to_owned())),
                 filter: None,
                 class: None,
+                case_sensitive: self.case.is_sensitive(),
             });
         }
         let anchor = if coordinate.contains("->") {
@@ -260,6 +268,7 @@ impl TargetArgs {
             anchor: Some(anchor),
             filter: None,
             class: None,
+            case_sensitive: self.case.is_sensitive(),
         })
     }
 
@@ -288,6 +297,7 @@ impl TargetArgs {
             anchor: None,
             filter: Some(pattern.to_owned()),
             class,
+            case_sensitive: self.case.is_sensitive(),
         })
     }
 }
@@ -412,6 +422,7 @@ mod tests {
             kind,
             class_name: None,
             from: None,
+            case: CaseMode::Insensitive,
         }
     }
 
@@ -428,6 +439,7 @@ mod tests {
                 }),
                 filter: None,
                 class: None,
+                case_sensitive: false,
             }
         );
         assert_eq!(

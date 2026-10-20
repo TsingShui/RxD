@@ -71,10 +71,12 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             }
         }
         for row in groups {
-            assert_eq!(row["detail"]["token"], entry["token"]);
+            assert_eq!(
+                row["at"],
+                format!("0x{:08x}", entry["token"].as_u64().unwrap())
+            );
             assert_eq!(row["detail"]["value"], entry["value"]);
             assert_eq!(row["detail"]["utf16_units"], entry["utf16_units"]);
-            assert!(row["at"].is_null());
             assert!(row["start"].is_null());
             assert!(row["end"].is_null());
             assert_eq!(
@@ -91,7 +93,6 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                     "method_token",
                     "offset",
                     "status",
-                    "token",
                     "utf16_units",
                     "value"
                 ]
@@ -146,6 +147,38 @@ fn dotnet_xref_takes_a_token_a_literal_search_or_a_previous_stream() {
     ));
     assert_eq!(streamed[1..], anchored[1..]);
     assert!(streamed[0]["query"]["from"].as_str().is_some());
+
+    // A literal is addressed exactly by `--at '<literal>' --kind string`, the same shape dex
+    // and jar take, and a substring search reports the literal it matched.
+    let literal = "shared 世界\nλ";
+    let exact = jsonl(&run("xref", &path, &["--at", literal, "--kind", "string"]));
+    // Every equal heap entry is the same text, so the anchor matches all of their sites.
+    assert!(exact.last().unwrap()["records"].as_u64().unwrap() > 0);
+    assert!(
+        exact[1..exact.len() - 1]
+            .iter()
+            .all(|row| row["detail"]["target"] == literal)
+    );
+    let partial = jsonl(&run("xref", &path, &["-f", "世界", "--kind", "string"]));
+    assert!(partial[1..partial.len() - 1].iter().all(|row| {
+        row["detail"]["target"]
+            .as_str()
+            .is_some_and(|value| value.contains("世界"))
+    }));
+
+    // A `strings` row is now directly routable: its `at` is the `#US` token.
+    let strings = jsonl(&run("strings", &path, &[]));
+    let token = strings[1]["at"].as_str().unwrap().to_owned();
+    assert!(token.starts_with("0x7000"));
+    let from_row = jsonl(&run("xref", &path, &["--at", &token]));
+    assert!(from_row.last().unwrap()["records"].as_u64().unwrap() > 0);
+    assert!(
+        from_row[1..from_row.len() - 1]
+            .iter()
+            .all(
+                |row| format!("0x{:08x}", row["detail"]["target_token"].as_u64().unwrap()) == token
+            )
+    );
 }
 
 #[test]

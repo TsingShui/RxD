@@ -1476,18 +1476,18 @@ impl FunctionNavigation {
         &self,
         navigation: &Navigation,
         include: bool,
-        filter: Option<&str>,
+        filter: Option<&rxd_core::filter::Contains>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
-        let needle = filter.map(str::to_lowercase);
+        let needle = filter;
         let selected: Vec<_> = self
             .functions
             .iter()
             .filter(|function| {
                 needle
                     .as_ref()
-                    .is_none_or(|needle| function.selector.contains(needle.as_str()))
+                    .is_none_or(|needle| needle.matches(&function.selector))
             })
             .collect();
         perf.counters.records = Some(selected.len());
@@ -1503,7 +1503,7 @@ impl FunctionNavigation {
             "interface",
             Some(&navigation.carrier.source_id),
             Some(navigation.carrier.bytes.len()),
-            json!({"encoding": navigation.carrier.encoding, "filter": filter}),
+            json!({"encoding": navigation.carrier.encoding, "filter": filter.map(|filter| filter.text())}),
             crate::navigation::header_detail(object(json!({
                 "carrier": navigation.carrier_detail(),
                 "bytecode": navigation.bytecode_detail(include),

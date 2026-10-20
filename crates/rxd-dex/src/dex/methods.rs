@@ -22,8 +22,11 @@ use super::{Dex, read_uleb};
 pub struct Selector<'a> {
     /// A Dalvik descriptor (`Lx/y;`) or dotted name (`x.y`).
     pub class: Option<&'a str>,
-    /// Case-insensitive substring over the method name.
+    /// Substring over the member name, folded unless `case_sensitive`.
     pub name: Option<&'a str>,
+    /// Whether the name substring folds case. The CLI's `--case` decides this; the default
+    /// `false` is the CLI default.
+    pub case_sensitive: bool,
 }
 
 /// Append one `{"record":"method","detail":{"descriptor":…}}` line per defined method.
@@ -114,7 +117,7 @@ fn render_class(
             }
             let name = names[name_idx].as_deref().unwrap_or_default();
             if let Some(pattern) = selector.name
-                && !name.to_lowercase().contains(pattern)
+                && !rxd_core::filter::Contains::new(pattern, selector.case_sensitive).matches(&name)
             {
                 continue;
             }
@@ -229,7 +232,7 @@ fn render_fields_of(
             let name_idx = dex.u32(row + 4)? as usize;
             let name = dex.string(name_idx)?;
             if let Some(pattern) = selector.name
-                && !name.to_lowercase().contains(pattern)
+                && !rxd_core::filter::Contains::new(pattern, selector.case_sensitive).matches(&name)
             {
                 continue;
             }

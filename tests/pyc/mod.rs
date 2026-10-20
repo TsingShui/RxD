@@ -56,7 +56,7 @@ fn codes_library(
     let mut perf = pyc_perf("codes");
     let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
         .and_then(|mut analysis| {
-            let selected = analysis.select_codes(filter, name, index);
+            let selected = analysis.select_codes(filter, false, name, index);
             perf.counters.work = Some(analysis.evidence.work);
             perf.counters.records = selected.as_ref().ok().map(Vec::len);
             selected
@@ -94,7 +94,10 @@ fn strings_library(
                     .collect::<Vec<_>>()
             });
             let query = if let Some(text) = filter {
-                rxd_pyc::string_constants::Query::Text(text)
+                rxd_pyc::string_constants::Query::Text {
+                    text,
+                    case_sensitive: false,
+                }
             } else if let Some(bytes) = &hex {
                 rxd_pyc::string_constants::Query::Hex(bytes)
             } else {

@@ -161,7 +161,13 @@ them by name, which is why the module filter is not used as evidence for those t
    `0x04` field, `0x06/0x2b` method, `0x0a` ambiguous) and a contradicting `--kind` is an
    argument error. `-f` accepts only `--kind string`: .NET member identity is a token, so a
    name search would be a new capability, and the error says exactly that.
-8. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
+8. **One case rule.** Resolved: every filter folds case by default, and `--case sensitive` is
+   the single flag that turns folding off; it exists on all 39 filter-bearing commands and on
+   the three `xref` target selectors. The rule and its folding primitive live in
+   `rxd_core::filter` (`Contains`/`equals`), so the CLI and the nine libraries cannot drift.
+   A coordinate (`--at`, `--from`) is always matched exactly: folding one could select a
+   different overload.
+9. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
    substring, including the member name and `--class` (dex previously compared both
    exactly). `--fuzzy-class` is gone; there is no exact-search mode, because exactness is
    what `--at` is for.

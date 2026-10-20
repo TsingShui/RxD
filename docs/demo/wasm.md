@@ -8,7 +8,7 @@ cargo build --release
 # Rebuild the fixture deterministically from committed WAT (including names).
 wat2wasm --debug-names tests/fixtures/wasm/fixture.wat -o tests/fixtures/wasm/fixture.wasm
 rxd=target/release/rxd
-# One command, one record kind. -f/--filter is a case-insensitive substring.
+# One command, one record kind. -f/--filter is a substring, folded unless --case sensitive.
 $rxd wasm types tests/fixtures/wasm/fixture.wasm
 $rxd wasm imports tests/fixtures/wasm/fixture.wasm
 $rxd wasm exports tests/fixtures/wasm/fixture.wasm

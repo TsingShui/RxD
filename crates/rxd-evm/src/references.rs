@@ -84,11 +84,11 @@ pub(crate) fn summary(navigation: &Navigation, detail: SummaryDetail) -> Value {
 }
 
 /// A filter narrows a reference listing to rows whose caller coordinate matches.
-pub(crate) fn keeps(record: &Value, needle: Option<&str>) -> bool {
+pub(crate) fn keeps(record: &Value, needle: Option<&rxd_core::filter::Contains>) -> bool {
     needle.is_none_or(|needle| {
         record["context_at"]
             .as_str()
-            .is_some_and(|context| context.to_ascii_lowercase().contains(needle))
+            .is_some_and(|context| needle.matches(context))
     })
 }
 

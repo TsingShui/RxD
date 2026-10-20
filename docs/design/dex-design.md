@@ -23,7 +23,7 @@ preserved; argument positions and exit-code semantics are.
 | `xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type`/`string` record. The stream header's `input_bytes` is checked against this archive: that catches a stream from another file, but it is a mismatch guard, not a content identity. |
 | `xref INPUT -f PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` over a member's owner; both are case-sensitive substrings (dots are separators). `--kind` is required because a content search cannot say what kind it looks for. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
-| `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
+| `classes INPUT` | Class descriptors; `-f/--filter` is a substring over the dotted name, folded unless `--case sensitive`. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`. |
 
 `get-class` selects by `--at` only (the `Lx/y;` a `classes` row prints); the positional

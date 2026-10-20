@@ -318,8 +318,11 @@ pub struct ListQuery {
     pub attr: Option<String>,
     pub within: Option<String>,
     pub depth: Option<usize>,
-    /// Case-insensitive substring over the element name or the text/comment content.
+    /// Substring over the element name or the text/comment content, folded unless
+    /// `case_sensitive`.
     pub contains: Option<String>,
+    /// Whether `contains` folds case; the CLI's `--case` decides it.
+    pub case_sensitive: bool,
 }
 
 /// Prepared artifact bytes and the single success receipt. Nothing is written here; the
@@ -467,6 +470,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         within,
         depth,
         contains,
+        case_sensitive,
     } = query;
     if kind
         .as_deref()
@@ -520,13 +524,15 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
                 || node.parent.is_some_and(|parent| inside[parent]);
             let relative_depth = root.map_or(node.depth, |root| node.depth.saturating_sub(catalog.nodes[root].depth));
             let contains_ok = contains.as_ref().is_none_or(|needle| {
-                let needle = needle.to_lowercase();
+                let needle = rxd_core::filter::Contains::new(needle, case_sensitive);
                 match &node.detail {
-                    Detail::Element { tag, .. } => tag.to_lowercase().contains(&needle),
-                    _ => node.kind.to_lowercase().contains(&needle)
-                        || text
-                            .get(node.start..node.end)
-                            .is_some_and(|raw| raw.to_lowercase().contains(&needle)),
+                    Detail::Element { tag, .. } => needle.matches(tag),
+                    _ => {
+                        needle.matches(&node.kind)
+                            || text
+                                .get(node.start..node.end)
+                                .is_some_and(|raw| needle.matches(raw))
+                    }
                 }
             });
             let matches_attr = attr.as_ref().is_none_or(|(name, value)| {

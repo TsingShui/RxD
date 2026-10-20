@@ -158,7 +158,10 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
                 .any(|instruction| {
                     instruction["offset"] == *offset
                         && instruction["mnemonic"] == "ldstr"
-                        && instruction["operand"]["value"] == hit["detail"]["token"]
+                        && format!(
+                            "0x{:08x}",
+                            instruction["operand"]["value"].as_u64().unwrap()
+                        ) == hit["at"].as_str().unwrap()
                 })
         );
     }

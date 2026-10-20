@@ -26,14 +26,18 @@ pub enum Query {
 pub struct Pattern {
     pub text: String,
     pub exact: bool,
+    /// `false` (the default) folds case: a filter narrows a list, and a missed capital
+    /// costs a round trip. `--case sensitive` is what turns folding off.
+    pub case_sensitive: bool,
 }
 
 impl Pattern {
-    /// A content search: a case-sensitive substring.
-    pub fn search(text: impl Into<String>) -> Self {
+    /// A content search: a substring, folded unless `--case sensitive`.
+    pub fn search(text: impl Into<String>, case_sensitive: bool) -> Self {
         Self {
             text: text.into(),
             exact: false,
+            case_sensitive,
         }
     }
 
@@ -42,6 +46,7 @@ impl Pattern {
         Self {
             text: text.into(),
             exact: true,
+            case_sensitive: true,
         }
     }
 }

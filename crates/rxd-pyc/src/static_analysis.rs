@@ -183,13 +183,14 @@ impl Analysis {
     pub fn select_codes(
         &mut self,
         filter: Option<&str>,
+        case_sensitive: bool,
         name: Option<&str>,
         index: Option<usize>,
     ) -> Result<Vec<usize>> {
         if index.is_some_and(|index| index >= self.codes.len()) {
             return Err(Error::new("INVALID_QUERY", "code index does not exist"));
         }
-        let filter = filter.map(str::to_lowercase);
+        let filter = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
         let mut selected = Vec::new();
         for i in 0..self.codes.len() {
             self.charge_work(1)?;
@@ -205,14 +206,14 @@ impl Analysis {
                     }
                 }
             };
-            let filter_matches = match filter.as_deref() {
+            let filter_matches = match filter.as_ref() {
                 None => true,
                 Some(filter) => {
                     let Some(candidate) = self.text_field(i, "name").map(str::to_owned) else {
                         continue;
                     };
-                    self.charge_work(candidate.len().saturating_add(filter.len()))?;
-                    candidate.to_lowercase().contains(filter)
+                    self.charge_work(candidate.len())?;
+                    filter.matches(&candidate)
                 }
             };
             if index.is_none_or(|index| index == i) && name_matches && filter_matches {

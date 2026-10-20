@@ -33,8 +33,10 @@ pub struct BasicBlock {
 pub struct Listing<'a> {
     /// Emit the exact decoded bytecode as lowercase hex in the header.
     pub include_bytecode: bool,
-    /// Case-insensitive substring over the value the row is named by.
+    /// Substring over the value the row is named by, folded unless `case_sensitive`.
     pub filter: Option<&'a str>,
+    /// Whether `filter` folds case; the CLI's `--case` decides it.
+    pub case_sensitive: bool,
 }
 
 pub struct Navigation {
@@ -288,19 +290,18 @@ impl Navigation {
         &self,
         include: bool,
         filter: Option<&str>,
+        case_sensitive: bool,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
-        let needle = filter.map(str::to_lowercase);
+        let needle = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
         let selected: Vec<_> = self
             .blocks
             .iter()
             .filter(|block| {
-                needle.as_ref().is_none_or(|needle| {
-                    self.block_coordinate(block)
-                        .to_ascii_lowercase()
-                        .contains(needle)
-                })
+                needle
+                    .as_ref()
+                    .is_none_or(|needle| needle.matches(&self.block_coordinate(block)))
             })
             .collect();
         perf.counters.records = Some(selected.len());

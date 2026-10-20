@@ -363,21 +363,37 @@ pub fn prefix_has_targets(prefix: &[u8], query: &Query) -> Result<Option<bool>> 
 struct Selector<'a> {
     needle: &'a [u8],
     finder: Option<Finder<'a>>,
+    /// The lowered needle, when matching folds case; the byte path cannot fold MUTF-8, so
+    /// that mode decodes and compares strings instead.
+    folded: Option<String>,
 }
 
 impl<'a> Selector<'a> {
-    fn new(needle: &'a [u8], exact: bool) -> Self {
+    fn new(needle: &'a [u8], exact: bool, case_sensitive: bool) -> Self {
         Self {
             needle,
-            finder: (!exact).then(|| Finder::new(needle)),
+            finder: (!exact && case_sensitive).then(|| Finder::new(needle)),
+            folded: (!case_sensitive).then(|| mutf8::decode_owned(needle).to_lowercase()),
         }
     }
 
     fn matches(&mut self, value: &[u8]) -> bool {
+        if let Some(folded) = &self.folded {
+            let decoded = mutf8::decode_owned(value).to_lowercase();
+            return if self.finder.is_none() && self.exact() {
+                decoded == *folded
+            } else {
+                decoded.contains(folded.as_str())
+            };
+        }
         match &self.finder {
             Some(finder) => finder.find(value).is_some(),
             None => value == self.needle,
         }
+    }
+
+    fn exact(&self) -> bool {
+        self.finder.is_none() && self.folded.is_none()
     }
 }
 
@@ -552,7 +568,7 @@ impl<'a> Dex<'a> {
             return Ok(Vec::new());
         }
         let needle = mutf8::encode_mutf8(&pattern.text);
-        let mut selector = Selector::new(&needle, pattern.exact);
+        let mut selector = Selector::new(&needle, pattern.exact, pattern.case_sensitive);
         let mut out = Vec::new();
         for index in 0..self.header.strings_size {
             if selector.matches(self.string_bytes(index)?) {
@@ -570,7 +586,7 @@ impl<'a> Dex<'a> {
             return Ok(Vec::new());
         }
         let needle = mutf8::encode_mutf8(&pattern.text);
-        let mut selector = Selector::new(&needle, pattern.exact);
+        let mut selector = Selector::new(&needle, pattern.exact, pattern.case_sensitive);
         let mut out = Vec::new();
         for index in 0..self.header.types_size {
             let string_index = self.type_string_idx(index)?;
@@ -637,20 +653,26 @@ impl<'a> Dex<'a> {
             (self.header.fields_off, self.header.fields_size)
         };
         // The needles outlive the selectors that borrow them.
-        let name_needle = query
-            .name
-            .as_ref()
-            .map(|pattern| (mutf8::encode_mutf8(&pattern.text), pattern.exact));
-        let class_needle = query
-            .class
-            .as_ref()
-            .map(|pattern| (mutf8::encode_mutf8(&pattern.text), pattern.exact));
+        let name_needle = query.name.as_ref().map(|pattern| {
+            (
+                mutf8::encode_mutf8(&pattern.text),
+                pattern.exact,
+                pattern.case_sensitive,
+            )
+        });
+        let class_needle = query.class.as_ref().map(|pattern| {
+            (
+                mutf8::encode_mutf8(&pattern.text),
+                pattern.exact,
+                pattern.case_sensitive,
+            )
+        });
         let mut name_selector = name_needle
             .as_ref()
-            .map(|(needle, exact)| Selector::new(needle, *exact));
+            .map(|(needle, exact, case)| Selector::new(needle, *exact, *case));
         let mut class_selector = class_needle
             .as_ref()
-            .map(|(needle, exact)| Selector::new(needle, *exact));
+            .map(|(needle, exact, case)| Selector::new(needle, *exact, *case));
         let mut out = Vec::new();
         for index in 0..size {
             let member = self.member(base, size, index)?;

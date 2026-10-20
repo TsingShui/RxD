@@ -44,12 +44,22 @@ impl JsString {
     pub fn equals_str(&self, other: &str) -> bool {
         self.0.iter().copied().eq(other.encode_utf16())
     }
-    /// Case-insensitive substring test over the exact UTF-16 units, so a filter never
-    /// needs a lossy UTF-8 round trip through the decoded value.
-    pub fn contains_ci(&self, needle: &str) -> bool {
-        let needle: Vec<u16> = needle.to_lowercase().encode_utf16().collect();
+    /// Substring test over the exact UTF-16 units, so a filter never needs a lossy UTF-8
+    /// round trip through the decoded value. Folded unless `case_sensitive`.
+    pub fn contains_filter(&self, needle: &str, case_sensitive: bool) -> bool {
+        let needle: Vec<u16> = if case_sensitive {
+            needle.encode_utf16().collect()
+        } else {
+            needle.to_lowercase().encode_utf16().collect()
+        };
         if needle.is_empty() {
             return true;
+        }
+        if case_sensitive {
+            return self
+                .0
+                .windows(needle.len())
+                .any(|window| window == needle.as_slice());
         }
         let haystack: Vec<u16> = self
             .0

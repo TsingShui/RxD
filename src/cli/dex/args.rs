@@ -1,4 +1,5 @@
 use super::super::default_threads;
+use super::super::filter::CaseArgs;
 use super::super::xref::{Anchor, Expect, Kind as XrefKind, Target, TargetArgs, selector_stream};
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -56,9 +57,11 @@ pub struct FieldsArgs {
     /// Only list fields declared by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
     pub class: Option<String>,
-    /// Case-insensitive substring filter over the field name.
+    ///  substring filter over the field name. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
+    #[command(flatten)]
+    pub case: CaseArgs,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -74,9 +77,11 @@ pub struct MethodsArgs {
     /// Only list methods defined by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
     pub class: Option<String>,
-    /// Case-insensitive substring filter over the method name.
+    ///  substring filter over the method name. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
+    #[command(flatten)]
+    pub case: CaseArgs,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -90,9 +95,11 @@ pub struct MethodsArgs {
 pub struct ClassesArgs {
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
-    /// Case-insensitive substring filter over Java-style class names.
+    ///  substring filter over Java-style class names. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
+    #[command(flatten)]
+    pub case: CaseArgs,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Print phase timings on stderr.
@@ -134,9 +141,11 @@ pub struct MemberByIndexArgs {
 
 #[derive(Debug, Args)]
 pub struct StringsArgs {
-    /// Only strings containing this text, ignoring case.
+    /// Only strings containing this text. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
+    #[command(flatten)]
+    pub case: CaseArgs,
     /// At most this many strings, counted in the order they are printed.
     #[arg(long)]
     pub limit: Option<usize>,
@@ -156,9 +165,11 @@ pub struct StringsArgs {
 
 #[derive(Debug, Args)]
 pub struct EntriesArgs {
-    /// Case-insensitive substring over the entry name.
+    ///  substring over the entry name. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
+    #[command(flatten)]
+    pub case: CaseArgs,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Print phase timings on stderr.
@@ -240,17 +251,19 @@ impl XrefArgs {
 }
 
 fn target_query(target: &Target) -> Result<Query> {
+    let case = target.case_sensitive;
     let member =
         |name: &str, class: &str, descriptor: Option<&str>, exact: bool| -> Result<MemberQuery> {
             Ok(MemberQuery {
                 name: Some(if exact {
                     Pattern::coordinate(name)
                 } else {
-                    Pattern::search(name)
+                    Pattern::search(name, case)
                 }),
-                class: Some(Pattern {
-                    text: format_class_name(class)?,
-                    exact,
+                class: Some(if exact {
+                    Pattern::coordinate(format_class_name(class)?)
+                } else {
+                    Pattern::search(format_class_name(class)?, case)
                 }),
                 descriptor: descriptor.map(str::to_owned),
             })
@@ -277,17 +290,20 @@ fn target_query(target: &Target) -> Result<Query> {
         }
         (Some(Anchor::String(value)), _) => Ok(Query::String(Pattern::coordinate(value.clone()))),
         (None, Some(pattern)) => match target.kind {
-            XrefKind::String => Ok(Query::String(Pattern::search(pattern))),
+            XrefKind::String => Ok(Query::String(Pattern::search(pattern, case))),
             // A descriptor never contains a dot, so a dot in a type pattern is a package
             // separator: `java.lang.String` must find `java/lang/String`.
-            XrefKind::Type => Ok(Query::Type(Pattern::search(pattern.replace('.', "/")))),
+            XrefKind::Type => Ok(Query::Type(Pattern::search(
+                pattern.replace('.', "/"),
+                case,
+            ))),
             XrefKind::Method | XrefKind::Field => {
                 let query = MemberQuery {
-                    name: Some(Pattern::search(pattern)),
+                    name: Some(Pattern::search(pattern, case)),
                     class: target
                         .class
                         .as_deref()
-                        .map(|class| Pattern::search(class.replace('.', "/"))),
+                        .map(|class| Pattern::search(class.replace('.', "/"), case)),
                     descriptor: None,
                 };
                 Ok(if target.kind == XrefKind::Method {

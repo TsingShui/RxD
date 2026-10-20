@@ -152,7 +152,10 @@ fn run_command(
             emit(&payload, args.output_path())?;
         }
         Command::Classes(args) => {
-            let filter = args.filter.as_deref().map(str::to_lowercase);
+            let filter = args
+                .filter
+                .as_deref()
+                .map(|needle| rxd_core::filter::Contains::new(needle, args.case.sensitive()));
             let started = Instant::now();
             let classes = apk::list_classes_with_policy(
                 &args.apk_path,
@@ -167,11 +170,7 @@ fn run_command(
                         .iter()
                         .filter(|class| {
                             filter.as_ref().is_none_or(|pattern| {
-                                class
-                                    .java_name()
-                                    .replace('/', ".")
-                                    .to_lowercase()
-                                    .contains(pattern)
+                                pattern.matches(&class.java_name().replace('/', "."))
                             })
                         })
                         .count(),
@@ -199,7 +198,7 @@ fn run_command(
                             for character in class.java_name().chars() {
                                 name.push(if character == '/' { '.' } else { character });
                             }
-                            if !name.to_lowercase().contains(pattern) {
+                            if !pattern.matches(&name) {
                                 continue;
                             }
                         }
@@ -235,6 +234,7 @@ fn run_command(
                 args.threads,
                 args.debug,
                 args.filter.as_deref(),
+                args.case.sensitive(),
                 args.limit,
                 args.offset,
             )?;
@@ -275,10 +275,10 @@ fn run_command(
             emit(&source, args.output.as_deref())?;
         }
         Command::Fields(args) => {
-            let filter = args.filter.as_deref().map(str::to_lowercase);
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),
-                name: filter.as_deref(),
+                name: args.filter.as_deref(),
+                case_sensitive: args.case.sensitive(),
             };
             let (chunks, records) = apk::list_fields_with_policy(
                 &args.apk_path,
@@ -305,6 +305,7 @@ fn run_command(
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),
                 name: args.filter.as_deref(),
+                case_sensitive: args.case.sensitive(),
             };
             let (chunks, records) = apk::list_methods_with_policy(
                 &args.apk_path,
@@ -341,12 +342,15 @@ fn run_command(
                 std::slice::from_ref(&args.apk_path),
                 json!({"filter":args.filter}),
             )?;
-            let pattern = args.filter.as_deref().map(str::to_lowercase);
+            let pattern = args
+                .filter
+                .as_deref()
+                .map(|needle| rxd_core::filter::Contains::new(needle, args.case.sensitive()));
             let mut listed = 0usize;
             for entry in &entries {
                 if pattern
                     .as_ref()
-                    .is_some_and(|pattern| !entry.name.to_lowercase().contains(pattern))
+                    .is_some_and(|pattern| !pattern.matches(&entry.name))
                 {
                     continue;
                 }

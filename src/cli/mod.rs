@@ -43,6 +43,8 @@ mod dex;
 mod dotnet;
 #[cfg(feature = "backend-evm")]
 mod evm;
+/// `--case`, the one flag that governs case folding for every filter.
+mod filter;
 #[cfg(feature = "backend-html")]
 mod html;
 #[cfg(feature = "backend-js")]

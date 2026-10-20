@@ -4,6 +4,7 @@ use std::{fmt, fs::OpenOptions, io::Read, path::Path};
 #[cfg(feature = "runtime-bundle")]
 pub mod bundle;
 pub mod envelope;
+pub mod filter;
 pub mod perf;
 
 #[derive(Debug)]

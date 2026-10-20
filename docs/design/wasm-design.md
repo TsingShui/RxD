@@ -48,7 +48,7 @@ One command emits one record kind; there is no mixed structural stream. `types`,
 all of that command's single kind, in section index order, with
 `detail.analysis: metadata`. `header.query` echoes the selectors the command took.
 
-Every listing command takes `-f/--filter`, a case-insensitive substring over the
+Every listing command takes `-f/--filter`, a substring over the
 value the row is named by: the name-section label for `functions` and `globals`,
 the rendered signature for `types`, `module.name` for `imports`, the export name
 for `exports`, the decoded literal for `strings`, and otherwise the row's own `at`

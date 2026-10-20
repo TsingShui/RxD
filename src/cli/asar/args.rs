@@ -1,3 +1,4 @@
+use super::super::filter::CaseArgs;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 #[derive(Args)]
@@ -23,9 +24,11 @@ pub(crate) enum Command {
         common: Common,
         #[arg(long)]
         jsonl: bool,
-        /// Case-insensitive substring over the archive-relative path.
+        ///  substring over the archive-relative path. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
     },
     /// Write one original file to --output and return a JSON extraction receipt.
     Extract {

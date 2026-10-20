@@ -1,3 +1,4 @@
+use super::super::filter::CaseArgs;
 use super::super::{default_threads, positive};
 use clap::{Args, Subcommand, ValueEnum};
 use rxd_js::{Query, RefsTarget};
@@ -69,9 +70,11 @@ pub(crate) struct Outline {
     /// Keep only entities whose name or context label equals this value.
     #[arg(long)]
     pub(super) name: Option<String>,
-    /// Case-insensitive substring over the entity name or context label.
+    /// Substring over the entity name or context label, folded unless `--case sensitive`.
     #[arg(short, long)]
     pub(super) filter: Option<String>,
+    #[command(flatten)]
+    pub(super) case: CaseArgs,
     /// Explicitly select the default JSONL format.
     #[arg(long)]
     pub(super) jsonl: bool,
@@ -223,6 +226,7 @@ impl Command {
                 kind: outline.kind,
                 name: outline.name,
                 contains: outline.filter,
+                contains_case_sensitive: outline.case.sensitive(),
             },
             Self::Functions { outline, .. } => Query::Outline {
                 group: Some("functions"),
@@ -231,6 +235,7 @@ impl Command {
                 kind: outline.kind,
                 name: outline.name,
                 contains: outline.filter,
+                contains_case_sensitive: outline.case.sensitive(),
             },
             Self::Classes { outline, .. } => Query::Outline {
                 group: Some("classes"),
@@ -239,6 +244,7 @@ impl Command {
                 kind: outline.kind,
                 name: outline.name,
                 contains: outline.filter,
+                contains_case_sensitive: outline.case.sensitive(),
             },
             Self::Methods { outline, .. } => Query::Outline {
                 group: Some("methods"),
@@ -247,6 +253,7 @@ impl Command {
                 kind: outline.kind,
                 name: outline.name,
                 contains: outline.filter,
+                contains_case_sensitive: outline.case.sensitive(),
             },
             Self::Find {
                 string,

@@ -232,6 +232,7 @@ pub fn codes(
     input: PathBuf,
     version: Option<(u8, u8)>,
     filter: Option<String>,
+    case_sensitive: bool,
     name: Option<String>,
     index: Option<usize>,
     options: Options,
@@ -241,7 +242,7 @@ pub fn codes(
     let limits = options.limits();
     let mut analysis = Analysis::load(&input, version, limits, perf)?;
     let selected = perf.measure("query", || {
-        analysis.select_codes(filter.as_deref(), name.as_deref(), index)
+        analysis.select_codes(filter.as_deref(), case_sensitive, name.as_deref(), index)
     });
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;

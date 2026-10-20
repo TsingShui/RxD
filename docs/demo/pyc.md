@@ -59,7 +59,7 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.marshal --version 3.12
 ```
 
 `codes` is schema-v2 header/code/summary JSONL: root index 0, deterministic DFS preorder,
-and both `-f/--filter` (case-insensitive substring) and `--name` (exact) preserve the
+and both `-f/--filter` (substring, `--case sensitive` for exact case) and `--name` (exact) preserve the
 matching results with their original indices. Zero matches still returns complete
 header/summary; a missing index exits 2 with `INVALID_QUERY`. Each row prints the copy-only
 `at: code:<index>`; the header carries the full input SHA-256, so coordinates do not
@@ -116,7 +116,7 @@ target/debug/rxd pyc strings tests/corpus/pyc/3.12.14/graph.timestamp.pyc -f sha
   python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; assert rows[-1]["complete"] and rows[-1]["records"]==5; print([(r["at"],r["context_at"],r["detail"]["constant_path"]) for r in rows if r["record"]=="string"])'
 ```
 
-Text filtering is a case-insensitive substring; bytes uses the query's UTF-8 bytes
+Text filtering is a substring (folded unless `--case sensitive`); bytes uses the query's UTF-8 bytes
 byte-exactly; undecodable strs do not participate in text matching. Hex is a byte-exact raw-payload
 subsequence, case-insensitive, without `0x` or spaces. The two filters are mutually
 exclusive; zero hits return a complete 0-record result. Neither strings nor codes
