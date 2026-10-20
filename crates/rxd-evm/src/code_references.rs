@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::{
     BoundedOutput, Edge, FunctionNavigation, Limits, Navigation,
     functions::block_local_edges,
-    navigation::{object, work, write_record},
+    navigation::{Listing, object, work, write_record},
     references::{self, HeaderDetail, SummaryDetail},
 };
 
@@ -212,20 +212,19 @@ impl<'a> References<'a> {
         envelope::record(
             "code_reference",
             RecordMeta {
-                source_id: Some(&navigation.carrier.source_id),
                 context_at: Some(&context_id),
                 start: Some(start),
                 end: Some(end),
                 ..RecordMeta::default()
             },
             object(
-                json!({"target_id":self.id,"target_kind":self.target_kind,"target_decoded_offset":self.target,
+                json!({"target":crate::coordinate(self.id),"target_kind":self.target_kind,"target_decoded_offset":self.target,
             "reference_kind":hit.edge.kind,"resolution":hit.edge.resolution,"instruction_offset":hit.edge.instruction_offset,
             "opcode":instruction.opcode,"operand_hex":instruction.operand_hex,"context_kind":if hit.function.is_some(){"function"}else{"block"},
-            "referencing_block_id":block_id,"referencing_context_index":hit.context,"target_context_index":hit.edge.target_context,
+            "referencing_block_id":crate::coordinate(&block_id),"referencing_context_index":hit.context,"target_context_index":hit.edge.target_context,
             "incoming_stack_words":hit.incoming_stack_words,
             "evidence_kind":if hit.function.is_some(){"contextual_stack"}else{"block_local_stack"},
-            "owner_ids":if hit.function.is_some(){vec![context_id.as_str()]}else{vec![]},
+            "owner_ids":if hit.function.is_some(){vec![crate::coordinate(&context_id)]}else{vec![]},
             "shared":functions.owners[hit.block].len()>1,"ownership_status":if hit.function.is_some(){"candidate"}else{"unresolved"},
             "source_call_verified":false,"abi_call_verified":false}),
             ),
@@ -236,13 +235,14 @@ impl<'a> References<'a> {
         &self,
         navigation: &Navigation,
         functions: &FunctionNavigation,
-        include_bytecode: bool,
+        listing: Listing<'_>,
         limits: Limits,
     ) -> Result<Vec<u8>> {
+        let needle = listing.filter.map(str::to_lowercase);
         let header = references::header(
             navigation,
             self.id,
-            include_bytecode,
+            listing,
             HeaderDetail {
                 data: None,
                 target_kind: self.target_kind,
@@ -260,38 +260,46 @@ impl<'a> References<'a> {
             },
         );
         let coverage = &self.coverage;
-        let summary = references::summary(
-            navigation,
-            SummaryDetail {
-                target_kind: self.target_kind,
-                target_decoded_offset: self.target,
-                references: self.hits.len(),
-                resolved_edges: Some(coverage.resolved_edges),
-                unknown_jumps: Some(coverage.unknown_jumps),
-                invalid_jumps: Some(coverage.invalid_jumps),
-                analysis_problems: Some(coverage.analysis_problems),
-                scanned_contexts: Some(coverage.scanned_contexts),
-                scanned_blocks: Some(coverage.scanned_blocks),
-                external_call_sites: Some(coverage.external_call_sites),
-                resolution_complete: Some(
-                    coverage.unknown_jumps == 0
-                        && coverage.invalid_jumps == 0
-                        && coverage.analysis_problems == 0
-                        && navigation.decoded_end == navigation.carrier.bytecode.len(),
-                ),
-                ..SummaryDetail::default()
-            },
-        );
         let mut output = BoundedOutput {
             bytes: Vec::new(),
             limit: limits.output_bytes,
             exceeded: false,
         };
         write_record(&mut output, &header)?;
+        let mut emitted = 0;
         for hit in &self.hits {
-            write_record(&mut output, &self.record(navigation, functions, hit))?;
+            let record = self.record(navigation, functions, hit);
+            if !references::keeps(&record, needle.as_deref()) {
+                continue;
+            }
+            write_record(&mut output, &record)?;
+            emitted += 1;
         }
-        write_record(&mut output, &summary)?;
+        write_record(
+            &mut output,
+            &references::summary(
+                navigation,
+                SummaryDetail {
+                    target_kind: self.target_kind,
+                    target_decoded_offset: self.target,
+                    references: emitted,
+                    resolved_edges: Some(coverage.resolved_edges),
+                    unknown_jumps: Some(coverage.unknown_jumps),
+                    invalid_jumps: Some(coverage.invalid_jumps),
+                    analysis_problems: Some(coverage.analysis_problems),
+                    scanned_contexts: Some(coverage.scanned_contexts),
+                    scanned_blocks: Some(coverage.scanned_blocks),
+                    external_call_sites: Some(coverage.external_call_sites),
+                    resolution_complete: Some(
+                        coverage.unknown_jumps == 0
+                            && coverage.invalid_jumps == 0
+                            && coverage.analysis_problems == 0
+                            && navigation.decoded_end == navigation.carrier.bytecode.len(),
+                    ),
+                    ..SummaryDetail::default()
+                },
+            ),
+        )?;
         Ok(output.bytes)
     }
 }
@@ -300,7 +308,7 @@ pub fn refs_json(
     navigation: &Navigation,
     functions: &FunctionNavigation,
     id: &str,
-    include_bytecode: bool,
+    listing: Listing<'_>,
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
@@ -309,6 +317,6 @@ pub fn refs_json(
     perf.record("query", stage);
     let references = result?;
     perf.measure("serialize", || {
-        references.json(navigation, functions, include_bytecode, limits)
+        references.json(navigation, functions, listing, limits)
     })
 }

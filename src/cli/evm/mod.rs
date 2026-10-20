@@ -1,36 +1,35 @@
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand, ValueEnum};
-use rxd_core::{Error, Result, perf::Perf};
+use rxd_core::{Budget, Error, Result, perf::Perf};
 use rxd_evm::{
-    Analysis, FunctionNavigation, FunctionSelection, Limits, LiteralInventory, LiteralKind,
-    LiteralQuery, Navigation, Query,
+    Analysis, FunctionNavigation, FunctionSelection, Limits, Listing, LiteralInventory,
+    LiteralKind, LiteralQuery, Navigation, Query,
 };
 
 #[derive(Subcommand)]
 pub enum Command {
     /// Search decoded PUSH literals and data candidates using an explicit query interpretation.
     Strings(StringsOptions),
-    /// Find evidenced references and fetchable contexts for a literal or code-unit ID.
+    /// Find evidenced references to a literal, block or function coordinate.
     Xref(XrefOptions),
     /// Return all native EVMole analyses as one JSON object.
     Analyze(Options),
-    /// Infer selectors, argument types and state mutability.
-    #[command(visible_alias = "functions")]
-    Interface(Options),
+    /// List content-bound function candidates with EVMole's own ABI fields.
+    Interface(ListOptions),
     /// Infer persistent and transient storage, retaining the function candidates.
     Storage(Options),
     /// Decode bytecode into offset/opcode pairs.
     Disassemble(Options),
-    /// Enumerate basic blocks. Each end is the start offset of its last opcode.
+    /// Enumerate native basic-block ranges. Each end is the start offset of its last opcode.
     BasicBlocks(Options),
     /// Infer a control-flow graph. Destinations are upstream block IDs.
     Cfg(Options),
     /// Extract terminal CBOR compiler metadata.
     Metadata(Options),
-    /// Enumerate content-bound basic-block candidates as JSONL.
-    Outline(Options),
-    /// Fetch one exact basic block using an ID returned by outline.
+    /// List content-bound basic blocks.
+    Blocks(ListOptions),
+    /// Fetch one basic block using the coordinate a blocks row prints.
     GetBlock(BlockOptions),
     /// Fetch native reachable regions for one selector-dispatched function candidate.
     GetFunction(FunctionOptions),
@@ -52,14 +51,21 @@ pub struct StringsOptions {
     /// Text substring, exact hex bytes, or decimal/0x U256; omit to inventory this kind.
     #[arg(long, allow_hyphen_values = true)]
     query: Option<String>,
+    /// Case-insensitive substring over the value a literal row is named by.
+    #[arg(short = 'f', long)]
+    filter: Option<String>,
 }
 
 #[derive(Args)]
 pub struct XrefOptions {
     #[command(flatten)]
     options: Options,
+    /// The coordinate a block, function or literal row prints.
     #[arg(long)]
-    id: String,
+    at: String,
+    /// Case-insensitive substring over the caller coordinate of each reference.
+    #[arg(short = 'f', long)]
+    filter: Option<String>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -72,21 +78,37 @@ enum Encoding {
 pub struct BlockOptions {
     #[command(flatten)]
     options: Options,
-    id: String,
+    /// The coordinate a blocks row prints.
+    #[arg(long)]
+    at: String,
 }
 
 #[derive(Args)]
 pub struct FunctionOptions {
     #[command(flatten)]
     options: Options,
-    #[arg(required_unless_present = "selector", conflicts_with = "selector")]
-    id: Option<String>,
+    /// The coordinate an interface row prints.
+    #[arg(
+        long,
+        required_unless_present = "selector",
+        conflicts_with = "selector"
+    )]
+    at: Option<String>,
     /// Select exactly one candidate by its four-byte selector.
-    #[arg(long, conflicts_with = "id")]
+    #[arg(long, conflicts_with = "at")]
     selector: Option<String>,
     /// Return original byte segments/instructions without requesting reconstruction.
     #[arg(long)]
     raw: bool,
+}
+
+#[derive(Args)]
+pub struct ListOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Case-insensitive substring over the value a row is named by.
+    #[arg(short = 'f', long)]
+    filter: Option<String>,
 }
 
 #[derive(Args)]
@@ -107,46 +129,49 @@ pub struct Options {
     perf: bool,
     #[arg(long)]
     debug: bool,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = super::input_bytes)]
-    max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_records: usize,
-    #[arg(long, default_value_t = 16 * 1024 * 1024, value_parser = super::positive)]
-    max_output_bytes: usize,
-    /// Navigation bytes, instructions and block visits; native queries retain engine budgets.
-    #[arg(long, default_value_t = 16 * 1024 * 1024, value_parser = super::positive)]
-    max_work: usize,
-    /// Cumulative contextual graph states allocated during function navigation.
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_states: usize,
-    /// Cumulative stored graph stack slots and known memory-word facts.
-    #[arg(long, default_value_t = 1_048_576, value_parser = super::positive)]
-    max_stack_cells: usize,
-    /// Selected reconstruction transfer and rendered text work.
-    #[arg(long, default_value_t = 1_048_576, value_parser = super::positive)]
-    max_reconstruction_work: usize,
-    /// Selected reconstruction value arena entries.
-    #[arg(long, default_value_t = 1_048_576, value_parser = super::positive)]
-    max_values: usize,
+    // Every ceiling comes from rxd_core::Budget; no CLI flag exposes one.
 }
 
 impl Command {
-    fn parts(&self) -> (&Options, Option<Query>) {
+    fn options(&self) -> &Options {
         match self {
-            Self::Analyze(options) => (options, Some(Query::Analyze)),
-            Self::Interface(options) => (options, Some(Query::Interface)),
-            Self::Storage(options) => (options, Some(Query::Storage)),
-            Self::Disassemble(options) => (options, Some(Query::Disassemble)),
-            Self::BasicBlocks(options) => (options, Some(Query::BasicBlocks)),
-            Self::Cfg(options) => (options, Some(Query::Cfg)),
-            Self::Metadata(options) => (options, Some(Query::Metadata)),
-            Self::Outline(options) => (options, None),
-            Self::Strings(options) => (&options.options, None),
-            Self::Xref(options) => (&options.options, None),
-            Self::GetBlock(options) => (&options.options, None),
-            Self::GetFunction(options) => (&options.options, None),
+            Self::Strings(options) => &options.options,
+            Self::Xref(options) => &options.options,
+            Self::Interface(options) | Self::Blocks(options) => &options.options,
+            Self::GetBlock(options) => &options.options,
+            Self::GetFunction(options) => &options.options,
+            Self::Analyze(options)
+            | Self::Storage(options)
+            | Self::Disassemble(options)
+            | Self::BasicBlocks(options)
+            | Self::Cfg(options)
+            | Self::Metadata(options) => options,
         }
+    }
+
+    fn query(&self) -> Option<Query> {
+        match self {
+            Self::Analyze(_) => Some(Query::Analyze),
+            Self::Storage(_) => Some(Query::Storage),
+            Self::Disassemble(_) => Some(Query::Disassemble),
+            Self::BasicBlocks(_) => Some(Query::BasicBlocks),
+            Self::Cfg(_) => Some(Query::Cfg),
+            Self::Metadata(_) => Some(Query::Metadata),
+            Self::Strings(_)
+            | Self::Xref(_)
+            | Self::Interface(_)
+            | Self::Blocks(_)
+            | Self::GetBlock(_)
+            | Self::GetFunction(_) => None,
+        }
+    }
+
+    /// Serialization stages measured by the backend itself, not by this adapter.
+    fn measures_own_serialization(&self) -> bool {
+        matches!(
+            self,
+            Self::Strings(_) | Self::Xref(_) | Self::GetFunction(_)
+        )
     }
 
     pub fn name(&self) -> &'static str {
@@ -158,7 +183,7 @@ impl Command {
             Self::BasicBlocks(_) => "basic-blocks",
             Self::Cfg(_) => "cfg",
             Self::Metadata(_) => "metadata",
-            Self::Outline(_) => "outline",
+            Self::Blocks(_) => "blocks",
             Self::Strings(_) => "strings",
             Self::Xref(_) => "xref",
             Self::GetBlock(_) => "get-block",
@@ -167,42 +192,45 @@ impl Command {
     }
 
     pub fn perf(&self) -> bool {
-        self.parts().0.perf
+        self.options().perf
     }
 
     pub fn debug(&self) -> bool {
-        self.parts().0.debug
+        self.options().debug
     }
 }
 
 pub fn execute(command: Command) -> Result<()> {
-    let (options, query) = command.parts();
+    let options = command.options();
     let mut perf = Perf::new(
         options.perf || options.debug,
         "analysis",
         "evm",
         command.name(),
     );
+    // One budget table for every backend; the CLI exposes no knob for it.
+    let budget = Budget::default();
+    let limits = Limits::from_budget(budget);
     let mut effective_limits = [
-        ("input_bytes", super::input_limit(options.max_input_bytes)),
-        ("records", options.max_records),
-        ("output_bytes", options.max_output_bytes),
+        ("input_bytes", limits.input_bytes),
+        ("records", limits.records),
+        ("output_bytes", limits.output_bytes),
     ]
     .into_iter()
     .collect::<std::collections::BTreeMap<_, _>>();
-    if query.is_none() {
-        effective_limits.insert("work", options.max_work);
+    if command.query().is_none() {
+        effective_limits.insert("work", limits.work);
     }
     if matches!(
         command,
-        Command::Outline(_) | Command::GetFunction(_) | Command::Strings(_) | Command::Xref(_)
+        Command::Interface(_) | Command::GetFunction(_) | Command::Strings(_) | Command::Xref(_)
     ) {
-        effective_limits.insert("states", options.max_states);
-        effective_limits.insert("stack_cells", options.max_stack_cells);
+        effective_limits.insert("states", limits.states);
+        effective_limits.insert("stack_cells", limits.stack_cells);
     }
     if matches!(&command, Command::GetFunction(function) if !function.raw) {
-        effective_limits.insert("reconstruction_work", options.max_reconstruction_work);
-        effective_limits.insert("values", options.max_values);
+        effective_limits.insert("reconstruction_work", limits.reconstruction_work);
+        effective_limits.insert("values", limits.values);
     }
     perf.resource_limits = Some(effective_limits);
     let result = (|| {
@@ -215,21 +243,11 @@ pub fn execute(command: Command) -> Result<()> {
                 "output must not replace the input carrier",
             ));
         }
-        let limits = Limits {
-            input_bytes: super::input_limit(options.max_input_bytes),
-            records: options.max_records,
-            output_bytes: options.max_output_bytes,
-            work: options.max_work,
-            states: options.max_states,
-            stack_cells: options.max_stack_cells,
-            reconstruction_work: options.max_reconstruction_work,
-            values: options.max_values,
-        };
         let encoding = match options.encoding {
             Encoding::Raw => rxd_evm::Encoding::Raw,
             Encoding::Hex => rxd_evm::Encoding::Hex,
         };
-        let bytes = if let Some(query) = query {
+        let bytes = if let Some(query) = command.query() {
             let analysis = Analysis::read(&options.input, encoding, query, limits, &mut perf)?;
             perf.measure("serialize", || {
                 analysis.json(
@@ -240,33 +258,37 @@ pub fn execute(command: Command) -> Result<()> {
             })?
         } else {
             let navigation = Navigation::read(&options.input, encoding, limits, &mut perf)?;
-            let functions = if matches!(
-                command,
-                Command::Outline(_)
-                    | Command::GetFunction(_)
-                    | Command::Strings(_)
-                    | Command::Xref(_)
-            ) {
+            let with_abi = matches!(command, Command::Interface(_));
+            let functions = if with_abi
+                || matches!(
+                    command,
+                    Command::GetFunction(_) | Command::Strings(_) | Command::Xref(_)
+                ) {
                 Some(FunctionNavigation::discover(
                     &navigation,
+                    with_abi,
                     limits,
                     &mut perf,
                 )?)
             } else {
                 None
             };
-            let serialization = if matches!(
-                &command,
-                Command::GetFunction(_) | Command::Strings(_) | Command::Xref(_)
-            ) {
+            let serialization = if command.measures_own_serialization() {
                 None
             } else {
-                perf.start_stage()
+                Some(perf.start_stage())
             };
             let bytes = match &command {
-                Command::Outline(_) => navigation.outline_json(
-                    functions.as_ref().unwrap(),
+                Command::Blocks(blocks) => navigation.blocks_json(
                     options.include_bytecode,
+                    blocks.filter.as_deref(),
+                    limits,
+                    &mut perf,
+                ),
+                Command::Interface(interface) => functions.as_ref().unwrap().interface_json(
+                    &navigation,
+                    options.include_bytecode,
+                    interface.filter.as_deref(),
                     limits,
                     &mut perf,
                 ),
@@ -282,7 +304,10 @@ pub fn execute(command: Command) -> Result<()> {
                             },
                             strings.query.as_deref(),
                         )?,
-                        options.include_bytecode,
+                        Listing {
+                            include_bytecode: options.include_bytecode,
+                            filter: strings.filter.as_deref(),
+                        },
                         limits,
                         &mut perf,
                     )
@@ -290,16 +315,19 @@ pub fn execute(command: Command) -> Result<()> {
                 Command::Xref(refs) => rxd_evm::references::refs_json(
                     &navigation,
                     functions.as_ref().unwrap(),
-                    &refs.id,
-                    options.include_bytecode,
+                    &refs.at,
+                    Listing {
+                        include_bytecode: options.include_bytecode,
+                        filter: refs.filter.as_deref(),
+                    },
                     limits,
                     &mut perf,
                 ),
-                Command::GetBlock(block) => navigation.block_json(&block.id, limits, &mut perf),
+                Command::GetBlock(block) => navigation.block_json(&block.at, limits, &mut perf),
                 Command::GetFunction(function) => functions.as_ref().unwrap().function_json(
                     &navigation,
-                    if let Some(id) = &function.id {
-                        FunctionSelection::Id(id)
+                    if let Some(at) = &function.at {
+                        FunctionSelection::At(at)
                     } else {
                         FunctionSelection::Selector(function.selector.as_deref().unwrap())
                     },
@@ -309,8 +337,8 @@ pub fn execute(command: Command) -> Result<()> {
                 ),
                 _ => unreachable!("native query handled above"),
             };
-            if !matches!(command, Command::Strings(_) | Command::Xref(_)) {
-                perf.record("serialize", serialization);
+            if let Some(stage) = serialization {
+                perf.record("serialize", stage);
             }
             bytes?
         };

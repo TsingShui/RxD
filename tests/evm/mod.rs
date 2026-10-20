@@ -42,7 +42,7 @@ fn input(name: &str) -> PathBuf {
 }
 
 #[test]
-fn evm_native_interface_preserves_carrier_and_decoded_identities_and_argument_candidates() {
+fn evm_interface_lists_carrier_bound_functions_with_native_abi_fields() {
     let carrier = format!(" \n0X{}\r\n", ARGUMENTS.to_uppercase());
     let (dir, path) = fixture(&carrier, "contract.hex");
     let bytes: Vec<u8> = ARGUMENTS
@@ -55,37 +55,56 @@ fn evm_native_interface_preserves_carrier_and_decoded_identities_and_argument_ca
     let raw = dir.path().join("renamed.bin");
     fs::write(&raw, &bytes).unwrap();
     let hex_output = run("interface", &path, "hex", &["--include-bytecode"]);
-    let hex = result(&hex_output);
-    let raw_row = result(&run("interface", &raw, "raw", &["--include-bytecode"]));
+    let hex = jsonl(&hex_output);
+    let raw_rows = jsonl(&run("interface", &raw, "raw", &["--include-bytecode"]));
+    let header = &hex[0];
+    assert_eq!(header["command"], "interface");
     assert_eq!(
-        hex["source_id"],
+        header["source_id"],
         format!("{:x}", Sha256::digest(carrier.as_bytes()))
     );
     assert_eq!(
-        raw_row["source_id"],
+        raw_rows[0]["source_id"],
         format!("{:x}", Sha256::digest(&bytes))
     );
-    assert_ne!(hex["source_id"], raw_row["source_id"]);
-    assert_eq!(hex["detail"]["bytecode"], raw_row["detail"]["bytecode"]);
-    assert_eq!(hex["detail"]["bytecode"]["hex"], ARGUMENTS);
-    assert_eq!(hex["detail"]["bytecode"]["sha256"], raw_row["source_id"]);
-    assert_eq!(hex["detail"]["result"], raw_row["detail"]["result"]);
-    let functions = hex["detail"]["result"]["functions"].as_array().unwrap();
+    assert_ne!(header["source_id"], raw_rows[0]["source_id"]);
+    assert_eq!(
+        header["detail"]["bytecode"],
+        raw_rows[0]["detail"]["bytecode"]
+    );
+    assert_eq!(header["detail"]["bytecode"]["hex"], ARGUMENTS);
+    assert_eq!(
+        header["detail"]["bytecode"]["sha256"],
+        raw_rows[0]["source_id"]
+    );
+    assert_eq!(header["detail"]["offset_unit"], "decoded_bytecode_byte");
+    assert_eq!(header["input_bytes"], carrier.len());
+    assert_eq!(
+        header["detail"]["metadata"],
+        raw_rows[0]["detail"]["metadata"]
+    );
+    let functions: Vec<_> = hex.iter().filter(|r| r["record"] == "function").collect();
     assert_eq!(functions.len(), 2);
     let function = functions
         .iter()
-        .find(|f| f["selector"] == "2125b65b")
+        .find(|f| f["detail"]["selector"] == "2125b65b")
         .unwrap();
-    assert_eq!(function["arguments"], "uint32,address,uint224");
-    assert_eq!(function["stateMutability"], "pure");
-    assert_eq!(function["dispatch"], "abi");
-    assert_eq!(hex["detail"]["offset_unit"], "decoded_bytecode_byte");
-    assert_eq!(hex["start"], 0);
-    assert_eq!(hex["end"], carrier.len());
+    // EVMole's own ABI fields sit next to the navigation evidence on the same row.
+    assert_eq!(function["detail"]["arguments"], "uint32,address,uint224");
+    assert_eq!(function["detail"]["stateMutability"], "pure");
+    assert_eq!(function["detail"]["dispatch"], "abi");
     assert_eq!(
-        run("functions", &path, "hex", &["--include-bytecode", "--json"]).stdout,
+        run("interface", &path, "hex", &["--include-bytecode", "--json"]).stdout,
         hex_output.stdout
     );
+    // One spelling: the old `functions` alias is gone.
+    let alias = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["evm", "functions"])
+        .arg(&path)
+        .args(["--encoding", "hex"])
+        .output()
+        .unwrap();
+    failure(alias, 2, "functions");
     let profiled = run("interface", &path, "hex", &["--include-bytecode", "--perf"]);
     assert_eq!(profiled.stdout, hex_output.stdout);
     let reports = perf_reports(&profiled);
@@ -222,9 +241,9 @@ fn evm_invalid_encodings_eof_and_non_files_fail_atomically() {
     );
     assert_eq!(fs::read(&path).unwrap(), b"00");
     fs::write(&path, "0xgg").unwrap();
-    failure(run("outline", &path, "hex", &[]), 1, "INVALID_INPUT");
+    failure(run("blocks", &path, "hex", &[]), 1, "INVALID_INPUT");
     fs::write(&path, [0xef, 0x00]).unwrap();
-    failure(run("outline", &path, "raw", &[]), 1, "UNSUPPORTED_INPUT");
+    failure(run("blocks", &path, "raw", &[]), 1, "UNSUPPORTED_INPUT");
     let missing = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["evm", "interface"])
         .arg(&path)
@@ -257,40 +276,18 @@ fn evm_empty_inputs_and_budgets_keep_complete_delivery_and_previous_outputs() {
     success(&saved);
     assert!(saved.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
+    // Ceilings live in rxd_core::Budget; native analysis exposes no knob for them.
     for budget in [
         ["--max-input-bytes", "1"],
         ["--max-records", "1"],
         ["--max-output-bytes", "1"],
     ] {
         fs::write(&destination, "preserved").unwrap();
-        failure(
-            run(
-                "analyze",
-                &path,
-                "hex",
-                &[budget[0], budget[1], "-o", destination.to_str().unwrap()],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
+        let mut unknown = vec![budget[0], budget[1], "-o"];
+        unknown.push(destination.to_str().unwrap());
+        failure(run("analyze", &path, "hex", &unknown), 2, budget[0]);
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
-    success(&run(
-        "analyze",
-        &path,
-        "hex",
-        &["--max-output-bytes", &plain.stdout.len().to_string()],
-    ));
-    failure(
-        run(
-            "analyze",
-            &path,
-            "hex",
-            &["--max-output-bytes", &(plain.stdout.len() - 1).to_string()],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
 }
 
 #[test]
@@ -301,7 +298,7 @@ fn evm_outline_ids_fetch_exact_blocks_across_raw_and_hex_carriers() {
     let raw = directory.path().join("blocks.bin");
     fs::write(&raw, [0x61, 0x00, 0x5b, 0x56, 0x5b, 0x60, 0xaa, 0x00]).unwrap();
     for (input, encoding, carrier_start, stride) in [(&path, "hex", 4, 2), (&raw, "raw", 0, 1)] {
-        let output = run("outline", input, encoding, &[]);
+        let output = run("blocks", input, encoding, &[]);
         let rows = jsonl(&output);
         assert_eq!(rows[0]["schema_version"], 2);
         assert_eq!(rows[0]["detail"]["disassembly_complete"], true);
@@ -325,12 +322,12 @@ fn evm_outline_ids_fetch_exact_blocks_across_raw_and_hex_carriers() {
             assert_eq!(block["start"], carrier_start + start * stride);
             assert_eq!(block["end"], carrier_start + end * stride);
             assert_eq!(block["detail"]["upstream_block_id"], Value::Null);
-            let id = block["id"].as_str().unwrap();
-            let fetched = run("get-block", input, encoding, &[id]);
+            let id = block["at"].as_str().unwrap();
+            let fetched = run("get-block", input, encoding, &["--at", id]);
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
             assert_eq!(fetched["record"], "block");
-            assert_eq!(fetched["id"], id);
+            assert_eq!(fetched["at"], id);
             assert_eq!(fetched["detail"]["raw_hex"], raw_hex);
             assert_eq!(fetched["start"], block["start"]);
             assert_eq!(fetched["end"], block["end"]);
@@ -349,41 +346,56 @@ fn evm_outline_ids_fetch_exact_blocks_across_raw_and_hex_carriers() {
 #[test]
 fn evm_block_ids_survive_copy_and_reject_stale_sources_encodings_and_forged_bounds() {
     let (directory, path) = fixture("6003565b00", "original.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows[1]["id"].as_str().unwrap();
+    let rows = jsonl(&run("blocks", &path, "hex", &[]));
+    let id = rows[1]["at"].as_str().unwrap();
     let copy = directory.path().join("copy.hex");
     fs::copy(&path, &copy).unwrap();
-    let copy_rows = jsonl(&run("outline", &copy, "hex", &[]));
-    assert_eq!(copy_rows[1]["id"], id);
-    success(&run("get-block", &copy, "hex", &[id]));
+    let copy_rows = jsonl(&run("blocks", &copy, "hex", &[]));
+    assert_eq!(copy_rows[1]["at"], id);
+    success(&run("get-block", &copy, "hex", &["--at", id]));
+    // The copy-only coordinate is relative to the carrier it was read from; a whole
+    // content-bound ID keeps the original identity and must reject another carrier.
+    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
     let destination = directory.path().join("keep.json");
     fs::write(&destination, "preserved").unwrap();
     for forged in [
-        id.replace("rxd1:", "rxd2:"),
-        id.replace(":block:", ":function:"),
-        id.replace(":0:3", ":1:3"),
-        id.replace(":0:3", ":0:2"),
-        id.replace(":0:3", ":0:300"),
-        id.replace(":0:3", ":00:3"),
-        id.replace(":0:3", ":0:184467440737095516160"),
+        full.replace("rxd1:", "rxd2:"),
+        full.replace(":block:", ":function:"),
+        full.replace(":0:3", ":1:3"),
+        full.replace(":0:3", ":0:2"),
+        full.replace(":0:3", ":0:300"),
+        full.replace(":0:3", ":00:3"),
+        full.replace(":0:3", ":0:184467440737095516160"),
     ] {
         failure(
             run(
                 "get-block",
                 &path,
                 "hex",
-                &[&forged, "-o", destination.to_str().unwrap()],
+                &["--at", &forged, "-o", destination.to_str().unwrap()],
             ),
             1,
             "INVALID_ID",
         );
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
-    failure(run("get-block", &path, "raw", &[id]), 1, "SOURCE_MISMATCH");
+    failure(
+        run("get-block", &path, "raw", &["--at", id]),
+        1,
+        "SOURCE_MISMATCH",
+    );
     fs::write(&copy, "6004565b00").unwrap();
-    failure(run("get-block", &copy, "hex", &[id]), 1, "SOURCE_MISMATCH");
+    failure(
+        run("get-block", &copy, "hex", &["--at", &full]),
+        1,
+        "SOURCE_MISMATCH",
+    );
     fs::write(&path, "6003565b01").unwrap();
-    failure(run("get-block", &path, "hex", &[id]), 1, "SOURCE_MISMATCH");
+    failure(
+        run("get-block", &path, "hex", &["--at", &full]),
+        1,
+        "SOURCE_MISMATCH",
+    );
 }
 
 #[test]
@@ -402,7 +414,7 @@ fn evm_block_navigation_preserves_incomplete_push_tail_and_empty_delivery() {
         ),
     ] {
         let (_directory, path) = fixture(carrier, "tail.hex");
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
+        let rows = jsonl(&run("blocks", &path, "hex", &[]));
         assert_eq!(rows.len(), block_count + 2);
         assert_eq!(rows[0]["detail"]["undecoded_tail"], tail);
         assert_eq!(rows[0]["detail"]["disassembly_complete"], tail.is_null());
@@ -412,7 +424,7 @@ fn evm_block_navigation_preserves_incomplete_push_tail_and_empty_delivery() {
                 "get-block",
                 &path,
                 "hex",
-                &[rows[1]["id"].as_str().unwrap()],
+                &["--at", rows[1]["at"].as_str().unwrap()],
             );
             success(&output);
             let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -429,15 +441,17 @@ fn evm_block_navigation_preserves_incomplete_push_tail_and_empty_delivery() {
 }
 
 #[test]
-fn evm_block_navigation_enforces_atomic_budgets_and_reports_effective_work() {
+fn evm_block_navigation_reports_effective_limits_and_publishes_atomically() {
     let (directory, path) = fixture("6003565b00", "jump.hex");
-    let plain = run("outline", &path, "hex", &[]);
+    let plain = run("blocks", &path, "hex", &[]);
     let rows = jsonl(&plain);
-    let id = rows[1]["id"].as_str().unwrap();
-    let profiled = run("outline", &path, "hex", &["--perf", "--max-work", "11"]);
+    let id = rows[1]["at"].as_str().unwrap();
+    let profiled = run("blocks", &path, "hex", &["--perf"]);
     assert_eq!(profiled.stdout, plain.stdout);
     let reports = perf_reports(&profiled);
-    assert_eq!(reports[0]["resource_limits"]["work"], 11);
+    // The shared budget table supplies every ceiling; no CLI flag overrides one.
+    assert_eq!(reports[0]["resource_limits"]["work"], 1_000_000);
+    assert_eq!(reports[0]["resource_limits"]["records"], 100_000);
     // Five decoded bytes, four complete instructions, two native blocks.
     assert_eq!(reports[0]["counters"]["work"], 11);
     assert_eq!(reports[0]["counters"]["instructions"], 4);
@@ -448,12 +462,12 @@ fn evm_block_navigation_enforces_atomic_budgets_and_reports_effective_work() {
             "{stage}"
         );
     }
-    let fetched = run("get-block", &path, "hex", &[id]);
+    let fetched = run("get-block", &path, "hex", &["--at", id]);
     success(&fetched);
     let destination = directory.path().join("saved.json");
     for (command, args, expected) in [
-        ("outline", vec![], plain.stdout.as_slice()),
-        ("get-block", vec![id], fetched.stdout.as_slice()),
+        ("blocks", vec![], plain.stdout.as_slice()),
+        ("get-block", vec!["--at", id], fetched.stdout.as_slice()),
     ] {
         let mut file_args = args.clone();
         file_args.extend(["-o", destination.to_str().unwrap()]);
@@ -461,57 +475,62 @@ fn evm_block_navigation_enforces_atomic_budgets_and_reports_effective_work() {
         success(&saved);
         assert!(saved.stdout.is_empty());
         assert_eq!(fs::read(&destination).unwrap(), expected);
-        let mut exact_output = args.clone();
-        let byte_limit = expected.len().to_string();
-        exact_output.extend(["--max-output-bytes", &byte_limit]);
-        success(&run(command, &path, "hex", &exact_output));
-        for budget in [
-            ["--max-input-bytes", "1"],
-            ["--max-output-bytes", "1"],
-            ["--max-work", "10"],
-        ] {
-            fs::write(&destination, "preserved").unwrap();
-            let mut failed_args = file_args.clone();
-            failed_args.extend(budget);
-            failure(
-                run(command, &path, "hex", &failed_args),
-                1,
-                "RESOURCE_LIMIT",
-            );
-            assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-        }
         let mut overwrite = args.clone();
         overwrite.extend(["-o", path.to_str().unwrap()]);
         failure(run(command, &path, "hex", &overwrite), 2, "INVALID_QUERY");
         assert_eq!(fs::read(&path).unwrap(), b"6003565b00");
+        // Every ceiling lives in rxd_core::Budget, so no `--max-*` flag exists.
+        for budget in [
+            ["--max-input-bytes", "1"],
+            ["--max-output-bytes", "1"],
+            ["--max-work", "1"],
+            ["--max-records", "1"],
+            ["--max-states", "1"],
+            ["--max-stack-cells", "1"],
+            ["--max-reconstruction-work", "1"],
+            ["--max-values", "1"],
+        ] {
+            let mut unknown = args.clone();
+            unknown.extend(budget);
+            failure(run(command, &path, "hex", &unknown), 2, budget[0]);
+        }
     }
+    // Failures keep the previous output file intact.
     fs::write(&destination, "preserved").unwrap();
     failure(
         run(
-            "outline",
+            "get-block",
             &path,
             "hex",
-            &["--max-records", "1", "-o", destination.to_str().unwrap()],
+            &[
+                "--at",
+                "hex:block:99:100",
+                "-o",
+                destination.to_str().unwrap(),
+            ],
         ),
         1,
-        "RESOURCE_LIMIT",
+        "INVALID_ID",
     );
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    // FETCH records only the selected block even when the input contains multiple blocks.
-    success(&run("get-block", &path, "hex", &[id, "--max-records", "1"]));
-    let failed = run("outline", &path, "hex", &["--max-work", "1", "--perf"]);
-    assert!(!failed.status.success());
-    assert!(failed.stdout.is_empty());
-    let reports = perf_reports(&failed);
-    assert_eq!(reports[0]["status"], "error");
-    assert_eq!(reports[0]["error_code"], "RESOURCE_LIMIT");
-    assert_eq!(reports[0]["resource_limits"]["work"], 1);
+    fs::write(&path, "0xgg").unwrap();
+    failure(
+        run(
+            "blocks",
+            &path,
+            "hex",
+            &["-o", destination.to_str().unwrap()],
+        ),
+        1,
+        "INVALID_INPUT",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
 }
 
 #[test]
 fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
     let (_directory, path) = fixture(" 0x5b61005B\t", "final-push.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &["--include-bytecode"]));
+    let rows = jsonl(&run("blocks", &path, "hex", &["--include-bytecode"]));
     assert_eq!(rows[0]["detail"]["bytecode"]["hex"], "5b61005b");
     assert_eq!(rows[1]["detail"]["last_opcode_start"], 1);
     assert_eq!(rows[1]["detail"]["decoded_end"], 4);
@@ -535,10 +554,10 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
         &rows[1],
         &[
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -562,7 +581,7 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
         "get-block",
         &path,
         "hex",
-        &[rows[1]["id"].as_str().unwrap()],
+        &["--at", rows[1]["at"].as_str().unwrap()],
     );
     success(&output);
     let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -577,10 +596,10 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
         &fetched,
         &[
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -620,7 +639,7 @@ const SHARED_HELPER: &str = "5f3560e01c8063112233441460205780635566778814602e570
 #[test]
 fn evm_function_ids_fetch_only_selected_disjoint_regions_and_shared_helper_return() {
     let (_directory, path) = fixture(SHARED_HELPER, "shared.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let functions: Vec<_> = rows.iter().filter(|r| r["record"] == "function").collect();
     assert_eq!(functions.len(), 2);
     let a = functions
@@ -647,11 +666,11 @@ fn evm_function_ids_fetch_only_selected_disjoint_regions_and_shared_helper_retur
             "get-function",
             &path,
             "hex",
-            &[function["id"].as_str().unwrap(), "--raw"],
+            &["--at", function["at"].as_str().unwrap(), "--raw"],
         );
         success(&output);
         let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(fetched["id"], function["id"]);
+        assert_eq!(fetched["at"], function["at"]);
         assert_eq!(fetched["record"], "function_code");
         assert_eq!(fetched["command"], "get-function");
         assert_eq!(fetched["detail"]["complete"], true);
@@ -709,7 +728,7 @@ fn evm_selector_selection_rejects_multiple_evidenced_dispatch_entries() {
     bytecode.push_str(&"00".repeat(80 - bytecode.len() / 2));
     bytecode.push_str("5b00");
     let (_directory, path) = fixture(&bytecode, "ambiguous.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let functions: Vec<_> = rows.iter().filter(|r| r["record"] == "function").collect();
     assert_eq!(functions.len(), 2);
     failure(
@@ -722,7 +741,7 @@ fn evm_selector_selection_rejects_multiple_evidenced_dispatch_entries() {
             "get-function",
             &path,
             "hex",
-            &[f["id"].as_str().unwrap(), "--raw"],
+            &["--at", f["at"].as_str().unwrap(), "--raw"],
         );
         success(&fetched);
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -731,10 +750,11 @@ fn evm_selector_selection_rejects_multiple_evidenced_dispatch_entries() {
 }
 
 #[test]
-fn evm_function_fetch_budget_failures_keep_previous_output_and_report_effective_limits() {
+fn evm_function_fetch_reports_effective_limits_and_keeps_previous_output() {
     let (directory, path) = fixture(SHARED_HELPER, "shared.hex");
     let destination = directory.path().join("previous.json");
-    for args in [vec!["--max-states", "1"], vec!["--max-stack-cells", "1"]] {
+    // Every ceiling comes from rxd_core::Budget, so the flags no longer exist.
+    for budget in [["--max-states", "1"], ["--max-stack-cells", "1"]] {
         fs::write(&destination, "preserved").unwrap();
         let mut query = vec![
             "--selector",
@@ -744,14 +764,29 @@ fn evm_function_fetch_budget_failures_keep_previous_output_and_report_effective_
             "-o",
             destination.to_str().unwrap(),
         ];
-        query.extend(args);
-        let failed = run("get-function", &path, "hex", &query);
-        assert!(!failed.status.success());
-        assert!(failed.stdout.is_empty());
+        query.extend(budget);
+        failure(run("get-function", &path, "hex", &query), 2, budget[0]);
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-        let reports = perf_reports(&failed);
-        assert_eq!(reports[0]["error_code"], "RESOURCE_LIMIT");
     }
+    // A failing selector keeps the previous output and still reports why.
+    fs::write(&destination, "preserved").unwrap();
+    let failed = run(
+        "get-function",
+        &path,
+        "hex",
+        &[
+            "--selector",
+            "ffffffff",
+            "--perf",
+            "-o",
+            destination.to_str().unwrap(),
+        ],
+    );
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
+    let reports = perf_reports(&failed);
+    assert_eq!(reports[0]["error_code"], "NOT_FOUND");
     let profiled = run(
         "get-function",
         &path,
@@ -764,7 +799,8 @@ fn evm_function_fetch_budget_failures_keep_previous_output_and_report_effective_
     assert_eq!(reports[0]["resource_limits"]["stack_cells"], 1_048_576);
     assert_eq!(reports[0]["counters"]["matches"], 15); // selected original instructions
     assert_eq!(reports[0]["counters"]["semantic_nodes"], 3); // selected contexts
-    let native = run("interface", &path, "hex", &["--perf", "--max-work", "1"]);
+    // Native single-object analysis reports no navigation ceiling.
+    let native = run("analyze", &path, "hex", &["--perf"]);
     success(&native);
     let native_reports = perf_reports(&native);
     assert!(native_reports[0]["resource_limits"].get("work").is_none());
@@ -804,13 +840,13 @@ fn evm_function_raw_fallback_preserves_unknown_and_invalid_jump_evidence() {
         let prefix = "5f3560e01c8063112233441460205700";
         let carrier = format!("{prefix}{}{entry_hex}", "00".repeat(32 - prefix.len() / 2));
         let (_directory, path) = fixture(&carrier, "unknown.hex");
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
         let function = rows.iter().find(|r| r["record"] == "function").unwrap();
         let output = run(
             "get-function",
             &path,
             "hex",
-            &[function["id"].as_str().unwrap()],
+            &["--at", function["at"].as_str().unwrap()],
         );
         success(&output);
         let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -839,7 +875,12 @@ fn evm_function_raw_fallback_preserves_unknown_and_invalid_jump_evidence() {
             .collect();
         assert_eq!(starts, expected_starts);
         for block in fetched["detail"]["blocks"].as_array().unwrap() {
-            let raw = run("get-block", &path, "hex", &[block["id"].as_str().unwrap()]);
+            let raw = run(
+                "get-block",
+                &path,
+                "hex",
+                &["--at", block["at"].as_str().unwrap()],
+            );
             success(&raw);
         }
     }
@@ -851,43 +892,44 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
         format!(" \n0X{}\r\n", SHARED_HELPER.to_uppercase()),
         "carrier.hex",
     );
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let function = rows
         .iter()
         .find(|r| r["record"] == "function" && r["detail"]["selector"] == "11223344")
         .unwrap();
-    let id = function["id"].as_str().unwrap();
+    let id = function["at"].as_str().unwrap();
     let copy = directory.path().join("renamed.hex");
     fs::copy(&path, &copy).unwrap();
-    let fetch = run("get-function", &copy, "hex", &[id, "--raw"]);
+    let fetch = run("get-function", &copy, "hex", &["--at", id, "--raw"]);
     success(&fetch);
     let fetched: Value = serde_json::from_slice(&fetch.stdout).unwrap();
     assert_eq!(fetched["detail"]["segments"][0]["carrier_start"], 68);
     assert_eq!(fetched["detail"]["segments"][0]["carrier_end"], 96);
     assert_eq!(fetched["detail"]["segments"][1]["carrier_start"], 124);
     assert_eq!(fetched["detail"]["segments"][1]["carrier_end"], 136);
+    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
     for invalid in [
-        id.replace("rxd1:", "rxd2:"),
-        id.replace(":function:", ":block:"),
-        id.replace(":abi:32", ":abi:33"),
-        id.replace(":abi:32", ":abi:032"),
-        id.replace("11223344:abi", "ffffffff:abi"),
-        id.replace(":abi:32", ":abi:184467440737095516160"),
+        full.replace("rxd1:", "rxd2:"),
+        full.replace(":function:", ":block:"),
+        full.replace(":abi:32", ":abi:33"),
+        full.replace(":abi:32", ":abi:032"),
+        full.replace("11223344:abi", "ffffffff:abi"),
+        full.replace(":abi:32", ":abi:184467440737095516160"),
     ] {
         failure(
-            run("get-function", &path, "hex", &[&invalid]),
+            run("get-function", &path, "hex", &["--at", &invalid]),
             1,
             "INVALID_ID",
         );
     }
     failure(
-        run("get-function", &path, "raw", &[id]),
+        run("get-function", &path, "raw", &["--at", id]),
         1,
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, SHARED_HELPER).unwrap();
     failure(
-        run("get-function", &copy, "hex", &[id]),
+        run("get-function", &copy, "hex", &["--at", &full]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -918,7 +960,7 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
         .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
         .collect();
     fs::write(&raw, bytes).unwrap();
-    let raw_rows = jsonl(&run("outline", &raw, "raw", &[]));
+    let raw_rows = jsonl(&run("interface", &raw, "raw", &[]));
     let raw_function = raw_rows
         .iter()
         .find(|r| r["record"] == "function" && r["detail"]["selector"] == "11223344")
@@ -927,11 +969,11 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
         "get-function",
         &raw,
         "raw",
-        &[raw_function["id"].as_str().unwrap(), "--raw"],
+        &["--at", raw_function["at"].as_str().unwrap(), "--raw"],
     );
     success(&raw_output);
     let raw_fetch: Value = serde_json::from_slice(&raw_output.stdout).unwrap();
-    assert_ne!(raw_fetch["id"], fetched["id"]);
+    assert_ne!(raw_fetch["at"], fetched["at"]);
     assert_eq!(
         raw_fetch["detail"]["bytecode"],
         fetched["detail"]["bytecode"]
@@ -943,7 +985,7 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
     assert_eq!(raw_fetch["detail"]["segments"][0]["carrier_start"], 32);
     assert_eq!(raw_fetch["detail"]["segments"][0]["carrier_end"], 46);
     fs::write(&raw, []).unwrap();
-    let empty = jsonl(&run("outline", &raw, "raw", &[]));
+    let empty = jsonl(&run("interface", &raw, "raw", &[]));
     assert_eq!(empty.last().unwrap()["detail"]["functions"], 0);
     failure(
         run("get-function", &raw, "raw", &["--selector", "11223344"]),
@@ -956,7 +998,7 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
 fn evm_compiled_function_navigation_retains_dispatcher_stack_and_memory_prelude() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/corpus/evm/authored-navigation.runtime.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let function = rows
         .iter()
         .find(|r| r["record"] == "function" && r["detail"]["selector"] == "1ba64846")
@@ -965,7 +1007,7 @@ fn evm_compiled_function_navigation_retains_dispatcher_stack_and_memory_prelude(
         "get-function",
         &path,
         "hex",
-        &[function["id"].as_str().unwrap(), "--raw"],
+        &["--at", function["at"].as_str().unwrap(), "--raw"],
     );
     success(&output);
     let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -1027,7 +1069,7 @@ fn evm_function_membership_keeps_return_context_through_nested_helpers_and_data_
         (looped, vec![32, 41, 60, 82, 86, 96]),
     ] {
         let (_directory, path) = fixture(&carrier, "context.hex");
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
         let function = rows
             .iter()
             .find(|r| r["record"] == "function" && r["detail"]["selector"] == "11223344")
@@ -1036,12 +1078,7 @@ fn evm_function_membership_keeps_return_context_through_nested_helpers_and_data_
             "get-function",
             &path,
             "hex",
-            &[
-                function["id"].as_str().unwrap(),
-                "--raw",
-                "--max-work",
-                "5000",
-            ],
+            &["--at", function["at"].as_str().unwrap(), "--raw"],
         );
         success(&output);
         let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -1064,10 +1101,10 @@ fn evm_function_membership_keeps_return_context_through_nested_helpers_and_data_
 #[test]
 fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completeness() {
     let (directory, path) = fixture(SHARED_HELPER, "schema.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let function = rows.iter().find(|r| r["record"] == "function").unwrap();
-    let id = function["id"].as_str().unwrap();
-    let outline_keys = [
+    let id = function["at"].as_str().unwrap();
+    let function_keys = [
         "unit_kind",
         "selector",
         "dispatch",
@@ -1087,8 +1124,10 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
         "unknown_successors",
         "discovery_complete",
     ];
-    assert_js_keys(&function["detail"], &outline_keys);
-    let plain = run("get-function", &path, "hex", &[id, "--raw"]);
+    let mut interface_keys = function_keys.to_vec();
+    interface_keys.extend(["arguments", "stateMutability"]);
+    assert_js_keys(&function["detail"], &interface_keys);
+    let plain = run("get-function", &path, "hex", &["--at", id, "--raw"]);
     success(&plain);
     let fetched: Value = serde_json::from_slice(&plain.stdout).unwrap();
     assert_js_keys(
@@ -1098,16 +1137,16 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
             "backend",
             "command",
             "schema_version",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
         ],
     );
-    let mut fetch_keys = outline_keys.to_vec();
+    let mut fetch_keys = function_keys.to_vec();
     fetch_keys.extend([
         "carrier",
         "bytecode",
@@ -1179,7 +1218,7 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
         "get-function",
         &path,
         "hex",
-        &[id, "--raw", "--perf", "--max-records", "1"],
+        &["--at", id, "--raw", "--perf"],
     );
     assert_eq!(plain.stdout, profiled.stdout);
     let reports = perf_reports(&profiled);
@@ -1189,24 +1228,14 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
         "get-function",
         &path,
         "hex",
-        &[id, "--raw", "-o", destination.to_str().unwrap()],
+        &["--at", id, "--raw", "-o", destination.to_str().unwrap()],
     ));
     assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
-    success(&run(
-        "get-function",
-        &path,
-        "hex",
-        &[
-            id,
-            "--raw",
-            "--max-output-bytes",
-            &plain.stdout.len().to_string(),
-        ],
-    ));
     for budget in [
         ["--max-output-bytes", "1"],
         ["--max-work", "1"],
         ["--max-input-bytes", "1"],
+        ["--max-records", "1"],
     ] {
         fs::write(&destination, "preserved").unwrap();
         failure(
@@ -1215,6 +1244,7 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
                 &path,
                 "hex",
                 &[
+                    "--at",
                     id,
                     "--raw",
                     budget[0],
@@ -1223,8 +1253,8 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
                     destination.to_str().unwrap(),
                 ],
             ),
-            1,
-            "RESOURCE_LIMIT",
+            2,
+            budget[0],
         );
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
@@ -1233,36 +1263,16 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
             "get-function",
             &path,
             "hex",
-            &[
-                id,
-                "--raw",
-                "--max-output-bytes",
-                &(plain.stdout.len() - 1).to_string(),
-            ],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
-    failure(
-        run(
-            "get-function",
-            &path,
-            "hex",
-            &[id, "-o", path.to_str().unwrap()],
+            &["--at", id, "-o", path.to_str().unwrap()],
         ),
         2,
         "INVALID_QUERY",
     );
     assert_eq!(fs::read(&path).unwrap(), SHARED_HELPER.as_bytes());
-    failure(
-        run("outline", &path, "hex", &["--max-records", "1"]),
-        1,
-        "RESOURCE_LIMIT",
-    );
 }
 
 #[test]
-fn evm_function_stack_storage_budget_counts_block_exit_growth() {
+fn evm_function_stack_storage_ceiling_comes_from_the_shared_budget() {
     let prefix = "5f3560e01c8063112233441460205700";
     let carrier = format!(
         "{prefix}{}5b50{}00",
@@ -1283,9 +1293,123 @@ fn evm_function_stack_storage_budget_counts_block_exit_growth() {
                 "100",
             ],
         ),
-        1,
-        "RESOURCE_LIMIT",
+        2,
+        "--max-stack-cells",
     );
+    // 128 stack words stay far below the shared ceiling and fetch normally.
+    success(&run(
+        "get-function",
+        &path,
+        "hex",
+        &["--selector", "11223344", "--raw"],
+    ));
+}
+
+/// The shared work ceiling still stops oversized inputs, with no CLI knob to raise it.
+#[test]
+fn evm_shared_work_ceiling_stops_oversized_inputs_atomically() {
+    // Decoding 1.1M bytes already exceeds the one-million-unit shared work budget.
+    let (directory, path) = fixture("00".repeat(1_100_000), "large.hex");
+    let destination = directory.path().join("preserved.json");
+    fs::write(&destination, "preserved").unwrap();
+    let failed = run(
+        "blocks",
+        &path,
+        "hex",
+        &["--perf", "-o", destination.to_str().unwrap()],
+    );
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
+    let reports = perf_reports(&failed);
+    assert_eq!(reports[0]["error_code"], "RESOURCE_LIMIT");
+    assert_eq!(reports[0]["resource_limits"]["work"], 1_000_000);
+}
+
+/// The removed mixed stream and the platform-native range view that stays.
+#[test]
+fn evm_lists_one_kind_per_command_and_filters_by_the_row_name() {
+    let (_directory, path) = fixture(SHARED_HELPER, "filter.hex");
+    for removed in ["outline", "functions"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(["evm", removed])
+            .arg(&path)
+            .args(["--encoding", "hex"])
+            .output()
+            .unwrap();
+        failure(output, 2, removed);
+    }
+    // `basic-blocks` stays the native EVMole range view, not a second block listing.
+    let native = result(&run("basic-blocks", &path, "hex", &[]));
+    let ranges = native["detail"]["result"]["basicBlocks"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let blocks = jsonl(&run("blocks", &path, "hex", &[]));
+    assert_eq!(
+        blocks
+            .iter()
+            .filter(|r| r["record"] == "basic_block")
+            .count(),
+        ranges.len()
+    );
+    let filtered = jsonl(&run("blocks", &path, "hex", &["-f", "block:6"]));
+    assert_eq!(filtered[0]["query"]["filter"], "block:6");
+    let selected: Vec<_> = filtered
+        .iter()
+        .filter(|r| r["record"] == "basic_block")
+        .collect();
+    assert_eq!(selected.len(), 1);
+    assert!(selected[0]["at"].as_str().unwrap().contains("block:6"));
+    assert_eq!(filtered.last().unwrap()["detail"]["blocks"], 1);
+    // The interface listing filters on the selector each row is named by.
+    let one = jsonl(&run("interface", &path, "hex", &["-f", "55667788"]));
+    let selected: Vec<_> = one.iter().filter(|r| r["record"] == "function").collect();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0]["detail"]["selector"], "55667788");
+    assert_eq!(one.last().unwrap()["detail"]["functions"], 1);
+    // Literal rows are named by their decoded value: text when printable, else hex.
+    let literals = jsonl(&run(
+        "strings",
+        &path,
+        "hex",
+        &["--kind", "bytes", "-f", "1122"],
+    ));
+    let selected: Vec<_> = literals
+        .iter()
+        .filter(|r| r["record"] == "literal")
+        .collect();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0]["detail"]["value"], "11223344");
+    // `index` is the literal's position in the whole decoded inventory (PUSH0, PUSH1).
+    assert_eq!(selected[0]["detail"]["index"], 2);
+    // Reference rows filter on the caller coordinate.
+    let all = jsonl(&run("xref", &path, "hex", &["--at", "hex:block:60:66"]));
+    assert_eq!(
+        all.iter()
+            .filter(|r| r["record"] == "code_reference")
+            .count(),
+        2
+    );
+    let one = jsonl(&run(
+        "xref",
+        &path,
+        "hex",
+        &["--at", "hex:block:60:66", "-f", "1122"],
+    ));
+    let selected: Vec<_> = one
+        .iter()
+        .filter(|r| r["record"] == "code_reference")
+        .collect();
+    assert_eq!(selected.len(), 1);
+    assert!(selected[0]["context_at"].as_str().unwrap().contains("1122"));
+    assert!(
+        selected[0]["detail"]["target"]
+            .as_str()
+            .unwrap()
+            .contains("60:66")
+    );
+    assert_eq!(one.last().unwrap()["detail"]["references"], 1);
 }
 
 mod reconstruction;
@@ -1297,19 +1421,19 @@ fn evm_code_refs_route_unowned_static_jumps_to_exact_raw_blocks() {
     let raw = directory.path().join("refs.bin");
     fs::write(&raw, [0x60, 0x03, 0x56, 0x5b, 0x00]).unwrap();
     for (input, encoding, offset, stride) in [(&path, "hex", 4, 2), (&raw, "raw", 0, 1)] {
-        let outline = jsonl(&run("outline", input, encoding, &[]));
+        let outline = jsonl(&run("blocks", input, encoding, &[]));
         let target = outline
             .iter()
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 3)
             .unwrap();
-        let target_id = target["id"].as_str().unwrap();
-        let rows = jsonl(&run("xref", input, encoding, &["--id", target_id]));
-        assert_eq!(rows[0]["query"]["id"], target_id);
+        let target_id = target["at"].as_str().unwrap();
+        let rows = jsonl(&run("xref", input, encoding, &["--at", target_id]));
+        assert_eq!(rows[0]["query"]["at"], target_id);
         assert_eq!(rows.len(), 3);
         let hit = &rows[1];
         assert_eq!(hit["record"], "code_reference");
-        assert_eq!(hit["id"], Value::Null);
-        assert_eq!(hit["detail"]["target_id"], target_id);
+        assert_eq!(hit["at"], Value::Null);
+        assert_eq!(hit["detail"]["target"], target_id);
         assert_eq!(hit["detail"]["target_kind"], "block");
         assert_eq!(hit["detail"]["target_decoded_offset"], 3);
         assert_eq!(hit["detail"]["instruction_offset"], 2);
@@ -1323,7 +1447,7 @@ fn evm_code_refs_route_unowned_static_jumps_to_exact_raw_blocks() {
             "get-block",
             input,
             encoding,
-            &[hit["context_id"].as_str().unwrap()],
+            &["--at", hit["context_at"].as_str().unwrap()],
         );
         success(&fetched);
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -1347,7 +1471,8 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
         .collect();
     fs::write(&raw, bytes).unwrap();
     for (input, encoding) in [(&path, "hex"), (&raw, "raw")] {
-        let outline = jsonl(&run("outline", input, encoding, &[]));
+        let outline = jsonl(&run("interface", input, encoding, &[]));
+        let blocks = jsonl(&run("blocks", input, encoding, &[]));
         let a = outline
             .iter()
             .find(|r| r["record"] == "function" && r["detail"]["selector"] == "11223344")
@@ -1356,14 +1481,14 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
             .iter()
             .find(|r| r["record"] == "function" && r["detail"]["selector"] == "55667788")
             .unwrap();
-        let a_id = a["id"].as_str().unwrap();
-        let b_id = b["id"].as_str().unwrap();
+        let a_id = a["at"].as_str().unwrap();
+        let b_id = b["at"].as_str().unwrap();
         for (target_start, sites, owners) in [
             (60, vec![40, 54], vec![a_id, b_id]),
             (41, vec![65], vec![a_id]),
             (55, vec![65], vec![b_id]),
         ] {
-            let block = outline
+            let block = blocks
                 .iter()
                 .find(|r| {
                     r["record"] == "basic_block" && r["detail"]["decoded_start"] == target_start
@@ -1373,7 +1498,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
                 "xref",
                 input,
                 encoding,
-                &["--id", block["id"].as_str().unwrap()],
+                &["--at", block["at"].as_str().unwrap()],
             ));
             let hits: Vec<_> = rows
                 .iter()
@@ -1381,7 +1506,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
                 .collect();
             assert_eq!(hits.len(), sites.len());
             for ((hit, pc), owner) in hits.iter().zip(sites).zip(owners) {
-                assert_eq!(hit["context_id"], owner);
+                assert_eq!(hit["context_at"], owner);
                 assert_eq!(hit["detail"]["context_kind"], "function");
                 assert_eq!(hit["detail"]["instruction_offset"], pc);
                 assert_eq!(hit["detail"]["target_decoded_offset"], target_start);
@@ -1393,7 +1518,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
                     "get-function",
                     input,
                     encoding,
-                    &[hit["context_id"].as_str().unwrap(), "--raw"],
+                    &["--at", hit["context_at"].as_str().unwrap(), "--raw"],
                 );
                 success(&fetch);
                 let fetched: Value = serde_json::from_slice(&fetch.stdout).unwrap();
@@ -1425,7 +1550,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
                 assert!(!starts.contains(&(if owner == a_id { 55 } else { 41 })));
             }
         }
-        let rows = jsonl(&run("xref", input, encoding, &["--id", a_id]));
+        let rows = jsonl(&run("xref", input, encoding, &["--at", a_id]));
         let hits: Vec<_> = rows
             .iter()
             .filter(|r| r["record"] == "code_reference")
@@ -1439,7 +1564,7 @@ fn evm_code_refs_preserve_caller_specific_shared_helper_routes_and_entry_semanti
             "get-block",
             input,
             encoding,
-            &[hits[0]["context_id"].as_str().unwrap()],
+            &["--at", hits[0]["context_at"].as_str().unwrap()],
         );
         success(&fetch);
         let fetch: Value = serde_json::from_slice(&fetch.stdout).unwrap();
@@ -1460,7 +1585,7 @@ fn evm_code_refs_do_not_resolve_a_block_that_requires_an_impossible_incoming_sta
     // The unowned block begins at 1. JUMP at 1030 targets JUMPDEST at 1031.
     let carrier = format!("005b{}610407565b00", "50".repeat(1025));
     let (_directory, path) = fixture(&carrier, "impossible-stack.hex");
-    let outline = jsonl(&run("outline", &path, "hex", &[]));
+    let outline = jsonl(&run("blocks", &path, "hex", &[]));
     let target = outline
         .iter()
         .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 1031)
@@ -1469,7 +1594,7 @@ fn evm_code_refs_do_not_resolve_a_block_that_requires_an_impossible_incoming_sta
         "xref",
         &path,
         "hex",
-        &["--id", target["id"].as_str().unwrap()],
+        &["--at", target["at"].as_str().unwrap()],
     ));
     assert_eq!(refs.last().unwrap()["records"], 0);
     assert_eq!(refs.last().unwrap()["detail"]["resolution_complete"], false);
@@ -1516,7 +1641,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
         ),
     ] {
         let (_directory, path) = fixture(&carrier, "resolution.hex");
-        let outline = jsonl(&run("outline", &path, "hex", &[]));
+        let outline = jsonl(&run("blocks", &path, "hex", &[]));
         let block = outline
             .iter()
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == target_start)
@@ -1525,7 +1650,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
             "xref",
             &path,
             "hex",
-            &["--id", block["id"].as_str().unwrap()],
+            &["--at", block["at"].as_str().unwrap()],
         ));
         let summary = rows.last().unwrap();
         assert_eq!(summary["complete"], true);
@@ -1546,7 +1671,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
                 "get-block",
                 &path,
                 "hex",
-                &[rows[1]["context_id"].as_str().unwrap()],
+                &["--at", rows[1]["context_at"].as_str().unwrap()],
             );
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -1561,12 +1686,12 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
         }
     }
     let (_directory, path) = fixture("0061ff", "tail-refs.hex");
-    let outline = jsonl(&run("outline", &path, "hex", &[]));
+    let outline = jsonl(&run("blocks", &path, "hex", &[]));
     let rows = jsonl(&run(
         "xref",
         &path,
         "hex",
-        &["--id", outline[1]["id"].as_str().unwrap()],
+        &["--at", outline[1]["at"].as_str().unwrap()],
     ));
     assert_eq!(rows.last().unwrap()["records"], 0);
     assert_eq!(rows.last().unwrap()["complete"], true);
@@ -1577,23 +1702,24 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
 #[test]
 fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery() {
     let (directory, path) = fixture(SHARED_HELPER, "identity-refs.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let function = rows
         .iter()
         .find(|r| r["record"] == "function" && r["detail"]["selector"] == "11223344")
         .unwrap();
-    let id = function["id"].as_str().unwrap();
+    let id = function["at"].as_str().unwrap();
     let destination = directory.path().join("previous.jsonl");
     let copy = directory.path().join("copy.hex");
     fs::copy(&path, &copy).unwrap();
-    success(&run("xref", &copy, "hex", &["--id", id]));
+    success(&run("xref", &copy, "hex", &["--at", id]));
+    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
     for forged in [
-        id.replace("rxd1:", "rxd2:"),
-        id.replace(":function:", ":literal:"),
-        id.replace(":function:", ":block:"),
-        id.replace(":abi:32", ":abi:33"),
-        id.replace(":abi:32", ":abi:032"),
-        id.replace("11223344:abi", "ffffffff:abi"),
+        full.replace("rxd1:", "rxd2:"),
+        full.replace(":function:", ":literal:"),
+        full.replace(":function:", ":block:"),
+        full.replace(":abi:32", ":abi:33"),
+        full.replace(":abi:32", ":abi:032"),
+        full.replace("11223344:abi", "ffffffff:abi"),
     ] {
         fs::write(&destination, "preserved").unwrap();
         failure(
@@ -1601,7 +1727,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
                 "xref",
                 &path,
                 "hex",
-                &["--id", &forged, "-o", destination.to_str().unwrap()],
+                &["--at", &forged, "-o", destination.to_str().unwrap()],
             ),
             1,
             "INVALID_ID",
@@ -1609,23 +1735,24 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
     failure(
-        run("xref", &path, "raw", &["--id", id]),
+        run("xref", &path, "raw", &["--at", id]),
         1,
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, format!("{SHARED_HELPER}00")).unwrap();
     failure(
-        run("xref", &copy, "hex", &["--id", id]),
+        run("xref", &copy, "hex", &["--at", &full]),
         1,
         "SOURCE_MISMATCH",
     );
-    let block = rows
+    let blocks = jsonl(&run("blocks", &path, "hex", &[]));
+    let block = blocks
         .iter()
         .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 60)
         .unwrap();
-    let forged = block["id"].as_str().unwrap().replace(":60:66", ":61:66");
+    let forged = block["at"].as_str().unwrap().replace(":60:66", ":61:66");
     failure(
-        run("xref", &path, "hex", &["--id", &forged]),
+        run("xref", &path, "hex", &["--at", &forged]),
         1,
         "INVALID_ID",
     );
@@ -1634,7 +1761,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
             "xref",
             &path,
             "hex",
-            &["--id", id, "-o", path.to_str().unwrap()],
+            &["--at", id, "-o", path.to_str().unwrap()],
         ),
         2,
         "INVALID_QUERY",
@@ -1645,13 +1772,13 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
 #[test]
 fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     let (directory, path) = fixture(SHARED_HELPER, "budget-refs.hex");
-    let outline = jsonl(&run("outline", &path, "hex", &[]));
+    let outline = jsonl(&run("blocks", &path, "hex", &[]));
     let target = outline
         .iter()
         .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 60)
         .unwrap();
-    let id = target["id"].as_str().unwrap();
-    let plain = run("xref", &path, "hex", &["--id", id]);
+    let id = target["at"].as_str().unwrap();
+    let plain = run("xref", &path, "hex", &["--at", id]);
     let rows = jsonl(&plain);
     assert_js_keys(
         &rows[0],
@@ -1666,16 +1793,19 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
             "detail",
         ],
     );
-    assert_js_keys(&rows[0]["query"], &["encoding", "id", "reference_scope"]);
+    assert_js_keys(
+        &rows[0]["query"],
+        &["encoding", "at", "filter", "reference_scope"],
+    );
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(
         &rows[1],
         &[
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -1684,7 +1814,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     assert_js_keys(
         &rows[1]["detail"],
         &[
-            "target_id",
+            "target",
             "target_kind",
             "target_decoded_offset",
             "reference_kind",
@@ -1709,7 +1839,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
         &rows.last().unwrap()["detail"],
         acceptance::SUMMARY_DETAIL_KEYS,
     );
-    let profiled = run("xref", &path, "hex", &["--id", id, "--perf"]);
+    let profiled = run("xref", &path, "hex", &["--at", id, "--perf"]);
     assert_eq!(profiled.stdout, plain.stdout);
     let reports = perf_reports(&profiled);
     assert_eq!(reports[0]["resource_limits"]["states"], 100_000);
@@ -1719,61 +1849,62 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     for stage in ["query", "serialize", "navigate"] {
         assert!(reports[0]["stages_ns"][stage].as_u64().unwrap() > 0);
     }
-    let work = reports[0]["counters"]["work"].as_u64().unwrap();
-    success(&run(
-        "xref",
-        &path,
-        "hex",
-        &["--id", id, "--max-work", &work.to_string()],
-    ));
     let destination = directory.path().join("saved.jsonl");
     success(&run(
         "xref",
         &path,
         "hex",
-        &["--id", id, "-o", destination.to_str().unwrap()],
+        &["--at", id, "-o", destination.to_str().unwrap()],
     ));
     assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
-    success(&run(
+    // Every ceiling lives in rxd_core::Budget, so no `--max-*` flag exists.
+    for budget in [
+        ["--max-input-bytes", "1"],
+        ["--max-output-bytes", "1"],
+        ["--max-records", "1"],
+        ["--max-work", "1"],
+        ["--max-states", "1"],
+        ["--max-stack-cells", "1"],
+    ] {
+        fs::write(&destination, "preserved").unwrap();
+        failure(
+            run(
+                "xref",
+                &path,
+                "hex",
+                &[
+                    "--at",
+                    id,
+                    budget[0],
+                    budget[1],
+                    "-o",
+                    destination.to_str().unwrap(),
+                ],
+            ),
+            2,
+            budget[0],
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"preserved");
+    }
+    // A stale selector keeps the previous file and reports the failure code.
+    fs::write(&destination, "preserved").unwrap();
+    let failed = run(
         "xref",
         &path,
         "hex",
         &[
-            "--id",
-            id,
-            "--max-output-bytes",
-            &plain.stdout.len().to_string(),
+            "--at",
+            "hex:block:9999:99999",
+            "--perf",
+            "-o",
+            destination.to_str().unwrap(),
         ],
-    ));
-    for (budget, limit) in [
-        ("--max-input-bytes", "1".to_string()),
-        ("--max-output-bytes", (plain.stdout.len() - 1).to_string()),
-        ("--max-records", "1".to_string()),
-        ("--max-work", (work - 1).to_string()),
-        ("--max-states", "1".to_string()),
-        ("--max-stack-cells", "1".to_string()),
-    ] {
-        fs::write(&destination, "preserved").unwrap();
-        let failed = run(
-            "xref",
-            &path,
-            "hex",
-            &[
-                "--id",
-                id,
-                budget,
-                &limit,
-                "--perf",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
-        );
-        assert!(!failed.status.success());
-        assert!(failed.stdout.is_empty());
-        assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-        let reports = perf_reports(&failed);
-        assert_eq!(reports[0]["error_code"], "RESOURCE_LIMIT");
-    }
+    );
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
+    let reports = perf_reports(&failed);
+    assert_eq!(reports[0]["error_code"], "INVALID_ID");
 }
 
 #[test]
@@ -1785,8 +1916,9 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
         } else {
             "authored-navigation.runtime.hex"
         });
-        let outline = jsonl(&run("outline", &path, encoding, &[]));
-        let revert = outline
+        let outline = jsonl(&run("interface", &path, encoding, &[]));
+        let blocks = jsonl(&run("blocks", &path, encoding, &[]));
+        let revert = blocks
             .iter()
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 152)
             .unwrap();
@@ -1794,7 +1926,7 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
             "xref",
             &path,
             encoding,
-            &["--id", revert["id"].as_str().unwrap()],
+            &["--at", revert["at"].as_str().unwrap()],
         ));
         let hits: Vec<_> = rows
             .iter()
@@ -1804,7 +1936,7 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
             .collect();
         let owners: std::collections::BTreeSet<_> = hits
             .iter()
-            .map(|r| r["context_id"].as_str().unwrap())
+            .map(|r| r["context_at"].as_str().unwrap())
             .collect();
         assert_eq!(owners.len(), 8); // Independent compiler methodIdentifiers and common revert ASM.
         let add = outline
@@ -1813,7 +1945,7 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
             .unwrap();
         let add_hits: Vec<_> = hits
             .iter()
-            .filter(|r| r["context_id"] == add["id"])
+            .filter(|r| r["context_at"] == add["at"])
             .collect();
         let pcs: Vec<_> = add_hits
             .iter()
@@ -1821,10 +1953,10 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
             .collect();
         assert_eq!(pcs, vec![519, 531]); // Trusted solc guard blocks [514,520),[520,532).
         for owner in owners {
-            let fetched = run("get-function", &path, encoding, &[owner, "--raw"]);
+            let fetched = run("get-function", &path, encoding, &["--at", owner, "--raw"]);
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
-            for hit in hits.iter().filter(|r| r["context_id"] == owner) {
+            for hit in hits.iter().filter(|r| r["context_at"] == owner) {
                 let pc = hit["detail"]["instruction_offset"].as_u64().unwrap();
                 assert_eq!(hit["detail"]["resolution"], "resolved");
                 assert_eq!(hit["detail"]["reference_kind"], "branch_true");
@@ -1846,7 +1978,7 @@ fn evm_code_refs_route_compiled_shared_revert_guards_to_all_supported_functions(
                 "get-block",
                 &path,
                 encoding,
-                &[revert["id"].as_str().unwrap()],
+                &["--at", revert["at"].as_str().unwrap()],
             );
             success(&raw);
             let raw: Value = serde_json::from_slice(&raw.stdout).unwrap();
@@ -1862,7 +1994,7 @@ fn evm_code_refs_keep_raw_block_stack_preconditions_and_actual_pc_zero_underflow
         ("005b506006565b00", 6, 1, Some(1)),
     ] {
         let (_directory, path) = fixture(carrier, "precondition-refs.hex");
-        let outline = jsonl(&run("outline", &path, "hex", &[]));
+        let outline = jsonl(&run("blocks", &path, "hex", &[]));
         let target = outline
             .iter()
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == target)
@@ -1871,7 +2003,7 @@ fn evm_code_refs_keep_raw_block_stack_preconditions_and_actual_pc_zero_underflow
             "xref",
             &path,
             "hex",
-            &["--id", target["id"].as_str().unwrap()],
+            &["--at", target["at"].as_str().unwrap()],
         ));
         assert_eq!(rows.last().unwrap()["records"], records);
         if let Some(words) = words {
@@ -1889,14 +2021,14 @@ fn evm_code_refs_keep_unvalidated_producer_candidate_entries_incomplete() {
     let prefix = "5f3560e01c8063112233441460215700";
     let carrier = format!("{prefix}{}5b5000", "00".repeat(32 - prefix.len() / 2));
     let (_directory, path) = fixture(&carrier, "invalid-entry-refs.hex");
-    let outline = jsonl(&run("outline", &path, "hex", &[]));
+    let outline = jsonl(&run("interface", &path, "hex", &[]));
     let target = outline.iter().find(|r| r["record"] == "function").unwrap();
     assert_eq!(target["detail"]["decoded_entry"], 33);
     let rows = jsonl(&run(
         "xref",
         &path,
         "hex",
-        &["--id", target["id"].as_str().unwrap()],
+        &["--at", target["at"].as_str().unwrap()],
     ));
     assert_eq!(
         rows[0]["detail"]["target_semantics"],
@@ -1947,8 +2079,8 @@ fn evm_immediate_text_search_refs_fetch_compiler_owned_contexts() {
             literal["detail"]["evidence_kind"],
             "push_immediate_text_candidate"
         );
-        let id = literal["id"].as_str().unwrap();
-        let references = jsonl(&run("xref", &path, encoding, &["--id", id]));
+        let id = literal["at"].as_str().unwrap();
+        let references = jsonl(&run("xref", &path, encoding, &["--at", id]));
         let references: Vec<_> = references
             .iter()
             .filter(|r| r["record"] == "literal_reference")
@@ -1956,13 +2088,13 @@ fn evm_immediate_text_search_refs_fetch_compiler_owned_contexts() {
         assert_eq!(references.len(), 1);
         let reference = references[0];
         assert_eq!(reference["detail"]["instruction_offset"], 213);
-        assert_eq!(reference["detail"]["literal_id"], id);
-        assert_eq!(reference["context_id"], literal["context_id"]);
+        assert_eq!(reference["detail"]["target"], id);
+        assert_eq!(reference["context_at"], literal["context_at"]);
         let fetched = run(
             "get-function",
             &path,
             encoding,
-            &[reference["context_id"].as_str().unwrap(), "--raw"],
+            &["--at", reference["context_at"].as_str().unwrap(), "--raw"],
         );
         success(&fetched);
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2038,14 +2170,14 @@ fn evm_immediate_search_preserves_utf8_boundaries_and_overlapping_matches() {
             "xref",
             &path,
             "hex",
-            &["--id", row["id"].as_str().unwrap()],
+            &["--at", row["at"].as_str().unwrap()],
         ));
         assert_eq!(refs[1]["detail"]["context_kind"], "block");
         let fetched = run(
             "get-block",
             &path,
             "hex",
-            &[refs[1]["context_id"].as_str().unwrap()],
+            &["--at", refs[1]["context_at"].as_str().unwrap()],
         );
         success(&fetched);
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2090,7 +2222,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
                 "xref",
                 path,
                 encoding,
-                &["--id", row["id"].as_str().unwrap()],
+                &["--at", row["at"].as_str().unwrap()],
             ));
             assert_eq!(refs.last().unwrap()["records"], 1);
             assert_eq!(refs[1]["detail"]["instruction_offset"], pc);
@@ -2098,7 +2230,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
                 "get-block",
                 path,
                 encoding,
-                &[refs[1]["context_id"].as_str().unwrap()],
+                &["--at", refs[1]["context_at"].as_str().unwrap()],
             );
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2135,12 +2267,12 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
         .filter(|r| r["record"] == "literal" && r["detail"]["instruction_offset"] == 61)
         .collect();
     assert_eq!(shared.len(), 2);
-    assert_eq!(shared[0]["id"], shared[1]["id"]);
+    assert_eq!(shared[0]["at"], shared[1]["at"]);
     let refs = jsonl(&run(
         "xref",
         &path,
         "hex",
-        &["--id", shared[0]["id"].as_str().unwrap()],
+        &["--at", shared[0]["at"].as_str().unwrap()],
     ));
     assert_eq!(refs.last().unwrap()["records"], 2);
     for row in refs.iter().filter(|r| r["record"] == "literal_reference") {
@@ -2149,7 +2281,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
             "get-function",
             &path,
             "hex",
-            &[row["context_id"].as_str().unwrap(), "--raw"],
+            &["--at", row["context_at"].as_str().unwrap(), "--raw"],
         );
         success(&fetched);
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2190,26 +2322,26 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         .iter()
         .find(|r| r["record"] == "literal" && r["detail"]["instruction_offset"] == 61)
         .unwrap();
-    let id = literal["id"].as_str().unwrap();
-    let references = run("xref", &path, "hex", &["--id", id]);
+    let id = literal["at"].as_str().unwrap();
+    let references = run("xref", &path, "hex", &["--at", id]);
     let reference_rows = jsonl(&references);
     assert_js_keys(
         &rows[0]["query"],
-        &["encoding", "kind", "query", "match_mode"],
+        &["encoding", "kind", "query", "match_mode", "filter"],
     );
     assert_js_keys(
         &reference_rows[0]["query"],
-        &["encoding", "id", "reference_scope"],
+        &["encoding", "at", "filter", "reference_scope"],
     );
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(
         literal,
         &[
             "record",
-            "id",
+            "at",
             "source_id",
-            "parent_id",
-            "context_id",
+            "parent_at",
+            "context_at",
             "start",
             "end",
             "detail",
@@ -2218,7 +2350,8 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     assert_js_keys(
         &literal["detail"],
         &[
-            "literal_id",
+            "value",
+            "index",
             "literal_kind",
             "instruction_offset",
             "instruction_end",
@@ -2244,7 +2377,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     assert_js_keys(
         &reference_rows[1]["detail"],
         &[
-            "literal_id",
+            "target",
             "literal_kind",
             "instruction_offset",
             "instruction_end",
@@ -2278,33 +2411,34 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         "hex",
         &["--kind", "number", "--query", "1"],
     ));
-    assert_eq!(copy_rows[1]["id"], rows[1]["id"]);
-    success(&run("xref", &copy, "hex", &["--id", id]));
+    assert_eq!(copy_rows[1]["at"], rows[1]["at"]);
+    success(&run("xref", &copy, "hex", &["--at", id]));
+    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
     for invalid in [
-        id.replace("rxd1:", "rxd2:"),
-        id.replace(":literal:", ":block:"),
-        id.replace(":push:", ":data:"),
-        id.replace(":61:1", ":62:1"),
-        id.replace(":61:1", ":61:2"),
-        id.replace(":61:1", ":061:1"),
-        id.replace(":61:1", ":61:01"),
-        id.replace(":61:1", ":61:33"),
-        id.replace(":61:1", ":184467440737095516160:1"),
+        full.replace("rxd1:", "rxd2:"),
+        full.replace(":literal:", ":block:"),
+        full.replace(":push:", ":data:"),
+        full.replace(":61:1", ":62:1"),
+        full.replace(":61:1", ":61:2"),
+        full.replace(":61:1", ":061:1"),
+        full.replace(":61:1", ":61:01"),
+        full.replace(":61:1", ":61:33"),
+        full.replace(":61:1", ":184467440737095516160:1"),
     ] {
         failure(
-            run("xref", &path, "hex", &["--id", &invalid]),
+            run("xref", &path, "hex", &["--at", &invalid]),
             1,
             "INVALID_ID",
         );
     }
     failure(
-        run("xref", &path, "raw", &["--id", id]),
+        run("xref", &path, "raw", &["--at", id]),
         1,
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, format!("{SHARED_HELPER}00")).unwrap();
     failure(
-        run("xref", &copy, "hex", &["--id", id]),
+        run("xref", &copy, "hex", &["--at", &full]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -2332,7 +2466,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
             vec!["--kind", "number", "--query", "1"],
             plain.stdout.as_slice(),
         ),
-        ("xref", vec!["--id", id], references.stdout.as_slice()),
+        ("xref", vec!["--at", id], references.stdout.as_slice()),
     ] {
         let mut profiled_args = args.clone();
         profiled_args.push("--perf");
@@ -2346,6 +2480,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         saved_args.extend(["-o", destination.to_str().unwrap()]);
         success(&run(command, &path, "hex", &saved_args));
         assert_eq!(fs::read(&destination).unwrap(), expected);
+        // Every ceiling lives in rxd_core::Budget, so no `--max-*` flag exists.
         for budget in [
             ["--max-input-bytes", "1"],
             ["--max-records", "1"],
@@ -2357,17 +2492,9 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
             fs::write(&destination, "preserved").unwrap();
             let mut failed_args = saved_args.clone();
             failed_args.extend(budget);
-            failed_args.push("--perf");
-            let failed = run(command, &path, "hex", &failed_args);
-            assert!(!failed.status.success());
-            assert!(failed.stdout.is_empty());
+            failure(run(command, &path, "hex", &failed_args), 2, budget[0]);
             assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-            assert_eq!(perf_reports(&failed)[0]["error_code"], "RESOURCE_LIMIT");
         }
-        let length = expected.len().to_string();
-        let mut exact = args.clone();
-        exact.extend(["--max-output-bytes", &length]);
-        success(&run(command, &path, "hex", &exact));
         let mut overwrite = args.clone();
         overwrite.extend(["-o", path.to_str().unwrap()]);
         failure(run(command, &path, "hex", &overwrite), 2, "INVALID_QUERY");
@@ -2402,14 +2529,14 @@ fn evm_immediate_clues_do_not_upgrade_unknown_function_boundaries_or_address_sem
         "xref",
         &path,
         "hex",
-        &["--id", rows[1]["id"].as_str().unwrap()],
+        &["--at", rows[1]["at"].as_str().unwrap()],
     ));
     assert_eq!(refs[1]["detail"]["context_boundary_status"], "incomplete");
     let fetched = run(
         "get-function",
         &path,
         "hex",
-        &[refs[1]["context_id"].as_str().unwrap(), "--raw"],
+        &["--at", refs[1]["context_at"].as_str().unwrap(), "--raw"],
     );
     success(&fetched);
     let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2448,14 +2575,14 @@ fn evm_immediate_clues_do_not_upgrade_unknown_function_boundaries_or_address_sem
         "xref",
         &path,
         "hex",
-        &["--id", address[1]["id"].as_str().unwrap()],
+        &["--at", address[1]["at"].as_str().unwrap()],
     ));
     assert_eq!(refs[1]["detail"]["reference_kind"], "push_immediate");
     let fetched = run(
         "get-block",
         &path,
         "hex",
-        &[refs[1]["context_id"].as_str().unwrap()],
+        &["--at", refs[1]["context_at"].as_str().unwrap()],
     );
     success(&fetched);
     let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2497,7 +2624,7 @@ fn evm_real_compiler_data_id_refs_fetch_prove_codecopy_source_length_and_owner()
             "xref",
             &path,
             encoding,
-            &["--id", data["id"].as_str().unwrap()],
+            &["--at", data["at"].as_str().unwrap()],
         ));
         let evidence = refs
             .iter()
@@ -2519,7 +2646,7 @@ fn evm_real_compiler_data_id_refs_fetch_prove_codecopy_source_length_and_owner()
             "get-function",
             &path,
             encoding,
-            &[evidence["context_id"].as_str().unwrap(), "--raw"],
+            &["--at", evidence["context_at"].as_str().unwrap(), "--raw"],
         );
         success(&fetched);
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2547,7 +2674,7 @@ fn evm_data_unknown_copy_operands_remain_coverage_evidence_without_fabricated_ro
         &["--kind", "text", "--query", "CLUE"],
     ));
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
-    assert_eq!(data["context_id"], Value::Null);
+    assert_eq!(data["context_at"], Value::Null);
     assert_eq!(
         data["detail"]["reference_status"],
         "unreferenced_or_unknown"
@@ -2562,7 +2689,7 @@ fn evm_data_unknown_copy_operands_remain_coverage_evidence_without_fabricated_ro
         "xref",
         &path,
         "raw",
-        &["--id", data["id"].as_str().unwrap()],
+        &["--at", data["at"].as_str().unwrap()],
     ));
     assert_eq!(refs.last().unwrap()["records"], 0);
     assert_eq!(
@@ -2575,11 +2702,22 @@ fn evm_data_unknown_copy_operands_remain_coverage_evidence_without_fabricated_ro
 #[test]
 fn evm_data_utf8_overlaps_charge_matches_without_consuming_record_budget() {
     let (_directory, path) = fixture("00c3a9c3a9c3a9004141414141ff434c5545", "utf8-data.hex");
+    // Every ceiling lives in rxd_core::Budget, so no `--max-*` flag exists.
+    failure(
+        run(
+            "strings",
+            &path,
+            "hex",
+            &["--kind", "text", "--query", "éé", "--max-records", "1"],
+        ),
+        2,
+        "--max-records",
+    );
     let rows = jsonl(&run(
         "strings",
         &path,
         "hex",
-        &["--kind", "text", "--query", "éé", "--max-records", "1"],
+        &["--kind", "text", "--query", "éé"],
     ));
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
     assert_eq!(data["detail"]["decoded_start"], 1);
@@ -2591,7 +2729,7 @@ fn evm_data_utf8_overlaps_charge_matches_without_consuming_record_budget() {
             {"decoded_start":3,"decoded_end":7,"carrier_start":6,"carrier_end":14}
         ])
     );
-    assert_eq!(data["context_id"], Value::Null);
+    assert_eq!(data["context_at"], Value::Null);
     assert_eq!(data["detail"]["reference_status"], "unreferenced");
     assert_eq!(rows.last().unwrap()["records"], 1);
     let absent = jsonl(&run(
@@ -2636,40 +2774,39 @@ fn evm_data_shared_helper_copy_witnesses_keep_each_callers_actual_source() {
             "xref",
             &path,
             "raw",
-            &["--id", literal["id"].as_str().unwrap()],
+            &["--at", literal["at"].as_str().unwrap()],
         ));
         let references: Vec<_> = refs
             .iter()
             .filter(|r| r["record"] == "data_reference")
             .collect();
         assert_eq!(references.len(), if second_source == 80 { 2 } else { 1 });
-        if second_source == 80 {
-            failure(
-                run(
-                    "strings",
-                    &path,
-                    "raw",
-                    &["--kind", "text", "--query", "AAAA", "--max-records", "1"],
-                ),
-                1,
-                "RESOURCE_LIMIT",
-            );
-            failure(
-                run(
-                    "xref",
-                    &path,
-                    "raw",
-                    &[
-                        "--id",
-                        literal["id"].as_str().unwrap(),
-                        "--max-records",
-                        "1",
-                    ],
-                ),
-                1,
-                "RESOURCE_LIMIT",
-            );
-        }
+        // Every ceiling lives in rxd_core::Budget, so no `--max-*` flag exists.
+        failure(
+            run(
+                "strings",
+                &path,
+                "raw",
+                &["--kind", "text", "--query", "AAAA", "--max-records", "1"],
+            ),
+            2,
+            "--max-records",
+        );
+        failure(
+            run(
+                "xref",
+                &path,
+                "raw",
+                &[
+                    "--at",
+                    literal["at"].as_str().unwrap(),
+                    "--max-records",
+                    "1",
+                ],
+            ),
+            2,
+            "--max-records",
+        );
         let mut selectors = Vec::new();
         for reference in references {
             assert_eq!(reference["detail"]["instruction_offset"], 65);
@@ -2683,7 +2820,7 @@ fn evm_data_shared_helper_copy_witnesses_keep_each_callers_actual_source() {
                 "get-function",
                 &path,
                 "raw",
-                &[reference["context_id"].as_str().unwrap(), "--raw"],
+                &["--at", reference["context_at"].as_str().unwrap(), "--raw"],
             );
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2716,7 +2853,7 @@ fn evm_data_copy_intersections_preserve_zero_padding_and_huge_length_without_all
         "xref",
         &path,
         "raw",
-        &["--id", data["id"].as_str().unwrap()],
+        &["--at", data["at"].as_str().unwrap()],
     ));
     let reference = refs
         .iter()
@@ -2736,7 +2873,7 @@ fn evm_data_copy_intersections_preserve_zero_padding_and_huge_length_without_all
         "get-block",
         &path,
         "raw",
-        &[reference["context_id"].as_str().unwrap()],
+        &["--at", reference["context_at"].as_str().unwrap()],
     );
     success(&fetched);
     let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -2758,7 +2895,7 @@ fn evm_data_copy_intersections_preserve_zero_padding_and_huge_length_without_all
         "xref",
         &path,
         "raw",
-        &["--id", data["id"].as_str().unwrap()],
+        &["--at", data["at"].as_str().unwrap()],
     ));
     let reference = refs
         .iter()
@@ -2804,12 +2941,12 @@ fn evm_data_metadata_and_copied_push_bytes_keep_distinct_candidate_evidence() {
         serde_json::json!({"decoded_start":5,"decoded_end":18})
     );
     for literal in data {
-        assert_eq!(literal["context_id"], Value::Null);
+        assert_eq!(literal["context_at"], Value::Null);
         let refs = jsonl(&run(
             "xref",
             &path,
             "raw",
-            &["--id", literal["id"].as_str().unwrap()],
+            &["--at", literal["at"].as_str().unwrap()],
         ));
         assert_eq!(refs.last().unwrap()["records"], 0);
         assert_eq!(
@@ -2845,7 +2982,7 @@ fn evm_data_metadata_and_copied_push_bytes_keep_distinct_candidate_evidence() {
         "xref",
         &path,
         "raw",
-        &["--id", data["id"].as_str().unwrap()],
+        &["--at", data["at"].as_str().unwrap()],
     ));
     let reference = refs
         .iter()
@@ -2866,11 +3003,12 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     );
     let rows = jsonl(&plain);
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
-    let id = data["id"].as_str().unwrap();
+    let id = data["at"].as_str().unwrap();
     assert_js_keys(
         &data["detail"],
         &[
-            "literal_id",
+            "value",
+            "index",
             "literal_kind",
             "region_kind",
             "decoded_start",
@@ -2889,7 +3027,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             "runtime_string_proven",
         ],
     );
-    let references = run("xref", &path, "raw", &["--id", id]);
+    let references = run("xref", &path, "raw", &["--at", id]);
     let refs = jsonl(&references);
     let reference = refs
         .iter()
@@ -2898,7 +3036,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     assert_js_keys(
         &reference["detail"],
         &[
-            "literal_id",
+            "target",
             "reference_kind",
             "evidence_kind",
             "instruction_offset",
@@ -2934,7 +3072,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             .iter()
             .find(|r| r["record"] == "data_literal")
             .unwrap();
-        assert_eq!(candidate["id"], id);
+        assert_eq!(candidate["at"], id);
         assert_js_keys(
             &candidate["detail"],
             &data["detail"]
@@ -2947,24 +3085,25 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     }
     let copy = directory.path().join("renamed.bin");
     fs::copy(&path, &copy).unwrap();
-    success(&run("xref", &copy, "raw", &["--id", id]));
+    success(&run("xref", &copy, "raw", &["--at", id]));
+    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
     for forged in [
-        id.replace("rxd1:", "rxd2:"),
-        id.replace(":unindexed:", ":tail:"),
-        id.replace(":7:11", ":07:11"),
-        id.replace(":7:11", ":8:11"),
-        id.replace(":7:11", ":7:100"),
-        id.replace(":data:", ":push:"),
+        full.replace("rxd1:", "rxd2:"),
+        full.replace(":unindexed:", ":tail:"),
+        full.replace(":7:11", ":07:11"),
+        full.replace(":7:11", ":8:11"),
+        full.replace(":7:11", ":7:100"),
+        full.replace(":data:", ":push:"),
     ] {
         failure(
-            run("xref", &path, "raw", &["--id", &forged]),
+            run("xref", &path, "raw", &["--at", &forged]),
             1,
             "INVALID_ID",
         );
     }
     fs::write(&copy, b"\x60\x04\x60\x07\x5f\x39\x00CHANGED").unwrap();
     failure(
-        run("xref", &copy, "raw", &["--id", id]),
+        run("xref", &copy, "raw", &["--at", &full]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -2988,7 +3127,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             vec!["--kind", "text", "--query", "CLUE"],
             plain.stdout.as_slice(),
         ),
-        ("xref", vec!["--id", id], references.stdout.as_slice()),
+        ("xref", vec!["--at", id], references.stdout.as_slice()),
     ] {
         let mut save = query.clone();
         save.extend(["-o", destination.to_str().unwrap()]);
@@ -3002,21 +3141,9 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             fs::write(&destination, "preserved").unwrap();
             let mut fail = query.clone();
             fail.extend([budget[0], budget[1], "-o", destination.to_str().unwrap()]);
-            failure(run(command, &path, "raw", &fail), 1, "RESOURCE_LIMIT");
+            failure(run(command, &path, "raw", &fail), 2, budget[0]);
             assert_eq!(fs::read(&destination).unwrap(), b"preserved");
         }
-        let bound = expected.len().to_string();
-        let mut exact = query.clone();
-        exact.extend(["--max-output-bytes", &bound]);
-        success(&run(command, &path, "raw", &exact));
-        let below = (expected.len() - 1).to_string();
-        let mut insufficient = query.clone();
-        insufficient.extend(["--max-output-bytes", &below]);
-        failure(
-            run(command, &path, "raw", &insufficient),
-            1,
-            "RESOURCE_LIMIT",
-        );
     }
 }
 
@@ -3054,7 +3181,7 @@ fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_
             &["--kind", "text", "--query", "CLUE"],
         ));
         let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
-        assert_eq!(data["context_id"], Value::Null);
+        assert_eq!(data["context_at"], Value::Null);
         assert_eq!(rows[0]["detail"]["unknown_copy_witnesses"], unknown);
         assert_eq!(rows[0]["detail"]["unvisited_copy_sites"], unvisited);
         if let Some(reason) = reason {
@@ -3067,7 +3194,7 @@ fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_
             "xref",
             &path,
             "raw",
-            &["--id", data["id"].as_str().unwrap()],
+            &["--at", data["at"].as_str().unwrap()],
         ));
         assert_eq!(refs.last().unwrap()["records"], 0);
         assert_eq!(
@@ -3076,6 +3203,7 @@ fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_
         );
     }
     let (_directory, path) = fixture(b"\x00AAAA\0BBBB\0CCCC", "candidate-limit.bin");
+    // Candidate storage ceilings come from the shared budget, not a CLI knob.
     failure(
         run(
             "strings",
@@ -3083,15 +3211,22 @@ fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_
             "raw",
             &["--kind", "text", "--query", "AAAA", "--max-states", "1"],
         ),
-        1,
-        "RESOURCE_LIMIT",
+        2,
+        "--max-states",
     );
+    let inventory = jsonl(&run(
+        "strings",
+        &path,
+        "raw",
+        &["--kind", "text", "--query", "AAAA"],
+    ));
+    assert!(inventory.len() >= 2);
 }
 
 #[test]
 fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() {
     let (_directory, path) = fixture(SHARED_HELPER, "combined-refs.hex");
-    let outline = jsonl(&run("outline", &path, "hex", &[]));
+    let outline = jsonl(&run("blocks", &path, "hex", &[]));
     let block = outline
         .iter()
         .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 60)
@@ -3110,15 +3245,15 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
         "xref",
         &path,
         "hex",
-        &["--id", block["id"].as_str().unwrap(), "--include-bytecode"],
+        &["--at", block["at"].as_str().unwrap(), "--include-bytecode"],
     ));
     let literals = jsonl(&run(
         "xref",
         &path,
         "hex",
         &[
-            "--id",
-            literal["id"].as_str().unwrap(),
+            "--at",
+            literal["at"].as_str().unwrap(),
             "--include-bytecode",
         ],
     ));
@@ -3155,14 +3290,14 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
     let data_id = found
         .iter()
         .find(|r| r["record"] == "data_literal")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
     let data = jsonl(&run(
         "xref",
         &data_path,
         "raw",
-        &["--id", data_id, "--include-bytecode"],
+        &["--at", data_id, "--include-bytecode"],
     ));
     assert_eq!(keys(&code[0]["query"]), keys(&data[0]["query"]));
     assert_eq!(keys(&code[0]["detail"]), keys(&data[0]["detail"]));
@@ -3205,7 +3340,7 @@ fn evm_data_ownerless_block_refs_preserve_observed_incoming_copy_preconditions()
         "xref",
         &path,
         "raw",
-        &["--id", data["id"].as_str().unwrap()],
+        &["--at", data["at"].as_str().unwrap()],
     ));
     let reference = refs
         .iter()
@@ -3223,7 +3358,7 @@ fn evm_data_ownerless_block_refs_preserve_observed_incoming_copy_preconditions()
         "get-block",
         &path,
         "raw",
-        &[reference["context_id"].as_str().unwrap()],
+        &["--at", reference["context_at"].as_str().unwrap()],
     );
     success(&fetched);
     let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
@@ -3236,12 +3371,12 @@ fn evm_data_ownerless_block_refs_preserve_observed_incoming_copy_preconditions()
         "get-block",
         &path,
         "raw",
-        &[proof_blocks[0].as_str().unwrap()],
+        &["--at", proof_blocks[0].as_str().unwrap()],
     );
     success(&predecessor);
     let predecessor: Value = serde_json::from_slice(&predecessor.stdout).unwrap();
     assert_eq!(predecessor["detail"]["raw_hex"], "6004600b600756");
-    assert_eq!(proof_blocks[1], reference["context_id"]);
+    assert_eq!(proof_blocks[1], reference["context_at"]);
 
     assert_eq!(
         reference["detail"]["source_offset_hex"],

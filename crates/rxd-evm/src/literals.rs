@@ -1,7 +1,7 @@
 //! Explicit decoded PUSH-immediate evidence and owner routes. No runtime string inference.
 use crate::{
     BoundedOutput, FunctionNavigation, Limits, Navigation, hex,
-    navigation::{object, work, write_record},
+    navigation::{Listing, object, work, write_record},
     references::{self, HeaderDetail, SummaryDetail},
 };
 use alloy_primitives::U256;
@@ -158,9 +158,23 @@ impl LiteralQuery {
 }
 
 struct Literal {
+    /// Zero-based position in the decoded-instruction inventory; stable per stream.
+    index: usize,
     instruction: usize,
     block: usize,
     width: usize,
+}
+
+/// The copy-only value a literal row is named by.
+///
+/// Decoded text when the whole operand is one printable run, otherwise the lowercase hex
+/// of its bytes. A zero-width `PUSH0` operand has no bytes and therefore an empty value.
+pub(crate) fn literal_value(bytes: &[u8]) -> String {
+    let mut runs = crate::text::printable_text_runs(bytes);
+    match (runs.next(), runs.next()) {
+        (Some((0, text)), None) if text.len() == bytes.len() => text.to_owned(),
+        _ => hex(bytes),
+    }
 }
 
 struct LiteralMatch<'a> {
@@ -211,6 +225,7 @@ impl LiteralInventory {
                     continue;
                 };
                 literals.push(Literal {
+                    index: literals.len(),
                     instruction: index,
                     block,
                     width: usize::from(instruction.opcode - 0x5f),
@@ -225,24 +240,33 @@ impl LiteralInventory {
         result
     }
 
-    fn id(&self, navigation: &Navigation, literal: &Literal) -> String {
+    /// The copy-only coordinate a row prints and `--at` accepts.
+    fn coordinate(&self, navigation: &Navigation, literal: &Literal) -> String {
         format!(
-            "rxd1:evm:{}:{}:literal:push:{}:{}",
-            navigation.carrier.source_id,
+            "{}:literal:push:{}:{}",
             navigation.carrier.encoding.as_str(),
             navigation.instructions[literal.instruction].decoded_offset,
             literal.width
         )
     }
 
-    fn select<'a>(&'a self, navigation: &Navigation, id: &str) -> Result<&'a Literal> {
+    fn id(&self, navigation: &Navigation, literal: &Literal) -> String {
+        format!(
+            "rxd1:evm:{}:{}",
+            navigation.carrier.source_id,
+            self.coordinate(navigation, literal)
+        )
+    }
+
+    fn select<'a>(&'a self, navigation: &Navigation, at: &str) -> Result<&'a Literal> {
         let invalid = || {
             Error::new(
                 "INVALID_ID",
                 "expected a canonical content-bound EVM PUSH literal ID",
             )
         };
-        let fields: Vec<_> = id.split(':').collect();
+        let canonical = crate::canonical_id(&navigation.carrier.source_id, at);
+        let fields: Vec<_> = canonical.split(':').collect();
         if fields.len() != 8
             || fields[0] != "rxd1"
             || fields[1] != "evm"
@@ -309,25 +333,27 @@ impl LiteralInventory {
         let (instruction_start, instruction_end) = navigation
             .carrier
             .carrier_range(instruction.decoded_offset, instruction.decoded_end);
-        let common = json!({"literal_id": id, "literal_kind": "push_immediate", "instruction_offset": instruction.decoded_offset,
+        let mut detail = object(
+            json!({"literal_kind": "push_immediate", "instruction_offset": instruction.decoded_offset,
             "instruction_end": instruction.decoded_end, "opcode": instruction.opcode, "width_bytes": literal.width,
             "decoded_start": operand_start, "decoded_end": operand_end, "bytes_hex": hex(bytes),
-            "number_hex": format!("{:064x}", U256::from_be_slice(bytes)), "block_id": block_id,
+            "number_hex": format!("{:064x}", U256::from_be_slice(bytes)), "block_id": navigation.block_coordinate(&navigation.blocks[literal.block]),
             "owner_count": functions.owners[literal.block].len(), "context_kind": if owner.is_some() { "function" } else { "block" },
             "context_boundary_status": owner.map(|i| if functions.functions[i].boundary_complete() { "static_reachable" } else { "incomplete" }).unwrap_or("producer_candidate"),
             "context_boundary_complete": owner.map(|i| functions.functions[i].boundary_complete()),
-            "runtime_string_proven": false});
-        let mut detail = object(common);
+            "runtime_string_proven": false}),
+        );
         if let Some(SearchEvidence {
             query,
             candidates,
             matches,
         }) = &search
         {
-            detail.extend(object(json!({"query_kind": query.kind, "evidence_kind": if matches!(query.kind, LiteralKind::Text) { "push_immediate_text_candidate" } else { "push_immediate" },
+            detail.extend(object(json!({"value": literal_value(bytes), "index": literal.index,
+                "query_kind": query.kind, "evidence_kind": if matches!(query.kind, LiteralKind::Text) { "push_immediate_text_candidate" } else { "push_immediate" },
                 "match_status": if query.normalized.is_some() { "matched" } else { "inventoried" }, "text_candidates": candidates, "matches": matches})));
         } else {
-            detail.extend(object(json!({"evidence_kind": "decoded_push_use", "reference_kind": "push_immediate", "instruction_carrier_start": instruction_start, "instruction_carrier_end": instruction_end})));
+            detail.extend(object(json!({"target": self.coordinate(navigation, literal), "evidence_kind": "decoded_push_use", "reference_kind": "push_immediate", "instruction_carrier_start": instruction_start, "instruction_carrier_end": instruction_end})));
         }
         envelope::record(
             if search.is_some() {
@@ -337,7 +363,6 @@ impl LiteralInventory {
             },
             RecordMeta {
                 at: search.map(|_| id.as_str()),
-                source_id: Some(&navigation.carrier.source_id),
                 context_at: Some(&context_id),
                 start: Some(start),
                 end: Some(end),
@@ -365,6 +390,7 @@ impl LiteralInventory {
         navigation: &Navigation,
         functions: &FunctionNavigation,
         query: &LiteralQuery,
+        filter: Option<&str>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<(Vec<LiteralMatch<'a>>, usize)> {
@@ -418,6 +444,9 @@ impl LiteralInventory {
             if !matched {
                 continue;
             }
+            if filter.is_some_and(|needle| !literal_value(bytes).to_lowercase().contains(needle)) {
+                continue;
+            }
             let route_count = functions.owners[literal.block].len().max(1);
             work(perf, route_count, limits.work)?;
             records += route_count;
@@ -452,17 +481,25 @@ impl LiteralInventory {
         navigation: &Navigation,
         functions: &FunctionNavigation,
         query: &LiteralQuery,
-        include: bool,
+        listing: Listing<'_>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
+        let needle = listing.filter.map(str::to_lowercase);
         let stage = perf.start_stage();
-        let found = self.search_matches(navigation, functions, query, limits, perf);
+        let found = self.search_matches(
+            navigation,
+            functions,
+            query,
+            needle.as_deref(),
+            limits,
+            perf,
+        );
         perf.record("search", stage);
         let (found, immediate_records) = found?;
         let data = crate::data::DataInventory::discover(navigation, functions, limits, perf)?;
         let stage = perf.start_stage();
-        let data_found = data.search(navigation, query, limits, perf);
+        let data_found = data.search(navigation, query, needle.as_deref(), limits, perf);
         perf.record("search", stage);
         let (data_found, data_records) = data_found?;
         let records = immediate_records.saturating_add(data_records);
@@ -476,7 +513,13 @@ impl LiteralInventory {
                 limit: limits.output_bytes,
                 exceeded: false,
             };
-            let mut header = self.header(navigation, "strings", query.json(navigation), include);
+            let mut header = self.header(
+                navigation,
+                "strings",
+                query.json(navigation),
+                listing.include_bytecode,
+            );
+            header["query"]["filter"] = json!(listing.filter);
             header["detail"].as_object_mut().unwrap().extend(object(
                 serde_json::to_value(data.coverage(navigation, functions))
                     .expect("fixed data coverage schema"),
@@ -523,15 +566,17 @@ impl LiteralInventory {
         &self,
         navigation: &Navigation,
         functions: &FunctionNavigation,
-        id: &str,
-        include_bytecode: bool,
+        at: &str,
+        listing: Listing<'_>,
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
+        let needle = listing.filter.map(str::to_lowercase);
+        let id = crate::canonical_id(&navigation.carrier.source_id, at);
         if id.split(':').nth(5) == Some("data") {
             let data = crate::data::DataInventory::discover(navigation, functions, limits, perf)?;
             let stage = perf.start_stage();
-            let selected = data.refs(navigation, functions, id, limits, perf);
+            let selected = data.refs(navigation, functions, &id, needle.as_deref(), limits, perf);
             perf.record("references", stage);
             let (literal, routes, status) = selected?;
             perf.counters.records = Some(routes.len());
@@ -547,8 +592,8 @@ impl LiteralInventory {
                     &mut output,
                     &references::header(
                         navigation,
-                        id,
-                        include_bytecode,
+                        &id,
+                        listing,
                         HeaderDetail {
                             target_kind: "literal",
                             target_decoded_offset: literal.start,
@@ -563,7 +608,7 @@ impl LiteralInventory {
                 for &route in &routes {
                     write_record(
                         &mut output,
-                        &data.reference_record(navigation, functions, id, &literal, route),
+                        &data.reference_record(navigation, functions, &literal, route),
                     )?;
                 }
                 write_record(
@@ -594,7 +639,7 @@ impl LiteralInventory {
                 id.len().saturating_add(self.literals.len()),
                 limits.work,
             )?;
-            let literal = self.select(navigation, id)?;
+            let literal = self.select(navigation, &id)?;
             let count = functions.owners[literal.block].len().max(1);
             work(perf, count, limits.work)?;
             if count > limits.records {
@@ -627,8 +672,8 @@ impl LiteralInventory {
                 &mut output,
                 &references::header(
                     navigation,
-                    id,
-                    include_bytecode,
+                    &id,
+                    listing,
                     HeaderDetail {
                         target_kind: "literal",
                         target_decoded_offset: navigation.instructions[literal.instruction]
@@ -641,11 +686,14 @@ impl LiteralInventory {
                     },
                 ),
             )?;
+            let mut emitted = 0;
             for owner in routes {
-                write_record(
-                    &mut output,
-                    &self.record(navigation, functions, literal, owner, None),
-                )?;
+                let record = self.record(navigation, functions, literal, owner, None);
+                if !references::keeps(&record, needle.as_deref()) {
+                    continue;
+                }
+                write_record(&mut output, &record)?;
+                emitted += 1;
             }
             write_record(
                 &mut output,
@@ -655,7 +703,7 @@ impl LiteralInventory {
                         target_kind: "literal",
                         target_decoded_offset: navigation.instructions[literal.instruction]
                             .decoded_offset,
-                        references: perf.counters.records.unwrap(),
+                        references: emitted,
                         literals: Some(1),
                         data_literals: Some(0),
                         reference_status: Some("decoded_push_use"),

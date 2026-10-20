@@ -2,7 +2,7 @@
 use super::*;
 
 fn fetch(path: &Path, encoding: &str, id: &str, extra: &[&str]) -> Value {
-    let mut args = vec![id];
+    let mut args = vec!["--at", id];
     args.extend_from_slice(extra);
     let output = run("get-function", path, encoding, &args);
     success(&output);
@@ -15,7 +15,7 @@ fn evm_default_fetch_reconstructs_compiled_getters_and_keeps_raw_evidence() {
     for encoding in ["raw", "hex"] {
         let suffix = if encoding == "raw" { "bin" } else { "hex" };
         let path = root.join(format!("openzeppelin-erc20.runtime.{suffix}"));
-        let rows = jsonl(&run("outline", &path, encoding, &[]));
+        let rows = jsonl(&run("interface", &path, encoding, &[]));
         for (selector, entry, expected, forbidden, instructions) in [
             ("313ce567", 598, "0x12", "persistent_storage[", 23),
             ("18160ddd", 849, "persistent_storage[0x2]", "0x12", 25),
@@ -24,7 +24,7 @@ fn evm_default_fetch_reconstructs_compiled_getters_and_keeps_raw_evidence() {
                 .iter()
                 .find(|r| r["record"] == "function" && r["detail"]["selector"] == selector)
                 .unwrap();
-            let id = function["id"].as_str().unwrap();
+            let id = function["at"].as_str().unwrap();
             let row = fetch(&path, encoding, id, &[]);
             let reconstruction = &row["detail"]["reconstruction"];
             assert_eq!(reconstruction["status"], "success", "{row}");
@@ -193,9 +193,9 @@ fn evm_reconstruction_retains_top_first_word_operations_and_calldata() {
         ),
     ] {
         let (_dir, path) = authored(&body);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
         let function = rows.iter().find(|r| r["record"] == "function").unwrap();
-        let row = fetch(&path, "hex", function["id"].as_str().unwrap(), &[]);
+        let row = fetch(&path, "hex", function["at"].as_str().unwrap(), &[]);
         assert_eq!(
             row["detail"]["reconstruction"]["status"], "success",
             "{row}"
@@ -242,8 +242,8 @@ fn evm_reconstruction_materializes_state_reads_before_writes_and_preserves_copy_
         ),
     ] {
         let (_dir, path) = authored(body);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);
@@ -283,10 +283,10 @@ fn evm_reconstruction_materializes_state_reads_before_writes_and_preserves_copy_
         let row = fetch(
             &path,
             "hex",
-            jsonl(&run("outline", &path, "hex", &[]))
+            jsonl(&run("interface", &path, "hex", &[]))
                 .iter()
                 .find(|r| r["record"] == "function")
-                .unwrap()["id"]
+                .unwrap()["at"]
                 .as_str()
                 .unwrap(),
             &[],
@@ -317,17 +317,17 @@ fn evm_reconstruction_only_lowers_selected_contexts_and_reports_separate_work() 
         // selected function can reach them. Shared helper evidence remains unchanged.
         let carrier = format!("{SHARED_HELPER}{}", "5b60aa5f5500".repeat(padding));
         let (_dir, path) = fixture(&carrier, "selected.hex");
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
         for (selector, slot, other_slot) in
             [("11223344", "0xa", "0x14"), ("55667788", "0x14", "0xa")]
         {
             let id = rows
                 .iter()
                 .find(|r| r["record"] == "function" && r["detail"]["selector"] == selector)
-                .unwrap()["id"]
+                .unwrap()["at"]
                 .as_str()
                 .unwrap();
-            let output = run("get-function", &path, "hex", &[id, "--perf"]);
+            let output = run("get-function", &path, "hex", &["--at", id, "--perf"]);
             success(&output);
             let row: Value = serde_json::from_slice(&output.stdout).unwrap();
             let reconstruction = &row["detail"]["reconstruction"];
@@ -358,12 +358,14 @@ fn evm_reconstruction_only_lowers_selected_contexts_and_reports_separate_work() 
             assert!(counters["instructions"].as_u64().unwrap() > 15 + padding as u64);
             assert!(reports[0]["stages_ns"]["reconstruct"].as_u64().unwrap() > 0);
             assert!(reports[0]["stages_ns"]["query"].as_u64().unwrap() > 0);
+            // `reconstruction_work` comes from the shared work budget, `values` from
+            // the shared entry budget; neither is a CLI knob.
             assert_eq!(
                 reports[0]["resource_limits"]["reconstruction_work"],
-                1_048_576
+                1_000_000
             );
             assert_eq!(reports[0]["resource_limits"]["values"], 1_048_576);
-            let plain = run("get-function", &path, "hex", &[id]);
+            let plain = run("get-function", &path, "hex", &["--at", id]);
             assert_eq!(plain.stdout, output.stdout);
         }
     }
@@ -380,8 +382,8 @@ fn evm_reconstruction_unsupported_and_incomplete_targets_keep_complete_raw_fallb
         ("61ff", "undecoded_or_unindexed_successor", 34, false),
     ] {
         let (_dir, path) = authored(body);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);
@@ -412,11 +414,11 @@ fn evm_reconstruction_unsupported_and_incomplete_targets_keep_complete_raw_fallb
 fn evm_reconstruction_budgets_are_atomic_and_arena_growth_is_linear() {
     let body = format!("5f{}5f5200", "8001".repeat(256));
     let (dir, path) = authored(&body);
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
-    let plain = run("get-function", &path, "hex", &[id]);
+    let plain = run("get-function", &path, "hex", &["--at", id]);
     success(&plain);
     let row: Value = serde_json::from_slice(&plain.stdout).unwrap();
     let reconstruction = &row["detail"]["reconstruction"];
@@ -425,55 +427,30 @@ fn evm_reconstruction_budgets_are_atomic_and_arena_growth_is_linear() {
     assert!(reconstruction["value_count"].as_u64().unwrap() < 300);
     assert!(reconstruction["text"].as_str().unwrap().len() < 20_000);
     let destination = dir.path().join("preserved.json");
-    for (flag, count) in [
-        (
-            "--max-reconstruction-work",
-            reconstruction["work"].as_u64().unwrap(),
-        ),
-        (
-            "--max-values",
-            reconstruction["value_count"].as_u64().unwrap(),
-        ),
-        ("--max-output-bytes", plain.stdout.len() as u64),
+    // Reconstruction and arena ceilings live in the shared budget table.
+    for flag in [
+        "--max-reconstruction-work",
+        "--max-values",
+        "--max-output-bytes",
     ] {
-        let exact = count.to_string();
-        assert_eq!(
-            run("get-function", &path, "hex", &[id, flag, &exact]).stdout,
-            plain.stdout
-        );
         fs::write(&destination, "preserved").unwrap();
-        let below = (count - 1).to_string();
-        let failed = run(
-            "get-function",
-            &path,
-            "hex",
-            &[
-                id,
-                flag,
-                &below,
-                "--perf",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
+        failure(
+            run(
+                "get-function",
+                &path,
+                "hex",
+                &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
+            ),
+            2,
+            flag,
         );
-        failure(failed.clone(), 1, "RESOURCE_LIMIT");
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-        let reports = perf_reports(&failed);
-        assert_eq!(reports[0]["error_code"], "RESOURCE_LIMIT");
     }
     let raw = run(
         "get-function",
         &path,
         "hex",
-        &[
-            id,
-            "--raw",
-            "--max-reconstruction-work",
-            "1",
-            "--max-values",
-            "1",
-            "--perf",
-        ],
+        &["--at", id, "--raw", "--perf"],
     );
     success(&raw);
     let reports = perf_reports(&raw);
@@ -548,10 +525,10 @@ fn evm_reconstruction_separates_known_boundary_from_ambiguous_incoming_stack() {
     carrier.push_str(&"00".repeat(80 - carrier.len() / 2));
     carrier.push_str("5b5000");
     let (_dir, path) = fixture(&carrier, "two-states.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let function = rows.iter().find(|r| r["record"] == "function").unwrap();
     assert_eq!(rows.iter().filter(|r| r["record"] == "function").count(), 1);
-    let row = fetch(&path, "hex", function["id"].as_str().unwrap(), &[]);
+    let row = fetch(&path, "hex", function["at"].as_str().unwrap(), &[]);
     assert_eq!(row["detail"]["entry_states"].as_array().unwrap().len(), 2);
     assert_eq!(row["detail"]["boundary_complete"], true);
     assert_eq!(row["detail"]["reconstruction"]["status"], "raw_fallback");
@@ -566,8 +543,8 @@ fn evm_reconstruction_separates_known_boundary_from_ambiguous_incoming_stack() {
     assert_eq!(row["detail"]["segments"][0]["raw_hex"], "5b5000");
     // INVALID is a supported explicit exceptional terminal, not an unknown opcode.
     let (_dir, path) = authored("fe");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
     let row = fetch(&path, "hex", id, &[]);
@@ -586,12 +563,12 @@ fn evm_branch_fetch_structures_compiled_conditions_and_terminal_arms() {
     for encoding in ["raw", "hex"] {
         let suffix = if encoding == "raw" { "bin" } else { "hex" };
         let path = root.join(format!("authored-navigation.runtime.{suffix}"));
-        let rows = jsonl(&run("outline", &path, encoding, &[]));
+        let rows = jsonl(&run("interface", &path, encoding, &[]));
         let function = rows
             .iter()
             .find(|r| r["record"] == "function" && r["detail"]["selector"] == "0bb0b13a")
             .unwrap();
-        let id = function["id"].as_str().unwrap();
+        let id = function["at"].as_str().unwrap();
         let row = fetch(&path, encoding, id, &[]);
         let reconstruction = &row["detail"]["reconstruction"];
         assert_eq!(reconstruction["status"], "success", "{row}");
@@ -648,11 +625,11 @@ fn evm_branch_join_assigns_each_predecessor_value_before_reusing_it() {
     carrier.push_str(&"00".repeat(64 - carrier.len() / 2));
     carrier.push_str("5b600301805f555f5200");
     let (_dir, path) = fixture(&carrier, "join-values.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
-    let output = run("get-function", &path, "hex", &[id, "--perf"]);
+    let output = run("get-function", &path, "hex", &["--at", id, "--perf"]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     let reconstruction = &row["detail"]["reconstruction"];
@@ -713,8 +690,8 @@ fn evm_branch_incompatible_join_heights_keep_explicit_complete_gotos() {
     carrier.push_str(&"00".repeat(64 - carrier.len() / 2));
     carrier.push_str("5b00");
     let (_dir, path) = fixture(&carrier, "join-heights.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
     let row = fetch(&path, "hex", id, &[]);
@@ -760,8 +737,8 @@ fn evm_nested_branch_join_keeps_state_reads_and_all_three_edge_values() {
     carrier.push_str(&"00".repeat(96 - carrier.len() / 2));
     carrier.push_str("5b5f555f5200");
     let (_dir, path) = fixture(&carrier, "nested-state.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
     let row = fetch(&path, "hex", id, &[]);
@@ -812,8 +789,8 @@ fn evm_branch_unresolved_true_paths_preserve_raw_failure_evidence() {
         ("6004356004355700", "dynamic_jump_destination", 40),
     ] {
         let (_dir, path) = authored(body);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);
@@ -844,8 +821,8 @@ fn evm_branch_unresolved_true_paths_preserve_raw_failure_evidence() {
     }
     // A proven acyclic target and unrelated unknown JUMP region stay isolated.
     let (_dir, path) = authored("5f60ff57005b60043556");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
     let row = fetch(&path, "hex", id, &[]);
@@ -872,11 +849,11 @@ fn evm_loop_fetch_structures_compiled_sum_with_simultaneous_carried_values() {
     for encoding in ["raw", "hex"] {
         let suffix = if encoding == "raw" { "bin" } else { "hex" };
         let path = root.join(format!("authored-navigation.runtime.{suffix}"));
-        let rows = jsonl(&run("outline", &path, encoding, &[]));
+        let rows = jsonl(&run("interface", &path, encoding, &[]));
         let id = rows
             .iter()
             .find(|r| r["record"] == "function" && r["detail"]["selector"] == "188b85b4")
-            .unwrap()["id"]
+            .unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, encoding, id, &[]);
@@ -943,7 +920,7 @@ fn evm_loop_fetch_structures_compiled_sum_with_simultaneous_carried_values() {
 }
 
 #[test]
-fn evm_branch_structuring_and_nested_output_budgets_fail_atomically() {
+fn evm_branch_structuring_covers_every_nested_guard_and_revert_arm() {
     // 64 nested calldata guards all share one revert region. An explicit work
     // bound covers graph analysis, duplicated mutually exclusive terminal arms,
     // nesting and rendered output. No recursion or dense graph allocation.
@@ -956,11 +933,11 @@ fn evm_branch_structuring_and_nested_output_budgets_fail_atomically() {
     carrier.push_str(&"00".repeat(6144 - carrier.len() / 2));
     carrier.push_str("5b5f80fd");
     let (dir, path) = fixture(&carrier, "nested-budget.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
-    let plain = run("get-function", &path, "hex", &[id]);
+    let plain = run("get-function", &path, "hex", &["--at", id, "--perf"]);
     success(&plain);
     let row: Value = serde_json::from_slice(&plain.stdout).unwrap();
     let reconstruction = &row["detail"]["reconstruction"];
@@ -975,24 +952,8 @@ fn evm_branch_structuring_and_nested_output_budgets_fail_atomically() {
     assert_eq!(text.matches("if (").count(), 64);
     assert_eq!(text.matches("revert memory_slice(").count(), 64);
     let lowering = work - structural - text.len() as u64;
-    let destination = dir.path().join("preserved.json");
-    fs::write(&destination, "preserved").unwrap();
-    let fail = run(
-        "get-function",
-        &path,
-        "hex",
-        &[
-            id,
-            "--max-reconstruction-work",
-            &(lowering + 1).to_string(),
-            "--perf",
-            "-o",
-            destination.to_str().unwrap(),
-        ],
-    );
-    failure(fail.clone(), 1, "RESOURCE_LIMIT");
-    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    let reports = perf_reports(&fail);
+    assert!(lowering > 0);
+    let reports = perf_reports(&plain);
     assert!(reports[0]["counters"]["structuring_work"].as_u64().unwrap() > 0);
     assert!(
         reports[0]["counters"]["reconstructed_instructions"]
@@ -1001,40 +962,31 @@ fn evm_branch_structuring_and_nested_output_budgets_fail_atomically() {
             > 64
     );
     assert!(reports[0]["stages_ns"]["structure"].as_u64().unwrap() > 0);
-    assert_eq!(
-        run(
-            "get-function",
-            &path,
-            "hex",
-            &[id, "--max-reconstruction-work", &work.to_string()]
-        )
-        .stdout,
-        plain.stdout
-    );
-    for (flag, budget) in [
-        ("--max-reconstruction-work", work - 1),
-        ("--max-output-bytes", plain.stdout.len() as u64 - 1),
+    // Reconstruction ceilings live in the shared budget table; the flags are gone.
+    let destination = dir.path().join("preserved.json");
+    for flag in [
+        "--max-reconstruction-work",
+        "--max-values",
+        "--max-output-bytes",
     ] {
-        let fail = run(
-            "get-function",
-            &path,
-            "hex",
-            &[
-                id,
-                flag,
-                &budget.to_string(),
-                "-o",
-                destination.to_str().unwrap(),
-            ],
+        fs::write(&destination, "preserved").unwrap();
+        failure(
+            run(
+                "get-function",
+                &path,
+                "hex",
+                &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
+            ),
+            2,
+            flag,
         );
-        failure(fail, 1, "RESOURCE_LIMIT");
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
     let raw = run(
         "get-function",
         &path,
         "hex",
-        &[id, "--raw", "--perf", "--max-reconstruction-work", "1"],
+        &["--at", id, "--raw", "--perf"],
     );
     success(&raw);
     let reports = perf_reports(&raw);
@@ -1079,8 +1031,8 @@ fn evm_loop_header_and_latch_keep_original_effect_order_and_zero_iteration_path(
         ),
     ] {
         let (_dir, path) = positioned_loop(&regions);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);
@@ -1148,7 +1100,7 @@ fn evm_loop_and_nested_shared_helpers_keep_each_selected_return_and_target_scale
                 "5b60aa5f5500".repeat(padding)
             );
             let (_dir, path) = fixture(&carrier, "loop-shared.hex");
-            let rows = jsonl(&run("outline", &path, "hex", &[]));
+            let rows = jsonl(&run("interface", &path, "hex", &[]));
             for (selector, slot, forbidden, selected_starts) in [
                 ("11223344", "0xa", "0x14", starts.clone()),
                 ("55667788", "0x14", "0xa", other_starts.clone()),
@@ -1156,7 +1108,7 @@ fn evm_loop_and_nested_shared_helpers_keep_each_selected_return_and_target_scale
                 let id = rows
                     .iter()
                     .find(|r| r["record"] == "function" && r["detail"]["selector"] == selector)
-                    .unwrap()["id"]
+                    .unwrap()["at"]
                     .as_str()
                     .unwrap();
                 let row = fetch(&path, "hex", id, &[]);
@@ -1207,8 +1159,8 @@ fn evm_loop_multiple_backedges_swap_carried_words_and_render_infinite_flow_bound
         (48, "5b60043560405790603056"),
         (64, "5b600101603056"),
     ]);
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
     let row = fetch(&path, "hex", id, &[]);
@@ -1237,8 +1189,8 @@ fn evm_loop_terminal_arms_stay_inside_iterations_before_normal_exit() {
         (112, "5b5f80f3"),
         (128, "5b5000"),
     ]);
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
-    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
+    let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
         .as_str()
         .unwrap();
     let row = fetch(&path, "hex", id, &[]);
@@ -1295,8 +1247,8 @@ fn evm_loop_unsupported_complete_flow_keeps_reasoned_gotos_and_all_raw_edges() {
         ),
     ] {
         let (_dir, path) = positioned_loop(&regions);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);
@@ -1322,14 +1274,14 @@ fn evm_loop_unsupported_complete_flow_keeps_reasoned_gotos_and_all_raw_edges() {
 fn evm_loop_work_and_output_limits_are_exact_atomic_and_report_attempted_structure() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/corpus/evm/authored-navigation.runtime.hex");
-    let rows = jsonl(&run("outline", &path, "hex", &[]));
+    let rows = jsonl(&run("interface", &path, "hex", &[]));
     let id = rows
         .iter()
         .find(|r| r["record"] == "function" && r["detail"]["selector"] == "188b85b4")
-        .unwrap()["id"]
+        .unwrap()["at"]
         .as_str()
         .unwrap();
-    let output = run("get-function", &path, "hex", &[id, "--perf"]);
+    let output = run("get-function", &path, "hex", &["--at", id, "--perf"]);
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     let rec = &row["detail"]["reconstruction"];
@@ -1340,59 +1292,31 @@ fn evm_loop_work_and_output_limits_are_exact_atomic_and_report_attempted_structu
     let work = rec["work"].as_u64().unwrap();
     let structural = rec["structuring_work"].as_u64().unwrap();
     let lower = work - structural - rec["text"].as_str().unwrap().len() as u64;
-    let directory = tempfile::tempdir().unwrap();
-    let destination = directory.path().join("preserved.json");
-    fs::write(&destination, "preserved").unwrap();
-    for (flag, limit) in [
-        ("--max-reconstruction-work", work),
-        ("--max-output-bytes", output.stdout.len() as u64),
-    ] {
-        let exact = run(
-            "get-function",
-            &path,
-            "hex",
-            &[id, flag, &limit.to_string()],
-        );
-        success(&exact);
-        assert_eq!(exact.stdout, output.stdout);
-        let fail = run(
-            "get-function",
-            &path,
-            "hex",
-            &[
-                id,
-                flag,
-                &(limit - 1).to_string(),
-                "-o",
-                destination.to_str().unwrap(),
-            ],
-        );
-        failure(fail, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    }
-    let fail = run(
-        "get-function",
-        &path,
-        "hex",
-        &[
-            id,
-            "--max-reconstruction-work",
-            &(lower + 1).to_string(),
-            "--perf",
-            "-o",
-            destination.to_str().unwrap(),
-        ],
-    );
-    failure(fail.clone(), 1, "RESOURCE_LIMIT");
-    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    let reports = perf_reports(&fail);
+    assert!(lower > 0);
     assert!(reports[0]["counters"]["structuring_work"].as_u64().unwrap() > 0);
     assert!(reports[0]["stages_ns"]["structure"].as_u64().unwrap() > 0);
+    // Reconstruction ceilings live in the shared budget table; the flags are gone.
+    let directory = tempfile::tempdir().unwrap();
+    let destination = directory.path().join("preserved.json");
+    for flag in ["--max-reconstruction-work", "--max-output-bytes"] {
+        fs::write(&destination, "preserved").unwrap();
+        failure(
+            run(
+                "get-function",
+                &path,
+                "hex",
+                &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
+            ),
+            2,
+            flag,
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"preserved");
+    }
     let raw = run(
         "get-function",
         &path,
         "hex",
-        &[id, "--raw", "--perf", "--max-reconstruction-work", "1"],
+        &["--at", id, "--raw", "--perf"],
     );
     success(&raw);
     for key in [
@@ -1411,8 +1335,8 @@ fn evm_loop_unknown_backedge_and_unsupported_effect_retain_reasoned_raw_fallback
         ("5b4650602856", "unsupported_opcode", 41),
     ] {
         let (_dir, path) = positioned_loop(&[(32, "5b50602856"), (40, bytes)]);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);
@@ -1452,8 +1376,8 @@ fn evm_loop_self_backedge_aliases_are_simultaneous_and_serial_loops_stay_separat
         ),
     ] {
         let (_dir, path) = positioned_loop(&regions);
-        let rows = jsonl(&run("outline", &path, "hex", &[]));
-        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["id"]
+        let rows = jsonl(&run("interface", &path, "hex", &[]));
+        let id = rows.iter().find(|r| r["record"] == "function").unwrap()["at"]
             .as_str()
             .unwrap();
         let row = fetch(&path, "hex", id, &[]);

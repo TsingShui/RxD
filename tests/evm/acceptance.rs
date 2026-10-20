@@ -25,6 +25,7 @@ pub(super) const HEADER_DETAIL_KEYS: &[&str] = &[
     "unvisited_copy_sites",
     "data_reference_coverage",
     "unknown_copy_evidence",
+    "metadata",
 ];
 pub(super) const SUMMARY_DETAIL_KEYS: &[&str] = &[
     "blocks",
@@ -60,7 +61,7 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
     for encoding in ["raw", "hex"] {
         let suffix = if encoding == "raw" { "bin" } else { "hex" };
         let path = root.join(format!("authored-navigation-legacy.runtime.{suffix}"));
-        let outline = jsonl(&run("outline", &path, encoding, &[]));
+        let outline = jsonl(&run("interface", &path, encoding, &[]));
         assert_stream_schema(&outline);
         assert_eq!(outline[0]["detail"]["target_kind"], Value::Null);
         assert_eq!(outline.last().unwrap()["detail"]["references"], Value::Null);
@@ -79,7 +80,7 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
                     "xref",
                     &path,
                     encoding,
-                    &["--id", literal["id"].as_str().unwrap()],
+                    &["--at", literal["at"].as_str().unwrap()],
                 ));
                 assert_stream_schema(&refs);
             }
@@ -93,7 +94,7 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
                 "xref",
                 &path,
                 encoding,
-                &["--id", unit["id"].as_str().unwrap()],
+                &["--at", unit["at"].as_str().unwrap()],
             )));
         }
         let (_empty_dir, empty) = fixture(
@@ -104,7 +105,7 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
             },
             "empty",
         );
-        assert_stream_schema(&jsonl(&run("outline", &empty, encoding, &[])));
+        assert_stream_schema(&jsonl(&run("interface", &empty, encoding, &[])));
         assert_stream_schema(&jsonl(&run(
             "strings",
             &empty,
@@ -149,7 +150,7 @@ fn evm_function_fetch_has_a_distinct_fixed_record_for_raw_supported_and_fallback
             "authored-navigation.runtime.{}",
             if encoding == "raw" { "bin" } else { "hex" }
         ));
-        let rows = jsonl(&run("outline", &path, encoding, &[]));
+        let rows = jsonl(&run("interface", &path, encoding, &[]));
         let production = root.join(format!(
             "openzeppelin-erc20.runtime.{}",
             if encoding == "raw" { "bin" } else { "hex" }
@@ -165,20 +166,24 @@ fn evm_function_fetch_has_a_distinct_fixed_record_for_raw_supported_and_fallback
             let rows = if selected_path == &path {
                 rows.clone()
             } else {
-                jsonl(&run("outline", selected_path, encoding, &[]))
+                jsonl(&run("interface", selected_path, encoding, &[]))
             };
             let candidate = rows
                 .iter()
                 .find(|r| r["record"] == "function" && r["detail"]["selector"] == selector)
                 .unwrap();
-            let id = candidate["id"].as_str().unwrap();
+            let id = candidate["at"].as_str().unwrap();
             for raw in [false, true] {
-                let args = if raw { vec![id, "--raw"] } else { vec![id] };
+                let args = if raw {
+                    vec!["--at", id, "--raw"]
+                } else {
+                    vec!["--at", id]
+                };
                 let output = run("get-function", selected_path, encoding, &args);
                 success(&output);
                 let row: Value = serde_json::from_slice(&output.stdout).unwrap();
                 assert_eq!(row["record"], "function_code");
-                assert_eq!(row["id"], candidate["id"]);
+                assert_eq!(row["at"], candidate["at"]);
                 assert_js_keys(&row["detail"], &detail_keys);
                 assert_eq!(
                     row["detail"]["reconstruction"]["status"],
@@ -193,7 +198,7 @@ fn evm_function_fetch_has_a_distinct_fixed_record_for_raw_supported_and_fallback
 fn evm_embedded_and_enumerated_basic_blocks_share_a_fixed_nullable_schema() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/corpus/evm/authored-navigation.runtime.bin");
-    let rows = jsonl(&run("outline", &path, "raw", &[]));
+    let rows = jsonl(&run("interface", &path, "raw", &[]));
     let keys = [
         "unit_kind",
         "decoded_start",
@@ -219,13 +224,16 @@ fn evm_embedded_and_enumerated_basic_blocks_share_a_fixed_nullable_schema() {
     }
 }
 
-fn fetch_context(path: &Path, encoding: &str, id: &str, raw: bool) -> Value {
-    let command = if id.split(':').nth(4) == Some("function") {
+fn fetch_context(path: &Path, encoding: &str, at: &str, raw: bool) -> Value {
+    // A short coordinate names its kind after `<encoding>:`; a whole content-bound ID
+    // names it after the carrier hash.
+    let kind = at.split(':').nth(1);
+    let command = if kind == Some("function") {
         "get-function"
     } else {
         "get-block"
     };
-    let mut args = vec![id];
+    let mut args = vec!["--at", at];
     if raw && command == "get-function" {
         args.push("--raw");
     }
@@ -264,12 +272,12 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
         let path = root.join(format!("authored-navigation.runtime.{suffix}"));
         let carrier = fs::read(&path).unwrap();
         let decoded = fs::read(root.join("authored-navigation.runtime.bin")).unwrap();
-        let outline = jsonl(&run("outline", &path, encoding, &[]));
+        let outline = jsonl(&run("interface", &path, encoding, &[]));
         let add = outline
             .iter()
             .find(|r| r["record"] == "function" && r["detail"]["selector"] == "1ba64846")
             .unwrap();
-        let add_id = add["id"].as_str().unwrap();
+        let add_id = add["at"].as_str().unwrap();
         let row = fetch_context(&path, encoding, add_id, false);
         assert_eq!(row["record"], "function_code");
         assert_eq!(
@@ -310,13 +318,13 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
                 "xref",
                 &path,
                 encoding,
-                &["--id", literal["id"].as_str().unwrap()],
+                &["--at", literal["at"].as_str().unwrap()],
             ));
             let reference = refs
                 .iter()
                 .find(|r| r["record"] == "literal_reference")
                 .unwrap();
-            let context = reference["context_id"].as_str().unwrap();
+            let context = reference["context_at"].as_str().unwrap();
             let raw = fetch_context(&path, encoding, context, true);
             let reconstructed = fetch_context(&path, encoding, context, false);
             assert_eq!(
@@ -332,23 +340,24 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
                 assert_eq!(context, add_id);
             }
         }
-        let block = outline
+        let blocks = jsonl(&run("blocks", &path, encoding, &[]));
+        let block = blocks
             .iter()
             .find(|r| r["record"] == "basic_block" && r["detail"]["decoded_start"] == 152)
             .unwrap();
-        for target in [block["id"].as_str().unwrap(), add_id] {
-            let refs = jsonl(&run("xref", &path, encoding, &["--id", target]));
+        for target in [block["at"].as_str().unwrap(), add_id] {
+            let refs = jsonl(&run("xref", &path, encoding, &["--at", target]));
             let reference = refs
                 .iter()
                 .find(|r| {
                     r["record"] == "code_reference"
-                        && (target == add_id || r["context_id"] == add_id)
+                        && (target == add_id || r["context_at"] == add_id)
                 })
                 .unwrap();
             let caller = fetch_context(
                 &path,
                 encoding,
-                reference["context_id"].as_str().unwrap(),
+                reference["context_at"].as_str().unwrap(),
                 false,
             );
             let pc = reference["detail"]["instruction_offset"].as_u64().unwrap() as usize;
@@ -379,7 +388,7 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
             "xref",
             &legacy,
             encoding,
-            &["--id", data["id"].as_str().unwrap()],
+            &["--at", data["at"].as_str().unwrap()],
         ));
         let reference = refs
             .iter()
@@ -394,7 +403,7 @@ fn evm_final_returned_id_workflows_reconstruct_known_behavior_and_preserve_origi
         let reconstructed = fetch_context(
             &legacy,
             encoding,
-            reference["context_id"].as_str().unwrap(),
+            reference["context_at"].as_str().unwrap(),
             false,
         );
         assert_eq!(
