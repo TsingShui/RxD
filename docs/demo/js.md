@@ -113,7 +113,7 @@ a directory or `-r`.
 ## 2. find
 
 ```sh
-"$RXD" js find "$FILE" --string '/api/login' --jsonl -o "$DEMO/find.jsonl"
+"$RXD" js find "$FILE" -f '/api/login' --jsonl -o "$DEMO/find.jsonl"
 jq 'select(.record == "match")' "$DEMO/find.jsonl"
 ```
 
@@ -121,7 +121,7 @@ The fixture has two hits: the top-level `api` constant and `send`'s request. Use
 `--resolve-static` for closed constant expressions:
 
 ```sh
-"$RXD" js find "$FILE" --string '/api/login' --resolve-static --jsonl
+"$RXD" js find "$FILE" -f '/api/login' --resolve-static --jsonl
 ```
 
 Static-expression hits use `detail.literal_kind: static_expression`,

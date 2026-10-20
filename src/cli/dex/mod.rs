@@ -185,6 +185,12 @@ fn run_command(
                 .filter
                 .as_deref()
                 .map(|needle| rxd_core::filter::Contains::new(needle, args.case.sensitive()));
+            // An exact class is one identity, so it skips the dotted-name buffer below.
+            let class = args
+                .class
+                .as_deref()
+                .map(query::format_class_name)
+                .transpose()?;
             let started = Instant::now();
             let classes = apk::list_classes_with_policy(
                 &args.apk_path,
@@ -197,10 +203,13 @@ fn run_command(
                 crate::query::check_records(
                     classes
                         .iter()
-                        .filter(|class| {
-                            filter.as_ref().is_none_or(|pattern| {
-                                pattern.matches(&class.java_name().replace('/', "."))
-                            })
+                        .filter(|entry| {
+                            class
+                                .as_ref()
+                                .is_none_or(|wanted| entry.descriptor == *wanted)
+                                && filter.as_ref().is_none_or(|pattern| {
+                                    pattern.matches(&entry.java_name().replace('/', "."))
+                                })
                         })
                         .count(),
                 )?;
@@ -209,7 +218,7 @@ fn run_command(
             let header = stream_header(
                 "classes",
                 std::slice::from_ref(&args.apk_path),
-                json!({"filter":args.filter}),
+                json!({"class":args.class,"filter":args.filter}),
             )?;
             // Keep the existing parallel, ordered chunk rendering for large class indexes.
             const RENDER_CHUNK: usize = 8192;
@@ -221,17 +230,23 @@ fn run_command(
                     // One reused buffer for the dotted name: the row itself carries only
                     // the descriptor, so the dotted form is computed for `--filter` alone.
                     let mut name = String::with_capacity(96);
-                    for class in chunk {
+                    for entry in chunk {
+                        if class
+                            .as_ref()
+                            .is_some_and(|wanted| entry.descriptor != *wanted)
+                        {
+                            continue;
+                        }
                         if let Some(pattern) = filter.as_ref() {
                             name.clear();
-                            for character in class.java_name().chars() {
+                            for character in entry.java_name().chars() {
                                 name.push(if character == '/' { '.' } else { character });
                             }
                             if !pattern.matches(&name) {
                                 continue;
                             }
                         }
-                        push_record_at(&mut payload, "class", Some(&class.descriptor), &[])?;
+                        push_record_at(&mut payload, "class", Some(&entry.descriptor), &[])?;
                         records += 1;
                     }
                     Ok((payload, records))
@@ -314,6 +329,7 @@ fn run_command(
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),
                 name: args.filter.as_deref(),
+                exact_name: args.name.as_deref(),
                 case_sensitive: args.case.sensitive(),
             };
             let (chunks, records) = apk::list_fields_with_policy(
@@ -326,7 +342,7 @@ fn run_command(
             let header = stream_header(
                 "fields",
                 std::slice::from_ref(&args.apk_path),
-                json!({"class":args.class, "filter":args.filter}),
+                json!({"class":args.class, "name":args.name, "filter":args.filter}),
             )?;
             let mut summary = String::new();
             finish_stream(&mut summary, records)?;
@@ -341,6 +357,7 @@ fn run_command(
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),
                 name: args.filter.as_deref(),
+                exact_name: args.name.as_deref(),
                 case_sensitive: args.case.sensitive(),
             };
             let (chunks, records) = apk::list_methods_with_policy(

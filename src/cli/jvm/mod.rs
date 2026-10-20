@@ -44,6 +44,9 @@ pub enum Command {
         /// Only list fields of this class: internal, dotted or descriptor name.
         #[arg(long)]
         class: Option<String>,
+        /// Exact field name; not a substring.
+        #[arg(long)]
+        name: Option<String>,
         ///  substring over the field name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
@@ -58,6 +61,9 @@ pub enum Command {
         /// Only list methods of this class: internal, dotted or descriptor name.
         #[arg(long)]
         class: Option<String>,
+        /// Exact method name; not a substring.
+        #[arg(long)]
+        name: Option<String>,
         ///  substring over the method name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
@@ -227,10 +233,11 @@ fn ref_query<'a>(target: &'a Target, names: &'a mut Normalized) -> rxd_jvm::RefQ
             )),
             XrefKind::Method | XrefKind::Field => {
                 let name = RefPattern::search(pattern, target.case_sensitive);
+                // `--class` names one class. A pattern over owners is `classes -f`.
                 let class = target
                     .class
                     .as_deref()
-                    .map(|class| RefPattern::search(names.class(class), target.case_sensitive));
+                    .map(|class| RefPattern::coordinate(names.class(class)));
                 if target.kind == XrefKind::Method {
                     RefQuery::Method {
                         name,
@@ -547,7 +554,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
-    let (path, options, request, class_filter, method_filter, case_sensitive, listing) =
+    let (path, options, request, class_filter, exact_name, method_filter, case_sensitive, listing) =
         match command {
             Command::Classes {
                 input,
@@ -560,6 +567,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 options,
                 None,
                 class,
+                None,
                 filter,
                 case.sensitive(),
                 Listing::Classes,
@@ -568,6 +576,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 input,
                 options,
                 class,
+                name,
                 filter,
                 case,
             } => (
@@ -575,6 +584,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 options,
                 None,
                 class,
+                name,
                 filter,
                 case.sensitive(),
                 Listing::Fields,
@@ -583,6 +593,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 input,
                 options,
                 class,
+                name,
                 filter,
                 case,
             } => (
@@ -590,6 +601,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 options,
                 None,
                 class,
+                name,
                 filter,
                 case.sensitive(),
                 Listing::Methods,
@@ -603,6 +615,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 input,
                 options,
                 Some((selector, raw)),
+                None,
                 None,
                 None,
                 false,
@@ -679,7 +692,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 command_name,
                 Some(&input.source_id),
                 Some(input.file_bytes),
-                json!({"class":class_filter,"filter":method_filter}),
+                json!({"class":class_filter,"name":exact_name,"filter":method_filter}),
                 json!({"analysis":command_name,"release":options.release})
                     .as_object()
                     .unwrap()
@@ -688,6 +701,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             limits.output_bytes,
         )?;
         let mut records = 0usize;
+        let exact_name = exact_name.as_deref();
         for selected in &selected_classes {
             let class = &selected.class;
             if listing == Listing::Classes
@@ -699,6 +713,9 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             }
             if listing == Listing::Fields {
                 for field in &class.fields {
+                    if exact_name.is_some_and(|wanted| field.name != wanted) {
+                        continue;
+                    }
                     if method_filter.as_ref().is_some_and(|pattern| {
                         !rxd_core::filter::Contains::new(pattern, case_sensitive)
                             .matches(&field.name)
@@ -732,6 +749,9 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             }
             if listing == Listing::Methods {
                 for (index, method) in class.methods.iter().enumerate() {
+                    if exact_name.is_some_and(|wanted| method.name != wanted) {
+                        continue;
+                    }
                     if method_filter.as_ref().is_some_and(|pattern| {
                         !rxd_core::filter::Contains::new(pattern, case_sensitive)
                             .matches(&method.name)

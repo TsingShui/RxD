@@ -6,7 +6,7 @@ fn sugar_input() -> PathBuf {
 }
 
 fn type_id(path: &Path, name: &str) -> String {
-    outline(path, &["--type", name])
+    outline(path, &["--class", name])
         .into_iter()
         .find(|row| row["record"] == "type" && row["detail"]["full_name"] == name)
         .unwrap_or_else(|| panic!("missing type {name}"))["at"]

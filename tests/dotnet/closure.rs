@@ -93,10 +93,7 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
     let path = fixture("sugar");
     let copied = directory.path().join("renamed-assembly.bin");
     fs::copy(&path, &copied).unwrap();
-    let outline = outline(
-        &path,
-        &["--type", "Rxd.Sugar.Item", "--method", "set_Value"],
-    );
+    let outline = outline(&path, &["--class", "Rxd.Sugar.Item", "--name", "set_Value"]);
     let target = outline
         .iter()
         .find(|row| row["record"] == "method")

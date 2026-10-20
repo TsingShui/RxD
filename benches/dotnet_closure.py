@@ -67,7 +67,7 @@ def workflows(args, output):
                     return captured
 
                 if symbol:
-                    outline = query(['dotnet', 'outline', args.production, '--type', manifest['target']['owner'], '--method', manifest['target']['method']])
+                    outline = query(['dotnet', 'methods', args.production, '--class', manifest['target']['owner'], '--name', manifest['target']['method']])
                     rows = [json.loads(line) for line in outline.splitlines()]
                     target = next(row for row in rows if row['record'] == 'method' and row['detail']['token'] == manifest['target']['token'])
                     refs = query(['dotnet', 'refs', args.production, '--id', target['id']])

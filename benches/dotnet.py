@@ -45,7 +45,7 @@ def invoke(binary, args):
 
 
 def method_id(binary, file, type_name, name, parameters=None):
-    result, _ = invoke(binary, ["dotnet", "outline", file, "--type", type_name, "--method", name])
+    result, _ = invoke(binary, ["dotnet", "classes", file, "--class", type_name, "--method", name])
     records = [json.loads(line) for line in result.stdout.splitlines()]
     candidates = [row for row in records if row.get("record") == "method"]
     if parameters is not None:
@@ -123,8 +123,8 @@ def main():
                           ["dotnet", "get-method", windowsbase, identity], False, True,
                           ["cross_assembly_reference:Accessibility"]))
     workloads += [
-        ("windowsbase_outline", windowsbase, ["dotnet", "outline", windowsbase, "--type", "System.Windows.Point"], False, False, ()),
-        ("corelib_outline", corelib, ["dotnet", "outline", corelib, "--type", "System.Math"], False, False, ()),
+        ("windowsbase_outline", windowsbase, ["dotnet", "classes", windowsbase, "--class", "System.Windows.Point"], False, False, ()),
+        ("corelib_outline", corelib, ["dotnet", "classes", corelib, "--class", "System.Math"], False, False, ()),
         ("windowsbase_strings", windowsbase, ["dotnet", "strings", windowsbase, "--contains", "Dispatcher"], False, False, ()),
         ("fixture_exact_refs", ROOT / "tests/fixtures/dotnet/Fixture.dll",
          ["dotnet", "refs", ROOT / "tests/fixtures/dotnet/Fixture.dll", "--token", "0x06000006"], True, False, ()),

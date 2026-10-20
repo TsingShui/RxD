@@ -19,8 +19,8 @@ pub enum Command {
     Classes {
         input: PathBuf,
         /// Exact full type name.
-        #[arg(long = "type")]
-        type_name: Option<String>,
+        #[arg(long)]
+        class: Option<String>,
         ///  substring over the full type name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
@@ -33,9 +33,12 @@ pub enum Command {
     Fields {
         input: PathBuf,
         /// Exact full type name.
-        #[arg(long = "type")]
-        type_name: Option<String>,
-        ///  substring over the field or declaring type name. Folded unless `--case sensitive`.
+        #[arg(long)]
+        class: Option<String>,
+        /// Exact field name; not a substring.
+        #[arg(long)]
+        name: Option<String>,
+        ///  substring over the field name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
         #[command(flatten)]
@@ -47,12 +50,12 @@ pub enum Command {
     Methods {
         input: PathBuf,
         /// Exact full type name.
-        #[arg(long = "type")]
-        type_name: Option<String>,
-        /// Exact method name.
         #[arg(long)]
-        method: Option<String>,
-        ///  substring over the method or declaring type name. Folded unless `--case sensitive`.
+        class: Option<String>,
+        /// Exact method name; not a substring.
+        #[arg(long)]
+        name: Option<String>,
+        ///  substring over the method name. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
         #[command(flatten)]
@@ -103,7 +106,7 @@ pub enum Command {
         /// (`0x70…`).
         #[arg(long, value_name = "TOKEN", conflicts_with_all = ["filter", "from"])]
         at: Option<String>,
-        /// Case-sensitive substring of a decoded user-string literal.
+        /// Substring of a decoded user-string literal; folded unless `--case sensitive`.
         #[arg(short = 'f', long, value_name = "PATTERN")]
         filter: Option<String>,
         /// Target kind: read off the token's table when it names one; required with
@@ -425,12 +428,9 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             descriptor_fits(target, limits.output_bytes.saturating_sub(output.len()))?;
         }
         let query = match &command {
-            Command::Classes { type_name, .. } | Command::Fields { type_name, .. } => {
-                json!({"type":type_name})
-            }
-            Command::Methods {
-                type_name, method, ..
-            } => json!({"type":type_name,"method":method}),
+            Command::Classes { class, .. } => json!({"class":class}),
+            Command::Fields { class, name, .. } => json!({"class":class,"name":name}),
+            Command::Methods { class, name, .. } => json!({"class":class,"name":name}),
             Command::Strings { filter, .. } => json!({"filter":filter}),
             Command::Xref {
                 at, filter, from, ..
@@ -1010,36 +1010,36 @@ fn list(
     output: &mut Vec<u8>,
     records: &mut usize,
 ) -> anyhow::Result<()> {
-    let (listing, type_name, method, filter, case) = match command {
+    let (listing, class, name, filter, case) = match command {
         Command::Classes {
-            type_name,
+            class,
             filter,
             case,
             ..
-        } => (Listing::Classes, type_name, None, filter, case),
+        } => (Listing::Classes, class, None, filter, case),
         Command::Fields {
-            type_name,
+            class,
+            name,
             filter,
             case,
             ..
-        } => (Listing::Fields, type_name, None, filter, case),
+        } => (Listing::Fields, class, name.as_ref(), filter, case),
         Command::Methods {
-            type_name,
-            method,
+            class,
+            name,
             filter,
             case,
             ..
-        } => (Listing::Methods, type_name, method.as_ref(), filter, case),
+        } => (Listing::Methods, class, name.as_ref(), filter, case),
         _ => unreachable!("only listing commands reach here"),
     };
     let pattern = filter
         .as_deref()
         .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
-    let matches = |name: &str, owner: &str| {
-        pattern
-            .as_ref()
-            .is_none_or(|pattern| pattern.matches(name) || pattern.matches(owner))
-    };
+    // A filter answers "does this record's own name contain the needle?". The declaring
+    // type is a separate question that `--class` answers exactly, so a member is never
+    // reported for a match on its owner's name (ADR 0014).
+    let matches = |name: &str| pattern.as_ref().is_none_or(|pattern| pattern.matches(name));
     let mut fields_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
     let mut methods_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
     if listing == Listing::Fields {
@@ -1059,18 +1059,18 @@ fn list(
         }
     }
     for ty in &input.types {
-        if type_name.as_ref().is_some_and(|name| *name != ty.full_name) {
+        if class.as_ref().is_some_and(|name| *name != ty.full_name) {
             continue;
         }
         match listing {
             Listing::Classes => {
-                if matches(&ty.full_name, &ty.full_name) {
+                if matches(&ty.full_name) {
                     record(output, records, options, &type_record(input, ty)?)?;
                 }
             }
             Listing::Fields => {
                 for field in fields_by_type.get(&ty.token).into_iter().flatten() {
-                    if !matches(&field.name, &ty.full_name) {
+                    if name.is_some_and(|wanted| wanted != &field.name) || !matches(&field.name) {
                         continue;
                     }
                     record(output, records, options, &field_record(input, field)?)?;
@@ -1078,9 +1078,7 @@ fn list(
             }
             Listing::Methods => {
                 for item in methods_by_type.get(&ty.token).into_iter().flatten() {
-                    if method.is_some_and(|name| name != &item.name)
-                        || !matches(&item.name, &ty.full_name)
-                    {
+                    if name.is_some_and(|wanted| wanted != &item.name) || !matches(&item.name) {
                         continue;
                     }
                     record(output, records, options, &method_record(input, item)?)?;

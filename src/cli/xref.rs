@@ -100,9 +100,10 @@ pub struct Target {
     pub anchor: Option<Anchor>,
     /// The content search pattern, for the `-f` face.
     pub filter: Option<String>,
-    /// An owner class constraint, for a member search.
+    /// An owner class constraint: one exact class, never a pattern. A member search that
+    /// wants "owners whose name contains X" lists `classes -f X` first.
     pub class: Option<String>,
-    /// Whether `filter`/`class` fold case. A coordinate is always matched exactly.
+    /// Whether `filter` folds case. Coordinates and `--class` are matched exactly.
     pub case_sensitive: bool,
 }
 
@@ -169,18 +170,19 @@ pub struct TargetArgs {
     /// `Lx/y;->name:type`, or, with `--kind string`, a literal.
     #[arg(long, value_name = "COORD")]
     pub at: Option<String>,
-    /// Case-sensitive substring of the target's value, name or type.
+    /// Substring of the target's value, name or type; folded unless `--case sensitive`.
     #[arg(short = 'f', long, value_name = "PATTERN")]
     pub filter: Option<String>,
     /// Target kind: inferred from `--at` when the coordinate carries one, required with
     /// `--filter`, and required to read `--at` as a literal.
     #[arg(long, value_enum)]
     pub kind: Option<Kind>,
-    /// Owner class substring, in `pkg/Name` form (dots are separators). A member query only.
+    /// Owner class, one exact class: `Lpkg/Name;`, `pkg/Name` or `pkg.Name`. A member
+    /// query only; a pattern over owners is `classes -f PATTERN` first.
     #[arg(long = "class", value_name = "CLASS")]
     pub class_name: Option<String>,
     /// Whether matching folds case: `insensitive` (default) or `sensitive`. A coordinate's
-    /// own identity is always exact; this governs `-f` and `--class`.
+    /// own identity and `--class` are always exact; this governs only `-f`.
     #[arg(long, value_enum, default_value_t = CaseMode::Insensitive)]
     pub case: CaseMode,
     /// Read the target from a previous JSONL stream instead: a file, or `-` for stdin. The

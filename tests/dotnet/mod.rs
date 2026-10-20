@@ -80,7 +80,7 @@ fn assert_fetch_protocol(row: &Value, command: &str) {
 #[test]
 fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
     let path = input();
-    let rows = outline(&path, &["--method", "Add"]);
+    let rows = outline(&path, &["--name", "Add"]);
     assert_eq!(rows[0]["schema_version"], 2);
     let header = rows[0].as_object().unwrap();
     assert_eq!(
@@ -136,7 +136,7 @@ fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
 fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_handlers() {
     let path = input();
     for name in ["Add", "Finally"] {
-        let rows = outline(&path, &["--method", name]);
+        let rows = outline(&path, &["--name", name]);
         let method = rows.iter().find(|row| row["record"] == "method").unwrap();
         let output = run(
             "get-method",
@@ -235,7 +235,7 @@ fn outline(path: &Path, args: &[&str]) -> Vec<Value> {
             skip = false;
             continue;
         }
-        if *arg == "--method" {
+        if *arg == "--name" {
             skip = true;
             continue;
         }
@@ -273,7 +273,7 @@ fn run(command: &str, path: &Path, args: &[&str]) -> Output {
 }
 
 fn method_id(path: &Path, name: &str) -> String {
-    outline(path, &["--method", name])
+    outline(path, &["--name", name])
         .into_iter()
         .find(|row| row["record"] == "method" && row["detail"]["name"] == name)
         .unwrap_or_else(|| panic!("missing method {name}"))["at"]
@@ -332,19 +332,19 @@ fn dotnet_outline_uses_deterministic_content_bound_ids_and_unicode_names() {
         assert!(row["at"].as_str().unwrap().starts_with("0x"));
         assert!(row["source_id"].is_null());
     }
-    let filtered = outline(&path, &["--type", "Rxd.测试.Probe", "--method", "Add"]);
+    let filtered = outline(&path, &["--class", "Rxd.测试.Probe", "--name", "Add"]);
     assert_eq!(
         filtered.iter().filter(|v| v["record"] == "method").count(),
         1
     );
-    assert_eq!(filtered[0]["query"]["type"], "Rxd.测试.Probe");
+    assert_eq!(filtered[0]["query"]["class"], "Rxd.测试.Probe");
     // The method filter only reaches the methods listing, so it shows up there.
     let methods_only = jsonl(&run(
         "methods",
         &path,
-        &["--type", "Rxd.测试.Probe", "--method", "Add"],
+        &["--class", "Rxd.测试.Probe", "--name", "Add"],
     ));
-    assert_eq!(methods_only[0]["query"]["method"], "Add");
+    assert_eq!(methods_only[0]["query"]["name"], "Add");
     let directory = tempfile::tempdir().unwrap();
     let copy = directory.path().join("same-bytes.exe");
     fs::copy(&path, &copy).unwrap();
@@ -690,7 +690,7 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
     let path = input();
     let at = method_id(&path, "Add");
     assert!(at.starts_with("0x"), "{at}");
-    let outline = run("methods", &path, &["--method", "Add"]);
+    let outline = run("methods", &path, &["--name", "Add"]);
     success(&outline);
 
     let directory = tempfile::tempdir().unwrap();
@@ -933,7 +933,7 @@ fn empty_exception_sections(count: usize) -> Vec<u8> {
 fn dotnet_repeated_attribute_targets_do_not_hide_an_invalid_parent_reference() {
     let bad =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/InvalidReference.dll");
-    let output = run("methods", &bad, &["--method", "Add"]);
+    let output = run("methods", &bad, &["--name", "Add"]);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));

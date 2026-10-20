@@ -172,7 +172,7 @@ def builtin_cases(root, dotnet, csharp):
                       'backend': 'js', 'synthetic': False, 'provenance': case['provenance'],
                       'oracle': {'kind': 'js-find', 'matches': case['expected']['matches']},
                       'query': {'tool': 'js_find', 'arguments': {'string': case['needle']},
-                                'cli': ['js', 'find', '${path}', '--string', case['needle']],
+                                'cli': ['js', 'find', '${path}', '-f', case['needle']],
                                 'projection': 'jsonl'},
                       'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'js_slice',
                                     'arguments': {'at': '${q.records.0.context_at}'},

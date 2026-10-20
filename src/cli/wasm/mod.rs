@@ -57,8 +57,9 @@ pub enum Command {
         #[arg(long = "func")]
         func: Option<u32>,
         /// Keep only functions whose name-section label matches exactly.
-        #[arg(long = "func-name")]
-        func_name: Option<String>,
+        /// Exact name-section label; not a substring.
+        #[arg(long)]
+        name: Option<String>,
         ///  substring over the name-section label or `func:<index>`. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,
@@ -401,10 +402,8 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             &mut output,
             &mut records,
         )?,
-        Command::Functions {
-            func, func_name, ..
-        } => emit_rows(
-            function_rows(&module, *func, func_name.as_deref()),
+        Command::Functions { func, name, .. } => emit_rows(
+            function_rows(&module, *func, name.as_deref()),
             filter,
             command.case_sensitive(),
             limits,
@@ -512,9 +511,9 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
 /// The `query` echo: the selectors this command actually took.
 fn command_query(command: &Command) -> Value {
     match command {
-        Command::Functions {
-            func, func_name, ..
-        } => json!({"func": func, "func_name": func_name, "filter": command.filter()}),
+        Command::Functions { func, name, .. } => {
+            json!({"func": func, "name": name, "filter": command.filter()})
+        }
         Command::Xref { at, .. } => json!({"at": at}),
         _ => json!({"filter": command.filter()}),
     }

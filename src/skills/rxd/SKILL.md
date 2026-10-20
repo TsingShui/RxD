@@ -74,7 +74,7 @@ offsets obtained from the preceding response. Keep each input fixed and use its 
 
 ```sh
 rxd js entities bundle.js -f login
-rxd js find bundle.js --string '/api/login'
+rxd js find bundle.js -f '/api/login'
 rxd js slice bundle.js --at "$CONTEXT_AT" --json
 rxd js identifiers bundle.js --name 'AIS3' --role reference
 rxd js calls bundle.js --name 'fetch'

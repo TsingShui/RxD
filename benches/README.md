@@ -182,7 +182,7 @@ Units are bytes: Linux `ru_maxrss` is KiB; current Darwin XNU uses
 ## Perf contract
 
 ```sh
-target/release/rxd js find tests/fixtures/example.js --string '/api/login' \
+target/release/rxd js find tests/fixtures/example.js -f '/api/login' \
   --perf > result.jsonl 2> perf.jsonl
 ```
 

@@ -65,7 +65,7 @@ def main():
         assert rows[0]["record"] == "header" and rows[-1]["complete"]
         assert rows[-1]["records"] == len(rows) - 2
         workloads = [("outline", base + ["outline", str(path)], None)]
-        workloads.append(("outline_filtered", base + ["outline", str(path), "--class", methods[0][0], "--method", methods[0][1]], None))
+        workloads.append(("outline_filtered", base + ["methods", str(path), "--class", methods[0][0], "--name", methods[0][1]], None))
         for owner, name in methods:
             method = next(row for row in rows if row.get("record") == "method" and row["detail"]["class"] == owner and row["detail"]["name"] == name)
             query = base + ["get-method", str(path), method["id"]]

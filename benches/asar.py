@@ -159,7 +159,7 @@ def main():
             started = base.time.perf_counter_ns()
             first, payload = base.checked(argv, 120)
             receipt = json.loads(payload)
-            second, found = base.checked([str(binary), "js", "find", receipt["path"], "--string", case["needle"]], 120)
+            second, found = base.checked([str(binary), "js", "find", receipt["path"], "-f", case["needle"]], 120)
             duration = base.time.perf_counter_ns() - started
             validate_receipt(payload, destination, source, entry)
             result = base.jsonl(found, receipt["source_id"])

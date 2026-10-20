@@ -88,7 +88,7 @@ silently ignore corrupt data.
 ## Commands and protocol
 
 ```sh
-rxd dotnet methods app.dll --type Example.Worker --method Run
+rxd dotnet methods app.dll --class Example.Worker --name Run
 rxd dotnet get-method app.dll --at 0x06000001
 rxd dotnet get-method app.dll --at 0x06000001 --raw
 rxd dotnet get-class app.dll --at 0x02000002 --raw
@@ -97,7 +97,7 @@ rxd dotnet xref app.dll --at 0x0a000001
 rxd dotnet xref app.dll -f example --kind string
 rxd dotnet xref app.dll --at 0x06000001
 rxd dotnet xref app.dll --from target/methods.jsonl
-rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
+rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
 ```
 
 - `get-method` and `get-class` take exactly one selector: `--at <token>` or
@@ -110,7 +110,7 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
 - `classes`/`fields`/`methods` each emit a header, their own records and a summary JSONL
   (one object kind per command). Header echoes filters;
   order follows metadata tokens. `--type` matches the full type name exactly;
-  `--method` matches a method name exactly and preserves overloads.
+  `--name` matches a method name exactly and preserves overloads.
 - `get-method` emits one JSON record with method, source_id, raw `il_hex`, instructions,
   exception handlers, locals and original file range. Instruction `offset` is the IL
   byte offset within the method code; file offsets are separate and never mixed.

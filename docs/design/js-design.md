@@ -67,8 +67,8 @@ rxd js methods bundle.js --jsonl
 rxd js entities bundle.js --within '<entity-id>' --depth 1 --jsonl
 rxd js entities bundle.js --kind object_method --jsonl
 rxd js entities bundle.js --name checkFlag --jsonl
-rxd js find bundle.js --string '/api/login' --jsonl
-rxd js find bundle.js --string 'setInterval' --resolve-static --jsonl
+rxd js find bundle.js -f '/api/login' --jsonl
+rxd js find bundle.js -f 'setInterval' --resolve-static --jsonl
 rxd js identifiers bundle.js --name '_0x4e3653' --jsonl
 rxd js identifiers bundle.js --name '_0x4e3653' --role reference --within '<entity-id>' --jsonl
 rxd js calls bundle.js --name 'AIS3' --jsonl
@@ -87,7 +87,7 @@ rxd js slice bundle.js --at '<parent>' --json
 | `functions` | The same rows restricted to function declarations, expressions and arrows. | JSONL |
 | `classes` | The same rows restricted to classes, interfaces, enums, aliases and namespaces. | JSONL |
 | `methods` | The same rows restricted to class/object members: methods, constructors, getters, setters. | JSONL |
-| `find` | Case-sensitive literal substring match on decoded string values; returns containing structures. `--resolve-static` also matches bounded AST constant evaluation. | JSONL |
+| `find -f PATTERN` | Literal substring over decoded string values, folded unless `--case sensitive`; returns containing structures. `--resolve-static` also matches bounded AST constant evaluation. | JSONL |
 | `identifiers` | Lexical identifier occurrences by exact name (declaration or reference). | JSONL |
 | `calls` | Call sites by callee name (direct, member or `new`). | JSONL |
 | `members` | Static member names, property keys, JSX attribute names and statically resolvable computed keys. | JSONL |
@@ -104,7 +104,7 @@ preserve original parent IDs. `--kind` matches exact kinds separated by commas;
 `--name` matches exact `name` or context `label` case-sensitively. Both can combine
 with `--within`/`--depth`.
 
-`find --string` includes string literals and static template fragments. Ordinary
+`find -f` includes string literals and static template fragments. Ordinary
 strings are decoded before matching while original spans are retained. Template
 fragments match independently and are marked `dynamic`; concatenation is not inferred
 across interpolations or fragments. Empty queries are argument errors; there are no
@@ -163,7 +163,7 @@ invocation is independent, with no implicit background service or persistent ind
 
 ## Recursive scan
 
-`rxd js entities DIR` and `find DIR --string TEXT` recursively scan regular
+`rxd js entities DIR` and `find DIR -f TEXT` recursively scan regular
 `.js/.mjs/.cjs/.jsx/.ts/.mts/.cts/.tsx` files (case-sensitive), do not follow symlinks,
 and do not apply ignore rules (hidden directories and `node_modules` are included). A
 symlinked directory entry is not scanned. Files sort by path; with multiple files each
@@ -309,7 +309,7 @@ is header → zero or more records → summary. Success requires exit 0 and
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
 query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: entities/functions/classes/methods
-`within, depth, kind, name`; find `string, resolve_static`; identifiers `name, role,
+`within, depth, kind, name`; find `filter, case, resolve_static`; identifiers `name, role,
 within`; calls/members `name, within`; xref `byte`; symbols `within`.
 
 Header detail fields:

@@ -132,6 +132,7 @@ struct MethodRenderer<'a> {
     names: NameCache<'a>,
     prototypes: Vec<Option<Box<str>>>,
     filter: Option<Contains>,
+    exact_name: Option<String>,
     selected: Option<Vec<bool>>,
 }
 
@@ -142,6 +143,8 @@ pub struct Selector<'a> {
     pub class: Option<&'a str>,
     /// Substring over the member name, folded unless `case_sensitive`.
     pub name: Option<&'a str>,
+    /// One exact member name; the identity face `name` is the search face for.
+    pub exact_name: Option<&'a str>,
     /// Whether the name substring folds case. The CLI's `--case` decides this; the default
     /// `false` is the CLI default.
     pub case_sensitive: bool,
@@ -209,6 +212,7 @@ impl<'a> MethodRenderer<'a> {
             names,
             prototypes,
             filter,
+            exact_name: selector.exact_name.map(str::to_owned),
             selected,
         })
     }
@@ -250,6 +254,13 @@ impl<'a> MethodRenderer<'a> {
                     u16::from_le_bytes([self.dex.data[row + 2], self.dex.data[row + 3]]) as usize;
                 let name_idx = self.dex.u32(row + 4)? as usize;
                 let name = self.names.get(&self.dex, name_idx)?;
+                if self
+                    .exact_name
+                    .as_deref()
+                    .is_some_and(|wanted| name != wanted)
+                {
+                    continue;
+                }
                 if self.selected.is_none()
                     && self
                         .filter
@@ -377,6 +388,9 @@ fn render_fields_of(
             let type_idx = u16::from_le_bytes([dex.data[row + 2], dex.data[row + 3]]) as usize;
             let name_idx = dex.u32(row + 4)? as usize;
             let name = dex.string(name_idx)?;
+            if selector.exact_name.is_some_and(|wanted| name != wanted) {
+                continue;
+            }
             if let Some(pattern) = selector.name
                 && !rxd_core::filter::Contains::new(pattern, selector.case_sensitive).matches(&name)
             {

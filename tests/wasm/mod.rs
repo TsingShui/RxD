@@ -415,11 +415,11 @@ fn wasm_functions_select_by_exact_index_name_and_filter() {
     assert_eq!(functions[0]["detail"]["func_index"], 1);
     assert_eq!(by_index[0]["query"]["func"], 1);
 
-    let by_name = wasm_jsonl(&run("functions", &path, &["--func-name", "sum"]));
+    let by_name = wasm_jsonl(&run("functions", &path, &["--name", "sum"]));
     let named = records_of(&by_name, "function");
     assert_eq!(named.len(), 1);
     assert_eq!(named[0]["detail"]["name"], "sum");
-    assert_eq!(by_name[0]["query"]["func_name"], "sum");
+    assert_eq!(by_name[0]["query"]["name"], "sum");
 
     // The substring filter is case-insensitive and matches the name label.
     let filtered = wasm_jsonl(&run("functions", &path, &["--filter", "SU"]));

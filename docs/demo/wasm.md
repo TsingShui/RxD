@@ -12,7 +12,7 @@ rxd=target/release/rxd
 $rxd wasm types tests/fixtures/wasm/fixture.wasm
 $rxd wasm imports tests/fixtures/wasm/fixture.wasm
 $rxd wasm exports tests/fixtures/wasm/fixture.wasm
-$rxd wasm functions tests/fixtures/wasm/fixture.wasm --func-name sum
+$rxd wasm functions tests/fixtures/wasm/fixture.wasm --name sum
 $rxd wasm globals tests/fixtures/wasm/fixture.wasm -f g
 $rxd wasm data tests/fixtures/wasm/fixture.wasm
 ```
@@ -21,7 +21,7 @@ Each `functions` row prints a short `at` coordinate (`func:1`); pass that back w
 `--at` instead of assembling a hash:
 
 ```sh
-at=$($rxd wasm functions tests/fixtures/wasm/fixture.wasm --func-name sum | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="function"))')
+at=$($rxd wasm functions tests/fixtures/wasm/fixture.wasm --name sum | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="function"))')
 # Default get tries structured C-like decompilation, then falls back to instructions.
 $rxd wasm functions tests/fixtures/wasm/fixture.wasm | \
   $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --from -

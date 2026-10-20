@@ -12,7 +12,7 @@ target/release/rxd dex strings /path/to/app.apk --filter Authorization --offset 
 target/release/rxd dex xref /path/to/app.apk -f Authorization --kind string
 target/release/rxd dex xref /path/to/app.apk -f Gson --kind type
 target/release/rxd dex xref /path/to/app.apk -f onCreate --kind method --class com.example.Main
-target/release/rxd dex xref /path/to/app.apk -f INSTANCE --kind field --class example
+target/release/rxd dex xref /path/to/app.apk -f INSTANCE --kind field --class com.example.Config
 # An identity, exactly: every call site of one overload.
 target/release/rxd dex xref /path/to/app.apk --at 'Lcom/example/Main;->onCreate(Landroid/os/Bundle;)V'
 # A literal, exactly (the one anchor `--kind` has to name).

@@ -6,7 +6,7 @@ fn closure_input() -> PathBuf {
 }
 
 fn type_id(path: &Path, name: &str) -> String {
-    outline(path, &["--type", name])
+    outline(path, &["--class", name])
         .into_iter()
         .find(|row| row["record"] == "type")
         .unwrap()["at"]

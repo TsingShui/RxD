@@ -29,7 +29,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 
 | Command | Output |
 | --- | --- |
-| `jar classes|methods|fields INPUT [--class CLASS] [--method NAME] [-o FILE]` | header/match/summary JSONL, one object kind per command, `detail.analysis: metadata` |
+| `jar classes [--class CLASS]`, `jar methods|fields [--class CLASS] [--name NAME] [-o FILE]` | header/match/summary JSONL, one object kind per command, `detail.analysis: metadata` |
 | `jar get-method INPUT --at METHOD_ID [-o FILE]` | Decompiled Java declaration for one method |
 | `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT --at CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
@@ -38,7 +38,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | `jar get-class INPUT --at COORD \| --from JSONL` | One class as Java, same selector |
 | `jar xref INPUT --at COORD` | header/reference/summary JSONL; the coordinate is an exact identity (`Lx/y;`, `Lx/y;->name(proto)`, `Lx/y;->name:type`); `context_at` is the caller, `detail.target` the matched coordinate, `detail.byte_offset`/`detail.mnemonic` the reference site |
 | `jar xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type` record, with the stream's content identity checked against this archive |
-| `jar xref INPUT -f PATTERN --kind KIND` | the same rows for a case-sensitive substring search over the target's value, name or type, with `--class` over a member's owner; `--kind` is required |
+| `jar xref INPUT -f PATTERN --kind KIND` | the same rows for a substring search over the target's value, name or type, with `--class` narrowing to one exact owner class; `--kind` is required |
 
 `classes`/`methods`/`fields` filter exactly by internal name, dotted name or descriptor,
 and methods exactly by name while retaining all overloads; a method filter omits field
@@ -104,7 +104,7 @@ the raw `utf16` code units to avoid lossy conversion.
 
 `xref` scans method instructions in every class and distinguishes four kinds:
 string/type use case-sensitive substring matching on literals/type names; method/field
-match exact member names, with optional owner-class substring via `--class`. Each hit
+match exact member names, with an optional exact owner class via `--class`. Each hit
 includes owner class, method, byte_offset, mnemonic and target and can be routed to
 `get-method`/`get-class`. As an index query, `xref` follows the ordinary 150 ms
 requirement; it is not aggregate decompilation.

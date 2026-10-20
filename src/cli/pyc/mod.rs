@@ -76,6 +76,7 @@ pub enum Command {
         filter: Option<String>,
         #[command(flatten)]
         case: CaseArgs,
+        /// Exact code name; not a substring.
         #[arg(long, conflicts_with = "index")]
         name: Option<String>,
         #[arg(long)]

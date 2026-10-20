@@ -82,7 +82,7 @@ and bad targets are never silently skipped.
 
 ```sh
 "$RXD" js entities "$DEMO/main.cjs" -o "$DEMO/entities.jsonl"
-"$RXD" js find "$DEMO/main.cjs" --string '/api/login' -o "$DEMO/find.jsonl"
+"$RXD" js find "$DEMO/main.cjs" -f '/api/login' -o "$DEMO/find.jsonl"
 AT=$(jq -r 'select(.record == "match" and (.parent_at | contains("arrow_function:"))) | .parent_at' "$DEMO/find.jsonl" | head -n 1)
 "$RXD" js slice "$DEMO/main.cjs" --at "$AT" -o "$DEMO/function.js"
 "$RXD" js symbols "$DEMO/main.cjs" -o "$DEMO/symbols.jsonl"

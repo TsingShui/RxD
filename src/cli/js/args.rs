@@ -115,14 +115,17 @@ pub(crate) enum Command {
         #[command(flatten)]
         outline: Outline,
     },
-    /// Find case-sensitive substrings in decoded JS literals (JSONL).
+    /// Find substrings in decoded JS literals (JSONL).
     Find {
         #[command(flatten)]
         common: Common,
         #[command(flatten)]
         scan: Scan,
-        #[arg(long)]
-        string: String,
+        /// Substring of a decoded literal value; folded unless `--case sensitive`.
+        #[arg(short, long)]
+        filter: String,
+        #[command(flatten)]
+        case: CaseArgs,
         /// Also match values proven by bounded, side-effect-free AST evaluation.
         #[arg(long)]
         resolve_static: bool,
@@ -133,6 +136,7 @@ pub(crate) enum Command {
     Identifiers {
         #[command(flatten)]
         common: Common,
+        /// Exact identifier spelling to resolve; not a substring.
         #[arg(long)]
         name: String,
         #[arg(long, value_enum, default_value = "all")]
@@ -147,6 +151,7 @@ pub(crate) enum Command {
     Calls {
         #[command(flatten)]
         common: Common,
+        /// Exact identifier spelling to resolve; not a substring.
         #[arg(long)]
         name: String,
         /// Restrict call sites to this structure and its descendants.
@@ -159,6 +164,7 @@ pub(crate) enum Command {
     Members {
         #[command(flatten)]
         common: Common,
+        /// Exact identifier spelling to resolve; not a substring.
         #[arg(long)]
         name: String,
         /// Restrict occurrences to this structure and its descendants.
@@ -253,11 +259,13 @@ impl Command {
                 contains_case_sensitive: outline.case.sensitive(),
             },
             Self::Find {
-                string,
+                filter,
+                case,
                 resolve_static,
                 ..
             } => Query::Find {
-                string,
+                filter,
+                case_sensitive: case.sensitive(),
                 resolve_static,
             },
             Self::Identifiers {

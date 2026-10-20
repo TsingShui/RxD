@@ -102,13 +102,11 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
         limits,
     };
     // Validate even when discovery yields no files.
-    if matches!(&query, Query::Find { string, .. } if string.is_empty())
-        || matches!(&query, Query::Identifiers { name, .. } if name.is_empty())
-    {
-        return Err(Error::new(
-            "INVALID_QUERY",
-            "search string must not be empty",
-        ));
+    if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
+        return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
+    }
+    if matches!(&query, Query::Identifiers { name, .. } if name.is_empty()) {
+        return Err(Error::new("INVALID_QUERY", "name must not be empty"));
     }
     if matches!(
         &query,

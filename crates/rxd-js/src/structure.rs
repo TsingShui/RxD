@@ -123,6 +123,7 @@ pub struct Collector<'s> {
     source: &'s Source,
     limits: Limits,
     query: Option<Vec<u16>>,
+    query_case_sensitive: bool,
     pub entities: Vec<EntityNode>,
     pub matches: Vec<Match>,
     pub contexts: Option<Contexts>,
@@ -143,13 +144,22 @@ impl<'s> Collector<'s> {
         source: &'s Source,
         limits: Limits,
         query: Option<&str>,
+        query_case_sensitive: bool,
         contexts: Option<Contexts>,
         resolve_static: bool,
     ) -> Self {
         Self {
             source,
             limits,
-            query: query.map(|q| q.encode_utf16().collect()),
+            // Fold the needle once; the per-literal test only folds the haystack.
+            query: query.map(|q| {
+                if query_case_sensitive {
+                    q.encode_utf16().collect()
+                } else {
+                    q.to_lowercase().encode_utf16().collect()
+                }
+            }),
+            query_case_sensitive,
             entities: Vec::new(),
             matches: Vec::new(),
             contexts,
@@ -247,11 +257,9 @@ impl<'s> Collector<'s> {
         dynamic: bool,
         resolution: Option<&'static str>,
     ) {
-        if !self
-            .query
-            .as_ref()
-            .is_some_and(|query| value.contains(query))
-        {
+        if !self.query.as_ref().is_some_and(|query| {
+            value.contains_prepared(query.as_slice(), self.query_case_sensitive)
+        }) {
             return;
         }
         if self.matches.len() >= self.limits.records {

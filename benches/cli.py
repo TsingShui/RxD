@@ -221,7 +221,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         return [str(binary), "js", name, str(path), *args, *extra, *(["--perf"] if perf else [])]
 
     # Untimed setup obtains and validates real IDs. It explicitly primes the file cache.
-    _, payload = checked(command("find", ["--string", needle]), options.timeout)
+    _, payload = checked(command("find", ["-f", needle]), options.timeout)
     found = jsonl(payload, manifest["source_id"])
     matches = [r for r in found if r.get("record") == "match"]
     if not matches:
@@ -256,7 +256,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
                     setup_queries_prime_file_cache=True)
     cases = [
         ("entities", command("entities")),
-        ("find", command("find", ["--string", needle])),
+        ("find", command("find", ["-f", needle])),
         ("locate", command("locate", ["--byte", str(locate_byte)])),
         ("get", command("slice", ["--at", entity_id])),
         ("symbols", command("symbols")),
@@ -364,7 +364,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
                     raise CommandFailure(args, sample)
                 return sample, output
             started = time.perf_counter_ns()
-            first, found_payload = checked(command("find", ["--string", needle], profiled), options.timeout)
+            first, found_payload = checked(command("find", ["-f", needle], profiled), options.timeout)
             records = jsonl(found_payload, manifest["source_id"])
             selected = next(r["context_at" if name == "find_context_get" else "parent_at"]
                             for r in records if r.get("record") == "match")

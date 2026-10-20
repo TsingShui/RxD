@@ -37,10 +37,6 @@ impl JsString {
         Self(units)
     }
 
-    pub fn contains(&self, query: &[u16]) -> bool {
-        self.0.windows(query.len()).any(|window| window == query)
-    }
-
     pub fn equals_str(&self, other: &str) -> bool {
         self.0.iter().copied().eq(other.encode_utf16())
     }
@@ -52,14 +48,17 @@ impl JsString {
         } else {
             needle.to_lowercase().encode_utf16().collect()
         };
+        self.contains_prepared(needle.as_slice(), case_sensitive)
+    }
+
+    /// The same filter over a needle that is already UTF-16, so a per-literal check never
+    /// re-encodes the pattern.
+    pub fn contains_prepared(&self, needle: &[u16], case_sensitive: bool) -> bool {
         if needle.is_empty() {
             return true;
         }
         if case_sensitive {
-            return self
-                .0
-                .windows(needle.len())
-                .any(|window| window == needle.as_slice());
+            return self.0.windows(needle.len()).any(|window| window == needle);
         }
         let haystack: Vec<u16> = self
             .0
@@ -72,7 +71,7 @@ impl JsString {
             .collect();
         haystack
             .windows(needle.len())
-            .any(|window| window == needle.as_slice())
+            .any(|window| window == needle)
     }
 }
 

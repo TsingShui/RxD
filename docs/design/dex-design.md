@@ -21,10 +21,10 @@ preserved; argument positions and exit-code semantics are.
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
 | `xref INPUT --at COORD` | References to one identity, matched exactly: `Lx/y;` a type, `Lx/y;->name(proto)` a method, `Lx/y;->name:type` a field, and, with `--kind string`, a literal. `--kind` is inferred from the coordinate and must agree with it. `context_at` is the referring member, `detail.target` the matched coordinate, `detail.entry` the DEX it lives in. One row is one (caller, target) pair, so `detail.target` is always a single coordinate. |
 | `xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type`/`string` record. The stream header's `input_bytes` is checked against this archive: that catches a stream from another file, but it is a mismatch guard, not a content identity. |
-| `xref INPUT -f PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` over a member's owner; both are substrings (dots are separators) folded unless `--case sensitive`. `--kind` is required because a content search cannot say what kind it looks for. Rows keep the one-target-per-row shape, so a caller that matches several targets is reported once per target. |
+| `xref INPUT -f PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` narrows to one exact owner class (descriptor, dotted or slashed form; never a pattern). `--kind` is required because a content search cannot say what kind it looks for. Rows keep the one-target-per-row shape, so a caller that matches several targets is reported once per target. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
-| `classes INPUT` | Class descriptors; `-f/--filter` is a substring over the dotted name, folded unless `--case sensitive`. |
-| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`. |
+| `classes INPUT` | Class descriptors; `--class` selects one exact class, `-f/--filter` is a substring over the dotted name, folded unless `--case sensitive`. |
+| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `--name` (exact), `-f/--filter`. |
 
 `get-class` and `get-method` select by `--at` (the coordinate a `classes`/`methods` row
 prints) or `--from JSONL`, which reads that coordinate from a previous stream. The stream
@@ -215,14 +215,16 @@ median:
 | `methods --class <one class>` | 1 | tiny | 0.11 s |
 | `xref -f java/lang/String --kind type` | 108,126 | 15 MB | 0.20 s |
 
-`xref` matching was unified to case-sensitive substrings for the member name and for
-`--class` (see above). Measured after that change, same APK, release, five runs, median
-(minimum in parentheses):
+`xref` matches the member name as a substring and `--class` as one exact owner class
+(ADR 0014). These numbers were taken while `--class` still folded into the same substring
+search; an exact owner is strictly narrower than the wide row below, so the shapes it
+covers can only have gotten cheaper. Same APK, release, five runs, median (minimum in
+parentheses):
 
 | command | wall |
 | --- | ---: |
 | `xref -f LIZ --class 'Lkotlinx/coroutines/internal/StackTraceRecoveryKt;' --kind method` | 0.156 s (0.148 s) |
-| `xref -f LIZ --class a/a --kind method` (wide substring) | 0.219 s (0.196 s) |
+| `xref -f LIZ --class a/a --kind method` (wide substring; no longer reachable) | 0.219 s (0.196 s) |
 | `xref -f Toast --kind method` (name only) | 0.206 s (0.185 s) |
 | `xref -f String --kind type` | 0.250 s (0.245 s) |
 | `xref -f Authorization --kind string` | 0.196 s (0.165 s) |
@@ -230,8 +232,8 @@ median:
 
 The class-constrained query stays the cheap shape (0.156 s against 0.206 s for a name-only
 query) because `bounded_by_class` still enables the per-entry prefix pre-check; that
-pre-check resolves the same query against the entry tables, so it remains correct now that
-`--class` is a substring. Wide `xref` shapes were already 0.20 s before this change.
+pre-check resolves the same query against the entry tables, so it stays correct for an
+exact `--class`. Wide `xref` shapes were already 0.20 s before this change.
 
 The fixed cost is inflating the entries: ~115 ms of wall time across 10-12
 threads. Everything above that scales with the bytes a command prints, so

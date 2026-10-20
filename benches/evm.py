@@ -231,12 +231,12 @@ def main():
     jar = ROOT / "tests/corpus/jvm/gson-2.11.0.jar"
     pyc = ROOT / "tests/corpus/pyc/matrix/3.13.2/email-policy.hash-checked.pyc"
     controls = []
-    jrows = rows(invoke([str(binary), "js", "find", str(js), "--string", "Expected a function"])[1].stdout)
+    jrows = rows(invoke([str(binary), "js", "find", str(js), "-f", "Expected a function"])[1].stdout)
     js_id = next(r for r in jrows if r["record"] == "match")["context_at"]
-    controls.extend([("js/find", ["js", "find", str(js), "--string", "Expected a function"]), ("js/slice", ["js", "slice", str(js), "--at", js_id])])
-    jrows = rows(invoke([str(binary), "jar", "outline", str(jar), "--class", "com/google/gson/GsonBuilder", "--method", "serializeNulls"])[1].stdout)
+    controls.extend([("js/find", ["js", "find", str(js), "-f", "Expected a function"]), ("js/slice", ["js", "slice", str(js), "--at", js_id])])
+    jrows = rows(invoke([str(binary), "jar", "methods", str(jar), "--class", "com/google/gson/GsonBuilder", "--name", "serializeNulls"])[1].stdout)
     method_id = next(r for r in jrows if r["record"] == "method")["id"]
-    controls.extend([("jvm/outline", ["jar", "outline", str(jar), "--class", "com/google/gson/GsonBuilder", "--method", "serializeNulls"]), ("jvm/get-method", ["jar", "get-method", str(jar), method_id])])
+    controls.extend([("jvm/outline", ["jar", "methods", str(jar), "--class", "com/google/gson/GsonBuilder", "--name", "serializeNulls"]), ("jvm/get-method", ["jar", "get-method", str(jar), method_id])])
     prows = rows(invoke([str(binary), "pyc", "outline", str(pyc)])[1].stdout)
     small = min((r for r in prows if r["record"] == "code"), key=lambda r: r["detail"]["bytecode_bytes"])
     controls.extend([("pyc/outline", ["pyc", "outline", str(pyc)]), ("pyc/get-code", ["pyc", "get-code", str(pyc), small["id"]])])

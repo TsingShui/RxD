@@ -58,6 +58,9 @@ pub struct FieldsArgs {
     /// Only list fields declared by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
     pub class: Option<String>,
+    /// Exact field name; not a substring.
+    #[arg(long)]
+    pub name: Option<String>,
     ///  substring filter over the field name. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
@@ -78,6 +81,9 @@ pub struct MethodsArgs {
     /// Only list methods defined by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
     pub class: Option<String>,
+    /// Exact method name; not a substring.
+    #[arg(long)]
+    pub name: Option<String>,
     ///  substring filter over the method name. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
@@ -96,6 +102,9 @@ pub struct MethodsArgs {
 pub struct ClassesArgs {
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
+    /// Only this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
+    #[arg(long)]
+    pub class: Option<String>,
     ///  substring filter over Java-style class names. Folded unless `--case sensitive`.
     #[arg(short, long)]
     pub filter: Option<String>,
@@ -301,10 +310,13 @@ fn target_query(target: &Target) -> Result<Query> {
             XrefKind::Method | XrefKind::Field => {
                 let query = MemberQuery {
                     name: Some(Pattern::search(pattern, case)),
+                    // `--class` names one class. A pattern over owners is `classes -f`.
                     class: target
                         .class
                         .as_deref()
-                        .map(|class| Pattern::search(class.replace('.', "/"), case)),
+                        .map(format_class_name)
+                        .transpose()?
+                        .map(Pattern::coordinate),
                     descriptor: None,
                 };
                 Ok(if target.kind == XrefKind::Method {

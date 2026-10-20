@@ -807,7 +807,8 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
             && v["detail"]["target"].as_str().unwrap().contains("toJson")
     }));
 
-    // Owner-class substring filter narrows method hits to the matching owner.
+    // Owner narrowing names one exact class (ADR 0014): the full name matches, a
+    // fragment of it is not a pattern and selects nothing.
     let filtered = jvm_jsonl(&run(
         &[
             "xref",
@@ -816,7 +817,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
             "--kind",
             "method",
             "--class",
-            "StringBuilder",
+            "java/lang/StringBuilder",
         ],
         &gson,
     ));
@@ -831,6 +832,22 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
             .unwrap()
             .contains("Ljava/lang/StringBuilder;->append")
     }));
+    let fragment = jvm_jsonl(&run(
+        &[
+            "xref",
+            "-f",
+            "append",
+            "--kind",
+            "method",
+            "--class",
+            "StringBuilder",
+        ],
+        &gson,
+    ));
+    assert!(
+        !fragment.iter().any(|v| v["record"] == "reference"),
+        "--class must not behave like a substring filter"
+    );
 
     // Type reference by substring.
     let types = jvm_jsonl(&run(&["xref", "-f", "JsonReader", "--kind", "type"], &gson));

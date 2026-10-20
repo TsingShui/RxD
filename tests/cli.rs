@@ -782,7 +782,7 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
             "Hello &lt; 世界 &#x1F600; &unknown;",
         ),
     ] {
-        let rows = jsonl(&invoke("find", &path, &["--string", query]));
+        let rows = jsonl(&invoke("find", &path, &["-f", query]));
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[1]["detail"]["literal_kind"], kind);
         assert_eq!(rows[1]["detail"]["value"], value);
@@ -1002,7 +1002,7 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
         assert_eq!(output["detail"]["syntax"], "ts");
         assert_eq!(output["detail"]["declaration_file"], true);
     }
-    let found = jsonl(&invoke("find", &path, &["--string", "/api/login"]));
+    let found = jsonl(&invoke("find", &path, &["-f", "/api/login"]));
     assert_eq!(found[1]["detail"]["literal_kind"], "type_string");
     let output = invoke(
         "slice",
@@ -1028,7 +1028,7 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     fs::write(&path, format!("{source}\n// changed")).unwrap();
     failure(invoke("slice", &path, &["--at", &id]), 1, "SOURCE_MISMATCH");
     let (_tmp, path) = fixture("type Route=`/api/${'login'|'logout'}`;", "template.ts");
-    let rows = jsonl(&invoke("find", &path, &["--string", "/api/"]));
+    let rows = jsonl(&invoke("find", &path, &["-f", "/api/"]));
     assert_eq!(rows[1]["detail"]["literal_kind"], "type_template");
     assert_eq!(rows[1]["detail"]["dynamic"], true);
 }
@@ -1110,7 +1110,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
         let found = jsonl(&invoke(
             "find",
             &path,
-            &["--string", case["needle"].as_str().unwrap()],
+            &["-f", case["needle"].as_str().unwrap()],
         ));
         let actual:Vec<_>=found[1..found.len()-1].iter().map(|m|serde_json::json!({"literal_kind":m["detail"]["literal_kind"],"value":m["detail"]["value"],"start":m["start"],"end":m["end"],"dynamic":m["detail"]["dynamic"],"entity":entity_reference(by_id[m["parent_at"].as_str().unwrap()])})).collect();
         assert_eq!(
@@ -1214,7 +1214,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         ("/api/field", "endpoint='/api/field';", "class_field"),
         ("/api/write", "endpoint:'/api/write'", "object_property"),
     ] {
-        let rows = jsonl(&invoke("find", &path, &["--string", needle]));
+        let rows = jsonl(&invoke("find", &path, &["-f", needle]));
         let found = &rows[1];
         let id = found["context_at"].as_str().unwrap();
         let raw = invoke("slice", &path, &["--at", id]);
@@ -1363,7 +1363,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
         ("'/api/directive';", "/api/directive", None),
     ] {
         let (_dir, path) = fixture(source, "syntax.js");
-        let rows = jsonl(&invoke("find", &path, &["--string", needle]));
+        let rows = jsonl(&invoke("find", &path, &["-f", needle]));
         let found = &rows[1];
         assert_eq!(
             found["context_at"].is_null(),
@@ -1416,7 +1416,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
 fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let source = "const obj={endpoint:'/api/check'}; function later(){}";
     let (dir, path) = fixture(source, "check.js");
-    let found = jsonl(&invoke("find", &path, &["--string", "/api/check"]));
+    let found = jsonl(&invoke("find", &path, &["-f", "/api/check"]));
     let id = found[1]["context_at"].as_str().unwrap();
     let fingerprint = found[0]["source_id"].as_str().unwrap();
     let full_id = format!("rxd1:js:{fingerprint}:{id}");
@@ -1457,7 +1457,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
     }
     for (command, args) in [
-        ("find", vec!["--string", "/api/check"]),
+        ("find", vec!["-f", "/api/check"]),
         ("locate", vec!["--byte", "21"]),
         ("slice", vec!["--at", id]),
     ] {
@@ -1493,12 +1493,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         invoke(
             "find",
             dir.path(),
-            &[
-                "--string",
-                "/api/check",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
+            &["-f", "/api/check", "-o", destination.to_str().unwrap()],
         ),
         1,
         "INVALID_INPUT",
@@ -1542,7 +1537,7 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
         let found = jsonl(&invoke(
             "find",
             &path,
-            &["--string", input["needle"].as_str().unwrap()],
+            &["-f", input["needle"].as_str().unwrap()],
         ));
         let refs = jsonl(&invoke(
             "xref",
@@ -2603,7 +2598,7 @@ fn recursive_queries_preserve_sorted_per_file_streams_and_content_ids() {
     fs::copy(corpus.join("application-rc4.js"), &b).unwrap();
     // Invalid non-JS inputs must not be parsed.
     fs::write(dir.path().join("ignored.txt"), b"not JavaScript {{{").unwrap();
-    for (command, args) in [("entities", vec![]), ("find", vec!["--string", "/api"])] {
+    for (command, args) in [("entities", vec![]), ("find", vec!["-f", "/api"])] {
         let mut expected = Vec::new();
         let mut count = 0;
         for path in [&a, &b] {
@@ -2678,7 +2673,7 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
         fs::metadata(&module).unwrap().len() + fs::metadata(&script).unwrap().len()
     );
     assert_eq!(analysis["counters"]["output_bytes"], output.stdout.len());
-    let found = invoke("find", dir.path(), &["--string", "你好"]);
+    let found = invoke("find", dir.path(), &["-f", "你好"]);
     success(&found);
     let rows: Vec<Value> = String::from_utf8(found.stdout)
         .unwrap()
@@ -2703,7 +2698,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
     for command in ["entities", "find"] {
         let mut args = vec![];
         if command == "find" {
-            args.extend(["--string", "absent"]);
+            args.extend(["-f", "absent"]);
         }
         let output = invoke(command, dir.path(), &args);
         success(&output);
@@ -2713,11 +2708,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         assert_eq!(summary["records"], 0);
         assert_eq!(summary["complete"], true);
     }
-    failure(
-        invoke("find", dir.path(), &["--string", ""]),
-        2,
-        "INVALID_QUERY",
-    );
+    failure(invoke("find", dir.path(), &["-f", ""]), 2, "INVALID_QUERY");
     let file = dir.path().join("input.txt");
     fs::write(&file, "const x = 1").unwrap();
     let single = outline_rows(&file, &[]);
@@ -2778,7 +2769,7 @@ fn recursive_budgets_and_late_errors_leave_output_untouched() {
         ("entities", "--max-input-bytes"),
     ] {
         let args: Vec<&str> = match command {
-            "find" => vec!["--string", "needle", flag, "1"],
+            "find" => vec!["-f", "needle", flag, "1"],
             _ => vec![flag, "1"],
         };
         refused(invoke(command, dir.path(), &args));
@@ -2835,18 +2826,10 @@ fn recursive_scans_are_deterministic_across_worker_counts() {
             "{threads} workers changed the stream"
         );
     }
-    let find_single = invoke(
-        "find",
-        dir.path(),
-        &["--string", "needle", "--threads", "1"],
-    );
+    let find_single = invoke("find", dir.path(), &["-f", "needle", "--threads", "1"]);
     success(&find_single);
     for threads in ["2", "16"] {
-        let parallel = invoke(
-            "find",
-            dir.path(),
-            &["--string", "needle", "--threads", threads],
-        );
+        let parallel = invoke("find", dir.path(), &["-f", "needle", "--threads", threads]);
         success(&parallel);
         assert_eq!(
             parallel.stdout, find_single.stdout,
@@ -2901,8 +2884,8 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
             .unwrap()
             .success()
     );
-    let output = invoke("find", dir.path(), &["--string", "needle"]);
-    let explicit = invoke("find", dir.path(), &["--recursive", "--string", "needle"]);
+    let output = invoke("find", dir.path(), &["-f", "needle"]);
+    let explicit = invoke("find", dir.path(), &["--recursive", "-f", "needle"]);
     success(&explicit);
     assert_eq!(explicit.stdout, output.stdout);
     success(&output);
@@ -2929,11 +2912,7 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
 #[test]
 fn search_then_extract_and_locate_complete_function() {
     let path = example();
-    let found = jsonl(&invoke(
-        "find",
-        &path,
-        &["--string", "/api/login", "--jsonl"],
-    ));
+    let found = jsonl(&invoke("find", &path, &["-f", "/api/login", "--jsonl"]));
     assert_eq!(found.len(), 4);
     assert_eq!(found[1]["parent_at"], found[0]["detail"]["root_id"]);
     let id = found[2]["parent_at"].as_str().unwrap();
@@ -3076,7 +3055,7 @@ fn get_json_preserves_original_source_for_functions_arrows_classes_and_members()
 fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     let source = "\u{feff}// 中文\r\nfunction 登录(){return \"你好😀\";}\r\n";
     let (_dir, path) = fixture(source, "bundle.js");
-    let found = jsonl(&invoke("find", &path, &["--string", "你好😀"]));
+    let found = jsonl(&invoke("find", &path, &["-f", "你好😀"]));
     let id = found[1]["parent_at"].as_str().unwrap();
     let get = invoke("slice", &path, &["--at", id]);
     success(&get);
@@ -3282,13 +3261,13 @@ fn static_resolution_matches_closed_ast_expressions_without_executing_bindings()
     let source = r#"const a='set'+'Interval'; const b=`flag_${'correct'}`; const c=String.fromCharCode(115,101,116)+'Timeout'; const d=['window','document'][0]; const e='abc'.slice(1); const f=unknown+'unsafe'; const g=String.fromCodePoint(67,68); const h='abc'.toUpperCase(); const i=first(1)+'_joined'+second(2); const j=plain.toUpperCase();"#;
     let (_dir, path) = fixture(source, "static.js");
 
-    let plain = jsonl(&invoke("find", &path, &["--string", "setInterval"]));
+    let plain = jsonl(&invoke("find", &path, &["-f", "setInterval"]));
     assert_eq!(plain.last().unwrap()["records"], 0);
 
     let resolved = jsonl(&invoke(
         "find",
         &path,
-        &["--string", "setInterval", "--resolve-static"],
+        &["-f", "setInterval", "--resolve-static"],
     ));
     assert_eq!(resolved.len(), 3);
     assert_eq!(resolved[1]["detail"]["value"], "setInterval");
@@ -3300,19 +3279,19 @@ fn static_resolution_matches_closed_ast_expressions_without_executing_bindings()
     let flag = jsonl(&invoke(
         "find",
         &path,
-        &["--string", "flag_correct", "--resolve-static"],
+        &["-f", "flag_correct", "--resolve-static"],
     ));
     assert_eq!(flag[1]["detail"]["value"], "flag_correct");
     let timeout = jsonl(&invoke(
         "find",
         &path,
-        &["--string", "setTimeout", "--resolve-static"],
+        &["-f", "setTimeout", "--resolve-static"],
     ));
     assert_eq!(timeout[1]["detail"]["value"], "setTimeout");
     let array = jsonl(&invoke(
         "find",
         &path,
-        &["--string", "window", "--resolve-static"],
+        &["-f", "window", "--resolve-static"],
     ));
     assert!(
         array[1..array.len() - 1]
@@ -3322,40 +3301,28 @@ fn static_resolution_matches_closed_ast_expressions_without_executing_bindings()
     let unsafe_result = jsonl(&invoke(
         "find",
         &path,
-        &["--string", "unsafe", "--resolve-static"],
+        &["-f", "unsafe", "--resolve-static"],
     ));
     assert_eq!(unsafe_result[1]["detail"]["literal_kind"], "string");
 
     // The skip guards must keep every foldable form and reject unfoldable operands,
     // including a minified-style `+` chain whose spine ends in an opaque call.
-    let codepoint = jsonl(&invoke(
-        "find",
-        &path,
-        &["--string", "CD", "--resolve-static"],
-    ));
+    let codepoint = jsonl(&invoke("find", &path, &["-f", "CD", "--resolve-static"]));
     assert_eq!(codepoint.len(), 3);
     assert_eq!(codepoint[1]["detail"]["literal_kind"], "static_expression");
     assert_eq!(codepoint[1]["detail"]["value"], "CD");
-    let method = jsonl(&invoke(
-        "find",
-        &path,
-        &["--string", "ABC", "--resolve-static"],
-    ));
+    let method = jsonl(&invoke("find", &path, &["-f", "ABC", "--resolve-static"]));
     assert_eq!(method.len(), 3);
     assert_eq!(method[1]["detail"]["literal_kind"], "static_expression");
     assert_eq!(method[1]["detail"]["value"], "ABC");
     let chain = jsonl(&invoke(
         "find",
         &path,
-        &["--string", "_joined", "--resolve-static"],
+        &["-f", "_joined", "--resolve-static"],
     ));
     assert_eq!(chain.len(), 3);
     assert_eq!(chain[1]["detail"]["literal_kind"], "string");
-    let receiver = jsonl(&invoke(
-        "find",
-        &path,
-        &["--string", "PLAIN", "--resolve-static"],
-    ));
+    let receiver = jsonl(&invoke("find", &path, &["-f", "PLAIN", "--resolve-static"]));
     assert_eq!(receiver.len(), 2);
 }
 
@@ -3364,23 +3331,20 @@ fn escaped_literals_and_templates_use_decoded_values_without_crossing_interpolat
     let source =
         r#"function f(){return ["\x2fapi\u002flogin", `/api/${user}/login`, `/api/login`]}"#;
     let (_dir, path) = fixture(source, "bundle.js");
-    let found = jsonl(&invoke("find", &path, &["--string", "/api/login"]));
+    let found = jsonl(&invoke("find", &path, &["-f", "/api/login"]));
     assert_eq!(found.len(), 4);
     assert_eq!(found[1]["detail"]["value"], "/api/login");
     assert_eq!(found[2]["detail"]["dynamic"], false);
-    let parts = jsonl(&invoke("find", &path, &["--string", "/api/"]));
+    let parts = jsonl(&invoke("find", &path, &["-f", "/api/"]));
     assert_eq!(parts.len(), 5);
     assert_eq!(parts[2]["detail"]["dynamic"], true);
-    assert_eq!(
-        jsonl(&invoke("find", &path, &["--string", "/API/"])).len(),
-        2
-    );
+    assert_eq!(jsonl(&invoke("find", &path, &["-f", "/API/"])).len(), 2);
 }
 
 #[test]
 fn lone_surrogates_are_preserved_and_do_not_match_replacement_characters() {
     let (_dir, path) = fixture(r#"const x = "prefix\uD800\uFFFDsuffix";"#, "bundle.js");
-    let output = invoke("find", &path, &["--string", "prefix"]);
+    let output = invoke("find", &path, &["-f", "prefix"]);
     success(&output);
     let text = String::from_utf8(output.stdout).unwrap();
     let lines: Vec<_> = text.lines().collect();
@@ -3395,11 +3359,8 @@ fn lone_surrogates_are_preserved_and_do_not_match_replacement_characters() {
     assert_eq!(summary["records"], 1);
     assert_eq!(summary["complete"], true);
     // A genuine replacement character remains independently searchable.
-    assert_eq!(
-        jsonl(&invoke("find", &path, &["--string", "prefix�"])).len(),
-        2
-    );
-    let found = invoke("find", &path, &["--string", "�suffix"]);
+    assert_eq!(jsonl(&invoke("find", &path, &["-f", "prefix�"])).len(), 2);
+    let found = invoke("find", &path, &["-f", "�suffix"]);
     success(&found);
     assert!(
         String::from_utf8(found.stdout)
@@ -3444,7 +3405,7 @@ fn computed_members_private_names_and_context_labels_are_explicit() {
             .count(),
         2
     );
-    let found = jsonl(&invoke("find", &path, &["--string", "needle"]));
+    let found = jsonl(&invoke("find", &path, &["-f", "needle"]));
     assert_eq!(found.len(), 4);
     assert_eq!(found[2]["detail"]["literal_kind"], "property_key");
 }
@@ -3533,10 +3494,7 @@ fn empty_files_zero_matches_and_invalid_offsets_have_distinct_results() {
     assert_eq!(records.len(), 3);
     assert_eq!(records[1]["start"], 0);
     assert_eq!(records[1]["end"], 0);
-    assert_eq!(
-        jsonl(&invoke("find", &path, &["--string", "absent"])).len(),
-        2
-    );
+    assert_eq!(jsonl(&invoke("find", &path, &["-f", "absent"])).len(), 2);
     failure(
         invoke("locate", &path, &["--byte", "0"]),
         1,
@@ -3558,11 +3516,7 @@ fn empty_files_zero_matches_and_invalid_offsets_have_distinct_results() {
 
 #[test]
 fn cli_argument_errors_exit_with_two() {
-    failure(
-        invoke("find", &example(), &["--string", ""]),
-        2,
-        "INVALID_QUERY",
-    );
+    failure(invoke("find", &example(), &["-f", ""]), 2, "INVALID_QUERY");
     for args in [
         &["--max-input-bytes", "0"][..],
         &["--source-type", "typescript"][..],
@@ -3611,7 +3565,7 @@ fn budgets_reject_results_without_partial_output() {
     refused(invoke(
         "find",
         &example(),
-        &["--string", "guest", "--max-records", "1"],
+        &["-f", "guest", "--max-records", "1"],
     ));
 }
 
@@ -3710,11 +3664,8 @@ fn tagged_templates_and_surrogates_do_not_invent_decoded_matches() {
         r#"const x=tag`\unicode`; const y=`prefix\ud800suffix`; const z='prefix';"#,
         "bundle.js",
     );
-    assert_eq!(
-        jsonl(&invoke("find", &path, &["--string", "unicode"])).len(),
-        2
-    );
-    let output = invoke("find", &path, &["--string", "prefix"]);
+    assert_eq!(jsonl(&invoke("find", &path, &["-f", "unicode"])).len(), 2);
+    let output = invoke("find", &path, &["-f", "prefix"]);
     success(&output);
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(text.contains("\\ud800"));
@@ -3771,7 +3722,7 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
         .unwrap();
     for (command, arguments) in [
         ("entities", vec![]),
-        ("find", vec!["--string", "/api/login"]),
+        ("find", vec!["-f", "/api/login"]),
         ("locate", vec!["--byte", "100"]),
         ("slice", vec!["--at", id]),
         ("slice", vec!["--at", id, "--json"]),
@@ -4168,7 +4119,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
         let found = jsonl(&invoke(
             "find",
             &path,
-            &["--string", case["needle"].as_str().unwrap()],
+            &["-f", case["needle"].as_str().unwrap()],
         ));
         let actual_matches: Vec<_> = found[1..found.len() - 1].iter().map(|m| serde_json::json!({
             "literal_kind": m["detail"]["literal_kind"], "value": m["detail"]["value"], "start": m["start"], "end": m["end"],
@@ -4617,7 +4568,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         b"function run(value){return \xe5\x90\x8d\xe7\xa7\xb0+value;}"
     );
     assert_eq!(
-        jsonl(&invoke("find", &destination, &["--string", "你好"]))
+        jsonl(&invoke("find", &destination, &["-f", "你好"]))
             .last()
             .unwrap()["records"],
         1

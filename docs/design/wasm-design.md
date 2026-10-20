@@ -36,7 +36,7 @@ DWARF, source maps and `producers` provenance are not reconstructed.
 
 ```sh
 rxd wasm types module.wasm -f i32
-rxd wasm functions module.wasm --func-name run
+rxd wasm functions module.wasm --name run
 rxd wasm get-function module.wasm --at func:42
 rxd wasm strings module.wasm -f 'example'
 rxd wasm xref module.wasm --func 42
@@ -53,7 +53,7 @@ value the row is named by: the name-section label for `functions` and `globals`,
 the rendered signature for `types`, `module.name` for `imports`, the export name
 for `exports`, the decoded literal for `strings`, and otherwise the row's own `at`
 coordinate. Platform exact selectors sit next to it: `functions --func N` selects
-one combined function index and `functions --func-name NAME` matches the name
+one combined function index and `functions --name NAME` matches the name
 section exactly (duplicates preserved).
 
 - `get-function --at COORD | --from JSONL` takes the `at` a `functions` row prints (`func:42`). A short

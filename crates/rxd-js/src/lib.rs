@@ -73,7 +73,8 @@ pub enum Query {
         contains_case_sensitive: bool,
     },
     Find {
-        string: String,
+        filter: String,
+        case_sensitive: bool,
         resolve_static: bool,
     },
     Identifiers {
@@ -275,13 +276,10 @@ pub fn run(
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
-    if let Query::Find { string, .. } = &query
-        && string.is_empty()
+    if let Query::Find { filter, .. } = &query
+        && filter.is_empty()
     {
-        return Err(Error::new(
-            "INVALID_QUERY",
-            "search string must not be empty",
-        ));
+        return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
     }
     let source = Source::read(path, limits, perf)?;
     run_source(source, mode, syntax, query, limits, perf)
@@ -296,13 +294,11 @@ pub fn run_source(
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
-    if matches!(&query, Query::Find { string, .. } if string.is_empty())
-        || matches!(&query, Query::Identifiers { name, .. } if name.is_empty())
-    {
-        return Err(Error::new(
-            "INVALID_QUERY",
-            "search string must not be empty",
-        ));
+    if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
+        return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
+    }
+    if matches!(&query, Query::Identifiers { name, .. } if name.is_empty()) {
+        return Err(Error::new("INVALID_QUERY", "name must not be empty"));
     }
     let parse_start = perf.start_stage();
     let source_type = syntax::select(Path::new(&source.path), mode, syntax);
@@ -326,10 +322,17 @@ pub fn run_source(
         return Err(Error::new("INVALID_INPUT", message));
     }
     let visit_start = perf.start_stage();
-    let query_string = if let Query::Find { string, .. } = &query {
-        Some(string.clone())
-    } else {
-        None
+    let query_string = match &query {
+        Query::Find {
+            filter,
+            case_sensitive,
+            ..
+        } => Some((filter.clone(), *case_sensitive)),
+        _ => None,
+    };
+    let (query_text, query_case_sensitive) = match &query_string {
+        Some((text, case)) => (Some(text.as_str()), *case),
+        None => (None, false),
     };
     // Echo the caller's spelling: a short coordinate stays short in `query` even though the
     // library expands it for lookup.
@@ -346,9 +349,12 @@ pub fn run_source(
             json!({"group":group,"within":within,"depth":depth,"kind":kind,"name":name,"contains":contains,"case":if *contains_case_sensitive {"sensitive"} else {"insensitive"}})
         }
         Query::Find {
-            string,
+            filter,
+            case_sensitive,
             resolve_static,
-        } => json!({"string":string,"resolve_static":resolve_static}),
+        } => {
+            json!({"filter":filter,"case":if *case_sensitive {"sensitive"} else {"insensitive"},"resolve_static":resolve_static})
+        }
         Query::Identifiers { name, role, within } => json!({
             "name": name,
             "within": within,
@@ -446,7 +452,8 @@ pub fn run_source(
     let mut collector = Collector::new(
         &source,
         limits,
-        query_string.as_deref(),
+        query_text,
+        query_case_sensitive,
         contexts,
         resolve_static,
     );
