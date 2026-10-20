@@ -1378,7 +1378,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
         .collect();
     let method = rows
         .iter()
-        .find(|row| row["record"] == "method" && row["detail"]["token"] == 0x06000001u32)
+        .find(|row| row["record"] == "method" && row["at"] == "0x06000001")
         .unwrap()["at"]
         .as_str()
         .unwrap();

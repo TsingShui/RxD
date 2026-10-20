@@ -100,7 +100,7 @@ guaranteed to compile); this is frozen DAD behavior and is not fixed here.
 `strings` lists only `CONSTANT_String` literals in the constant pool, not class names,
 member names, descriptors or other Utf8 entries. `index` is the local pool index (JVM
 has no global string table). `value` is decoded text; unpaired surrogates also retain
-the raw `utf16` code units to avoid lossy conversion.
+the raw `utf16_units` arrays to avoid lossy conversion.
 
 `xref` scans method instructions in every class and distinguishes four kinds:
 string/type use case-sensitive substring matching on literals/type names; method/field
@@ -141,7 +141,7 @@ Fixed detail fields:
 | class | `access_flags, super, interfaces, major, minor, signature, source_file, fields, methods` (`at` is `Lclass;`) |
 | field | `signature, constant_index` (`at` is `Lclass;->name:type`; modifiers come from `get-class`) |
 | method | `proto, signature, exceptions, has_code` (`at` is `Lclass;->name(proto)`; modifiers come from `get-class`/`get-method`) |
-| string | `class, index, value, utf16` (`index` = constant-pool index) |
+| string | `class, index, value, utf16_units` (`index` = constant-pool index) |
 | reference | `byte_offset, mnemonic, target` (`context_at` is the caller coordinate) |
 | bytecode | `representation, entry, class, name, descriptor, max_stack, max_locals, handlers, instructions, complete` |
 
@@ -151,7 +151,7 @@ modifiers (`public abstract class`, `private static final` field, `public static
 method) and `get-method --at` renders one member, so a per-row copy would be the same fact
 twice. Class rows keep it because the listing is the only place that states whether a class
 is an interface, annotation or enum without fetching each class. `entry` is null for standalone class input. Signature/super/source_file/
-constant_index/utf16 may be null. `fields`/`methods` are class-table totals. `utf16` is
+constant_index/utf16_units may be null. `fields`/`methods` are class-table totals. `utf16_units` is
 null when decoding is lossless, otherwise an array of raw UTF-16 code units.
 
 `get-method --raw` is one `record="bytecode"` FETCH record without header/summary;
@@ -159,6 +159,12 @@ it adds `backend="jvm"`, `command="get-method"`, `schema_version=2` outside. `de
 representation` is always `bytecode`; `complete` is true. Outer `start/end` replaces
 the old `file_range` and points at the actual class-file Code range (half-open), not
 compressed container bytes.
+
+Class rows carry `major`/`minor`/`source_file` and per-class `fields`/`methods` totals,
+which the class-file table gives directly; `access_flags` is the JVM's own spelling of
+what .NET calls flags, and the shared name is `access_flags`. DEX has none of these: its
+class definitions keep a superclass index and an interface list, no version or source
+file, and no per-class member totals.
 
 A `classes` row omits `super` when it is `java/lang/Object` and omits `interfaces`
 when the list is empty, so a default costs no bytes on a large class index. A

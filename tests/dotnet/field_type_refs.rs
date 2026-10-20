@@ -61,7 +61,7 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
     let outline = outline(&path, &[]);
     let id = outline
         .iter()
-        .find(|row| row["record"] == "field" && row["detail"]["token"] == 0x04000003u32)
+        .find(|row| row["record"] == "field" && row["at"] == "0x04000003")
         .unwrap()["at"]
         .as_str()
         .unwrap();
@@ -135,7 +135,7 @@ fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operand
     ] {
         let id = outline
             .iter()
-            .find(|row| row["record"] == "type" && row["detail"]["token"] == token)
+            .find(|row| row["record"] == "class" && row["at"] == format!("0x{token:08x}"))
             .unwrap()["at"]
             .as_str()
             .unwrap();
@@ -201,13 +201,13 @@ fn dotnet_field_type_reference_queries_keep_id_budget_and_atomic_failure_contrac
     let outline = outline(&path, &[]);
     let field = outline
         .iter()
-        .find(|row| row["record"] == "field" && row["detail"]["token"] == 0x04000001u32)
+        .find(|row| row["record"] == "field" && row["at"] == "0x04000001")
         .unwrap()["at"]
         .as_str()
         .unwrap();
     let ty = outline
         .iter()
-        .find(|row| row["record"] == "type" && row["detail"]["token"] == 0x02000003u32)
+        .find(|row| row["record"] == "class" && row["at"] == "0x02000003")
         .unwrap()["at"]
         .as_str()
         .unwrap();

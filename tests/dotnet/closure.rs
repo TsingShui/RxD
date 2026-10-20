@@ -45,7 +45,14 @@ fn fetch(path: &Path, command: &str, id: &str) -> Value {
 }
 
 fn assert_original_method(row: &Value, expected: &Value) {
-    let token = row["detail"]["method"]["detail"]["token"].as_u64().unwrap();
+    let token = u32::from_str_radix(
+        row["detail"]["method"]["at"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("0x"),
+        16,
+    )
+    .unwrap() as u64;
     let method = &expected["methods"][format!("0x{token:08x}")];
     assert!(row["source_id"].is_null());
     assert_eq!(row["detail"]["il_hex"], method["il_hex"]);

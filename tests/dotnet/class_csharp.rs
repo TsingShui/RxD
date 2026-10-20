@@ -152,10 +152,7 @@ fn valid_mapping(row: &Value) {
             .iter()
             .find(|method| method["at"] == point["method_id"])
             .unwrap();
-        assert_eq!(
-            point["method_token"],
-            method["detail"]["method"]["detail"]["token"]
-        );
+        assert_eq!(point["method_token"], method["detail"]["method"]["at"]);
         assert!(point["line"].as_u64().unwrap() > 0 && point["line"].as_u64().unwrap() <= lines);
         assert!(
             method["detail"]["instructions"]
@@ -324,7 +321,7 @@ fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() 
         .unwrap()
         .iter()
         .find(|method| method["detail"]["method"]["detail"]["name"] == "Guard")
-        .unwrap()["detail"]["method"]["detail"]["token"]
+        .unwrap()["detail"]["method"]["at"]
         .as_u64()
         .unwrap();
     for mapping in [

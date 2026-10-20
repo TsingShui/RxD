@@ -384,7 +384,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 // Lossless escape: when decoding is lossy (unpaired surrogates),
                 // keep the raw UTF-16 code units so no consumer loses data.
                 let lossless = String::from_utf16(value.as_utf16()).is_ok();
-                let utf16: Option<Vec<u16>> = (!lossless).then(|| value.as_utf16().to_vec());
+                let utf16_units: Option<Vec<u16>> = (!lossless).then(|| value.as_utf16().to_vec());
                 append(
                     &mut output,
                     &record(
@@ -396,7 +396,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                             "class":selected.class.name,
                             "index":index,
                             "value":text,
-                            "utf16":utf16,
+                            "utf16_units":utf16_units,
                         })
                         .as_object()
                         .unwrap()

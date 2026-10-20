@@ -116,11 +116,11 @@ fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_an
     assert_eq!(indexed.len(), methods.len());
     for (token, method) in methods {
         let token_number = u32::from_str_radix(token.trim_start_matches("0x"), 16).unwrap();
+        let id = format!("0x{token_number:08x}");
         let indexed = indexed
             .iter()
-            .find(|row| row["detail"]["token"] == token_number)
+            .find(|row| row["at"] == id)
             .unwrap_or_else(|| panic!("missing method {token}: {method}"));
-        let id = format!("0x{token_number:08x}");
         assert_eq!(indexed["at"], id);
         assert_eq!(indexed["detail"]["name"], method["name"]);
         assert_eq!(
@@ -134,7 +134,7 @@ fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_an
         assert_eq!(row["detail"]["complete"], true);
         assert_eq!(row["at"], id);
         assert!(row["source_id"].is_null());
-        assert_eq!(row["detail"]["method"]["detail"]["token"], token_number);
+        assert_eq!(row["detail"]["method"]["at"], id);
         assert_eq!(row["detail"]["representation"], "il");
         assert_eq!(row["detail"]["decompiled"], false);
         assert!(row["detail"]["code"].is_null());

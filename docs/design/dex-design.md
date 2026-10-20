@@ -138,6 +138,12 @@ references within one member are listed once; ordering is preserved.
 instance-first runtime slot, `field_index` is the DEX `field_ids` index, and
 `method_index` is the DEX `method_ids` index.
 
+A `classes` row prints only what a DEX class definition holds - `super` - and its
+`detail` stays otherwise empty: this format keeps no class-file version, no source file
+and no per-class member totals, so there is nothing to print and nothing to invent. DEX
+adds two facts the other two backends cannot report at all: `entry` (which `classes*.dex`
+holds the record) and, on references, the same entry name.
+
 A `classes` row prints `super` only when the class does not inherit from
 `java/lang/Object`, and `interfaces` is not printed at all: the superclass index is a
 `type_ids` read the descriptor already amortizes, while an interface list lives in the

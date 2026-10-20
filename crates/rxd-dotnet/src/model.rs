@@ -26,49 +26,62 @@ impl Default for Limits {
 #[derive(Clone, Debug, Serialize)]
 pub struct TypeInfo {
     pub id: String,
+    #[serde(skip_serializing)]
     pub declaring_type_token: Option<u32>,
+    #[serde(skip_serializing)]
     pub declaring_type_id: Option<String>,
     pub extends_token: Option<u32>,
     pub kind: String,
     pub interfaces: Vec<u32>,
     pub generic_parameters: Vec<GenericParameter>,
+    #[serde(skip_serializing)]
     pub token: u32,
     pub name: String,
     pub namespace: String,
     pub full_name: String,
+    #[serde(rename = "access_flags")]
     pub flags: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Field {
     pub id: String,
+    #[serde(skip_serializing)]
     pub declaring_type_id: String,
+    #[serde(skip_serializing)]
     pub token: u32,
+    #[serde(skip_serializing)]
     pub declaring_type_token: u32,
     pub declaring_type: String,
     pub name: String,
     pub signature: String,
+    #[serde(rename = "access_flags")]
     pub flags: u16,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Method {
+    #[serde(skip_serializing)]
     pub declaring_type_id: String,
     pub impl_flags: u16,
     pub generic_parameters: Vec<GenericParameter>,
     pub id: String,
+    #[serde(skip_serializing)]
     pub token: u32,
     pub declaring_type: String,
+    #[serde(skip_serializing)]
     pub declaring_type_token: u32,
     pub declaring_type_is_value_type: bool,
     pub name: String,
     pub signature: String,
     pub parameters: Vec<String>,
+    #[serde(skip_serializing)]
     pub signature_flags: u8,
     pub return_type: String,
     pub has_this: bool,
     pub has_body: bool,
     pub rva: u32,
+    #[serde(rename = "access_flags")]
     pub flags: u16,
 }
 
@@ -226,11 +239,14 @@ pub struct Accessor {
 #[derive(Clone, Debug, Serialize)]
 pub struct Property {
     pub token: u32,
+    #[serde(skip_serializing)]
     pub declaring_type_token: u32,
+    #[serde(skip_serializing)]
     pub declaring_type_id: String,
     pub name: String,
     pub signature: String,
     pub signature_hex: String,
+    #[serde(rename = "access_flags")]
     pub flags: u32,
     pub accessors: Vec<Accessor>,
 }
@@ -238,10 +254,13 @@ pub struct Property {
 #[derive(Clone, Debug, Serialize)]
 pub struct Event {
     pub token: u32,
+    #[serde(skip_serializing)]
     pub declaring_type_token: u32,
+    #[serde(skip_serializing)]
     pub declaring_type_id: String,
     pub name: String,
     pub event_type_token: u32,
+    #[serde(rename = "access_flags")]
     pub flags: u32,
     pub accessors: Vec<Accessor>,
 }

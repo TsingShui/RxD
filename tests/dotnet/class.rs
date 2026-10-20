@@ -53,7 +53,7 @@ fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_a
         let token = u32::from_str_radix(token.trim_start_matches("0x"), 16).unwrap();
         let method = methods
             .iter()
-            .find(|method| method["detail"]["method"]["detail"]["token"] == token)
+            .find(|method| method["detail"]["method"]["at"] == format!("0x{token:08x}"))
             .unwrap();
         assert_eq!(method["detail"]["il_hex"], expected["il_hex"]);
         assert_eq!(method["detail"]["handlers"], expected["handlers"]);
@@ -113,15 +113,11 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
         };
         assert_eq!(row["detail"]["type"]["detail"]["kind"], kind);
         for (token, expected) in selected {
-            let token = u32::from_str_radix(token.trim_start_matches("0x"), 16).unwrap();
-            let ty = types
-                .iter()
-                .find(|ty| ty["detail"]["token"] == token)
-                .unwrap();
+            let ty = types.iter().find(|ty| ty["at"] == *token).unwrap();
             assert_eq!(ty["detail"]["full_name"], expected["name"]);
             assert_eq!(ty["detail"]["extends_token"], expected["extends_token"]);
             assert_eq!(ty["detail"]["interfaces"], expected["interfaces"]);
-            assert_eq!(ty["detail"]["flags"], expected["flags"]);
+            assert_eq!(ty["detail"]["access_flags"], expected["flags"]);
             for parameter in expected["generic_parameters"].as_array().unwrap() {
                 assert!(
                     ty["detail"]["generic_parameters"]
@@ -148,10 +144,9 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
         let methods = row["detail"]["methods"].as_array().unwrap();
         assert_eq!(methods.len(), selected_methods.len());
         for (token, expected) in selected_methods {
-            let token = u32::from_str_radix(token.trim_start_matches("0x"), 16).unwrap();
             let got = methods
                 .iter()
-                .find(|got| got["detail"]["method"]["detail"]["token"] == token)
+                .find(|got| got["detail"]["method"]["at"] == *token)
                 .unwrap();
             assert_eq!(got["detail"]["body_present"], expected["rva"] != 0);
             assert_eq!(got["detail"]["il_hex"], expected["il_hex"]);
@@ -184,11 +179,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
                 .as_object()
                 .unwrap()
                 .iter()
-                .filter(|(_, item)| {
-                    types
-                        .iter()
-                        .any(|ty| ty["detail"]["token"] == item["owner_token"])
-                })
+                .filter(|(_, item)| types.iter().any(|ty| ty["at"] == item["owner_token"]))
                 .collect();
             let got = row["detail"][category].as_array().unwrap();
             assert_eq!(got.len(), selected.len());
@@ -199,10 +190,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
                     .find(|got| got["detail"]["token"] == token)
                     .unwrap();
                 assert_eq!(got["detail"]["name"], expected["name"]);
-                assert_eq!(
-                    got["detail"]["declaring_type_token"],
-                    expected["owner_token"]
-                );
+                assert_eq!(got["context_at"], expected["owner_token"]);
                 for accessor in expected["accessors"].as_array().unwrap() {
                     let found = got["detail"]["accessors"]
                         .as_array()

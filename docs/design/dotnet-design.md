@@ -272,9 +272,9 @@ Fixed detail fields:
 
 | Record | Detail fields |
 | --- | --- |
-| `type` | `token, name, namespace, full_name, flags, kind, declaring_type_token, declaring_type_id, extends_token, interfaces, generic_parameters` |
-| `field` | `token, declaring_type_token, declaring_type_id, declaring_type, name, signature, flags` |
-| `method` | `token, declaring_type, declaring_type_token, declaring_type_is_value_type, name, signature, parameters, signature_flags, return_type, has_this, has_body, rva, flags, impl_flags, declaring_type_id, generic_parameters` |
+| `class` | `name, namespace, full_name, access_flags, kind, extends_token, interfaces, interface_tokens, super, generic_parameters` |
+| `field` | `declaring_type, name, signature, access_flags` |
+| `method` | `declaring_type, declaring_type_is_value_type, name, signature, parameters, return_type, has_this, has_body, rva, access_flags, impl_flags, generic_parameters` |
 | `string` | `index, value, utf16_units, status, il_offsets`; the `#US` token is the row's `at`, the owning type is `parent_at` and the loading method is `context_at`, so none of them is repeated in `detail` (`index` = position in the assembly literal inventory) |
 | `reference` | `target, target_token, target_kind, declaring_type, name, il_offset, opcode, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments`; the caller is `context_at` and its resolving type is `parent_at`, so neither is repeated |
 | `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
@@ -334,9 +334,18 @@ readable bodies and null body fields when absent. Nested method representation i
 always `il/false/null code`; `class_body` owns whole-class reconstruction state.
 `class_body` has no single contiguous range, so start/end are null.
 
-Property detail: `token, declaring_type_token, declaring_type_id, name, signature,
-signature_hex, flags, accessors`; event detail: `token, declaring_type_token,
-declaring_type_id, name, event_type_token, flags, accessors`. Both have null `at`/start/
+Rows say nothing a neighbour already says. `.NET` coordinates are metadata tokens, so a
+row must print the name a reader navigates by (`name`, `namespace`, `full_name`,
+`declaring_type`); the token itself is `at` and the owner is `parent_at`, so neither is
+repeated, and `signature_flags` is the first field of `signature`. What only this format
+can answer stays: `kind` (class, interface, struct, enum), `extends_token`,
+`has_body`/`rva` (a token does not imply a body), `il_offsets`, and `status` for `#US`
+entries. `major`/`minor`/`source_file` and per-class `fields`/`methods` totals are JVM
+facts that .NET metadata does not keep.
+
+Property detail: `token, name, signature, signature_hex, access_flags, accessors`; event
+detail: `token, name, event_type_token, access_flags, accessors`. Their owner is
+`context_at`, so neither repeats it. Both have null `at`/start/
 end and `parent_at`/`context_at` set to the declaring type. Accessors retain
 `method_token, method_id` and original MethodSemantics `semantics`, ordered by method
 token and semantics; every nested `*_id` is the same copy-only coordinate as the outer

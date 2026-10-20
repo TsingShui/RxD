@@ -230,7 +230,7 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
             );
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
-            assert_eq!(fetched["detail"]["method"]["detail"]["token"], method);
+            assert_eq!(fetched["detail"]["method"]["at"], format!("0x{method:08x}"));
             assert_eq!(fetched["parent_at"], row["parent_at"]);
         }
     }

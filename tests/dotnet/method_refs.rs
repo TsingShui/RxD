@@ -57,7 +57,7 @@ fn dotnet_semantic_method_refs_prove_local_aliases_without_matching_overloads_or
     let outline = outline(&path, &[]);
     let id = outline
         .iter()
-        .find(|row| row["record"] == "method" && row["detail"]["token"] == 0x06000001u32)
+        .find(|row| row["record"] == "method" && row["at"] == "0x06000001")
         .unwrap()["at"]
         .as_str()
         .unwrap();
