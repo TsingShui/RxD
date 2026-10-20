@@ -365,43 +365,6 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     }
 }
 
-/// `--max-input-bytes` accepts one byte through the shared 8 GiB ceiling; an
-/// omitted flag uses that ceiling, so the flag can only tighten the budget.
-#[cfg(any(
-    feature = "backend-js",
-    feature = "backend-asar",
-    feature = "backend-html",
-    feature = "backend-jvm",
-    feature = "backend-dotnet",
-    feature = "backend-evm",
-    feature = "backend-pyc"
-))]
-pub(crate) fn input_bytes(value: &str) -> std::result::Result<usize, String> {
-    let n = value
-        .parse::<usize>()
-        .map_err(|_| "expected a positive integer".to_owned())?;
-    if n == 0 || n > rxd_core::MAX_INPUT_BYTES {
-        Err("expected an integer between 1 and 8589934592".into())
-    } else {
-        Ok(n)
-    }
-}
-
-/// An omitted `--max-input-bytes` uses the 8 GiB ceiling; an explicit value stays
-/// an opt-in lower bound.
-#[cfg(any(
-    feature = "backend-js",
-    feature = "backend-asar",
-    feature = "backend-html",
-    feature = "backend-jvm",
-    feature = "backend-dotnet",
-    feature = "backend-evm",
-    feature = "backend-pyc"
-))]
-pub(crate) fn input_limit(value: Option<usize>) -> usize {
-    value.unwrap_or(rxd_core::MAX_INPUT_BYTES)
-}
-
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
