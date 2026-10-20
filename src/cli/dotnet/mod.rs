@@ -549,22 +549,21 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                     }
                 } else {
                     // A string-route row names the text it loads, so the literal inventory is
-                    // built once instead of resolving a token per row.
-                    let (sites, literals) = match xref_target.as_ref().expect("resolved here") {
+                    // built once instead of resolving a token per row. Both anchors print the
+                    // same target: a `#US` token and its text are two ways to name one literal,
+                    // and the row says which text it was.
+                    let literals = Some(literal_values(&input));
+                    let sites = match xref_target.as_ref().expect("resolved here") {
                         Target::Literal {
                             pattern,
                             exact,
                             case_sensitive,
-                        } => (
-                            perf.measure("strings", || {
-                                input.string_references(pattern, *exact, *case_sensitive)
-                            })?,
-                            Some(literal_values(&input)),
-                        ),
-                        Target::Token { token, .. } => (
-                            perf.measure("strings", || input.user_string_references(*token))?,
-                            None,
-                        ),
+                        } => perf.measure("strings", || {
+                            input.string_references(pattern, *exact, *case_sensitive)
+                        })?,
+                        Target::Token { token, .. } => {
+                            perf.measure("strings", || input.user_string_references(*token))?
+                        }
                     };
                     for site in sites {
                         let literal = literals
@@ -1201,14 +1200,30 @@ fn dotnet_target(
         )?,
         (None, None) => unreachable!("checked above"),
     };
-    // A literal has no token of its own, so `--kind string` is what reads `--at` as one:
-    // the same shape dex and jar use for `--at '<literal>' --kind string`.
+    // `--kind string` reads `--at` as a literal, which is the one target that cannot
+    // describe itself. A token still wins when it parses as one: `0x0600000b --kind string`
+    // is a contradiction to report, not a search for the text `0x0600000b`.
     if kind == Some(crate::cli::xref::Kind::String) {
-        return Ok(Target::Literal {
-            pattern: coordinate,
-            exact: true,
-            case_sensitive: true,
-        });
+        return match parse_token(&coordinate) {
+            Ok(token) => {
+                let inferred = token_kind(token);
+                if token >> 24 != 0x70 || inferred != Some(crate::cli::xref::Kind::String) {
+                    anyhow::bail!(
+                        "--at {coordinate} is a {} token, but --kind string was given",
+                        inferred.map_or("non-string", |kind| kind.as_str())
+                    );
+                }
+                Ok(Target::Token {
+                    token,
+                    kind: crate::cli::xref::Kind::String,
+                })
+            }
+            Err(_) => Ok(Target::Literal {
+                pattern: coordinate,
+                exact: true,
+                case_sensitive: true,
+            }),
+        };
     }
     let token = parse_token(&coordinate).map_err(|error| {
         anyhow::anyhow!("{error:#}; pass `--kind string` to read `--at` as an exact literal")
