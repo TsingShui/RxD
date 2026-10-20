@@ -45,7 +45,7 @@ struct View<'a> {
 }
 pub fn fetch(
     input: PathBuf,
-    at: String,
+    selector: super::super::xref::Selector,
     version: Option<(u8, u8)>,
     options: FetchOptions,
     perf: &mut Perf,
@@ -58,6 +58,13 @@ pub fn fetch(
         .unwrap()
         .insert("instructions", super::budget().instructions);
     let mut analysis = loaded?;
+    // The stream is checked against the analysis identity (the pyc header's content hash).
+    let at = selector
+        .resolve(
+            &["code"],
+            super::super::xref::Expect::Content(&analysis.source_id),
+        )
+        .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
     let selected = perf.measure("query", || analysis.parse_code_id(&at));
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;

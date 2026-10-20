@@ -125,6 +125,8 @@ validates unscanned bytecode.
 ## Single-code FETCH
 
 ```sh
+target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc | \
+  target/debug/rxd pyc get-code tests/corpus/pyc/3.12.14/graph.timestamp.pyc --from -
 target/debug/rxd pyc get-code tests/corpus/pyc/3.12.14/graph.timestamp.pyc --at code:11
 ```
 

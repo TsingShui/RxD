@@ -1,4 +1,5 @@
 use super::super::filter::CaseArgs;
+use super::super::xref::Selector;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 #[derive(Args)]
@@ -34,9 +35,8 @@ pub(crate) enum Command {
     Extract {
         #[command(flatten)]
         common: Common,
-        /// The `at` an entries row prints: an archive-relative path.
-        #[arg(long, requires = "output")]
-        at: String,
+        #[command(flatten)]
+        selector: Selector,
     },
 }
 

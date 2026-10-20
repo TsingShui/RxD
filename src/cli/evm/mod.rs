@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::filter::CaseArgs;
+use super::xref::{Expect, Selector};
 use clap::{Args, Subcommand, ValueEnum};
 use rxd_core::{Budget, Error, Result, perf::Perf};
 use rxd_evm::{
@@ -83,9 +84,8 @@ enum Encoding {
 pub struct BlockOptions {
     #[command(flatten)]
     options: Options,
-    /// The coordinate a blocks row prints.
-    #[arg(long)]
-    at: String,
+    #[command(flatten)]
+    selector: Selector,
 }
 
 #[derive(Args)]
@@ -95,12 +95,20 @@ pub struct FunctionOptions {
     /// The coordinate an interface row prints.
     #[arg(
         long,
-        required_unless_present = "selector",
-        conflicts_with = "selector"
+        required_unless_present_any = ["selector", "from"],
+        conflicts_with_all = ["selector", "from"]
     )]
     at: Option<String>,
+    /// Read the coordinate from a previous stream; `--selector` stays the ABI alternative.
+    #[arg(
+        long,
+        value_name = "JSONL",
+        required_unless_present_any = ["at", "selector"],
+        conflicts_with_all = ["at", "selector"]
+    )]
+    from: Option<PathBuf>,
     /// Select exactly one candidate by its four-byte selector.
-    #[arg(long, conflicts_with = "at")]
+    #[arg(long, conflicts_with_all = ["at", "from"])]
     selector: Option<String>,
     /// Return original byte segments/instructions without requesting reconstruction.
     #[arg(long)]
@@ -327,18 +335,46 @@ pub fn execute(command: Command) -> Result<()> {
                     limits,
                     &mut perf,
                 ),
-                Command::GetBlock(block) => navigation.block_json(&block.at, limits, &mut perf),
-                Command::GetFunction(function) => functions.as_ref().unwrap().function_json(
-                    &navigation,
-                    if let Some(at) = &function.at {
-                        FunctionSelection::At(at)
-                    } else {
-                        FunctionSelection::Selector(function.selector.as_deref().unwrap())
-                    },
-                    function.raw,
-                    limits,
-                    &mut perf,
-                ),
+                Command::GetBlock(block) => {
+                    let at = block
+                        .selector
+                        .resolve(
+                            &["basic_block"],
+                            Expect::Content(&navigation.carrier.source_id),
+                        )
+                        .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
+                    navigation.block_json(&at, limits, &mut perf)
+                }
+                Command::GetFunction(function) => {
+                    // `--at`, `--from` and `--selector` all name one candidate; the stream is
+                    // only another spelling of `--at`.
+                    let from = function
+                        .from
+                        .as_deref()
+                        .map(|path| {
+                            crate::cli::xref::selector_stream(
+                                path,
+                                &["function", "interface_function"],
+                                Expect::Content(&navigation.carrier.source_id),
+                            )
+                            .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))
+                        })
+                        .transpose()?;
+                    let selection = match (&function.at, from.as_deref()) {
+                        (Some(at), _) => FunctionSelection::At(at),
+                        (None, Some(at)) => FunctionSelection::At(at),
+                        (None, None) => {
+                            FunctionSelection::Selector(function.selector.as_deref().unwrap())
+                        }
+                    };
+                    functions.as_ref().unwrap().function_json(
+                        &navigation,
+                        selection,
+                        function.raw,
+                        limits,
+                        &mut perf,
+                    )
+                }
                 _ => unreachable!("native query handled above"),
             };
             if let Some(stage) = serialization {

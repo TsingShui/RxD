@@ -538,7 +538,11 @@ fn mcp_html_extract_publishes_retained_child_target_with_cli_identity() {
         .find(|tool| tool["name"] == "html_extract")
         .unwrap();
     assert_eq!(tool["inputSchema"]["additionalProperties"], false);
-    assert_eq!(tool["inputSchema"]["required"], json!(["at", "input"]));
+    // `--from` is an alternative to `--at`, so neither alone is required; the CLI still
+    // rejects a call that gives neither.
+    assert_eq!(tool["inputSchema"]["required"], json!(["input"]));
+    assert_eq!(tool["inputSchema"]["properties"]["at"]["type"], "string");
+    assert_eq!(tool["inputSchema"]["properties"]["from"]["type"], "string");
     assert_eq!(
         tool["inputSchema"]["properties"]["content"]["type"],
         "boolean"

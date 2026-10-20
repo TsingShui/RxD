@@ -1,4 +1,5 @@
 mod args;
+use super::xref::Expect;
 use super::{finish, write_output};
 pub(crate) use args::Command;
 use rxd_core::perf::Perf;
@@ -26,7 +27,18 @@ pub(super) fn execute(command: Command) -> Result<()> {
             contains: filter.clone(),
             case_sensitive: case.sensitive(),
         },
-        Command::Extract { at, .. } => rxd_asar::Query::Extract { at: at.clone() },
+        Command::Extract { selector, .. } => {
+            // ASAR hashes the archive inside the query; the stream is checked against the
+            // archive size here, which is a mismatch guard rather than an identity.
+            let bytes = std::fs::metadata(&input)
+                .map_err(|error| Error::new("IO_ERROR", error.to_string()))?
+                .len();
+            rxd_asar::Query::Extract {
+                at: selector
+                    .resolve(&["file"], Expect::Bytes(bytes))
+                    .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?,
+            }
+        }
     };
     let result = (|| {
         let response = rxd_asar::run(

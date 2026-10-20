@@ -1,4 +1,5 @@
 mod args;
+use super::xref::Expect;
 use super::{finish, write_output};
 pub(crate) use args::Command;
 use rxd_core::{Budget, Error, Limits, Result, perf::Perf};
@@ -51,13 +52,24 @@ pub(super) fn execute(command: Command) -> Result<()> {
         }
         Command::Extract {
             common,
-            at,
+            selector,
             content,
         } => {
             let destination = common
                 .output
                 .as_deref()
                 .ok_or_else(|| Error::new("INVALID_QUERY", "extract requires --output"))?;
+            // HTML hashes the file inside the query, so the stream is checked against the
+            // input size here; that is a mismatch guard, not a content identity.
+            let bytes = std::fs::metadata(&common.input)
+                .map_err(|error| Error::new("IO_ERROR", error.to_string()))?
+                .len();
+            let at = selector
+                .resolve(
+                    &["element", "text", "comment", "doctype"],
+                    Expect::Bytes(bytes),
+                )
+                .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
             let response =
                 rxd_html::extract(&common.input, &at, content, destination, limits, &mut perf)?;
             perf.measure("write", || {

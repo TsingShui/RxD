@@ -1,4 +1,5 @@
 use super::super::filter::CaseArgs;
+use super::super::xref::Selector;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
@@ -49,9 +50,9 @@ pub(crate) enum Command {
     Extract {
         #[command(flatten)]
         common: Common,
-        /// The `at` an entries row prints.
-        #[arg(long, requires = "output")]
-        at: String,
+        /// The coordinate an entries row prints, or `--from JSONL`.
+        #[command(flatten)]
+        selector: Selector,
         /// Extract only element content rather than its outer range.
         #[arg(long)]
         content: bool,

@@ -118,6 +118,8 @@ selected by the Agent's syntax; arbitrary script content is not promised to pars
 ```sh
 "$RXD" html entries "$DEMO/page.html" --depth 2 \
   --kind element
+"$RXD" html entries "$DEMO/page.html" | \
+  "$RXD" html extract "$DEMO/page.html" --from - --content -o "$DEMO/inline.js"
 "$RXD" html extract "$DEMO/page.html" --at '<SCRIPT_AT>' --content \
   -o "$DEMO/profile-inline.js" --perf
 python3 -B benches/html.py --samples 20 --output target/benchmarks/html

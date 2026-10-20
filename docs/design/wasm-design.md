@@ -56,7 +56,7 @@ coordinate. Platform exact selectors sit next to it: `functions --func N` select
 one combined function index and `functions --func-name NAME` matches the name
 section exactly (duplicates preserved).
 
-- `get-function --at` takes the `at` a `functions` row prints (`func:42`). A short
+- `get-function --at COORD | --from JSONL` takes the `at` a `functions` row prints (`func:42`). A short
   coordinate is expanded against the header source identity inside the library; a
   full `rxd1:wasm:<sha256>:func:<n>` id keeps its own hash, so one naming different
   content fails as `SOURCE_MISMATCH` instead of being rewritten, and a malformed

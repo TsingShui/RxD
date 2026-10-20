@@ -4320,6 +4320,97 @@ fn pack_asar(path: &Path, files: &[(&str, &[u8])]) {
     write_asar(path, &header, &data);
 }
 
+/// Every fetch takes `--at` or `--from`: the same selection, read from the previous stream.
+/// One table for the backends whose fetch takes a single unit, so the loop is checked once
+/// per backend instead of once per spelling.
+#[test]
+fn fetch_from_a_stream_matches_at_for_each_single_unit_backend() {
+    use std::process::Stdio;
+    let cases: Vec<(&str, Vec<&str>, Vec<&str>, String)> = vec![
+        (
+            "wasm",
+            vec!["wasm", "functions"],
+            vec!["wasm", "get-function"],
+            "tests/fixtures/wasm/fixture.wasm".to_owned(),
+        ),
+        (
+            "pyc",
+            vec!["pyc", "codes"],
+            vec!["pyc", "get-code"],
+            "tests/fixtures/pyc/hello.3.12.pyc".to_owned(),
+        ),
+        (
+            "evm",
+            vec!["evm", "interface", "ENC", "hex"],
+            vec!["evm", "get-function", "ENC", "hex"],
+            "tests/fixtures/evm/storage-runtime.hex".to_owned(),
+        ),
+        (
+            "html",
+            vec!["html", "entries"],
+            vec!["html", "extract", "-o", "OUT"],
+            "tests/fixtures/html/catalog.html".to_owned(),
+        ),
+    ];
+    for (name, listing, fetch, fixture) in cases {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let path = path.to_str().unwrap();
+        let listed = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(
+                listing
+                    .iter()
+                    .map(|arg| if *arg == "ENC" { "--encoding" } else { arg }),
+            )
+            .arg(path)
+            .output()
+            .unwrap();
+        success(&listed);
+        let rows = jsonl(&listed);
+        let at = rows[1]["at"].as_str().unwrap().to_owned();
+
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("unit.bin");
+        let args: Vec<String> = fetch
+            .iter()
+            .map(|arg| match *arg {
+                "ENC" => "--encoding".to_owned(),
+                "OUT" => destination.to_str().unwrap().to_owned(),
+                other => other.to_string(),
+            })
+            .collect();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(&args)
+            .arg(path)
+            .args(["--from", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(&listed.stdout)
+                .unwrap();
+        }
+        drop(child.stdin.take());
+        let streamed = child.wait_with_output().unwrap();
+        success(&streamed);
+
+        let direct = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(&args)
+            .arg(path)
+            .args(["--at", &at])
+            .output()
+            .unwrap();
+        success(&direct);
+        assert_eq!(streamed.stdout, direct.stdout, "{name}");
+    }
+}
+
 #[test]
 fn asar_namespace_exposes_container_operations_without_electron_or_js_forwarding() {
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))

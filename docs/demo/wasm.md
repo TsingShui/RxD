@@ -23,6 +23,8 @@ Each `functions` row prints a short `at` coordinate (`func:1`); pass that back w
 ```sh
 at=$($rxd wasm functions tests/fixtures/wasm/fixture.wasm --func-name sum | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="function"))')
 # Default get tries structured C-like decompilation, then falls back to instructions.
+$rxd wasm functions tests/fixtures/wasm/fixture.wasm | \
+  $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --from -
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at"
 # --raw is the one flag for the original instruction view (opcode + immediates +
 # code-body offsets); there is no separate --bytecode/--instructions spelling.

@@ -214,7 +214,7 @@ summary counts them in `functions`. Each row additionally carries EVMole's own
 `arguments` (comma-joined Solidity type names or null) and `stateMutability` (producer
 spelling, or null for a candidate only witnessed by its dispatcher comparison), taken from
 the same single in-memory analysis that seeds discovery. The filter is a
-substring of the selector (folded unless `--case sensitive`). `get-function INPUT --encoding raw|hex --at
+substring of the selector (folded unless `--case sensitive`). `get-function INPUT --encoding raw|hex (--at | --from | --selector)
 COORDINATE [--raw]` returns one `function_code` record (identity kind remains function),
 or selects a unique candidate with `--selector HEX8` (optional 0x/0X, mixed case). `--at`
 and `--selector` are mutually exclusive; malformed selector is `INVALID_QUERY`, zero

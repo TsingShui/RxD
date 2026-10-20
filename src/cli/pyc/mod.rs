@@ -6,6 +6,7 @@ mod strings;
 use std::path::{Path, PathBuf};
 
 use super::filter::CaseArgs;
+use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
@@ -58,9 +59,8 @@ pub enum Command {
     /// Fetch original instructions, tables and location evidence for one code coordinate.
     GetCode {
         input: PathBuf,
-        /// The `at` a codes row prints (`code:<index>`).
-        #[arg(long)]
-        at: String,
+        #[command(flatten)]
+        selector: Selector,
         #[arg(long,value_parser=parse_version)]
         version: Option<(u8, u8)>,
         #[command(flatten)]
@@ -257,10 +257,10 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
         }
         Command::GetCode {
             input,
-            at,
+            selector,
             version,
             options,
-        } => return fetch_commands::fetch(input, at, version, options, perf),
+        } => return fetch_commands::fetch(input, selector, version, options, perf),
         Command::Codes {
             input,
             version,

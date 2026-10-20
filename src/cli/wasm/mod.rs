@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::filter::CaseArgs;
+use super::xref::{Expect, Selector};
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{RecordMeta, attach_protocol, header, record, summary};
 use rxd_core::perf::Perf;
@@ -154,9 +155,8 @@ pub enum Command {
     Get {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// The `at` a `functions` row prints: `func:42`.
-        #[arg(long)]
-        at: String,
+        #[command(flatten)]
+        selector: Selector,
         /// Force the raw instruction view instead of attempting decompilation.
         #[arg(long)]
         raw: bool,
@@ -308,8 +308,9 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     let mut records = 0usize;
 
     // `get` returns exactly one function_view record, not a header/records/summary stream.
-    if let Command::Get { at, raw, .. } = &command {
-        let position = module.defined_position_at(at)?;
+    if let Command::Get { selector, raw, .. } = &command {
+        let at = selector.resolve(&["function"], Expect::Content(&module.source_id))?;
+        let position = module.defined_position_at(&at)?;
         let view = perf.measure("decode", || rxd_wasm::get_view(&module, position, *raw))?;
         let mut value = record(
             "function_view",

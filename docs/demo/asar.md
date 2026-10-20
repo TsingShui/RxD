@@ -54,6 +54,8 @@ followed.
 ## extract
 
 ```sh
+"$RXD" asar entries "$ASAR" | \
+  "$RXD" asar extract "$ASAR" --from - -o "$DEMO/main.cjs" > "$DEMO/receipt.json"
 "$RXD" asar extract "$ASAR" --at main.cjs -o "$DEMO/main.cjs" > "$DEMO/receipt.json"
 "$RXD" asar extract "$ASAR" --at addon.node -o "$DEMO/addon.node" > "$DEMO/native-receipt.json"
 ```
