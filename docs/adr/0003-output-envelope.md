@@ -29,7 +29,7 @@ isolated in a deterministic schema:
 
 ### 1. Three-part JSONL stream
 
-Enumeration/search/reference commands (`outline`, `find`, `strings`, `xref`, `xref`,
+Enumeration/search/reference commands (`entities`, `find`, `strings`, `xref`, `xref`,
 `symbols`, etc.) emit exactly one `header`, zero or more data records and exactly one
 `summary`. Success means exit 0 plus a summary with `complete: true`.
 
@@ -118,7 +118,7 @@ for (const m of methods) {
 }
 ```
 
-The same glue works for JS/JVM/.NET/WASM outline; only `detail` differs.
+The same glue works for every structure listing; only `detail` differs.
 
 ## Amendment: the FETCH handle is a coordinate, not a hash
 
@@ -134,7 +134,7 @@ use is refused with the value to use instead.
 
 Rationale: an Agent had to copy 80-103 character handles in which about 70% of the
 bytes were a hash repeated 1-4 times per record. Measured on a 168 KB production
-bundle, `id`/`source_id`/`parent_id`/`context_id` were 49% of an `outline` stream.
+bundle, `id`/`source_id`/`parent_id`/`context_id` were 49% of an entity stream.
 
 Content binding moves to the paths where it can still fail closed: the header carries
 `source_id`, and FETCH commands accept `--from <jsonl|->`, which re-reads the coordinate

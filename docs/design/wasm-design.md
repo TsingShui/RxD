@@ -153,7 +153,7 @@ Fixed detail fields:
 `record="function_view"` FETCH record without header/summary; it additionally carries
 `backend="wasm"`, `command="get-function"` and `schema_version=2` outside. `--raw` is
 the only spelling for the original instruction view; there is no separate
-`--bytecode`/`--instructions` flag. `func` is a
+`--raw` flag. `func` is a
 typed object with `func_index, type_index, name, params, results`. Instructions have
 `offset, opcode, operand`; locals have `count, value_type`; `mapping` is
 `[line, code-body-offset]`. Operand keeps the kind-specific immediate object (memarg:

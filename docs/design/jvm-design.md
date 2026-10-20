@@ -125,7 +125,7 @@ strings/xref use `{}`.
 Data records contain `record, id, source_id, parent_id, context_id, start, end,
 detail`; inapplicable values are null. `source_id` is the actual owning class-byte
 SHA-256. Class/field/string/reference have no FETCH ID (`id: null`); method/bytecode use
-the content-bound method ID. There are no invented class IDs, so `parent_id` is always
+the content-bound method coordinate. There are no invented class coordinates, so `parent_at` is always
 null. `reference.context_id` is the owning method ID and can be passed to `get-method`;
 other records have `context_id: null`. Streaming `start/end` are null; method-relative
 `byte_offset` is never treated as a class/JAR file range.

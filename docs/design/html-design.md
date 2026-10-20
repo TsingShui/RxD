@@ -45,7 +45,7 @@ Element detail: `tag` (ASCII lowercase), `attrs` (ordered object array with `nam
 (`explicit|missing|not_applicable`), `content_start`, `content_end`. Boolean and
 explicit-empty attributes both use an empty value; browser "effective duplicate
 attribute" semantics are not claimed. Text/comment/doctype detail: `value` (original
-source slice) and `depth`. An element's `context_id` is its own ID; other nodes use
+source slice) and `depth`. An element's `context_at` is its own coordinate; other nodes use
 the nearest parent element (top level: null). Every record ID is directly extractable.
 
 Header detail: `path`, `analysis: lexical`, `parser: html5gum`,
@@ -160,8 +160,8 @@ insertion.
 CLI `extract` requires explicit `--at` and `-o`, one input, and forbids replacing the
 input with the target (including path aliases). Host output paths are never derived
 from element attributes. The receipt is one schema-2 `file` record: outer `backend:
-html`, `command: extract`, `schema_version`, `source_id` (artifact SHA); `id`,
-`parent_id`, `context_id` are null; `start` 0, `end` file_bytes. `detail` has
+html`, `command: extract`, `schema_version`, `source_id` (artifact SHA); `at`,
+`parent_at`, `context_at` are null; `start` 0, `end` file_bytes. `detail` has
 `complete`, `path`, `file_bytes`, `representation: original`, `part` (outer|content)
 and `origin` (container/format: html/source_id, node_id/kind/part/start/end). Parent
 node ID appears only in `origin`, never in artifact navigation; artifact-side and

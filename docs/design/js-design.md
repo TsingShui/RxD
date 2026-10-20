@@ -29,7 +29,7 @@ setters; object-literal methods/getters/setters; and TS type aliases, interfaces
 enums, namespaces, external modules, global declarations and interface method
 signatures. A method produces one method record, not a duplicate function record.
 Ordinary statement blocks and object literals produce no structural record.
-`parent_id` is the nearest containing structure, not a full lexical scope tree. Arrow
+`parent_at` is the nearest containing structure, not a full lexical scope tree. Arrow
 functions in class fields are function records whose containing structure is the class.
 
 Deobfuscation and string decryption are permanent non-goals, including control-flow
@@ -54,7 +54,7 @@ A typical task locates an API and extracts its implementation:
    structures, reducing same-name false matches.
 
 For an existing `rg` hit, `locate` can be used directly. `get` on a function preserves
-its access to outer variables; the fragment may not run independently. `parent_id`
+its access to outer variables; the fragment may not run independently. `parent_at`
 provides the closure context.
 
 ## Commands
@@ -138,7 +138,7 @@ mode.
   `reference`) and `detail.syntax_kind` (`binding_identifier` or
   `identifier_reference`). `--role` accepts `all|declaration|reference`. Only real
   lexical names match: `foo` in `obj.foo` is not lexical, while `key` in `obj[key]`
-  is. `parent_id` is the containing structure; `context_id` is the local fragment.
+  is. `parent_at` is the containing structure; `context_at` is the local fragment.
 - `calls` emits `record: call` with `callee`, `call_kind` (`direct`/`member`/`new`),
   `optional` and `argument_count`. It answers only where a name is called, not return
   values, call graphs, cross-file resolution or alias propagation. Computed member
@@ -152,7 +152,7 @@ mode.
   position, not runtime object/prototype/type resolution.
 
 All three obey the record and output-byte budgets from `rxd_core::Budget`, sort by `(start, end)` and keep
-content-bound identity. They have no own ID; `parent_id` points at an extractable
+content-bound identity. They have no own ID; `parent_at` points at an extractable
 structure.
 
 `get` accepts structure IDs, symbol IDs and context fragment IDs and emits the exact
@@ -333,10 +333,10 @@ with `detail: {}`.
 Data records always contain `record, id, source_id, parent_id, context_id, start, end,
 detail`; all keys are present and inapplicable values are null. `source_id` is the
 owning fixed source SHA-256. Entity and symbol IDs are content-bound; match/reference/
-unresolved records have `id: null` and use `parent_id` for the containing structure,
+unresolved records have `id: null` and use `parent_at` for the containing structure,
 which can be passed to `get`. `symbol.parent_id` is the canonical declaration's
-containing structure. Entity `parent_id` keeps the structural parent. Match/reference
-`context_id` is the local fragment; entity/symbol/unresolved use null. Start/end are
+containing structure. Entity `parent_at` keeps the structural parent. Match/reference
+`context_at` is the local fragment; entity/symbol/unresolved use null. Start/end are
 original half-open UTF-8 byte ranges.
 
 Fixed detail fields:
@@ -359,13 +359,13 @@ Fixed detail fields:
 `flags` always contains `async, generator, static`. `key_span` is `start, end` or null.
 `space`, `declaration_ids` and type/value booleans are null when inapplicable. Match
 `resolution`/`raw` are non-null only for `literal_kind: static_expression`. Identifier/
-call/member have no own ID; identifier also carries `context_id`, while call/member
-`context_id` is null. Names/labels/values preserve JS UTF-16 code units; unpaired
+call/member have no own ID; identifier also carries `context_at`, while call/member
+`context_at` is null. Names/labels/values preserve JS UTF-16 code units; unpaired
 surrogates remain valid JSON escapes and are never lossy-converted.
 
 `locate` returns one `record=locate`; `get --json` returns one `record=source`; neither
 has header/summary and both add `backend=js, command, schema_version=2` outside.
-`locate` outer id/parent_id/start/end come from the innermost entity and `context_id`
+`locate` outer id/parent_id/start/end come from the innermost entity and `context_at`
 is the local fragment; `detail.entity`/`ancestors` are complete entity bodies ordered
 inner to outer. `get` outer id is the requested target, start/end the extracted range,
 context_id null; structure targets use the structural parent, symbol targets the
@@ -424,7 +424,7 @@ and reference is selectable. `key` in `obj[key]` is a normal lexical reference.
 Refs header detail adds `analysis: lexical`, `resolution`, `selected`, `declaration`:
 
 - `selected` has decoded `name`, `role: declaration|reference`, original `start/end`,
-  `entity_id`, `context_id`.
+  `entity_id`, `context_at`.
 - `resolution: resolved` means a canonical declaration exists in this file;
   `declaration` has its identifier `start/end/entity_id`. Repeated `var` declarations
   still point at the same binding; the canonical position is Oxc's first declaration,
@@ -446,7 +446,7 @@ exclude same-name different-binding positions. No call relation, alias propagati
 dynamic property inference is claimed.
 
 All positions are half-open original identifier ranges, not whole declarations/
-statements. `parent_id` (still called `entity_id` inside selected/declaration) is the
+statements. `parent_at` (still called `entity_id` inside selected/declaration) is the
 innermost extracted structure, not a lexical scope ID; block scopes may share one
 structure. Summary records count reference records only; `complete: true` means the
 lexical query completed, not runtime reference completeness. Unused resolved
@@ -480,7 +480,7 @@ Two record kinds:
 
 - `record: symbol`: one per resolved binding; `id/start/end/parent_id` outside,
   detail `name/relation/space/declaration_ids`. `name` is decoded; start/end are the
-  canonical declaration identifier's original half-open UTF-8 range; `parent_id` is
+  canonical declaration identifier's original half-open UTF-8 range; `parent_at` is
   its innermost containing structure. Repeated `var` declarations merge into one
   binding with the xref canonical position. `relation: declared` means at least one
   declaration identifier is in the region; otherwise `external` means a region
@@ -563,10 +563,10 @@ semantic phase and whole-file index counts.
 Each find match, locate object and xref selected/reference adds
 `context_id: string|null` for local source around the hit. Structural parent IDs/
 ranges/order keep their meaning. Refs `declaration` still means the canonical binding
-identifier; `context_id` is the selected/reference location and never replaces binding
+identifier; `context_at` is the selected/reference location and never replaces binding
 identity. Symbols output is unchanged.
 
-`context_id` is `rxd1:js:<source-sha256>:fragment.<kind>:<start>:<end>`, a real
+`context_at` is `rxd1:js:<source-sha256>:fragment.<kind>:<start>:<end>`, a real
 content-bound AST fragment identity, not an arbitrary byte slice. The nearest
 supported syntactic node is selected:
 
@@ -612,7 +612,7 @@ built semantic node ancestors and the same selection rule; unresolved/dynamic se
 results may still provide a syntactic fragment but do not claim a resolved binding.
 Fragments do not add structure entity records or change the entity ceiling. Existing records,
 output budgets, directory atomic failure and `-o` contracts remain; serializing
-`context_id` is charged to existing output budgets and release benchmarks.
+`context_at` is charged to existing output budgets and release benchmarks.
 
 ## Performance and validation
 

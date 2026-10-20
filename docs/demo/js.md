@@ -71,7 +71,7 @@ jq 'select(.record == "entity") |
 ```
 
 `send` is an anonymous `arrow_function` with `label: "send"`, range `[66,129)`, absolute
-depth 2 and `async: true`. The original entity also has `id`, `parent_id` and
+depth 2 and `async: true`. The original entity also has `at`, `parent_at` and
 `detail.label_origin`. Ranges are half-open original UTF-8 byte ranges; anonymous
 functions have their own IDs. `name` is an explicit name; `label` can come from a variable
 binding or property context.
@@ -164,7 +164,7 @@ strings, comments, keywords, static property keys and `foo` in `obj.foo` return
 `INVALID_TARGET`; `key` in `obj[key]` is a lexical reference. Header detail reports
 `resolution: resolved|unresolved|dynamic`, the selected name/range, and the canonical
 declaration. Reference detail has `read`, `write`, `member_write`, `type_reference` and
-`value_reference`. `parent_id` routes to `get`; the declaration and initializer are not
+`value_reference`. `parent_at` routes to `get`; the declaration and initializer are not
 reference records. `dynamic` means the file contains `with`/direct `eval` and is
 conservatively unscanned.
 
@@ -195,12 +195,12 @@ to `xref --byte`.
 
 ### Extract a local fragment
 
-Find, locate and xref results add `context_id` for the nearest supported syntax fragment
+Find, locate and xref results add `context_at` for the nearest supported syntax fragment
 (variable declarator, assignment, return/throw, control statement, parameter, import,
 etc.). `get` with that ID returns the exact fragment bytes; a variable declarator may omit
 `const/let/var`, and an assignment may omit the statement semicolon. Functions/classes/
 methods are context boundaries; entering them reselects an inner fragment. Use
-`parent_id`/`entity.id` when no local fragment exists.
+`parent_at`/`entity.at` when no local fragment exists.
 
 ## Directories
 

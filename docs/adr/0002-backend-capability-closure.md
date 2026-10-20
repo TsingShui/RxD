@@ -28,7 +28,7 @@ explicit exemption in the backend design.
 
 List the format's top-level structures and assign each a **content-bound ID**. This is
 the navigation entry point; without usable IDs, later FETCH cannot locate anything.
-Examples: JS `outline`, JVM `outline`, DEX `classes`, .NET `outline`, WASM
+Examples: JS `entities`, JVM `classes`, DEX `classes`, .NET `classes`, WASM
 `entities`, ASAR `entries`.
 
 ### 2. SEARCH
@@ -75,10 +75,10 @@ Read a unit by ID or name. Granularity follows the format:
 
 | Capability | JS | JVM | DEX | .NET | WASM | ASAR | HTML | PYC | EVM |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ENUMERATE | outline | outline | classes | outline | outline | list | list | outline | outline (candidates/blocks) |
+| ENUMERATE | entities | classes | classes | classes | functions | entries | entries | codes | blocks/interface |
 | SEARCH | find | strings | strings | strings | strings | exempt (container) | `--attr` (limited metadata) | strings | strings (PUSH/data candidates) |
 | XREF | xref | xref | xref | xref | xref | exempt (container) | exempt (no code-reference semantics) | xref (explicit name/constant) | xref (literal/CODECOPY/control flow) |
-| FETCH unit | get | get-method | get-class (unit selection available) | get-method | get-function | extract | extract | get-code (raw instructions) | get-function/get-block |
+| FETCH unit | get | get-method | get-method (unit selection available) | get-method | get-function | extract | extract | get-code (raw instructions) | get-function/get-block |
 | FETCH aggregate | see JS design | get-class | get-class | get-class | exempt (no classes) | n/a | n/a (no aggregate) | decompile (whole module; source completeness separate) | exempt (no source classes; selected shared regions travel with function) |
 
 DEX's traditional whole-class decompilation makes `get-class` the practical unit

@@ -92,7 +92,7 @@ rxd dotnet methods app.dll --type Example.Worker --method Run
 rxd dotnet get-method app.dll --at 0x06000001
 rxd dotnet get-method app.dll --at 0x06000001 --raw
 rxd dotnet get-class app.dll --at 0x02000002 --raw
-rxd dotnet strings app.dll --contains 'example'
+rxd dotnet strings app.dll -f 'example'
 rxd dotnet xref app.dll --at 0x0a000001
 rxd dotnet xref app.dll --string 'example'
 rxd dotnet xref app.dll --at 0x06000001
@@ -182,7 +182,7 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
   owner/method and `offsets: []`; no FETCH route is invented. Valid UTF-16 becomes a
   JSON string; isolated surrogates retain original `utf16_units` with `value: null`
   and no lossy replacement. Empty strings, NUL and supplementary Unicode are
-  preserved. `--contains` matches UTF-16 subsequences (empty needle matches all) with a
+  preserved. `-f/--filter` matches UTF-16 subsequences (empty needle matches all) with a
   bounded linear algorithm.
 - `xref --string VALUE` matches UTF-16 values exactly and case-sensitively across all
   equal heap entries and every original `ldstr` site, ordered by method token then IL
