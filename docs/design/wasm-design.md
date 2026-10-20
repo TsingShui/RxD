@@ -18,9 +18,10 @@ body, but `get-function` requires a module-defined function with a code body.
 The backend reads one bounded binary buffer from a regular file and computes SHA-256;
 path and extension never replace content identity. Function indices use the core
 combined index space: imports first, then module-defined functions. The member ID is
-`rxd1:wasm:<sha256>:func:<decimal-index>`; `get-function` verifies the content hash,
-the index in the defined-function range, and the presence of a code body. Imported
-function indices may appear in `outline` but are not valid `get-function` targets.
+`rxd1:wasm:<sha256>:func:<decimal-index>`, printed as the `func:<decimal-index>`
+coordinate; `get-function --at` verifies the content hash, the coordinate kind, the
+index in the defined-function range, and the presence of a code body. Imported
+function indices may appear in `imports` but are not valid `get-function` targets.
 
 Parsing checks section order, lengths and index-space boundaries, reads one function
 body on demand, and does not pre-decode all code or build a whole-module IR or data-flow
@@ -34,18 +35,33 @@ DWARF, source maps and `producers` provenance are not reconstructed.
 ## Commands and protocol
 
 ```sh
-rxd wasm outline module.wasm --func-name run
-rxd wasm get-function module.wasm 'rxd1:wasm:HASH:func:42'
-rxd wasm strings module.wasm --contains 'example'
+rxd wasm types module.wasm -f i32
+rxd wasm functions module.wasm --func-name run
+rxd wasm get-function module.wasm --at func:42
+rxd wasm strings module.wasm -f 'example'
 rxd wasm xref module.wasm --func 42
 ```
 
-- `outline` emits header/records/summary JSONL with `detail.analysis: metadata`.
-  Records cover `type` (function signatures), `import`, `export`, `function`,
-  `table`, `memory`, `global`, and `data`/`element` summaries, ordered by each
-  section's index order. `header.query` echoes filters. `--func-name` matches the
-  name section exactly and preserves duplicates; `--func N` selects a combined index;
-  without filters it emits all structural records.
+One command emits one record kind; there is no mixed structural stream. `types`,
+`imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`,
+`elements` and `strings` each emit header/records/summary JSONL whose records are
+all of that command's single kind, in section index order, with
+`detail.analysis: metadata`. `header.query` echoes the selectors the command took.
+
+Every listing command takes `-f/--filter`, a case-insensitive substring over the
+value the row is named by: the name-section label for `functions` and `globals`,
+the rendered signature for `types`, `module.name` for `imports`, the export name
+for `exports`, the decoded literal for `strings`, and otherwise the row's own `at`
+coordinate. Platform exact selectors sit next to it: `functions --func N` selects
+one combined function index and `functions --func-name NAME` matches the name
+section exactly (duplicates preserved).
+
+- `get-function --at` takes the `at` a `functions` row prints (`func:42`). A short
+  coordinate is expanded against the header source identity inside the library; a
+  full `rxd1:wasm:<sha256>:func:<n>` id keeps its own hash, so one naming different
+  content fails as `SOURCE_MISMATCH` instead of being rewritten, and a malformed
+  coordinate is `INVALID_ID` rather than guessed. Imported function indices have no
+  code body and are `INVALID_QUERY`.
 - `get-function` emits one JSON `function_view` record. It first tries structured
   decompilation: on success it returns `representation: clike`, `decompiled: true`,
   language-neutral C-like code, a `mapping` from output lines to code-body byte
@@ -61,9 +77,9 @@ rxd wasm xref module.wasm --func 42
 - `strings` enumerates decodable UTF-8 byte sequences in data segments and name
   strings. Offsets are segment-relative and retain the data-segment index. Valid
   UTF-8 becomes a JSON string; invalid bytes stay as raw bytes with `value: null`,
-  without lossy replacement. `--contains` matches a byte subsequence. Data-segment
-  linear-memory layout is reported as the declared offset expression; no constant
-  folding or runtime evaluation is performed.
+  without lossy replacement, and `-f/--filter` then matches their lossy text.
+  Data-segment linear-memory layout is reported as the declared offset expression;
+  no constant folding or runtime evaluation is performed.
 - `xref --func N` finds instructions in all defined function bodies that explicitly
   reference the target function index (`call`, `return_call`, `ref.func`) and retains
   the caller index and code-body offset. It does not resolve `call_indirect` runtime
@@ -72,29 +88,49 @@ rxd wasm xref module.wasm --func 42
 
 `-o` atomically writes exactly the stdout content. Failures emit no partial stdout
 and never overwrite an existing output. Diagnostics go to stderr. `INVALID_QUERY`
-and argument errors exit 2; input, resource and I/O failures exit 1.
+and argument errors exit 2; `INVALID_ID`, `SOURCE_MISMATCH`, input, resource and I/O
+failures exit 1.
 
 ## Envelope (schema_version=2)
 
 All structured output uses the shared [ADR 0003](../adr/0003-output-envelope.md)
-constructors, with no legacy flat fields or same-name record subobjects. `outline`,
-`strings` and `xref` return header → zero or more data records → summary. The header
-contains `record, backend, command, source_id, input_bytes, schema_version, query,
-detail`; `query` echoes command arguments. The summary contains `record, records,
-complete, detail` with `detail: {}`. Only exit 0 plus `summary.complete: true` means a
-complete query.
+constructors, with no legacy flat fields or same-name record subobjects. Every
+listing command and `xref` return header → zero or more data records → summary. The
+header contains `record, backend, command, source_id, input_bytes, schema_version,
+query, detail`; `query` echoes the command's own selectors. The summary contains
+`record, records, complete, detail` with `detail: {}`. Only exit 0 plus
+`summary.complete: true` means a complete query.
 
-Data records contain `record, id, source_id, parent_id, context_id, start, end,
-detail`; inapplicable values are `null`, never omitted. `source_id` is the actual input
-file SHA-256. There are no invented structure IDs, so `parent_id` is always `null`.
-Reference records have `id: null`; their `context_id` is the caller's content-bound
-FETCH ID. Other records have `context_id: null`. String and reference offsets are
-segment/heap/function-relative, not file ranges; their outer `start/end` are `null`.
-The three streaming commands set `header.detail` to
-`analysis, imported_funcs, total_funcs` with `analysis: metadata`. Function and
-`function_view` records use the content-bound function ID; other records have
-`id: null`. Function ranges are the module file's half-open code-body range,
-including locals; other records have `start/end: null`.
+Data records contain `record, at, source_id, parent_at, context_at, start, end,
+detail`; inapplicable values are `null`, never omitted. Identity is the `at`
+coordinate: a row that has an index-space identity prints it, and the shared
+envelope strips the `rxd1:wasm:<sha256>:` prefix because the header already carries
+`source_id`. `source_id` is therefore `null` on every row, and there are no invented
+structure IDs, so `parent_at` is always `null`. Reference records have `at: null`;
+their `context_at` is the caller's coordinate and `detail.target` is the referenced
+function's coordinate. Other records have `context_at: null`. String and reference
+offsets are segment/function-relative, not file ranges; their outer `start/end` are
+`null`. Every listing command sets `header.detail` to `analysis, imported_funcs,
+total_funcs` with `analysis: metadata`. Function and `function_view` records use the
+content-bound function id as `at`; function ranges are the module file's half-open
+code-body range, including locals, and other records have `start/end: null`.
+
+`at` coordinates are short, copy-only and self-describing; a short coordinate passed
+back to `--at` is expanded against the header hash before validation.
+
+| Record | `at` |
+| --- | --- |
+| `type` | `type:<type index>` |
+| `import` | `import:<import index>` |
+| `export` | `export:<export index>` |
+| `function` / `function_view` | `func:<combined function index>` |
+| `table` | `table:<table index>` |
+| `memory` | `memory:<memory index>` |
+| `global` | `global:<global index>` |
+| `data` | `data:<data-segment index>` |
+| `element` | `element:<element-segment index>` |
+| `string` | `null` (a string has no index space of its own) |
+| `reference` | `null`; caller in `context_at` |
 
 Fixed detail fields:
 
@@ -110,12 +146,14 @@ Fixed detail fields:
 | `data` | `index, kind, memory_index, offset_expr, byte_length` |
 | `element` | `index, kind, count` |
 | `string` | `origin, segment_index, offset, value, bytes` |
-| `reference` | `caller_index, caller_name, offset, opcode, target_index` |
+| `reference` | `target, caller_index, caller_name, offset, opcode, target_index` |
 | `function_view` | `representation, decompiled, reason, code, func, body_file_offset, body_size, locals, instructions, mapping, bytecode_hex, complete` |
 
 `get-function` (default reconstruction or `--raw`) is a single
 `record="function_view"` FETCH record without header/summary; it additionally carries
-`backend="wasm"`, `command="get-function"` and `schema_version=2` outside. `func` is a
+`backend="wasm"`, `command="get-function"` and `schema_version=2` outside. `--raw` is
+the only spelling for the original instruction view; there is no separate
+`--bytecode`/`--instructions` flag. `func` is a
 typed object with `func_index, type_index, name, params, results`. Instructions have
 `offset, opcode, operand`; locals have `count, value_type`; `mapping` is
 `[line, code-body-offset]`. Operand keeps the kind-specific immediate object (memarg:
@@ -168,7 +206,7 @@ indirect), sign-extension, saturating conversions, bulk memory, multi-value, and
 reference types. Reachable unsupported instructions/proposals (SIMD,
 threads/atomics, GC, experimental tail-call/exception handling outside the supported
 set) return `UNSUPPORTED_OPCODE` with the opcode and preserve the remaining original
-bytes; they do not guess semantics or fail the entire outline.
+bytes; they do not guess semantics or fail the whole listing.
 
 Component Model, module linking, WASI capability graphs, and interpreting linear
 memory as host structures are out of scope. Instruction decoding is not complete
@@ -176,10 +214,12 @@ program-semantics recovery.
 
 ## Budgets and performance
 
-Defaults: input 8 GiB (may be lowered; 32-bit spans keep actual addressable content
-below 4 GiB), entities 100,000, work 16,777,216, instructions per function 1,000,000,
-records 100,000, output 32 MiB. Each limit has a positive-integer `--max-*` override.
-Entities count type/import/export/function/table/memory/global/data/element entries.
+Every ceiling comes from the shared `rxd_core::Budget::default()` table: input 8 GiB
+(32-bit spans keep actual addressable content below 4 GiB), entities 100,000, work
+1,000,000, instructions per function 100,000, records 100,000, output 32 MiB. WASM
+projects that table onto its own `Limits` type; the CLI exposes no `--max-*` flag and
+restates no number, so a ceiling changes in exactly one place. Entities count
+type/import/export/function/table/memory/global/data/element entries.
 Work bounds section decode, function-body decode and reference scanning; `xref`
 charges actual decode and match work across all defined bodies. Budgets are checked
 before allocation, section enumeration, function decode and output, including JSONL
@@ -221,7 +261,8 @@ parsing, not deobfuscation.
 
 ## MCP projection
 
-`wasm_outline`/`strings`/`xref`/`get_function` reuse the same validation/decode and
+The typed tools mirror the listing commands (`wasm_types`, `wasm_functions`, …) and
+`wasm_strings`/`wasm_xref`/`wasm_get_function`, reusing the same validation/decode and
 reconstruction code. JSONL becomes header/records/summary; FETCH keeps the original
 function view and raw option. Combined function indices, module file ranges,
 body-relative offsets, indirect calls and complete fallback remain unchanged; inputs

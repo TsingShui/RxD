@@ -1,23 +1,128 @@
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
-use rxd_core::envelope::{RecordMeta, SCHEMA_VERSION, header, record, summary};
+use rxd_core::envelope::{RecordMeta, attach_protocol, header, record, summary};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Result};
 use rxd_wasm::{Limits, Module};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
+/// One command emits one record kind: `types` only types, `functions` only
+/// functions, and so on. There is no mixed structural stream.
 #[derive(Subcommand)]
 pub enum Command {
-    /// Enumerate module structure (types, imports, exports, functions, …) as JSONL.
-    Outline {
+    /// Enumerate the type section (function signatures) as JSONL.
+    Types {
+        /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Keep only functions whose name-section label matches exactly.
-        #[arg(long = "func-name")]
-        func_name: Option<String>,
+        /// Case-insensitive substring over the rendered signature.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate the import section as JSONL.
+    Imports {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over `module.name`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate the export section as JSONL.
+    Exports {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over the export name.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate module-defined functions as JSONL.
+    Functions {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
         /// Keep only the function at this merged function index.
         #[arg(long = "func")]
         func: Option<u32>,
+        /// Keep only functions whose name-section label matches exactly.
+        #[arg(long = "func-name")]
+        func_name: Option<String>,
+        /// Case-insensitive substring over the name-section label or `func:<index>`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate the table section as JSONL.
+    Tables {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over `table:<index>`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate the memory section as JSONL.
+    Memories {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over `memory:<index>`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate the global section as JSONL.
+    Globals {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over the name-section label or `global:<index>`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate data segments as JSONL.
+    Data {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over `data:<index>`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate element segments as JSONL.
+    Elements {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over `element:<index>`.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Enumerate decodable UTF-8 strings in data segments and the name section.
+    Strings {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        /// Case-insensitive substring over the decoded literal.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Find defined functions that explicitly reference a target function index.
+    Xref {
+        /// The regular local `.wasm` file to read.
+        input: PathBuf,
+        #[arg(long = "func")]
+        func: u32,
         #[command(flatten)]
         options: Options,
     },
@@ -25,29 +130,14 @@ pub enum Command {
     /// decompilation by default; falls back to the instruction view.
     #[command(name = "get-function")]
     Get {
+        /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Coordinate copied from a `function` record: `func:42`.
+        /// The `at` a `functions` row prints: `func:42`.
         #[arg(long)]
         at: String,
         /// Force the raw instruction view instead of attempting decompilation.
         #[arg(long)]
         raw: bool,
-        #[command(flatten)]
-        options: Options,
-    },
-    /// Enumerate decodable UTF-8 strings in data segments and the name section.
-    Strings {
-        input: PathBuf,
-        #[arg(long)]
-        contains: Option<String>,
-        #[command(flatten)]
-        options: Options,
-    },
-    /// Find defined functions that explicitly reference a target function index.
-    Xref {
-        input: PathBuf,
-        #[arg(long = "func")]
-        func: u32,
         #[command(flatten)]
         options: Options,
     },
@@ -61,50 +151,73 @@ pub struct Options {
     perf: bool,
     #[arg(long)]
     debug: bool,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = super::input_bytes)]
-    max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_entities: usize,
-    #[arg(long, default_value_t = 16 * 1024 * 1024, value_parser = super::positive)]
-    max_work: usize,
-    #[arg(long, default_value_t = 1_000_000, value_parser = super::positive)]
-    max_instructions: usize,
-    #[arg(long, default_value_t = 100_000, value_parser = super::positive)]
-    max_records: usize,
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = super::positive)]
-    max_output_bytes: usize,
-}
-
-impl Options {
-    fn limits(&self) -> Limits {
-        Limits {
-            input_bytes: super::input_limit(self.max_input_bytes),
-            entities: self.max_entities,
-            work: self.max_work,
-            instructions: self.max_instructions,
-            records: self.max_records,
-            output_bytes: self.max_output_bytes,
-        }
-    }
 }
 
 impl Command {
+    fn input(&self) -> &PathBuf {
+        match self {
+            Self::Types { input, .. }
+            | Self::Imports { input, .. }
+            | Self::Exports { input, .. }
+            | Self::Functions { input, .. }
+            | Self::Tables { input, .. }
+            | Self::Memories { input, .. }
+            | Self::Globals { input, .. }
+            | Self::Data { input, .. }
+            | Self::Elements { input, .. }
+            | Self::Strings { input, .. }
+            | Self::Xref { input, .. }
+            | Self::Get { input, .. } => input,
+        }
+    }
+
     fn options(&self) -> &Options {
         match self {
-            Self::Outline { options, .. }
-            | Self::Get { options, .. }
+            Self::Types { options, .. }
+            | Self::Imports { options, .. }
+            | Self::Exports { options, .. }
+            | Self::Functions { options, .. }
+            | Self::Tables { options, .. }
+            | Self::Memories { options, .. }
+            | Self::Globals { options, .. }
+            | Self::Data { options, .. }
+            | Self::Elements { options, .. }
             | Self::Strings { options, .. }
-            | Self::Xref { options, .. } => options,
+            | Self::Xref { options, .. }
+            | Self::Get { options, .. } => options,
+        }
+    }
+
+    fn filter(&self) -> Option<&str> {
+        match self {
+            Self::Types { filter, .. }
+            | Self::Imports { filter, .. }
+            | Self::Exports { filter, .. }
+            | Self::Functions { filter, .. }
+            | Self::Tables { filter, .. }
+            | Self::Memories { filter, .. }
+            | Self::Globals { filter, .. }
+            | Self::Data { filter, .. }
+            | Self::Elements { filter, .. }
+            | Self::Strings { filter, .. } => filter.as_deref(),
+            Self::Xref { .. } | Self::Get { .. } => None,
         }
     }
 
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Outline { .. } => "outline",
-            Self::Get { .. } => "get-function",
+            Self::Types { .. } => "types",
+            Self::Imports { .. } => "imports",
+            Self::Exports { .. } => "exports",
+            Self::Functions { .. } => "functions",
+            Self::Tables { .. } => "tables",
+            Self::Memories { .. } => "memories",
+            Self::Globals { .. } => "globals",
+            Self::Data { .. } => "data",
+            Self::Elements { .. } => "elements",
             Self::Strings { .. } => "strings",
             Self::Xref { .. } => "xref",
+            Self::Get { .. } => "get-function",
         }
     }
 
@@ -126,6 +239,8 @@ pub fn execute(command: Command) -> Result<()> {
         let code = [
             "RESOURCE_LIMIT",
             "INVALID_QUERY",
+            "INVALID_ID",
+            "SOURCE_MISMATCH",
             "INVALID_INPUT",
             "UNSUPPORTED_INPUT",
         ]
@@ -138,13 +253,10 @@ pub fn execute(command: Command) -> Result<()> {
 }
 
 fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
-    let (path, options) = match &command {
-        Command::Outline { input, options, .. }
-        | Command::Get { input, options, .. }
-        | Command::Strings { input, options, .. }
-        | Command::Xref { input, options, .. } => (input, options),
-    };
-    let limits = options.limits();
+    let path = command.input();
+    let options = command.options();
+    // One budget table for every backend; the CLI exposes no knobs for it.
+    let limits = Limits::default();
     let module = perf.measure("read_parse", || Module::read(path, limits))?;
     perf.source_id = Some(module.source_id.clone());
     perf.counters.input_bytes = Some(module.file_bytes);
@@ -163,16 +275,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     let mut output = Vec::new();
     let mut records = 0usize;
 
-    // `get` returns exactly one JSON record, not a header/records/summary stream.
+    // `get` returns exactly one function_view record, not a header/records/summary stream.
     if let Command::Get { at, raw, .. } = &command {
-        let at = rxd_core::envelope::full_id("wasm", &module.source_id, at);
-        let position = module.defined_position_by_id(&at)?;
+        let position = module.defined_position_at(at)?;
         let view = perf.measure("decode", || rxd_wasm::get_view(&module, position, *raw))?;
         let mut value = record(
             "function_view",
             RecordMeta {
-                at: Some(&at),
-                source_id: Some(&module.source_id),
+                at: Some(&module.function_at(position).id),
                 start: Some(view.body_file_offset),
                 end: Some(view.body_file_offset + view.body_size),
                 ..RecordMeta::default()
@@ -201,9 +311,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             .unwrap()
             .clone(),
         );
-        value["backend"] = json!("wasm");
-        value["command"] = json!(command.name());
-        value["schema_version"] = json!(SCHEMA_VERSION);
+        attach_protocol(&mut value, "wasm", command.name());
         append(&mut output, &value, limits.output_bytes)?;
         perf.record("query", query_start);
         perf.counters.records = Some(1);
@@ -214,14 +322,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let query = match &command {
-        Command::Outline {
-            func_name, func, ..
-        } => json!({"func_name": func_name, "func": func}),
-        Command::Strings { contains, .. } => json!({"contains": contains}),
-        Command::Xref { func, .. } => json!({"func": func}),
-        Command::Get { .. } => unreachable!(),
-    };
     append(
         &mut output,
         &header(
@@ -229,7 +329,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             command.name(),
             Some(&module.source_id),
             Some(module.file_bytes),
-            query,
+            command_query(&command),
             json!({
                 "analysis": "metadata",
                 "imported_funcs": module.imported_func_count(),
@@ -242,70 +342,107 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         limits.output_bytes,
     )?;
 
+    let filter = command.filter();
     match &command {
-        Command::Outline {
-            func_name, func, ..
-        } => outline(
-            &module,
-            func_name.as_deref(),
-            *func,
+        Command::Types { .. } => emit_rows(
+            type_rows(&module),
+            filter,
+            limits,
             &mut output,
             &mut records,
-            options,
         )?,
-        Command::Strings { contains, .. } => {
-            let strings = perf.measure("strings", || {
-                rxd_wasm::strings(&module, contains.as_deref())
-            })?;
-            for string in strings {
-                emit_record(
-                    &mut output,
-                    &mut records,
-                    options,
-                    &record(
-                        "string",
-                        RecordMeta {
-                            source_id: Some(&module.source_id),
-                            ..RecordMeta::default()
-                        },
-                        json!({
-                            "origin": string.origin,
-                            "segment_index": string.segment_index,
-                            "offset": string.offset,
-                            "value": string.value,
-                            "bytes": string.bytes
-                        })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                    ),
-                )?;
-            }
+        Command::Imports { .. } => emit_rows(
+            import_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Exports { .. } => emit_rows(
+            export_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Functions {
+            func, func_name, ..
+        } => emit_rows(
+            function_rows(&module, *func, func_name.as_deref()),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Tables { .. } => emit_rows(
+            table_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Memories { .. } => emit_rows(
+            memory_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Globals { .. } => emit_rows(
+            global_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Data { .. } => emit_rows(
+            data_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Elements { .. } => emit_rows(
+            element_rows(&module),
+            filter,
+            limits,
+            &mut output,
+            &mut records,
+        )?,
+        Command::Strings { .. } => {
+            let strings = perf.measure("strings", || rxd_wasm::strings(&module))?;
+            emit_rows(
+                string_rows(&strings),
+                filter,
+                limits,
+                &mut output,
+                &mut records,
+            )?;
         }
         Command::Xref { func, .. } => {
             let references = perf.measure("xref", || rxd_wasm::refs(&module, *func))?;
             for reference in references {
-                emit_record(
+                let mut detail = Map::new();
+                detail.insert(
+                    "target".into(),
+                    json!(coordinate("func", reference.target_index)),
+                );
+                detail.insert("caller_index".into(), json!(reference.caller_index));
+                detail.insert("caller_name".into(), json!(reference.caller_name));
+                detail.insert("offset".into(), json!(reference.offset));
+                detail.insert("opcode".into(), json!(reference.opcode));
+                detail.insert("target_index".into(), json!(reference.target_index));
+                push_limited(
                     &mut output,
                     &mut records,
-                    options,
+                    limits,
                     &record(
                         "reference",
                         RecordMeta {
-                            source_id: Some(&module.source_id),
                             context_at: Some(&reference.id),
                             ..RecordMeta::default()
                         },
-                        json!({
-                            "caller_index": reference.caller_index,
-                            "caller_name": reference.caller_name,
-                            "offset": reference.offset,
-                            "opcode": reference.opcode,
-                            "target_index": reference.target_index
-                        })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
+                        detail,
                     ),
                 )?;
             }
@@ -327,251 +464,327 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn outline(
-    module: &Module,
-    func_name: Option<&str>,
-    func: Option<u32>,
-    output: &mut Vec<u8>,
-    records: &mut usize,
-    options: &Options,
-) -> anyhow::Result<()> {
-    let filtered = func_name.is_some() || func.is_some();
-    let keep = |function: &rxd_wasm::Function| -> bool {
-        if let Some(name) = func_name
-            && function.name.as_deref() != Some(name)
-        {
-            return false;
-        }
-        if let Some(index) = func
-            && function.func_index != index
-        {
-            return false;
-        }
-        true
-    };
-
-    if !filtered {
-        for ty in &module.func_types {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "type",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({"type_index":ty.type_index,"params":ty.params,"results":ty.results})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ),
-            )?;
-        }
-        for import in &module.imports {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "import",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        "module": import.module,
-                        "name": import.name,
-                        "kind": import.kind,
-                        "func_index": import.func_index,
-                        "type_index": import.type_index
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
-        }
-        for export in &module.exports {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "export",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({"name":export.name,"kind":export.kind,"index":export.index})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ),
-            )?;
-        }
+/// The `query` echo: the selectors this command actually took.
+fn command_query(command: &Command) -> Value {
+    match command {
+        Command::Functions {
+            func, func_name, ..
+        } => json!({"func": func, "func_name": func_name, "filter": command.filter()}),
+        Command::Xref { func, .. } => json!({"func": func}),
+        _ => json!({"filter": command.filter()}),
     }
-    for function in &module.functions {
-        if !keep(function) {
-            continue;
-        }
-        emit_record(
-            output,
-            records,
-            options,
-            &record(
-                "function",
-                RecordMeta {
-                    source_id: Some(&module.source_id),
-                    at: Some(&function.id),
-                    start: Some(function.body_file_offset),
-                    end: Some(function.body_file_offset + function.body_size),
-                    ..RecordMeta::default()
-                },
-                json!({
-                    "func_index": function.func_index,
-                    "type_index": function.type_index,
-                    "name": function.name,
-                    "params": function.params,
-                    "results": function.results,
-                    "body_file_offset": function.body_file_offset,
-                    "body_size": function.body_size
-                })
+}
+
+/// One catalog row before it becomes an envelope record.
+///
+/// `label` is the value the row is named by, which is what `-f/--filter`
+/// matches: the name-section label, else the kind's own descriptive text, else
+/// the row's `at` coordinate.
+struct Row {
+    kind: &'static str,
+    at: Option<String>,
+    start: Option<usize>,
+    end: Option<usize>,
+    label: String,
+    detail: Map<String, Value>,
+}
+
+/// The copy-only coordinate a row prints. It is the format's own index, so it is
+/// self-describing and needs no content hash to be read.
+fn coordinate(kind: &str, index: u32) -> String {
+    format!("{kind}:{index}")
+}
+
+/// A row whose identity is its content-bound function id; `at_of` shortens it to
+/// the `func:<index>` coordinate, leaving the hash in the stream header only.
+fn function_row(function: &rxd_wasm::Function) -> Row {
+    Row {
+        kind: "function",
+        at: Some(function.id.clone()),
+        start: Some(function.body_file_offset),
+        end: Some(function.body_file_offset + function.body_size),
+        label: function
+            .name
+            .clone()
+            .unwrap_or_else(|| coordinate("func", function.func_index)),
+        detail: json!({
+            "func_index": function.func_index,
+            "type_index": function.type_index,
+            "name": function.name,
+            "params": function.params,
+            "results": function.results,
+            "body_file_offset": function.body_file_offset,
+            "body_size": function.body_size
+        })
+        .as_object()
+        .unwrap()
+        .clone(),
+    }
+}
+
+fn type_rows(module: &Module) -> Vec<Row> {
+    module
+        .func_types
+        .iter()
+        .map(|ty| Row {
+            kind: "type",
+            at: Some(coordinate("type", ty.type_index)),
+            start: None,
+            end: None,
+            label: format!("({})->({})", ty.params.join(","), ty.results.join(",")),
+            detail: json!({
+                "type_index": ty.type_index,
+                "params": ty.params,
+                "results": ty.results
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn import_rows(module: &Module) -> Vec<Row> {
+    module
+        .imports
+        .iter()
+        .enumerate()
+        .map(|(position, import)| Row {
+            kind: "import",
+            at: Some(coordinate("import", position as u32)),
+            start: None,
+            end: None,
+            label: format!("{}.{}", import.module, import.name),
+            detail: json!({
+                "module": import.module,
+                "name": import.name,
+                "kind": import.kind,
+                "func_index": import.func_index,
+                "type_index": import.type_index
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn export_rows(module: &Module) -> Vec<Row> {
+    module
+        .exports
+        .iter()
+        .enumerate()
+        .map(|(position, export)| Row {
+            kind: "export",
+            at: Some(coordinate("export", position as u32)),
+            start: None,
+            end: None,
+            label: export.name.clone(),
+            detail: json!({"name":export.name,"kind":export.kind,"index":export.index})
                 .as_object()
                 .unwrap()
                 .clone(),
+        })
+        .collect()
+}
+
+fn function_rows(module: &Module, func: Option<u32>, func_name: Option<&str>) -> Vec<Row> {
+    module
+        .functions
+        .iter()
+        .filter(|function| func.is_none_or(|index| function.func_index == index))
+        .filter(|function| func_name.is_none_or(|name| function.name.as_deref() == Some(name)))
+        .map(function_row)
+        .collect()
+}
+
+fn table_rows(module: &Module) -> Vec<Row> {
+    module
+        .tables
+        .iter()
+        .map(|table| Row {
+            kind: "table",
+            at: Some(coordinate("table", table.index)),
+            start: None,
+            end: None,
+            label: coordinate("table", table.index),
+            detail: json!({
+                "index": table.index,
+                "element_type": table.element_type,
+                "initial": table.initial,
+                "maximum": table.maximum
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn memory_rows(module: &Module) -> Vec<Row> {
+    module
+        .memories
+        .iter()
+        .map(|memory| Row {
+            kind: "memory",
+            at: Some(coordinate("memory", memory.index)),
+            start: None,
+            end: None,
+            label: coordinate("memory", memory.index),
+            detail: json!({
+                "index": memory.index,
+                "initial": memory.initial,
+                "maximum": memory.maximum,
+                "memory64":memory.memory64,
+                "shared": memory.shared
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn global_rows(module: &Module) -> Vec<Row> {
+    module
+        .globals
+        .iter()
+        .map(|global| Row {
+            kind: "global",
+            at: Some(coordinate("global", global.index)),
+            start: None,
+            end: None,
+            label: global
+                .name
+                .clone()
+                .unwrap_or_else(|| coordinate("global", global.index)),
+            detail: json!({
+                "index": global.index,
+                "value_type": global.value_type,
+                "mutable": global.mutable,
+                "name": global.name
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn data_rows(module: &Module) -> Vec<Row> {
+    module
+        .data_segments
+        .iter()
+        .map(|data| Row {
+            kind: "data",
+            at: Some(coordinate("data", data.index)),
+            start: None,
+            end: None,
+            label: coordinate("data", data.index),
+            detail: json!({
+                "index": data.index,
+                "kind": data.kind,
+                "memory_index": data.memory_index,
+                "offset_expr": data.offset_expr,
+                "byte_length": data.byte_length
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn element_rows(module: &Module) -> Vec<Row> {
+    module
+        .element_segments
+        .iter()
+        .map(|element| Row {
+            kind: "element",
+            at: Some(coordinate("element", element.index)),
+            start: None,
+            end: None,
+            label: coordinate("element", element.index),
+            detail: json!({"index":element.index,"kind":element.kind,"count":element.count})
+                .as_object()
+                .unwrap()
+                .clone(),
+        })
+        .collect()
+}
+
+fn string_rows(strings: &[rxd_wasm::StringRecord]) -> Vec<Row> {
+    strings
+        .iter()
+        .map(|string| Row {
+            kind: "string",
+            // A string has no index space of its own, so its row carries no coordinate.
+            at: None,
+            start: None,
+            end: None,
+            label: match (&string.value, &string.bytes) {
+                (Some(value), _) => value.clone(),
+                (None, Some(bytes)) => String::from_utf8_lossy(bytes).into_owned(),
+                (None, None) => String::new(),
+            },
+            detail: json!({
+                "origin": string.origin,
+                "segment_index": string.segment_index,
+                "offset": string.offset,
+                "value": string.value,
+                "bytes": string.bytes
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        })
+        .collect()
+}
+
+fn emit_rows(
+    rows: Vec<Row>,
+    filter: Option<&str>,
+    limits: Limits,
+    output: &mut Vec<u8>,
+    records: &mut usize,
+) -> anyhow::Result<()> {
+    let needle = filter.map(str::to_lowercase);
+    for row in rows {
+        if let Some(needle) = &needle
+            && !row.label.to_lowercase().contains(needle.as_str())
+        {
+            continue;
+        }
+        push_limited(
+            output,
+            records,
+            limits,
+            &record(
+                row.kind,
+                RecordMeta {
+                    at: row.at.as_deref(),
+                    start: row.start,
+                    end: row.end,
+                    ..RecordMeta::default()
+                },
+                row.detail,
             ),
         )?;
-    }
-    if !filtered {
-        for table in &module.tables {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "table",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        "index": table.index,
-                        "element_type": table.element_type,
-                        "initial": table.initial,
-                        "maximum": table.maximum
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
-        }
-        for memory in &module.memories {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "memory",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        "index": memory.index,
-                        "initial": memory.initial,
-                        "maximum": memory.maximum,
-                        "memory64":memory.memory64,
-                        "shared": memory.shared
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
-        }
-        for global in &module.globals {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "global",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        "index": global.index,
-                        "value_type": global.value_type,
-                        "mutable": global.mutable,
-                        "name": global.name
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
-        }
-        for data in &module.data_segments {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "data",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        "index": data.index,
-                        "kind": data.kind,
-                        "memory_index": data.memory_index,
-                        "offset_expr": data.offset_expr,
-                        "byte_length": data.byte_length
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
-        }
-        for element in &module.element_segments {
-            emit_record(
-                output,
-                records,
-                options,
-                &record(
-                    "element",
-                    RecordMeta {
-                        source_id: Some(&module.source_id),
-                        ..RecordMeta::default()
-                    },
-                    json!({"index":element.index,"kind":element.kind,"count":element.count})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ),
-            )?;
-        }
     }
     Ok(())
 }
 
-fn emit_record(
+fn push_limited(
     output: &mut Vec<u8>,
     records: &mut usize,
-    options: &Options,
+    limits: Limits,
     value: &Value,
 ) -> anyhow::Result<()> {
     anyhow::ensure!(
-        *records < options.max_records,
+        *records < limits.records,
         "RESOURCE_LIMIT: record budget exceeded"
     );
-    append(output, value, options.max_output_bytes)?;
+    append(output, value, limits.output_bytes)?;
     *records += 1;
     Ok(())
 }

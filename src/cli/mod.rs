@@ -352,7 +352,6 @@ pub(crate) fn default_threads() -> usize {
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
-    feature = "backend-wasm",
     feature = "backend-pyc"
 ))]
 pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
@@ -375,7 +374,6 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
-    feature = "backend-wasm",
     feature = "backend-pyc"
 ))]
 pub(crate) fn input_bytes(value: &str) -> std::result::Result<usize, String> {
@@ -398,7 +396,6 @@ pub(crate) fn input_bytes(value: &str) -> std::result::Result<usize, String> {
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
-    feature = "backend-wasm",
     feature = "backend-pyc"
 ))]
 pub(crate) fn input_limit(value: Option<usize>) -> usize {

@@ -78,8 +78,7 @@ fn get_expected<'a>(case: &'a Value, name: &str) -> Option<&'a str> {
 
 /// rxd decompiled code (or None if degraded) for a named function.
 fn rxd_decompile(wasm: &Path, name: &str) -> Option<String> {
-    let rows = jsonl(&run_wasm("outline", wasm, &[]));
-    let source_id = rows[0]["source_id"].as_str().unwrap().to_owned();
+    let rows = jsonl(&run_wasm("functions", wasm, &[]));
     let func = rows.iter().find(|r| {
         r["record"] == "function"
             && r["detail"]["name"]
@@ -87,12 +86,9 @@ fn rxd_decompile(wasm: &Path, name: &str) -> Option<String> {
                 .map(|n| n.trim_start_matches('_'))
                 == Some(name.trim_start_matches('_'))
     })?;
-    let idx = func["detail"]["func_index"].as_u64().unwrap();
-    let out = run_wasm(
-        "get-function",
-        wasm,
-        &[&format!("rxd1:wasm:{source_id}:func:{idx}")],
-    );
+    // A row's `at` is the coordinate `get-function --at` accepts.
+    let at = func["at"].as_str().unwrap();
+    let out = run_wasm("get-function", wasm, &["--at", at]);
     success(&out);
     let row: Value = serde_json::from_slice(&out.stdout).unwrap();
     if row["detail"]["decompiled"].as_bool().unwrap_or(false) {
@@ -118,7 +114,7 @@ fn wabt_precedence_matches_wasm_decompile_byte_for_byte() {
     let rxd = rxd_decompile(&wasm, "precedence").expect("precedence must decompile");
     // Compare function bodies byte-for-byte. The only header difference is the
     // `export` marker, which rxd intentionally omits (export status is a
-    // separate outline fact, not part of the function's logic).
+    // separate `exports` fact, not part of the function's logic).
     let body = |s: &str| {
         let start = s.find('{').unwrap();
         let end = s.rfind('}').unwrap();
@@ -180,18 +176,13 @@ fn wabt_block_parameter_signature_degrades_safely() {
         .find(|c| c["name"] == "basic")
         .unwrap();
     let wasm = corpus_dir().join(case["wasm"].as_str().unwrap());
-    let rows = jsonl(&run_wasm("outline", &wasm, &[]));
-    let source_id = rows[0]["source_id"].as_str().unwrap().to_owned();
+    let rows = jsonl(&run_wasm("functions", &wasm, &[]));
     let f = rows
         .iter()
         .find(|r| r["record"] == "function" && r["detail"]["name"] == "f")
         .expect("function f present");
-    let idx = f["detail"]["func_index"].as_u64().unwrap();
-    let out = run_wasm(
-        "get-function",
-        &wasm,
-        &[&format!("rxd1:wasm:{source_id}:func:{idx}")],
-    );
+    let at = f["at"].as_str().unwrap();
+    let out = run_wasm("get-function", &wasm, &["--at", at]);
     success(&out);
     let row: Value = serde_json::from_slice(&out.stdout).unwrap();
     // Degraded to the instruction view with an explicit reason; still complete.

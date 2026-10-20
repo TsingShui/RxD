@@ -1,5 +1,9 @@
 use serde::Serialize;
 
+/// WASM's view of the shared budget table.
+///
+/// The numbers live in exactly one place, `rxd_core::Budget`; this type only
+/// names the subset one module analysis spends.
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
@@ -12,13 +16,14 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
+        let budget = rxd_core::Budget::default();
         Self {
-            input_bytes: rxd_core::MAX_INPUT_BYTES,
-            entities: 100_000,
-            work: 16 * 1024 * 1024,
-            instructions: 1_000_000,
-            records: 100_000,
-            output_bytes: 32 * 1024 * 1024,
+            input_bytes: budget.input_bytes,
+            entities: budget.entities,
+            work: budget.work,
+            instructions: budget.instructions,
+            records: budget.records,
+            output_bytes: budget.output_bytes,
         }
     }
 }
