@@ -269,8 +269,8 @@ Fixed detail fields:
 | `type` | `token, name, namespace, full_name, flags, kind, declaring_type_token, declaring_type_id, extends_token, interfaces, generic_parameters` |
 | `field` | `token, declaring_type_token, declaring_type_id, declaring_type, name, signature, flags` |
 | `method` | `token, declaring_type, declaring_type_token, declaring_type_is_value_type, name, signature, parameters, signature_flags, return_type, has_this, has_body, rva, flags, impl_flags, declaring_type_id, generic_parameters` |
-| `string` | `index, value, utf16_units, status, method_token, il_offsets`; the `#US` token is the row's `at` and the owning type is `parent_at`, so neither is repeated in `detail` (`index` = position in the assembly literal inventory) |
-| `reference` | `method_token, declaring_type, declaring_type_id, name, il_offset, opcode, target_token, target_kind, canonical_target_id, canonical_target_token, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments` |
+| `string` | `index, value, utf16_units, status, il_offsets`; the `#US` token is the row's `at`, the owning type is `parent_at` and the loading method is `context_at`, so none of them is repeated in `detail` (`index` = position in the assembly literal inventory) |
+| `reference` | `target, target_token, target_kind, declaring_type, name, il_offset, opcode, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments`; the caller is `context_at` and its resolving type is `parent_at`, so neither is repeated |
 | `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
 
 Type/field/method coordinates live in outer `at`; string `at` is null. A top-level

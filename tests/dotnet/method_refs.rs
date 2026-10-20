@@ -28,7 +28,7 @@ fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_toke
     assert_eq!(hit["detail"]["il_offset"], 1);
     assert_eq!(hit["detail"]["target_token"], 0x2b000001u32);
     assert_eq!(hit["detail"]["resolution_status"], "resolved");
-    assert_eq!(hit["detail"]["canonical_target_id"], id);
+    assert_eq!(hit["detail"]["target"], id);
     assert_eq!(
         hit["detail"]["method_arguments"],
         serde_json::json!([{"kind":"method_parameter","index":1}])
@@ -75,12 +75,9 @@ fn dotnet_semantic_method_refs_prove_local_aliases_without_matching_overloads_or
         sites,
         [(0, "call"), (5, "ldftn"), (11, "ldtoken"), (16, "jmp")]
     );
-    assert!(
-        rows[1..rows.len() - 1]
-            .iter()
-            .all(|row| row["detail"]["canonical_target_id"] == id
-                && row["detail"]["resolution_status"] == "resolved")
-    );
+    assert!(rows[1..rows.len() - 1].iter().all(
+        |row| row["detail"]["target"] == id && row["detail"]["resolution_status"] == "resolved"
+    ));
 }
 
 #[test]
@@ -139,7 +136,7 @@ fn dotnet_semantic_method_refs_keep_instantiations_nested_members_and_ambiguous_
         assert_eq!(rows.last().unwrap()["records"], 1);
         assert_eq!(rows[1]["detail"]["resolution_status"], status);
         assert_eq!(
-            rows[1]["detail"]["canonical_target_token"],
+            rows[1]["detail"]["target_token"],
             serde_json::json!(canonical)
         );
         assert_eq!(rows[0]["detail"]["target"]["resolution_status"], status);
@@ -263,7 +260,7 @@ fn dotnet_method_refs_compare_scoped_signature_types_instead_of_display_names() 
     let external = jsonl(&run("xref", &semantic_input(), &["--at", "0x0a00000e"]));
     assert_eq!(external.last().unwrap()["records"], 1);
     assert_eq!(external[1]["detail"]["resolution_status"], "unresolved");
-    assert!(external[1]["detail"]["canonical_target_id"].is_null());
+    assert!(external[1]["detail"]["target"].is_null());
 }
 
 #[test]

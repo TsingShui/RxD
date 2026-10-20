@@ -69,7 +69,7 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
     assert_eq!(rows.last().unwrap()["records"], 1);
     let hit = &rows[1];
     assert_eq!(hit["detail"]["target_kind"], "field");
-    assert_eq!(hit["detail"]["canonical_target_id"], id);
+    assert_eq!(hit["detail"]["target"], id);
     assert_eq!(hit["detail"]["target_token"], 0x0a000002u32);
     assert_eq!(hit["detail"]["il_offset"], 1);
     assert_eq!(hit["detail"]["name"], "GenericOwnerField");
@@ -104,7 +104,7 @@ fn proof_sites(path: &Path, tokens: &[u32]) -> Vec<Value> {
         .collect()
 }
 fn assert_proof_sites(rows: &[Value], expected: &[Value]) {
-    let actual: Vec<_> = rows[1..rows.len()-1].iter().map(|row| serde_json::json!({"method_token":row["detail"]["method_token"],"il_offset":row["detail"]["il_offset"],"opcode":row["detail"]["opcode"],"target_token":row["detail"]["target_token"]})).collect();
+    let actual: Vec<_> = rows[1..rows.len()-1].iter().map(|row| serde_json::json!({"method_token":row["context_at"],"il_offset":row["detail"]["il_offset"],"opcode":row["detail"]["opcode"],"target_token":row["detail"]["target_token"]})).collect();
     assert_eq!(actual, expected);
     assert_eq!(rows[0]["schema_version"], 2);
     assert_eq!(rows.last().unwrap()["records"], expected.len());
@@ -130,7 +130,7 @@ fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operand
         assert_proof_sites(&rows, &proof_sites(&path, &operands));
         for hit in &rows[1..rows.len() - 1] {
             assert_eq!(hit["detail"]["target_kind"], "type");
-            assert_eq!(hit["detail"]["canonical_target_id"], id);
+            assert_eq!(hit["detail"]["target"], id);
             success(&run(
                 "get-method",
                 &path,
@@ -171,7 +171,7 @@ fn dotnet_field_refs_keep_signature_owner_instantiations_and_external_scopes_dis
             assert!(row["detail"]["signature"].is_null());
             assert!(!row["detail"]["type_signature"].is_null());
             if status != "resolved" {
-                assert!(row["detail"]["canonical_target_id"].is_null());
+                assert!(row["detail"]["target"].is_null());
             }
         }
     }

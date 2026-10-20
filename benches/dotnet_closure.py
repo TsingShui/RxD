@@ -36,6 +36,7 @@ def workflows(args, output):
     class_oracle = next(case for case in json.loads((ROOT / 'tests/corpus/dotnet/class-expectations.json').read_text())['workloads']
                         if case['token'] == manifest['caller']['declaring_type_token'])
     caller_token = manifest['caller']['method_token']
+    caller_at = f"0x{caller_token:08x}"
     caller_oracle = class_oracle['methods'][f'0x{caller_token:08x}']
     report = {'oracle': manifest, 'workloads': [], 'acceptance': 'pending',
               'measurement': 'All process launches, worker/read/hash/native/serialization/writes and JSON ID routing are timed. Independent correctness checks follow timing.',
@@ -71,11 +72,11 @@ def workflows(args, output):
                     target = next(row for row in rows if row['record'] == 'method' and row['detail']['token'] == manifest['target']['token'])
                     refs = query(['dotnet', 'refs', args.production, '--id', target['id']])
                     rows = [json.loads(line) for line in refs.splitlines()]
-                    hit = next(row for row in rows if row['record'] == 'reference' and row['detail']['method_token'] == caller_token)
+                    hit = next(row for row in rows if row['record'] == 'reference' and row['context_at'] == caller_at)
                 else:
                     search = query(['dotnet', 'strings', args.production, '--contains', manifest['string']['contains']])
                     rows = [json.loads(line) for line in search.splitlines()]
-                    hit = next(row for row in rows if row['record'] == 'string' and row['detail']['method_token'] == caller_token)
+                    hit = next(row for row in rows if row['record'] == 'string' and row['context_at'] == caller_at)
                 query(['dotnet', 'get-method', args.production, hit['context_id']])
                 command = ['dotnet', 'get-class', args.production, hit['detail']['declaring_type_id']]
                 if destination:
@@ -100,10 +101,10 @@ def workflows(args, output):
                     assert sites_digest(refs) == manifest['target']['site_sha256']
                     target_id = next(row['id'] for row in targets if row['detail']['token'] == manifest['target']['token'])
                     assert all(row['detail']['canonical_target_id'] == target_id and row['detail']['resolution_status'] == 'resolved' for row in refs[1:-1])
-                    hit = next(row for row in refs[1:-1] if row['detail']['method_token'] == caller_token)
+                    hit = next(row for row in refs[1:-1] if row['context_at'] == manifest['caller']['method_at'])
                 else:
                     rows = verify_strings(initial[0], manifest['string'], source_id)
-                    hit = next(row for row in rows[1:-1] if row['detail']['method_token'] == caller_token)
+                    hit = next(row for row in rows[1:-1] if row['context_at'] == manifest['caller']['method_at'])
                 method = json.loads(initial[-2])
                 body = method['detail']
                 assert method['id'] == hit['context_id'] and method['source_id'] == source_id and body['complete'] is True

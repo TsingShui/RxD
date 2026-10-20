@@ -529,7 +529,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                                 ..metadata(&input)
                             },
                             detail(
-                                json!({"index":index,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"il_offsets":group.il_offsets}),
+                                json!({"index":index,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"il_offsets":group.il_offsets}),
                             ),
                         )
                     })?;
@@ -640,7 +640,7 @@ fn reference_record(
             ..metadata(input)
         },
         detail(
-            json!({"target":literal.map(str::to_owned).or_else(||target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of).map(|id|id.into_owned())).unwrap_or_else(||format!("0x{:08x}",site.target_token)),"method_token":method.token,"declaring_type":method.declaring_type,"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"canonical_target_id":target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of),"canonical_target_token":target.and_then(|target|target.canonical_token),"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
+            json!({"target":literal.map(str::to_owned).or_else(||target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of).map(|id|id.into_owned())).unwrap_or_else(||format!("0x{:08x}",site.target_token)),"declaring_type":method.declaring_type,"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
         ),
     ))
 }

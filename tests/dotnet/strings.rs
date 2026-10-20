@@ -37,7 +37,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             assert!(row["context_at"].is_null());
             assert!(row["parent_at"].is_null());
             assert!(row["parent_at"].is_null());
-            assert!(row["detail"]["method_token"].is_null());
+            assert!(row["context_at"].is_null());
             assert_eq!(row["detail"]["il_offsets"], serde_json::json!([]));
         } else {
             let mut owners = std::collections::BTreeMap::<u64, Vec<u64>>::new();
@@ -50,7 +50,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             assert_eq!(groups.len(), owners.len());
             for (row, (method_token, offsets)) in groups.iter().zip(owners) {
                 assert_eq!(row["detail"]["status"], "referenced");
-                assert_eq!(row["detail"]["method_token"], method_token);
+                assert_eq!(row["context_at"], method_token);
                 assert_eq!(row["detail"]["il_offsets"], serde_json::json!(offsets));
                 let expected_method = oracle["methods"]
                     .as_array()
@@ -215,7 +215,7 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
         assert_eq!(rows.last().unwrap()["complete"], true);
         for (row, (method, offset, token)) in rows[1..rows.len() - 1].iter().zip(expected) {
             assert_eq!(row["record"], "reference");
-            assert_eq!(row["detail"]["method_token"], method);
+            assert_eq!(row["context_at"], method);
             assert_eq!(row["detail"]["il_offset"], offset);
             assert_eq!(row["detail"]["target_token"], token);
             assert_eq!(row["detail"]["opcode"], "ldstr");

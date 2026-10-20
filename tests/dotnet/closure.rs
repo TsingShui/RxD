@@ -122,7 +122,7 @@ fn dotnet_complete_symbol_and_string_workflows_route_returned_ids_to_exact_origi
         ("Initializers", 52),
         ("Lock", 23),
     ]) {
-        assert_eq!(hit["detail"]["canonical_target_id"], target["at"]);
+        assert_eq!(hit["detail"]["target"], target["at"]);
         assert_eq!(hit["detail"]["resolution_status"], "resolved");
         assert_eq!(hit["detail"]["name"], name);
         assert_eq!(hit["detail"]["il_offset"], offset);

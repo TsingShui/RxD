@@ -59,8 +59,8 @@ python3 tests/fixtures/dotnet/strings/generate.py
 $rxd dotnet strings tests/fixtures/dotnet/strings/Strings.dll -f unused
 ```
 
-The unreferenced entry has `status: unreferenced`; context_at, parent_at, method_token
-and parent_at are null and il_offsets is `[]`. NUL or isolated surrogates cannot
+The unreferenced entry has `status: unreferenced`; its `context_at` and `parent_at`
+are null and `il_offsets` is `[]`. NUL or isolated surrogates cannot
 be expressed in UTF-8 argv; use the returned original token with `xref`. Entries with
 `value: null` still retain complete `utf16_units`.
 
