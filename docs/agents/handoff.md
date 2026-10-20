@@ -1,8 +1,10 @@
 # Contract Unification: Handoff
 
-State: every backend's CLI surface is unified and green. `cargo test --test cli` reports
-`374 passed / 35 failed`, and all 35 failures are `mcp::` (the MCP tool surface is being
-migrated in a separate lane; it is the only work item left). The rules are in
+State: **finished.** Every backend's CLI surface *and* the MCP tool surface are unified and
+green. `cargo test --test cli` reports `410 passed / 0 failed` (twice in a row),
+`cargo build` has no warnings, `cargo clippy -p rxd --all-targets` is clean,
+`scripts/format-workspace.py --check` passes and `scripts/mcp-smoke.py` verifies the
+relocated stdio server. The rules are in
 `AGENTS.md` (`## Query Surface`), the budget table is `rxd_core::Budget`, and no backend
 exposes `--max-*`.
 
@@ -50,15 +52,39 @@ exposes `--max-*`.
 - `069ac54` `strings.index` everywhere + nested detail ids short.
 - `706f125` docs/skill/site synchronisation.
 
-## Remaining: the MCP surface (35 tests)
+## MCP surface (done, merge `a3068e1`)
 
-The tool catalogue is derived from the clap tree, so it followed the renames, but
-`src/query/catalog.rs` still appends `--max-*` argv to worker commands and classifies some
-renamed commands from a stale list; `tests/mcp/**` and `benches/mcp.py` still use
-`js_outline`, `{"id": ...}` and the old row keys. A lane is working in
-`/Users/bytedance/zhome/rxd-mcp` (branch `lane/mcp`) on exactly that, with the rule that
-the reflection stays the single source of truth and MCP results must still equal CLI
-results. Merge it when `cargo test ... --test cli mcp::` is 0 failures.
+The tool catalogue follows the CLI by renovation, not by list maintenance:
+
+- `src/query/catalog.rs` no longer appends `--max-*` to worker argv. The whole `ceilings()`
+  table is gone; `bound_threads()` sets `threads = min(requested, server budget)` only for
+  commands whose reflected schema declares `--threads`. A ceiling can no longer be invented
+  as a backend flag, because there is no code path that writes one.
+- `src/query/reflect.rs` builds argv from the clap tree alone; it also fixed a real
+  reflection bug (clap reported `possible_values = ["true","false"]` for `SetTrue` flags,
+  so every boolean was advertised as a string enum).
+- `capability()` is still a deliberate hand-written semantic table
+  (`ENUMERATE`/`SEARCH`/`XREF`/`FETCH`), now spelled with the unified names. It is the one
+  remaining list to update when a *new* command appears; `tests/mcp/**` asserts the
+  catalogue shape so a missed entry fails a test rather than silently mislabeling a tool.
+- Tool renames ripple automatically: `js_entities/functions/classes/methods`,
+  `asar_entries`, `html_entries`, `pyc_codes`, `evm_blocks`, the nine `wasm_*` listings.
+  Selectors are `at`, filters `filter`, original bytes `raw`.
+- MCP still spawns one disposable worker process per query
+  (`--internal-mcp-worker`, JSON over stdio, deadline + cancellation + RSS monitor) and the
+  worker calls the same `query::execute` the CLI uses, so results cannot drift.
+
+## Known follow-ups (not in this goal)
+
+- `benches/evm.py` was migrated to `interface`/`blocks`/`xref`/`--at` and `[at]` keys and
+  compiles, but it has not been re-run against the release binary; EVM has no latency gate.
+- `src/query/mod.rs` still carries the MCP `status == 3 || 4 → NOT_FOUND/AMBIGUOUS`
+  branch, which the unified DEX surface can no longer produce; `candidates` is documented as
+  nullable rather than removed. Decide whether to delete it when the DEX `lookup_status`
+  field is removed from the library.
+- `tests/mcp/**` gates backend-specific tests on their `backend-*` feature so the js-only
+  acceptance command stays green; the all-backends run (`mcp,all-backends`: 59 passed) is
+  the one used for the final gate.
 
 ## Rebuilding the prebuilt bundles
 
