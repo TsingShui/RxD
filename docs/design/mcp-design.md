@@ -304,8 +304,9 @@ keeps its own native `limits`, because those are its own protocol fields, not CL
 Shared caps come from `rxd_core::Budget` (input 256 MiB,
 records/entities 100,000, work 16,777,216, instructions/semantic nodes 1,000,000, AST depth
 128), and the server enforces only what the protocol owns: the captured serialized output
-is capped at one quarter of the response ceiling (default 8 MiB) and 32 MiB, the record
-sink at the shared record ceiling, and the complete RPC frame at `max-response-bytes`. A
+is capped at one quarter of the response ceiling (default 8 MiB) - a transport bound the
+protocol owns, not an analysis budget - and the complete RPC frame at
+`max-response-bytes`. A
 result that exceeds any of those fails with `RESOURCE_LIMIT`; it is never shortened. The
 final complete-RPC size check includes JSON escaping, base64, provenance, compatibility
 copy and correlation metadata; a result may still fail it. Backend-native lower caps

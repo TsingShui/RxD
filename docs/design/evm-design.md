@@ -99,8 +99,8 @@ undecoded bytes. The original carrier is always independent evidence.
 Every ceiling comes from one shared table, `rxd_core::Budget`; the CLI exposes no
 `--max-*` flag, so a query cannot be given a different ceiling than any other backend.
 The defaults this backend projects are: raw file 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), one million work units, 100,000 records, 32 MiB
-complete output including JSON and trailing newline. The abstract interpreter's
+addressable content below 4 GiB), one million work units, and no record or output
+ceiling: a query prints its whole answer including the trailing newline. The abstract interpreter's
 state/stack-cell/value-arena ceilings have no dedicated shared field, so they are taken
 from the same table: 100,000 states (shared entity budget), 1,048,576 stack cells and
 arena values (shared entry budget) and one million reconstruction work units (shared work

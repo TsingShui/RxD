@@ -423,8 +423,8 @@ generated members remain indexable, queryable and extractable.
 ## Budgets and performance
 
 Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
-4 GiB), entities 100,000, work 16,777,216, instructions per method 100,000, records
-100,000, output 32 MiB. All of them live in `rxd_core::Budget`; the CLI has no override flag. Entities count types,
+4 GiB), entities 100,000, work 16,777,216, instructions per method 100,000, and no
+record or output ceiling. All of them live in `rxd_core::Budget`; the CLI has no override flag. Entities count types,
 fields and methods; work bounds parsing stages; xref charge actual decode, signature,
 string and EH work. Full xref/strings scans share one fixed `#US` heap validation and
 reuse entry boundaries; FETCH shares instruction/token-kind/locals/parameter/branch/

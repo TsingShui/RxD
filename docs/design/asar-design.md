@@ -71,10 +71,11 @@ Defaults: header budget 8 MiB; the shared budget 10,000 (including
 directories); paths at most 4,096 UTF-8 bytes; serde_json's default recursion guard.
 the shared budget defaults to 8 GiB and may be lowered to between 1 byte and 8 GiB;
 the selected original file is charged, not a declared whole-archive size. 32-bit
-spans keep actual addressable content below 4 GiB. the shared budget is 100,000;
-the shared budget is 32 MiB, covering all JSONL for `entries` and raw bytes plus the
-JSON receipt for `extract`. Every budget is checked before file output; no silent
-truncation or skipped target.
+spans keep actual addressable content below 4 GiB. There is no record or output
+ceiling: `entries` prints every entry and `extract` writes the whole artifact plus its
+receipt, because a narrower answer is the caller's filter, not a budget. Parsing keeps
+its input, entry and work ceilings, and a real overflow there is an atomic
+`RESOURCE_LIMIT` before any file is replaced. No silent truncation or skipped target.
 
 ## Relationship to JavaScript
 

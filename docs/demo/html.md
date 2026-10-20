@@ -126,7 +126,7 @@ selected by the Agent's syntax; arbitrary script content is not promised to pars
 ```
 
 Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
-4 GiB), 100,000 catalog nodes, 32 MiB output (extract is artifact plus receipt), lexical
+4 GiB), no catalog-node limit, no output ceiling (extract is artifact plus receipt), lexical
 depth 512. `--perf` stages are read/hash/utf8/tokenize/query/serialize/write. Overflow
 returns `RESOURCE_LIMIT` and never truncates or silently skips nodes. Ordinary
 representative list/extract follows the 150 ms fresh-process rule: fresh processes,

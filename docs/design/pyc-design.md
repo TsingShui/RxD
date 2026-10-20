@@ -50,7 +50,7 @@ Input must be a regular file; directories return `INVALID_INPUT` (exit 1) with e
 stdout and preserved `-o` target. Ceilings come only from the shared
 `rxd_core::Budget` table projected into the backend `Limits`; the CLI exposes no
 `--max-*` flag. Input 8 GiB (32-bit spans keep actual addressable content below 4 GiB),
-output 32 MiB, work 1,000,000 and AST depth from the shared core limits; marshal
+no output ceiling, work 1,000,000 and AST depth from the shared core limits; marshal
 parsing/reference expansion 128 levels and 1,000,000 objects, cumulative bytes read/
 copied 128 MiB, long-to-decimal squared-digit work 16,777,216. Cycles are rejected
 immediately; shared objects cannot bypass object budgets by exponential expansion.
@@ -193,8 +193,8 @@ null and reference false. Each incoming item has owner_id/constant_path/start/en
 alias_start/alias_end/reference.
 
 Static budgets project the shared table: input 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), entities 100,000, cumulative work 1,000,000, records
-100,000, output 32 MiB. The CLI exposes no ceiling flag. Entities count every parsed
+addressable content below 4 GiB), entities 100,000, cumulative work 1,000,000, and no
+record or output ceiling. The CLI exposes no ceiling flag. Entities count every parsed
 marshal occurrence (code, constants/names/localsplus entries, field objects; each alias
 occurrence counts 1). Work accumulates from the same parser
 into index/filtering: each occurrence, index/traversal visit, copied child handle,

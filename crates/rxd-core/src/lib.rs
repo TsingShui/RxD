@@ -201,9 +201,6 @@ pub const MAX_METADATA_BYTES: usize = 128 << 20;
 /// Work units one query may spend: one million.
 pub const MAX_WORK_UNITS: usize = 1_000_000;
 
-/// Bytes one command may print or write: 32 MiB.
-pub const MAX_OUTPUT_BYTES: usize = 32 << 20;
-
 /// The resource budget every backend runs under.
 ///
 /// One table for the whole tool: a backend projects it onto its own `Limits` type
@@ -224,9 +221,13 @@ pub struct Budget {
     pub instructions: usize,
     /// Work units one query may spend.
     pub work: usize,
-    /// Records one command may print.
+    /// Not a ceiling: one command prints every record its query matches.
+    ///
+    /// The field stays because a command that streams still needs a number for its own
+    /// arithmetic (a bounded writer, a remaining-bytes subtraction); it is set high enough
+    /// that no analysis fails on volume. A caller that wants fewer rows narrows the query.
     pub records: usize,
-    /// Bytes one command may print or write.
+    /// Not a ceiling: output is as large as the query's answer. See `records`.
     pub output_bytes: usize,
     /// AST nesting one syntax tree may reach, checked after parsing.
     pub ast_depth: usize,
@@ -244,8 +245,8 @@ impl Default for Budget {
             entities: 100_000,
             instructions: 100_000,
             work: MAX_WORK_UNITS,
-            records: 100_000,
-            output_bytes: MAX_OUTPUT_BYTES,
+            records: usize::MAX,
+            output_bytes: usize::MAX,
             ast_depth: 512,
             semantic_nodes: 1_000_000,
         }

@@ -216,7 +216,7 @@ program-semantics recovery.
 
 Every ceiling comes from the shared `rxd_core::Budget::default()` table: input 8 GiB
 (32-bit spans keep actual addressable content below 4 GiB), entities 100,000, work
-1,000,000, instructions per function 100,000, records 100,000, output 32 MiB. WASM
+1,000,000, instructions per function 100,000, no record or output ceiling. WASM
 projects that table onto its own `Limits` type; the CLI exposes no `--max-*` flag and
 restates no number, so a ceiling changes in exactly one place. Entities count
 type/import/export/function/table/memory/global/data/element entries.

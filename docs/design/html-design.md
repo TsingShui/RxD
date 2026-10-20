@@ -182,9 +182,9 @@ persistent parse state are not implemented.
 
 ## Resource budgets
 
-reading; 32-bit spans keep actual addressable content below 4 GiB), 100,000 records
-(all catalog nodes before filtering, including extract's validation catalog), 32 MiB
-output (complete JSONL for entries; raw artifact plus complete serialized receipt for
+reading; 32-bit spans keep actual addressable content below 4 GiB), no record ceiling
+(all catalog nodes before filtering, including extract's validation catalog), no output
+ceiling (complete JSONL for entries; raw artifact plus complete serialized receipt for
 extract) and lexical nesting depth 512 (distinct from the `--depth` selector). All four
 values live in `rxd_core::Budget`; the CLI exposes no budget flags. Node/depth limits are enforced during parsing, not by
 unbounded accumulation and truncation. Exceeding a limit returns `RESOURCE_LIMIT` and
