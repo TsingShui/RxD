@@ -82,7 +82,7 @@ values and all JSONL bytes count toward output. Errors do not replace existing `
 ```sh
 target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc --json --perf
 # stderr resource_limits: input_bytes/output_bytes/work/ast_depth
-target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc --max-work 1
+target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc
 # exit 2; unknown argument; stdout empty
 ```
 

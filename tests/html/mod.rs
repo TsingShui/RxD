@@ -498,7 +498,7 @@ fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity(
         b"const answer = 40 + 2; function run(v){return v;}"
     );
     let outlined = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["js", "outline"])
+        .args(["js", "entities"])
         .arg(&destination)
         .output()
         .unwrap();

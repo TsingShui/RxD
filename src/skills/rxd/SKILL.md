@@ -102,7 +102,7 @@ hits are `literal_kind: static_expression` with `detail.raw` and
 `resolution: static`, and it never executes user-defined functions.
 
 ```sh
-rxd asar list app.asar
+rxd asar entries app.asar
 rxd asar extract app.asar --file main.js -o extracted-main.js
 rxd js entities extracted-main.js
 ```
@@ -118,8 +118,8 @@ stay byte-exact. Inline JS/TS is handed to the JS backend with artifact-side
 offsets — never apply container offsets to the extracted file.
 
 ```sh
-rxd html list page.html
-rxd html list page.html --tag script --attr type=module
+rxd html entries page.html
+rxd html entries page.html --tag script --attr type=module
 rxd html extract page.html --id "$SCRIPT_ID" --content -o inline.js
 rxd js entities inline.js
 ```
@@ -167,7 +167,7 @@ explicit fallback information; do not report fallback IL as reconstructed C#.
 ## WASM: structure → explicit caller → selected function
 
 ```sh
-rxd wasm outline module.wasm
+rxd wasm functions module.wasm
 rxd wasm strings module.wasm --contains hello
 rxd wasm refs module.wasm --func "$FUNCTION_INDEX"
 rxd wasm get-function module.wasm "$CALLER_ID"
@@ -205,7 +205,7 @@ plain source mode fails when recovery is incomplete.
 ## EVM: candidate literal → evidenced reference → region
 
 ```sh
-rxd evm outline runtime.hex --encoding hex
+rxd evm blocks runtime.hex --encoding hex
 rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
 rxd evm refs runtime.hex --encoding hex --id "$LITERAL_ID"
 rxd evm get-function runtime.hex "$CONTEXT_ID" --encoding hex --raw

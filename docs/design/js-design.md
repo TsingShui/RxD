@@ -151,7 +151,7 @@ mode.
   `identifiers`/normal syntax, not as property names. This is a syntactic property
   position, not runtime object/prototype/type resolution.
 
-All three obey `--max-records` and output-byte budgets, sort by `(start, end)` and keep
+All three obey the record and output-byte budgets from `rxd_core::Budget`, sort by `(start, end)` and keep
 content-bound identity. They have no own ID; `parent_id` points at an extractable
 structure.
 
@@ -192,7 +192,7 @@ exposing no partial stdout and preserving the `-o` target.
 
 Input bytes, entities and AST depth are checked per file; record and output-byte
 budgets cover the whole invocation, including every header/summary and the final
-`scan_summary`. `--max-files` defaults to 10,000; directory depth is capped at 256.
+`scan_summary`. The shared budget bounds scanned files and directory depth.
 `--perf` accumulates counters/timings and adds a `discover` phase with `source_id:
 null`. Each file is read once into a fixed buffer and parser state is released after
 processing; no cross-file index is kept.
@@ -248,7 +248,7 @@ type facts are not textually merged into a new type. With multiple declarations,
 `declaration_ids` in original order as structure/fragment IDs. `get(symbol)` stdout
 still extracts only the canonical declaration; the Agent can expand other
 declarations/overloads. Metadata declaration IDs and top-level records share the
-`--max-records` check before collection; summary/perf records only count top-level
+the record budget check before collection; summary/perf records only count top-level
 results. A forged canonical symbol range from a later declaration is rejected.
 
 `get(symbol)` also covers type aliases, interfaces, enums, namespaces, import-equals
@@ -455,7 +455,7 @@ declarations, unresolved and dynamic queries can all succeed with zero records.
 `xref`/`symbols` and get symbol paths enable the semantic pass as needed and return its
 diagnostics as `INVALID_INPUT`; structure listings/find/locate and get structure paths stay
 parser-only. Structural traversal checks entity and AST-depth budgets first; semantic
-nodes above `--max-semantic-nodes` (default 1,000,000) return `RESOURCE_LIMIT` before
+nodes above the shared `semantic_nodes` ceiling (1,000,000) return `RESOURCE_LIMIT` before
 index allocation. Reference records are budgeted before collecting positions; output
 bytes include header/summary. The node budget is not a parser/peak-RSS limit. Perf
 adds a semantic phase and semantic_nodes/symbols/references counts only on those paths.
@@ -505,7 +505,7 @@ Both record kinds mix in ascending `(start, end)`. Summary records count symbols
 unresolved references; complete means the query completed, not resolution/runtime
 completeness. Record budgets are checked before collecting identities/positions;
 output bytes include header/summary. The semantic node default is 1,000,000
-(`--max-semantic-nodes`); entity, depth, input and atomic-output contracts are
+(the shared `semantic_nodes` ceiling); entity, depth, input and atomic-output contracts are
 unchanged. Perf adds the semantic phase/counts only for xref/symbols/get-symbol.
 
 ## Declaration extraction by binding
@@ -554,7 +554,7 @@ and `symbol`, `declaration`, `source`, not a structural entity:
   dynamic binding is not recovered. The dynamic symbols query contract is unchanged.
 
 Common input, entity, depth, output and atomic-failure contracts apply. `get
---max-semantic-nodes` defaults to 1,000,000 and only symbol IDs build/limit the
+the shared `semantic_nodes` ceiling is 1,000,000 and only symbol IDs build/limit the
 semantic index; structure IDs do not. Perf records is 1; symbol paths include the
 semantic phase and whole-file index counts.
 
