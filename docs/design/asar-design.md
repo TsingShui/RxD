@@ -20,8 +20,8 @@ or self-extracts a sample.
 
 | Command | Output and behavior |
 | --- | --- |
-| `asar list FILE [-o CATALOG]` | header/file/summary JSONL, `backend: asar`, `command: list`; `header.detail.analysis: metadata`. Lists every file type ordered by logical path. `-o` writes the same bytes as stdout. |
-| `asar extract FILE --file ENTRY -o OUTPUT` | `--file` and `-o` are required. The target contains the original bytes; stdout is a single JSON receipt, never the file content. |
+| `asar entries FILE [-o CATALOG] [-f FILTER]` | header/file/summary JSONL, `backend: asar`, `command: entries`; each file row carries `at` (archive-relative path); `header.detail.analysis: metadata`. Lists every file type ordered by logical path. `-o` writes the same bytes as stdout. |
+| `asar extract FILE --at ENTRY -o OUTPUT` | `--at` (an `entries` row) and `-o` are required. The target contains the original bytes; stdout is a single JSON receipt, never the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
 `schema_version=2`. `list` places format-specific fields in each file record and
@@ -67,12 +67,12 @@ Multi-file extraction and directory transactions are not implemented.
 
 ## Resource budgets
 
-Defaults: `--max-header-bytes` 8 MiB; `--max-entries` 10,000 (including
+Defaults: header budget 8 MiB; the shared budget 10,000 (including
 directories); paths at most 4,096 UTF-8 bytes; serde_json's default recursion guard.
-`--max-input-bytes` defaults to 8 GiB and may be lowered to between 1 byte and 8 GiB;
+the shared budget defaults to 8 GiB and may be lowered to between 1 byte and 8 GiB;
 the selected original file is charged, not a declared whole-archive size. 32-bit
-spans keep actual addressable content below 4 GiB. `--max-records` is 100,000;
-`--max-output-bytes` is 32 MiB, covering all JSONL for `list` and raw bytes plus the
+spans keep actual addressable content below 4 GiB. the shared budget is 100,000;
+the shared budget is 32 MiB, covering all JSONL for `list` and raw bytes plus the
 JSON receipt for `extract`. Every budget is checked before file output; no silent
 truncation or skipped target.
 

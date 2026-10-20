@@ -410,7 +410,7 @@ fn extract_asar(
     let destination = synthetic_extraction_destination(&inputs[0].path);
     let mut perf = Perf::new(false, "analysis", "asar", "extract");
     let response = rxd_asar::run(
-        rxd_asar::Query::Extract { file: file.clone() },
+        rxd_asar::Query::Extract { at: file.clone() },
         rxd_asar::Options {
             input: &inputs[0].path,
             output: Some(&destination),

@@ -4409,7 +4409,7 @@ fn asar_namespace_exposes_container_operations_without_electron_or_js_forwarding
         .unwrap();
     success(&output);
     let help = String::from_utf8(output.stdout).unwrap();
-    assert!(help.contains("list") && help.contains("extract"));
+    assert!(help.contains("entries") && help.contains("extract"));
     assert!(!help.contains("outline") && !help.contains("symbols"));
     let root = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .arg("--help")
@@ -4426,11 +4426,11 @@ fn asar_namespace_exposes_container_operations_without_electron_or_js_forwarding
     let archive = dir.path().join("app.asar");
     pack_asar(&archive, &[("main.js", b"const f=()=>42;")]);
     failure(
-        asar("extract", &archive, &["--file", "main.js"]),
+        asar("extract", &archive, &["--at", "main.js"]),
         2,
         "--output",
     );
-    failure(asar("list", dir.path(), &[]), 1, "INVALID_INPUT");
+    failure(asar("entries", dir.path(), &[]), 1, "INVALID_INPUT");
 }
 
 #[test]
@@ -4456,7 +4456,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
     let unpacked = dir.path().join("app.asar.unpacked");
     fs::create_dir(&unpacked).unwrap();
     fs::write(unpacked.join("data.bin"), [0, 255, 128]).unwrap();
-    let rows = jsonl(&asar("list", &archive, &["--jsonl"]));
+    let rows = jsonl(&asar("entries", &archive, &["--jsonl"]));
     assert_eq!(rows[0]["backend"], "asar");
     assert_eq!(rows[0]["detail"]["analysis"], "metadata");
     assert_eq!(rows.last().unwrap()["records"], 7);
@@ -4491,12 +4491,12 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
         "link"
     );
     let listing = dir.path().join("list.jsonl");
-    let saved = asar("list", &archive, &["-o", listing.to_str().unwrap()]);
+    let saved = asar("entries", &archive, &["-o", listing.to_str().unwrap()]);
     success(&saved);
     assert!(saved.stdout.is_empty());
     assert_eq!(
         fs::read(listing).unwrap(),
-        asar("list", &archive, &[]).stdout
+        asar("entries", &archive, &[]).stdout
     );
     for (name, expected, storage) in [
         ("main.cjs", source, "packed"),
@@ -4510,13 +4510,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
         let result = asar(
             "extract",
             &archive,
-            &[
-                "--file",
-                name,
-                "-o",
-                destination.to_str().unwrap(),
-                "--perf",
-            ],
+            &["--at", name, "-o", destination.to_str().unwrap(), "--perf"],
         );
         success(&result);
         assert_eq!(fs::read(&destination).unwrap(), expected);
@@ -4552,7 +4546,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
             "extract",
             &archive,
             &[
-                "--file",
+                "--at",
                 "alias",
                 "-o",
                 dir.path().join("failed.bin").to_str().unwrap(),
@@ -4567,7 +4561,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
             "extract",
             &archive,
             &[
-                "--file",
+                "--at",
                 "data.bin",
                 "-o",
                 dir.path().join("failed.bin").to_str().unwrap(),
@@ -4588,7 +4582,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
     let extracted = asar(
         "extract",
         &archive,
-        &["--file", "main.cjs", "-o", destination.to_str().unwrap()],
+        &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     );
     success(&extracted);
     let receipt: Value = js_object(&extracted.stdout);
@@ -4629,7 +4623,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
     success(&asar(
         "extract",
         &archive,
-        &["--file", "main.cjs", "-o", destination.to_str().unwrap()],
+        &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     ));
     failure(
         invoke("get", &destination, &["--at", id]),
@@ -4653,7 +4647,7 @@ fn asar_selected_reads_survive_bloat_and_preserve_atomic_outputs_and_budgets() {
     header["files"][&fake] =
         serde_json::json!({"size":1_u64<<30,"offset":((1_u64<<53)-1-(1_u64<<30)).to_string()});
     write_asar(&archive, &header, source);
-    let listed = jsonl(&asar("list", &archive, &[]));
+    let listed = jsonl(&asar("entries", &archive, &[]));
     assert_eq!(listed.last().unwrap()["records"], 4);
     assert_eq!(listed.last().unwrap()["detail"]["invalid_ranges"], 3);
     assert_eq!(
@@ -4664,7 +4658,7 @@ fn asar_selected_reads_survive_bloat_and_preserve_atomic_outputs_and_budgets() {
     success(&asar(
         "extract",
         &archive,
-        &["--file", "a.js", "-o", destination.to_str().unwrap()],
+        &["--at", "a.js", "-o", destination.to_str().unwrap()],
     ));
     assert_eq!(fs::read(&destination).unwrap(), source);
     for name in [&fake, "overflow.bin", "size-overflow.bin"] {
@@ -4672,32 +4666,45 @@ fn asar_selected_reads_survive_bloat_and_preserve_atomic_outputs_and_budgets() {
             asar(
                 "extract",
                 &archive,
-                &["--file", name, "-o", destination.to_str().unwrap()],
+                &["--at", name, "-o", destination.to_str().unwrap()],
             ),
             1,
             "INVALID_INPUT",
         );
         assert_eq!(fs::read(&destination).unwrap(), source);
     }
-    for args in [
-        vec!["--max-input-bytes", "8"],
-        vec!["--max-output-bytes", "64"],
-        vec!["--max-header-bytes", "8"],
-        vec!["--max-entries", "1"],
+    // Every ceiling lives in rxd_core::Budget, so a budget flag is simply unknown.
+    for flag in [
+        "--max-input-bytes",
+        "--max-output-bytes",
+        "--max-header-bytes",
+        "--max-entries",
+        "--max-records",
     ] {
-        let mut args = args;
-        args.extend(["--file", "a.js", "-o", destination.to_str().unwrap()]);
-        failure(asar("extract", &archive, &args), 1, "RESOURCE_LIMIT");
+        let refused = asar(
+            "extract",
+            &archive,
+            &[
+                flag,
+                "1",
+                "--at",
+                "a.js",
+                "-o",
+                destination.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(refused.status.code(), Some(2), "{flag}");
         assert_eq!(fs::read(&destination).unwrap(), source);
-    }
-    for args in [["--max-records", "1"], ["--max-output-bytes", "64"]] {
-        failure(asar("list", &archive, &args), 1, "RESOURCE_LIMIT");
+        assert_eq!(
+            asar("entries", &archive, &[flag, "1"]).status.code(),
+            Some(2)
+        );
     }
     failure(
         asar(
             "extract",
             &archive,
-            &["--file", "a.js", "-o", archive.to_str().unwrap()],
+            &["--at", "a.js", "-o", archive.to_str().unwrap()],
         ),
         2,
         "output must not replace an input file",
@@ -4707,7 +4714,7 @@ fn asar_selected_reads_survive_bloat_and_preserve_atomic_outputs_and_budgets() {
         asar(
             "extract",
             &archive,
-            &["--file", "a.js", "-o", missing_parent.to_str().unwrap()],
+            &["--at", "a.js", "-o", missing_parent.to_str().unwrap()],
         ),
         1,
         "IO_ERROR",
@@ -4719,7 +4726,7 @@ fn asar_selected_reads_survive_bloat_and_preserve_atomic_outputs_and_budgets() {
         asar(
             "extract",
             &archive,
-            &["--file", "empty", "-o", destination.to_str().unwrap()],
+            &["--at", "empty", "-o", destination.to_str().unwrap()],
         ),
         1,
         "INVALID_INPUT",
@@ -4739,7 +4746,7 @@ fn asar_rejects_unsafe_paths_corrupt_headers_and_index_budget_overruns() {
         serde_json::json!({"files":{"a":{"size":0,"offset":"0","link":"a"}}}),
     ] {
         write_asar(&archive, &header, b"");
-        failure(asar("list", &archive, &[]), 1, "INVALID_INPUT");
+        failure(asar("entries", &archive, &[]), 1, "INVALID_INPUT");
     }
     let mut nested = serde_json::json!({"size":0,"offset":"0"});
     for _ in 0..3 {
@@ -4748,7 +4755,7 @@ fn asar_rejects_unsafe_paths_corrupt_headers_and_index_budget_overruns() {
         nested = parent;
     }
     write_asar(&archive, &nested, b"");
-    failure(asar("list", &archive, &[]), 1, "RESOURCE_LIMIT");
+    failure(asar("entries", &archive, &[]), 1, "RESOURCE_LIMIT");
     pack_asar(&archive, &[("a.js", b"const a=1;")]);
     let destination = dir.path().join("a.js");
     for name in ["../a.js", "/a.js", "a/../a.js", "a\\a.js", "C:/a.js"] {
@@ -4756,7 +4763,7 @@ fn asar_rejects_unsafe_paths_corrupt_headers_and_index_budget_overruns() {
             asar(
                 "extract",
                 &archive,
-                &["--file", name, "-o", destination.to_str().unwrap()],
+                &["--at", name, "-o", destination.to_str().unwrap()],
             ),
             1,
             "INVALID_INPUT",
@@ -4765,9 +4772,9 @@ fn asar_rejects_unsafe_paths_corrupt_headers_and_index_budget_overruns() {
     let mut bytes = fs::read(&archive).unwrap();
     bytes[0] = 8;
     fs::write(&archive, bytes).unwrap();
-    failure(asar("list", &archive, &[]), 1, "INVALID_INPUT");
+    failure(asar("entries", &archive, &[]), 1, "INVALID_INPUT");
     fs::write(&archive, b"invalid").unwrap();
-    failure(asar("list", &archive, &[]), 1, "INVALID_INPUT");
+    failure(asar("entries", &archive, &[]), 1, "INVALID_INPUT");
     let json = br#"{"files":{"a":{"size":0,"offset":"0"},"a":{"size":0,"offset":"0"}}}"#;
     let payload = (json.len() + 4).next_multiple_of(4);
     let mut bytes = Vec::new();
@@ -4777,7 +4784,7 @@ fn asar_rejects_unsafe_paths_corrupt_headers_and_index_budget_overruns() {
     bytes.extend_from_slice(json);
     bytes.resize(payload + 12, 0);
     fs::write(&archive, bytes).unwrap();
-    failure(asar("list", &archive, &[]), 1, "duplicate ASAR entry");
+    failure(asar("entries", &archive, &[]), 1, "duplicate ASAR entry");
 }
 
 #[cfg(unix)]
@@ -4801,7 +4808,7 @@ fn asar_does_not_follow_input_or_unpacked_entry_links() {
         asar(
             "extract",
             &archive,
-            &["--file", "data", "-o", destination.to_str().unwrap()],
+            &["--at", "data", "-o", destination.to_str().unwrap()],
         ),
         1,
         "IO_ERROR",
@@ -4813,7 +4820,7 @@ fn asar_does_not_follow_input_or_unpacked_entry_links() {
             "extract",
             &archive,
             &[
-                "--file",
+                "--at",
                 "data",
                 "-o",
                 unpacked.join("data").to_str().unwrap(),
@@ -4833,7 +4840,7 @@ fn asar_does_not_follow_input_or_unpacked_entry_links() {
             "extract",
             &archive,
             &[
-                "--file",
+                "--at",
                 "linked/outside",
                 "-o",
                 destination.to_str().unwrap(),
@@ -4844,7 +4851,7 @@ fn asar_does_not_follow_input_or_unpacked_entry_links() {
     );
     let link = dir.path().join("link.asar");
     symlink(&archive, &link).unwrap();
-    failure(asar("list", &link, &[]), 1, "INVALID_INPUT");
+    failure(asar("entries", &link, &[]), 1, "INVALID_INPUT");
 }
 
 #[test]
@@ -4862,7 +4869,7 @@ fn asar_extracted_production_sources_match_independent_acorn_expectations() {
         success(&asar(
             "extract",
             &archive,
-            &["--file", "bundle.js", "-o", destination.to_str().unwrap()],
+            &["--at", "bundle.js", "-o", destination.to_str().unwrap()],
         ));
         assert_eq!(fs::read(&destination).unwrap(), source);
         let rows = jsonl(&invoke("outline", &destination, &[]));

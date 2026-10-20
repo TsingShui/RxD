@@ -18,8 +18,8 @@ use sha2::{Digest, Sha256};
 use local::invalid;
 
 pub enum Query {
-    List,
-    Extract { file: String },
+    Entries { contains: Option<String> },
+    Extract { at: String },
 }
 
 pub struct Options<'a> {
@@ -97,7 +97,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
     let path = input
         .to_str()
         .ok_or_else(|| invalid("ASAR input path must be UTF-8"))?;
-    if let Query::Extract { file } = &query {
+    if let Query::Extract { at: file } = &query {
         local::validate_entry(file)?;
     }
     let (mut archive, entries) = perf.measure("container", || {
@@ -110,7 +110,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
         archive::Archive::open(input, max_header_bytes, max_entries)
     })?;
     match query {
-        Query::List => {
+        Query::Entries { contains } => {
             if entries.len() > limits.records {
                 return Err(Error::new(
                     "RESOURCE_LIMIT",
@@ -125,7 +125,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             perf.measure("serialize", || -> Result<()> {
                 result.json(&envelope::header(
                     "asar",
-                    "list",
+                    "entries",
                     None,
                     None,
                     json!(null),
@@ -136,6 +136,12 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                 ))?;
                 let mut invalid_ranges = 0;
                 for (path, entry) in &entries {
+                    if contains
+                        .as_ref()
+                        .is_some_and(|needle| !path.to_lowercase().contains(&needle.to_lowercase()))
+                    {
+                        continue;
+                    }
                     let mut detail =
                         json!({"path":path, "bytes":entry.size, "storage":storage(entry)});
                     if matches!(entry.storage, Storage::Packed { .. }) {
@@ -151,7 +157,10 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                     }
                     result.json(&envelope::record(
                         "file",
-                        RecordMeta::default(),
+                        RecordMeta {
+                            at: Some(path),
+                            ..RecordMeta::default()
+                        },
                         detail.as_object().unwrap().clone(),
                     ))?;
                 }
@@ -167,7 +176,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             perf.counters.output_bytes = Some(result.bytes.len());
             Ok(Response::List(result.bytes))
         }
-        Query::Extract { file } => {
+        Query::Extract { at: file } => {
             let destination =
                 output.ok_or_else(|| Error::new("INVALID_QUERY", "extract requires --output"))?;
             let destination_path = destination

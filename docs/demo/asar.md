@@ -36,7 +36,7 @@ of a real native module or run the application.
 ## list
 
 ```sh
-"$RXD" asar list "$ASAR" --jsonl -o "$DEMO/list.jsonl"
+"$RXD" asar entries "$ASAR" --jsonl -o "$DEMO/list.jsonl"
 ```
 
 Header backend is `asar`, `header.detail.analysis` is `metadata`. Structured output
@@ -54,11 +54,11 @@ followed.
 ## extract
 
 ```sh
-"$RXD" asar extract "$ASAR" --file main.cjs -o "$DEMO/main.cjs" > "$DEMO/receipt.json"
-"$RXD" asar extract "$ASAR" --file addon.node -o "$DEMO/addon.node" > "$DEMO/native-receipt.json"
+"$RXD" asar extract "$ASAR" --at main.cjs -o "$DEMO/main.cjs" > "$DEMO/receipt.json"
+"$RXD" asar extract "$ASAR" --at addon.node -o "$DEMO/addon.node" > "$DEMO/native-receipt.json"
 ```
 
-`--file` is the exact index path; both `--file` and `-o` are required. Content is not
+`--at` is the archive-relative path an `entries` row prints; both `--at` and `-o` are required. Content is not
 restricted by extension or UTF-8. Original bytes go to `-o`; stdout is a JSON receipt,
 never the file content.
 
@@ -95,13 +95,13 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 ## Budgets and performance
 
 ```sh
-"$RXD" asar list "$ASAR" --max-header-bytes 8388608 --max-entries 10000
-"$RXD" asar extract "$ASAR" --file main.cjs -o "$DEMO/profile-main.cjs" --perf
+"$RXD" asar entries "$ASAR" --jsonl | head
+"$RXD" asar extract "$ASAR" --at main.cjs -o "$DEMO/profile-main.cjs" --perf
 python3 -B benches/asar.py --samples 20 --output target/benchmarks/asar
 ```
 
 Defaults: header 8 MiB, 10,000 container entries, 4,096 UTF-8 path bytes. Input defaults
-to 8 GiB (`--max-input-bytes` lowerable to the same ceiling; 32-bit spans keep actual
+to 8 GiB (32-bit spans keep actual
 addressable content below 4 GiB), charged for the selected file; 100,000 result records;
 32 MiB output covering all list JSONL or extract file plus receipt. Budget overflow,
 path traversal, duplicate paths, malformed headers, links, out-of-range targets and

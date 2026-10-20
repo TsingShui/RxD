@@ -1,4 +1,3 @@
-use super::super::{input_bytes, positive};
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 #[derive(Args)]
@@ -12,49 +11,41 @@ pub(crate) struct Common {
     pub(super) debug: bool,
     #[arg(long)]
     pub(super) perf: bool,
-    /// Maximum extracted file size, independent of the total archive size.
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = input_bytes)]
-    pub(super) max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 100_000, value_parser = positive)]
-    pub(super) max_records: usize,
-    /// Bound listing bytes, or extracted bytes plus the JSON receipt.
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = positive)]
-    pub(super) max_output_bytes: usize,
-    #[arg(long, default_value_t = 8 * 1024 * 1024, value_parser = positive)]
-    pub(super) max_header_bytes: usize,
-    #[arg(long, default_value_t = 10_000, value_parser = positive)]
-    pub(super) max_entries: usize,
+    // Every ceiling comes from rxd_core::Budget; no CLI flag exposes one.
 }
 
 #[derive(Subcommand)]
 pub(crate) enum Command {
-    /// List every indexed file and its range status (metadata JSONL).
-    List {
+    /// Enumerate every indexed file and its range status (metadata JSONL).
+    #[command(name = "entries")]
+    Entries {
         #[command(flatten)]
         common: Common,
         #[arg(long)]
         jsonl: bool,
+        /// Case-insensitive substring over the archive-relative path.
+        #[arg(short, long)]
+        filter: Option<String>,
     },
     /// Write one original file to --output and return a JSON extraction receipt.
     Extract {
         #[command(flatten)]
         common: Common,
-        /// Exact relative index path, with no file type or extension restriction.
+        /// The `at` an entries row prints: an archive-relative path.
         #[arg(long, requires = "output")]
-        file: String,
+        at: String,
     },
 }
 
 impl Command {
     pub(super) fn common(&self) -> &Common {
         match self {
-            Self::List { common, .. } | Self::Extract { common, .. } => common,
+            Self::Entries { common, .. } | Self::Extract { common, .. } => common,
         }
     }
     pub(crate) fn name(&self) -> &'static str {
         match self {
-            Self::List { .. } => "list",
+            Self::Entries { .. } => "entries",
             Self::Extract { .. } => "extract",
         }
     }

@@ -2,7 +2,7 @@ mod args;
 use super::{finish, write_output};
 pub(crate) use args::Command;
 use rxd_core::perf::Perf;
-use rxd_core::{Error, Limits, Result};
+use rxd_core::{Budget, Error, Limits, Result};
 use std::io::{self, Write};
 
 pub(super) fn execute(command: Command) -> Result<()> {
@@ -11,19 +11,22 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let destination = common.output.clone();
     let debug = common.debug;
     let emit_perf = common.perf;
+    let budget = Budget::default();
     let limits = Limits {
-        input_bytes: super::input_limit(common.max_input_bytes),
-        records: common.max_records,
-        output_bytes: common.max_output_bytes,
+        input_bytes: budget.input_bytes,
+        records: budget.records,
+        output_bytes: budget.output_bytes,
         ..Limits::default()
     };
-    let max_entries = common.max_entries;
-    let max_header_bytes = common.max_header_bytes;
+    let max_entries = budget.entries;
+    let max_header_bytes = budget.metadata_bytes;
     let mut perf = Perf::new(debug || emit_perf, "analysis", "asar", command.name());
     perf.limits = Some(limits);
     let query = match command {
-        Command::List { .. } => rxd_asar::Query::List,
-        Command::Extract { file, .. } => rxd_asar::Query::Extract { file },
+        Command::Entries { filter, .. } => rxd_asar::Query::Entries {
+            contains: filter.clone(),
+        },
+        Command::Extract { at, .. } => rxd_asar::Query::Extract { at: at.clone() },
     };
     let result = (|| {
         let response = rxd_asar::run(
