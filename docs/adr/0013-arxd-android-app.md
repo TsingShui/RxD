@@ -1,5 +1,8 @@
 # ADR 0013: Keep the Arxd Android host in the rxd repository
 
+Status: superseded. Arxd now lives in the standalone private repository
+`TsingShui/Arxd`; this record is retained for history.
+
 Status: accepted.
 
 ## Context

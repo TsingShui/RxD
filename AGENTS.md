@@ -51,6 +51,8 @@ The current layout is:
   patches.
 - Maintained third-party dependency forks and source snapshots (radguard,
   axmldecoder, pycdc) live under the top-level `third_party/`.
+- `apps/arxd/` is archived: Arxd is maintained in the standalone private
+  repository `TsingShui/Arxd`. Do not make product changes here.
 - `tests/fixtures/` and `tests/cli.rs`: handcrafted inputs and CLI contract
   tests; testing guidance is in `tests/AGENTS.md`.
 - `tests/corpus/`: pinned production releases, obfuscated samples, independent

@@ -1,3 +1,5 @@
+> **Archived.** Arxd is now maintained in the standalone private repository `TsingShui/Arxd`. Do not edit this copy. See `ARCHIVED.md`.
+
 Arxd is the Android host for rxd. Keep UI,
 Agent orchestration and Android host adapters here; parsing and analysis remain
 in the shared Rust backends. The root repository instructions still apply to

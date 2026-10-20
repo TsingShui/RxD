@@ -1,3 +1,5 @@
+> **Archived.** Arxd is now maintained in the standalone private repository `TsingShui/Arxd`. This document is retained for history; see `apps/arxd/ARCHIVED.md`.
+
 # Arxd Android app
 
 Status: implemented.

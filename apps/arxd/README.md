@@ -1,3 +1,5 @@
+> **Archived.** Arxd is now maintained in the standalone private repository `TsingShui/Arxd`. Do not edit this copy. See `ARCHIVED.md`.
+
 # Arxd Android app
 
 Arxd is the Android host for rxd, maintained under `apps/arxd/`. It connects
