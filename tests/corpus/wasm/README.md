@@ -47,7 +47,7 @@ some of wasm-decompile's readability passes. What is asserted:
   `a[0]:float` indexed accesses instead.
 - Full multi-value stack flushing (`let t0 = …` prefix materialization) and
   block parameter/result signatures: rxd degrades to the instruction view.
-- `export` marker on function signatures: rxd records export status in `outline`
+- `export` marker on function signatures: rxd records export status in `exports`
   rather than in the decompiled signature.
 
 ## Regenerate

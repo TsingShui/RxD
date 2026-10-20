@@ -387,15 +387,47 @@ impl Module {
         self.limits
     }
 
-    /// Resolve a `rxd1:wasm:<hash>:func:<n>` id to a defined function index.
-    pub fn defined_position_by_id(&self, id: &str) -> Result<usize> {
-        let prefix = format!("rxd1:wasm:{}:func:", self.source_id);
-        let encoded = id
-            .strip_prefix(&prefix)
-            .context("INVALID_QUERY: source or backend mismatch")?;
-        let func_index: u32 = encoded
+    /// Resolve the `--at` coordinate a `functions` row prints to a defined
+    /// function position.
+    ///
+    /// A row prints the copy-only `func:<index>`; the content identity lives in
+    /// the stream header, so a short coordinate is expanded against this
+    /// module's own hash here instead of making a caller reassemble it. A full
+    /// `rxd1:wasm:<sha256>:func:<index>` id keeps its own hash, so one naming a
+    /// different module fails as `SOURCE_MISMATCH` rather than being rewritten.
+    pub fn defined_position_at(&self, at: &str) -> Result<usize> {
+        let expanded;
+        let id = if at.starts_with("rxd1:") {
+            at
+        } else {
+            expanded = format!("rxd1:wasm:{}:{at}", self.source_id);
+            expanded.as_str()
+        };
+        let parts: Vec<&str> = id.split(':').collect();
+        if parts.len() != 5
+            || parts[0] != "rxd1"
+            || parts[1] != "wasm"
+            || parts[2].len() != 64
+            || !parts[2]
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            return Err(anyhow::anyhow!(
+                "INVALID_ID: malformed or unsupported WASM coordinate"
+            ));
+        }
+        if parts[2] != self.source_id {
+            return Err(anyhow::anyhow!(
+                "SOURCE_MISMATCH: coordinate belongs to different source content"
+            ));
+        }
+        ensure!(
+            parts[3] == "func",
+            "INVALID_QUERY: --at requires a function coordinate"
+        );
+        let func_index: u32 = parts[4]
             .parse()
-            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: function index"))?;
+            .map_err(|_| anyhow::anyhow!("INVALID_ID: function index"))?;
         self.defined_position(func_index)
     }
 

@@ -8,37 +8,51 @@ cargo build --release
 # Rebuild the fixture deterministically from committed WAT (including names).
 wat2wasm --debug-names tests/fixtures/wasm/fixture.wat -o tests/fixtures/wasm/fixture.wasm
 rxd=target/release/rxd
-$rxd wasm outline tests/fixtures/wasm/fixture.wasm --func-name sum
+# One command, one record kind. -f/--filter is a case-insensitive substring.
+$rxd wasm types tests/fixtures/wasm/fixture.wasm
+$rxd wasm imports tests/fixtures/wasm/fixture.wasm
+$rxd wasm exports tests/fixtures/wasm/fixture.wasm
+$rxd wasm functions tests/fixtures/wasm/fixture.wasm --func-name sum
+$rxd wasm globals tests/fixtures/wasm/fixture.wasm -f g
+$rxd wasm data tests/fixtures/wasm/fixture.wasm
 ```
 
-Take the content-bound ID from a `function` record and query:
+Each `functions` row prints a short `at` coordinate (`func:1`); pass that back with
+`--at` instead of assembling a hash:
 
 ```sh
-id=$($rxd wasm outline tests/fixtures/wasm/fixture.wasm --func-name sum | python3 -c 'import json,sys; print(next(r["id"] for r in map(json.loads,sys.stdin) if r["record"]=="function"))')
+at=$($rxd wasm functions tests/fixtures/wasm/fixture.wasm --func-name sum | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="function"))')
 # Default get tries structured C-like decompilation, then falls back to instructions.
-$rxd wasm get-function tests/fixtures/wasm/fixture.wasm "$id"
-# --raw forces the instruction view (opcode + immediates + code-body offsets).
-$rxd wasm get-function tests/fixtures/wasm/fixture.wasm "$id" --raw
-$rxd wasm strings tests/fixtures/wasm/fixture.wasm --contains hello
+$rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at"
+# --raw is the one flag for the original instruction view (opcode + immediates +
+# code-body offsets); there is no separate --bytecode/--instructions spelling.
+$rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --raw
+$rxd wasm strings tests/fixtures/wasm/fixture.wasm -f hello
 $rxd wasm xref tests/fixtures/wasm/fixture.wasm --func 1
-$rxd wasm get-function tests/fixtures/wasm/fixture.wasm "$id" --perf
+$rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --perf
 ```
 
-`get` returns one `schema_version=2` `function_view` envelope; content is under `detail`.
-The default returns `representation: clike`, `decompiled: true` with structured C-like
-code and a line→code-body-offset `mapping`. Unsupported instructions/proposals (SIMD, GC,
-exception handling, etc.), `call_indirect`, or unstructured cases degrade completely to
-`representation: wasm`, `decompiled: false`, `reason: UNSUPPORTED_*`, an instruction view
-and original bytes; `--raw` always selects that view. Both retain code-body offsets and
-original file ranges. `xref --func` reports only direct calls and `ref.func`;
-`call_indirect` is marked indirect and its runtime table target is not resolved. Changing
-any input byte invalidates old IDs. Outline/strings/xref follow the
-header/records/summary completeness contract. Whole-function decompilation may exceed
-150 ms only for genuinely large targets; ordinary outline/strings/xref and instruction
-view get remain under the 150 ms rule.
+`get-function` returns one `schema_version=2` `function_view` envelope; content is under
+`detail`. The default returns `representation: clike`, `decompiled: true` with
+structured C-like code and a line→code-body-offset `mapping`. Unsupported
+instructions/proposals (SIMD, GC, exception handling, etc.), `call_indirect`, or
+unstructured cases degrade completely to `representation: wasm`, `decompiled: false`,
+`reason: UNSUPPORTED_*`, an instruction view and original bytes; `--raw` always selects
+that view. Both retain code-body offsets and original file ranges.
+
+Listings are single-kind: header → records of that one kind → summary, so no row stream
+mixes types with functions. Identity is the row's `at` coordinate (`type:0`, `func:1`,
+`data:1`, …); the header carries the input SHA-256 and rows never repeat it.
+`xref --func` rows carry the caller coordinate in `context_at` and the referenced
+function in `detail.target`, and report only direct calls and `ref.func`;
+`call_indirect` is marked indirect and its runtime table target is not resolved.
+Changing any input byte invalidates old coordinates. Budgets come from the shared
+`rxd_core::Budget` table, so there is no `--max-*` flag. Whole-function decompilation
+may exceed 150 ms only for genuinely large targets; ordinary listings/strings/xref and
+instruction view get remain under the 150 ms rule.
 
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, inference and degradation are in the
+result consumption. Backend coordinates, offsets, inference and degradation are in the
 [WASM design](../design/wasm-design.md#mcp-projection).
