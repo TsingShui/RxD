@@ -46,9 +46,6 @@ pub(crate) struct Common {
 
 #[derive(Args)]
 pub(crate) struct Scan {
-    /// Compatibility flag: directories are scanned recursively by default.
-    #[arg(short = 'r', long)]
-    pub(super) recursive: bool,
     /// Workers for a directory scan; one parsed input per worker is held at a time.
     #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = positive)]
     pub(super) threads: usize,
@@ -57,7 +54,7 @@ pub(crate) struct Scan {
 /// Selectors shared by the grouped structure listings.
 #[derive(Args)]
 pub(crate) struct Outline {
-    #[arg(long, conflicts_with = "recursive")]
+    #[arg(long)]
     pub(super) within: Option<String>,
     #[arg(long)]
     pub(super) depth: Option<usize>,
@@ -72,9 +69,6 @@ pub(crate) struct Outline {
     pub(super) filter: Option<String>,
     #[command(flatten)]
     pub(super) case: CaseArgs,
-    /// Explicitly select the default JSONL format.
-    #[arg(long)]
-    pub(super) jsonl: bool,
 }
 
 #[derive(Subcommand)]
@@ -129,8 +123,6 @@ pub(crate) enum Command {
         /// Also match values proven by bounded, side-effect-free AST evaluation.
         #[arg(long)]
         resolve_static: bool,
-        #[arg(long)]
-        jsonl: bool,
     },
     /// Find exact lexical identifier occurrences (JSONL).
     Identifiers {
@@ -144,8 +136,6 @@ pub(crate) enum Command {
         /// Restrict occurrences to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
-        #[arg(long)]
-        jsonl: bool,
     },
     /// Find call sites of a direct or member callee name (JSONL).
     Calls {
@@ -157,8 +147,6 @@ pub(crate) enum Command {
         /// Restrict call sites to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
-        #[arg(long)]
-        jsonl: bool,
     },
     /// Find static member names, property keys, and JSX attribute names (JSONL).
     Members {
@@ -170,8 +158,6 @@ pub(crate) enum Command {
         /// Restrict occurrences to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
-        #[arg(long)]
-        jsonl: bool,
     },
     /// Locate the innermost structure covering a UTF-8 byte offset (JSON).
     Locate {
@@ -182,19 +168,23 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// List lexical references for a binding/reference at a UTF-8 byte offset (JSONL).
+    /// List lexical references for a binding/reference (JSONL).
     Xref {
         #[command(flatten)]
         common: Common,
-        /// The coordinate of the name occurrence to resolve: a `symbols` row
-        /// (`symbol:6:9`) or an occurrence position (`identifier:26:31`).
-        #[arg(long, conflicts_with = "byte", required_unless_present = "byte")]
-        at: Option<String>,
+        #[command(flatten)]
+        selector: super::super::xref::Selector,
         /// A byte offset to anchor on instead, including one inside a multi-byte identifier.
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["at", "from", "filter"])]
         byte: Option<u64>,
-        #[arg(long)]
-        jsonl: bool,
+        /// Substring over binding names, folded unless `--case sensitive`.
+        #[arg(short, long, conflicts_with_all = ["at", "from", "byte"], requires = "kind")]
+        filter: Option<String>,
+        /// Only `symbol`: the one reference kind JS has is a lexical binding.
+        #[arg(long, value_name = "KIND", requires = "filter")]
+        kind: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
     },
     /// Discover lexical bindings and unresolved references (JSONL).
     Symbols {
@@ -203,8 +193,6 @@ pub(crate) enum Command {
         /// Include declarations and dependencies in this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
-        #[arg(long)]
-        jsonl: bool,
     },
     /// Slice the original bytes at a coordinate: a structure body, a symbol's declaration,
     /// or an explicit range.
@@ -282,11 +270,10 @@ impl Command {
             Self::Calls { name, within, .. } => Query::Calls { name, within },
             Self::Members { name, within, .. } => Query::Members { name, within },
             Self::Locate { byte, .. } => Query::Locate { byte },
-            Self::Xref { at, byte, .. } => Query::Refs {
-                target: match (at, byte) {
-                    (Some(at), _) => RefsTarget::Coordinate(at.clone()),
-                    (None, Some(byte)) => RefsTarget::Byte(byte),
-                    (None, None) => unreachable!("clap requires one of --at/--byte"),
+            Self::Xref { byte, .. } => Query::Refs {
+                target: match byte {
+                    Some(byte) => RefsTarget::Byte(byte),
+                    None => unreachable!("xref needs a resolved selector or a byte offset"),
                 },
             },
             Self::Symbols { within, .. } => Query::Symbols { within },

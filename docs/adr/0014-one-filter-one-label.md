@@ -35,6 +35,16 @@ before it can read the answer.
    `classes -f PATTERN` then `methods --class NAME` — not one `-f`. The second call is
    exact, so it cannot silently select a different type.
 
+## Two spellings that stay, because the coordinate is different
+
+- JS `--kind` takes a comma-separated list. Its kinds are the parser's structural kinds
+  (`function_declaration`, `object_method`, …), which a caller narrows as a set; the other
+  backends' `--kind` names one reference target and stays single-valued. Same flag name,
+  same "narrow this listing" job, different arity because the value space differs.
+- JS `locate`/`xref` keep `--byte`. A coordinate is what a row printed and can only name a
+  range; a byte offset may land *inside* a multi-byte identifier, which is what a cursor
+  position is. Both resolve to the same binding, so both stay.
+
 ## Consequences
 
 - The same `-f` over the same shape means the same thing on all nine backends, so a

@@ -55,6 +55,11 @@ pub enum IdentifierRole {
 pub enum RefsTarget {
     Coordinate(String),
     Byte(u64),
+    /// A name search: every binding whose name matches, with all its references.
+    Filter {
+        pattern: String,
+        case_sensitive: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -357,8 +362,14 @@ pub fn run_source(
         Query::Calls { name, within } => json!({"name":name,"within":within}),
         Query::Members { name, within } => json!({"name":name,"within":within}),
         Query::Refs { target } => match target {
-            RefsTarget::Coordinate(at) => json!({"at":at}),
+            RefsTarget::Coordinate(at) => json!({"at":at,"kind":"symbol"}),
             RefsTarget::Byte(byte) => json!({"byte":byte}),
+            RefsTarget::Filter {
+                pattern,
+                case_sensitive,
+            } => {
+                json!({"kind":"symbol","filter":pattern,"case":if *case_sensitive {"sensitive"} else {"insensitive"}})
+            }
         },
         Query::Locate { byte } => json!({"byte":byte}),
         Query::Symbols { within } => json!({"within":within}),
@@ -414,6 +425,13 @@ pub fn run_source(
         },
         Query::Symbols { within: Some(id) } => Query::Symbols {
             within: Some(expand_short_id(&source, &id)),
+        },
+        // The xref anchor is a coordinate too: expand it here so every id-shaped selector
+        // goes through this one normalisation, not through the call sites behind it.
+        Query::Refs {
+            target: RefsTarget::Coordinate(at),
+        } => Query::Refs {
+            target: RefsTarget::Coordinate(expand_short_id(&source, &at)),
         },
         other => other,
     };
@@ -724,40 +742,90 @@ pub fn run_source(
         }
         Query::Refs { target } => {
             perf.record("query", query_start);
-            // A row's coordinate is `<kind>:<start>:<end>`; the name occurrence starts at
-            // `start`, and the kind stays in the coordinate so a nested node with the same
-            // start cannot be confused for the anchor.
-            let byte = match target {
-                RefsTarget::Coordinate(at) => occurrence_start(&source, at.as_str())?,
-                RefsTarget::Byte(byte) => byte,
-            };
-            let result = refs::run(&parsed.program, &source, &collector, byte, limits, perf)?;
             let mut header = header;
             header["detail"]["analysis"] = json!("lexical");
-            header["detail"]["resolution"] = json!(result.resolution);
-            #[derive(Serialize)]
-            struct RefHeader<'a> {
-                selected: &'a refs::Selected,
-                declaration: &'a Option<lexical::Location>,
-                declaration_ids: &'a Option<Vec<String>>,
-            }
-            let detail = envelope::ExtendedDetail {
-                base: header["detail"].as_object().unwrap().clone(),
-                extra: RefHeader {
-                    selected: &result.selected,
-                    declaration: &result.declaration,
-                    declaration_ids: &result.declaration_ids,
-                },
+            let references = match &target {
+                // A row's coordinate is `<kind>:<start>:<end>`; the name occurrence starts
+                // at `start`, and the kind stays in the coordinate so a nested node with
+                // the same start cannot be confused for the anchor.
+                RefsTarget::Coordinate(at) => {
+                    let byte = occurrence_start(&source, at.as_str())?;
+                    let result =
+                        refs::run(&parsed.program, &source, &collector, byte, limits, perf)?;
+                    header["detail"]["resolution"] = json!(result.resolution);
+                    #[derive(Serialize)]
+                    struct RefHeader<'a> {
+                        selected: &'a refs::Selected,
+                        declaration: &'a Option<lexical::Location>,
+                        declaration_ids: &'a Option<Vec<String>>,
+                    }
+                    let detail = envelope::ExtendedDetail {
+                        base: header["detail"].as_object().unwrap().clone(),
+                        extra: RefHeader {
+                            selected: &result.selected,
+                            declaration: &result.declaration,
+                            declaration_ids: &result.declaration_ids,
+                        },
+                    };
+                    header = serde_json::to_value(envelope::Body {
+                        outer: header,
+                        detail,
+                    })
+                    .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
+                    result.references
+                }
+                RefsTarget::Byte(byte) => {
+                    let result =
+                        refs::run(&parsed.program, &source, &collector, *byte, limits, perf)?;
+                    header["detail"]["resolution"] = json!(result.resolution);
+                    #[derive(Serialize)]
+                    struct RefHeader<'a> {
+                        selected: &'a refs::Selected,
+                        declaration: &'a Option<lexical::Location>,
+                        declaration_ids: &'a Option<Vec<String>>,
+                    }
+                    let detail = envelope::ExtendedDetail {
+                        base: header["detail"].as_object().unwrap().clone(),
+                        extra: RefHeader {
+                            selected: &result.selected,
+                            declaration: &result.declaration,
+                            declaration_ids: &result.declaration_ids,
+                        },
+                    };
+                    header = serde_json::to_value(envelope::Body {
+                        outer: header,
+                        detail,
+                    })
+                    .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
+                    result.references
+                }
+                // A name search has no single selected occurrence: every row names its own
+                // target, exactly like the one-target-per-row shape of the other backends.
+                RefsTarget::Filter {
+                    pattern,
+                    case_sensitive,
+                } => {
+                    let needle = rxd_core::filter::Contains::new(pattern, *case_sensitive);
+                    let result = refs::run_filter(
+                        &parsed.program,
+                        &source,
+                        &collector,
+                        &needle,
+                        *case_sensitive,
+                        limits,
+                        perf,
+                    )?;
+                    header["detail"]["resolution"] = json!(result.resolution);
+                    header["detail"]["selected"] = json!(null);
+                    header["detail"]["targets"] = json!(result.targets);
+                    result.references
+                }
             };
-            let header = envelope::Body {
-                outer: header,
-                detail,
-            };
-            let records = result.references.len();
+            let records = references.len();
             perf.counters.records = Some(records);
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
-                for reference in &result.references {
+                for reference in &references {
                     output.json(&reference.envelope(&source.id))?;
                 }
                 output.json(&summary(records, true, Default::default()))

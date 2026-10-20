@@ -46,7 +46,7 @@ of a real native module or run the application.
 ## list
 
 ```sh
-"$RXD" asar entries "$ASAR" --jsonl -o "$DEMO/list.jsonl"
+"$RXD" asar entries "$ASAR" -o "$DEMO/list.jsonl"
 ```
 
 Header backend is `asar`, `header.detail.analysis` is `metadata`. Structured output
@@ -107,7 +107,7 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 ## Budgets and performance
 
 ```sh
-"$RXD" asar entries "$ASAR" --jsonl | head
+"$RXD" asar entries "$ASAR" | head
 "$RXD" asar extract "$ASAR" --at main.cjs -o "$DEMO/profile-main.cjs" --perf
 # The ASAR runner was removed; see benches/README.md "Removed per-backend runners".
 ```

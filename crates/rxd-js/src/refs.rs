@@ -1,8 +1,9 @@
 //! Single-file lexical binding queries. Dynamic name resolution is never guessed.
 
 use oxc_ast::{AstKind, ast::Program};
+use oxc_semantic::{NodeId, Semantic, SymbolId};
 use oxc_span::{GetSpan, Span};
-use rxd_core::{Error, Limits, Result, Source, perf::Perf};
+use rxd_core::{Error, Limits, Result, Source, filter::Contains, perf::Perf};
 use serde::Serialize;
 
 use crate::{
@@ -78,6 +79,99 @@ pub struct References {
     pub declaration_ids: Option<Vec<String>>,
 }
 
+/// The reference rows of one resolved symbol, and where its declaration is.
+fn symbol_references(
+    semantic: &Semantic<'_>,
+    symbol: SymbolId,
+    source: &Source,
+    locations: &Locations<'_, '_>,
+    typed: bool,
+) -> Result<(Location, Vec<Reference>)> {
+    let scoping = semantic.scoping();
+    let declaration = locations.get(scoping.symbol_span(symbol));
+    let target = declaration.entity_id.clone();
+    let mut references: Vec<_> = semantic
+        .symbol_references(symbol)
+        .map(|reference| Reference {
+            location: locations.get(semantic.reference_span(reference)),
+            target: target.clone(),
+            read: reference.is_read(),
+            write: reference.is_write(),
+            member_write: reference.flags().is_member_write_target(),
+            context_at: context_at(semantic, reference.node_id(), source),
+            type_reference: typed.then(|| reference.is_type()),
+            value_reference: typed.then(|| reference.is_value()),
+        })
+        .collect();
+    references.sort_by_key(|reference| (reference.location.start, reference.location.end));
+    Ok((declaration, references))
+}
+
+/// Every reference to a binding whose name matches a filter.
+///
+/// `-f PATTERN --kind symbol` is the content-search face of `xref`: one row per
+/// (target, site), each row naming its target, in position order across every match.
+pub fn run_filter(
+    program: &Program<'_>,
+    source: &Source,
+    collector: &Collector<'_>,
+    pattern: &Contains,
+    case_sensitive: bool,
+    limits: Limits,
+    perf: &mut Perf,
+) -> Result<FilterReferences> {
+    let semantic = lexical::build(program, limits, perf)?;
+    perf.measure("query", || {
+        let typed = program.source_type.is_typescript();
+        let locations = Locations::new(collector);
+        if lexical::is_dynamic(&semantic) {
+            return Ok(FilterReferences {
+                resolution: "dynamic",
+                targets: 0,
+                references: Vec::new(),
+            });
+        }
+        let mut targets = 0usize;
+        let mut references = Vec::new();
+        for symbol in semantic.scoping().symbol_ids() {
+            if !lexical::name(&semantic, symbol).contains_filter(pattern.text(), case_sensitive) {
+                continue;
+            }
+            targets += 1;
+            let (_, mut rows) = symbol_references(&semantic, symbol, source, &locations, typed)?;
+            references.append(&mut rows);
+        }
+        references.sort_by_key(|reference| {
+            (
+                reference.location.start,
+                reference.location.end,
+                reference.target.clone(),
+            )
+        });
+        Ok(FilterReferences {
+            resolution: "resolved",
+            targets,
+            references,
+        })
+    })
+}
+
+/// The result of a name-filtered xref: no single selected occurrence.
+pub struct FilterReferences {
+    pub resolution: &'static str,
+    pub targets: usize,
+    pub references: Vec<Reference>,
+}
+
+/// The fragment id path of the node that owns one occurrence, for a row's `context_at`.
+fn context_at(semantic: &Semantic<'_>, node_id: NodeId, source: &Source) -> Option<String> {
+    std::iter::once(semantic.nodes().kind(node_id))
+        .chain(semantic.nodes().ancestor_kinds(node_id))
+        .take_while(|&node| !fragment::boundary(node))
+        .find_map(fragment::key)
+        .map(|key| key.id(source))
+}
+
 pub fn run(
     program: &Program<'_>,
     source: &Source,
@@ -96,13 +190,7 @@ pub fn run(
     perf.measure("query", || {
         let scoping = semantic.scoping();
         let typed = program.source_type.is_typescript();
-        let context_id = |node_id| {
-            std::iter::once(semantic.nodes().kind(node_id))
-                .chain(semantic.nodes().ancestor_kinds(node_id))
-                .take_while(|&node| !fragment::boundary(node))
-                .find_map(fragment::key)
-                .map(|key| key.id(source))
-        };
+        let ctx = |node_id| context_at(&semantic, node_id, source);
         let selected = semantic
             .nodes()
             .iter_enumerated()
@@ -154,7 +242,7 @@ pub fn run(
             name,
             role,
             location: location(span),
-            context_at: context_id(node_id),
+            context_at: ctx(node_id),
             type_reference: if typed {
                 reference_kind.map(|kind| kind.0)
             } else {
@@ -178,23 +266,9 @@ pub fn run(
             });
         }
         let symbol = symbol.expect("resolved symbol");
-        let declaration_location = location(scoping.symbol_span(symbol));
-        let target = declaration_location.entity_id.clone();
+        let (declaration_location, references) =
+            symbol_references(&semantic, symbol, source, &locations, typed)?;
         let declaration = Some(declaration_location);
-        let mut references: Vec<_> = semantic
-            .symbol_references(symbol)
-            .map(|reference| Reference {
-                location: location(semantic.reference_span(reference)),
-                target: target.clone(),
-                read: reference.is_read(),
-                write: reference.is_write(),
-                member_write: reference.flags().is_member_write_target(),
-                context_at: context_id(reference.node_id()),
-                type_reference: typed.then(|| reference.is_type()),
-                value_reference: typed.then(|| reference.is_value()),
-            })
-            .collect();
-        references.sort_by_key(|reference| (reference.location.start, reference.location.end));
         Ok(References {
             resolution: "resolved",
             selected,

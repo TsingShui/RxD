@@ -16,7 +16,7 @@ executes input. It has nine commands:
 | `xref --at` | Find the lexical binding, references and read/write roles at a name occurrence (`--byte` takes a raw offset instead) | JSONL |
 | `symbols` | Discover declarations, external bindings and unresolved references in a region | JSONL |
 
-structure listings and `find` accept a file or recursively scan a directory; `locate/slice/xref/symbols/
+structure listings and `find` accept a file or scan a directory; `locate/slice/xref/symbols/
 identifiers/calls/members` accept one file. ASAR uses the separate
 [`rxd asar` entry](asar.md) to extract a file, then these commands analyze it; identical
 bytes and parse options keep the same content-bound IDs.
@@ -64,7 +64,7 @@ fixed file; use actual query results for other inputs.
 ## 1. entities
 
 ```sh
-"$RXD" js entities "$FILE" --jsonl -o "$DEMO/entities.jsonl"
+"$RXD" js entities "$FILE" -o "$DEMO/entities.jsonl"
 
 jq 'select(.record == "entity") |
     {kind: .detail.kind, name: .detail.name, label: .detail.label, start, end, depth: .detail.depth, flags: .detail.flags}' "$DEMO/entities.jsonl"
@@ -113,7 +113,7 @@ a directory or `-r`.
 ## 2. find
 
 ```sh
-"$RXD" js find "$FILE" -f '/api/login' --jsonl -o "$DEMO/find.jsonl"
+"$RXD" js find "$FILE" -f '/api/login' -o "$DEMO/find.jsonl"
 jq 'select(.record == "match")' "$DEMO/find.jsonl"
 ```
 
@@ -121,7 +121,7 @@ The fixture has two hits: the top-level `api` constant and `send`'s request. Use
 `--resolve-static` for closed constant expressions:
 
 ```sh
-"$RXD" js find "$FILE" -f '/api/login' --resolve-static --jsonl
+"$RXD" js find "$FILE" -f '/api/login' --resolve-static
 ```
 
 Static-expression hits use `detail.literal_kind: static_expression`,
@@ -155,8 +155,8 @@ independently.
 ## 5. xref
 
 ```sh
-"$RXD" js xref "$FILE" --byte 43 --jsonl -o "$DEMO/xref.jsonl"
-"$RXD" js xref "$FILE" --byte 43 --jsonl | jq 'select(.record == "reference")'
+"$RXD" js xref "$FILE" --byte 43 -o "$DEMO/xref.jsonl"
+"$RXD" js xref "$FILE" --byte 43 | jq 'select(.record == "reference")'
 ```
 
 `--byte` must be inside a declaration identifier or identifier reference. Whitespace,
@@ -171,8 +171,8 @@ conservatively unscanned.
 ## 6. symbols
 
 ```sh
-"$RXD" js symbols "$FILE" --jsonl
-"$RXD" js symbols "$FILE" --within "$REQUEST_ID" --jsonl
+"$RXD" js symbols "$FILE"
+"$RXD" js symbols "$FILE" --within "$REQUEST_ID"
 ```
 
 `symbols` emits `symbol` records (resolved bindings with canonical declaration IDs) and

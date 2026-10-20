@@ -2122,9 +2122,10 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
             extracted["detail"]["entity"]["end"].as_u64().unwrap() >= (start + raw.len()) as u64
         );
     }
-    assert_eq!(
-        invoke("symbols", &path, &["--jsonl"]).stdout,
-        invoke("symbols", &path, &[]).stdout
+    failure(
+        invoke("symbols", &path, &["--jsonl"]),
+        2,
+        "unexpected argument",
     );
     let duplicate = path.with_file_name("duplicate.mjs");
     fs::copy(&path, &duplicate).unwrap();
@@ -2518,9 +2519,10 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     let plain = invoke("xref", &path, &["--byte", "4"]);
     jsonl(&plain);
     assert!(plain.stderr.is_empty());
-    assert_eq!(
-        invoke("xref", &path, &["--byte", "4", "--jsonl"]).stdout,
-        plain.stdout
+    failure(
+        invoke("xref", &path, &["--byte", "4", "--jsonl"]),
+        2,
+        "unexpected argument",
     );
     let destination = dir.path().join("refs.jsonl");
     let saved = invoke(
@@ -2621,11 +2623,6 @@ fn recursive_queries_preserve_sorted_per_file_streams_and_content_ids() {
         }
         let mut recursive_args = args.clone();
         let output = invoke(command, dir.path(), &recursive_args);
-        let mut explicit_args = args.clone();
-        explicit_args.push("-r");
-        let explicit = invoke(command, dir.path(), &explicit_args);
-        success(&explicit);
-        assert_eq!(explicit.stdout, output.stdout);
         success(&output);
         assert!(output.stderr.is_empty());
         assert!(output.stdout.starts_with(&expected));
@@ -2725,11 +2722,8 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
     fs::write(&file, "const x = 1").unwrap();
     let single = outline_rows(&file, &[]);
     assert_eq!(single[0]["detail"]["path"], file.to_str().unwrap());
-    let output = invoke("entities", &file, &["-r"]);
-    success(&output);
-    let summary: Value =
-        serde_json::from_slice(output.stdout.split(|&b| b == b'\n').rev().nth(1).unwrap()).unwrap();
-    assert_eq!(summary["detail"]["files"], 1);
+    // A single file is one input, with or without any flag: one stream, one summary.
+    failure(invoke("entities", &file, &["-r"]), 2, "unexpected argument");
     failure(
         invoke("entities", dir.path(), &["--within", "dummy"]),
         2,
@@ -2785,9 +2779,6 @@ fn recursive_budgets_and_late_errors_leave_output_untouched() {
             _ => vec![flag, "1"],
         };
         refused(invoke(command, dir.path(), &args));
-        let mut explicit = args.clone();
-        explicit.push("-r");
-        refused(invoke(command, dir.path(), &explicit));
     }
     let first_bytes = invoke("entities", &dir.path().join("a.js"), &[])
         .stdout
@@ -2897,9 +2888,6 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
             .success()
     );
     let output = invoke("find", dir.path(), &["-f", "needle"]);
-    let explicit = invoke("find", dir.path(), &["--recursive", "-f", "needle"]);
-    success(&explicit);
-    assert_eq!(explicit.stdout, output.stdout);
     success(&output);
     let rows: Vec<Value> = String::from_utf8(output.stdout)
         .unwrap()
@@ -2924,7 +2912,7 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
 #[test]
 fn search_then_extract_and_locate_complete_function() {
     let path = example();
-    let found = jsonl(&invoke("find", &path, &["-f", "/api/login", "--jsonl"]));
+    let found = jsonl(&invoke("find", &path, &["-f", "/api/login"]));
     assert_eq!(found.len(), 4);
     assert_eq!(found[1]["parent_at"], found[0]["detail"]["root_id"]);
     let id = found[2]["parent_at"].as_str().unwrap();
@@ -4429,7 +4417,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
     let unpacked = dir.path().join("app.asar.unpacked");
     fs::create_dir(&unpacked).unwrap();
     fs::write(unpacked.join("data.bin"), [0, 255, 128]).unwrap();
-    let rows = jsonl(&asar("entries", &archive, &["--jsonl"]));
+    let rows = jsonl(&asar("entries", &archive, &[]));
     assert_eq!(rows[0]["backend"], "asar");
     assert_eq!(rows[0]["detail"]["analysis"], "metadata");
     assert_eq!(rows.last().unwrap()["records"], 7);

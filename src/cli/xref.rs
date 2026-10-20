@@ -128,21 +128,14 @@ impl Target {
 #[derive(Debug, Args)]
 pub struct Selector {
     /// Coordinate copied from a record, exactly as that row printed it.
-    #[arg(
-        long,
-        value_name = "COORD",
-        required_unless_present = "from",
-        conflicts_with = "from"
-    )]
+    ///
+    /// Not marked required by clap: a command may offer another way in (`--byte`, a
+    /// content search), and `resolve` then reports the missing selector itself.
+    #[arg(long, value_name = "COORD", conflicts_with = "from")]
     pub at: Option<String>,
     /// Read the coordinate from a previous JSONL stream (a file, or `-` for stdin). The
     /// stream must describe this input, so a stale stream cannot fetch from another file.
-    #[arg(
-        long,
-        value_name = "JSONL",
-        required_unless_present = "at",
-        conflicts_with = "at"
-    )]
+    #[arg(long, value_name = "JSONL", conflicts_with = "at")]
     pub from: Option<PathBuf>,
 }
 
@@ -150,15 +143,14 @@ impl Selector {
     /// Resolve the coordinate to fetch; `units` are the record kinds the stream may carry
     /// and `expect` is the identity evidence this backend has for its input.
     pub fn resolve(&self, units: &[&str], expect: Expect<'_>) -> anyhow::Result<String> {
-        match &self.at {
-            Some(at) => Ok(at.clone()),
-            None => selector_stream(
-                self.from
-                    .as_deref()
-                    .expect("clap requires exactly one selector"),
-                units,
-                expect,
-            ),
+        match (&self.at, self.from.as_deref()) {
+            (Some(at), _) => Ok(at.clone()),
+            (None, Some(from)) => selector_stream(from, units, expect),
+            (None, None) => Err(rxd_core::Error::failure(
+                rxd_core::Failure::Query,
+                "--at <COORD> or --from <JSONL> is required",
+            )
+            .into()),
         }
     }
 }

@@ -23,8 +23,6 @@ pub(crate) enum Command {
     Entries {
         #[command(flatten)]
         common: Common,
-        #[arg(long)]
-        jsonl: bool,
         ///  substring over the archive-relative path. Folded unless `--case sensitive`.
         #[arg(short, long)]
         filter: Option<String>,

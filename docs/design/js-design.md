@@ -60,22 +60,22 @@ provides the closure context.
 ## Commands
 
 ```sh
-rxd js entities bundle.js --jsonl
-rxd js functions bundle.js -f check --jsonl
-rxd js classes bundle.js --jsonl
-rxd js methods bundle.js --jsonl
-rxd js entities bundle.js --within '<entity-id>' --depth 1 --jsonl
-rxd js entities bundle.js --kind object_method --jsonl
-rxd js entities bundle.js --name checkFlag --jsonl
-rxd js find bundle.js -f '/api/login' --jsonl
-rxd js find bundle.js -f 'setInterval' --resolve-static --jsonl
-rxd js identifiers bundle.js --name '_0x4e3653' --jsonl
-rxd js identifiers bundle.js --name '_0x4e3653' --role reference --within '<entity-id>' --jsonl
-rxd js calls bundle.js --name 'AIS3' --jsonl
-rxd js members bundle.js --name 'checkFlag' --jsonl
+rxd js entities bundle.js
+rxd js functions bundle.js -f check
+rxd js classes bundle.js
+rxd js methods bundle.js
+rxd js entities bundle.js --within '<entity-id>' --depth 1
+rxd js entities bundle.js --kind object_method
+rxd js entities bundle.js --name checkFlag
+rxd js find bundle.js -f '/api/login'
+rxd js find bundle.js -f 'setInterval' --resolve-static
+rxd js identifiers bundle.js --name '_0x4e3653'
+rxd js identifiers bundle.js --name '_0x4e3653' --role reference --within '<entity-id>'
+rxd js calls bundle.js --name 'AIS3'
+rxd js members bundle.js --name 'checkFlag'
 rxd js locate bundle.js --byte 183240 --json
-rxd js xref bundle.js --byte 183240 --jsonl
-rxd js symbols bundle.js --within '<entity-id>' --jsonl
+rxd js xref bundle.js --byte 183240
+rxd js symbols bundle.js --within '<entity-id>'
 rxd js slice bundle.js --at '<entity>'
 rxd js slice bundle.js --at '<symbol>' --json
 rxd js slice bundle.js --at '<parent>' --json
@@ -177,10 +177,10 @@ is the maximum). `--depth`/`--kind`/`--name` apply per file; `--within` is singl
 and returns `INVALID_QUERY` (exit 2) for directory input, including empty directories.
 `locate/slice/xref/symbols/identifiers/calls/members` remain single-file.
 
-Regular-file input keeps its single-file output and does not restrict extension.
-`-r/--recursive` is retained for compatibility; directories behave identically with or
-without it. An explicit `-r` on a regular file keeps the scan protocol and appends
-`scan_summary`; it rejects symlink entries and cannot combine with `--within`.
+Regular-file input keeps its single-file output and does not restrict extension. A
+directory is a scan and a file is one input: there is no flag to choose, so the same
+input always produces the same stream. A listing is JSONL because it is a stream, so
+there is no `--jsonl` switch spelling out the default.
 
 Recursive JSONL concatenates each file's header/results/summary and appends a final
 `scan_summary` with `record, schema_version=2, backend, command, records, complete,
@@ -362,6 +362,12 @@ Fixed detail fields:
 call/member have no own ID; identifier also carries `context_at`, while call/member
 `context_at` is null. Names/labels/values preserve JS UTF-16 code units; unpaired
 surrogates remain valid JSON escapes and are never lossy-converted.
+
+`xref` takes one of three entries: `--at COORD` (a `symbols`/`identifiers` row's
+coordinate), `--byte OFFSET` (a position, possibly inside a multi-byte identifier), or
+`-f PATTERN --kind symbol` (every binding whose name matches, one `reference` row per
+target and site, each row naming its own `detail.target`). `--from JSONL` reads the anchor
+from a previous stream and refuses one from another input.
 
 `locate` returns one `record=locate`; `slice --json` returns one `record=source`; neither
 has header/summary and both add `backend=js, command, schema_version=2` outside.
