@@ -58,9 +58,6 @@ pub struct FieldsArgs {
     /// Case-insensitive substring filter over the field name.
     #[arg(short, long)]
     pub filter: Option<String>,
-    /// Append each field's access flags to its record.
-    #[arg(long)]
-    pub with_flags: bool,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
@@ -79,9 +76,6 @@ pub struct MethodsArgs {
     /// Case-insensitive substring filter over the method name.
     #[arg(short, long)]
     pub filter: Option<String>,
-    /// Append each method's access flags to its record.
-    #[arg(long)]
-    pub with_flags: bool,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]

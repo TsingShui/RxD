@@ -134,15 +134,19 @@ Fixed detail fields:
 
 | Record | Detail fields |
 | --- | --- |
-| class | `entry, name, super, interfaces, major, minor, access, signature, source_file, fields, methods` |
-| field | `entry, class, name, descriptor, access, signature, constant_index` |
-| method | `entry, class, name, descriptor, access, signature, exceptions, has_code` |
+| class | `access_flags, super, interfaces, major, minor, signature, source_file, fields, methods` (`at` is `Lclass;`) |
+| field | `signature, constant_index` (`at` is `Lclass;->name:type`; modifiers come from `get-class`) |
+| method | `proto, signature, exceptions, has_code` (`at` is `Lclass;->name(proto)`; modifiers come from `get-class`/`get-method`) |
 | string | `class, index, value, utf16` (`index` = constant-pool index) |
-| reference | `entry, class, method, method_descriptor, byte_offset, mnemonic, target` |
+| reference | `byte_offset, mnemonic, target` (`context_at` is the caller coordinate) |
 | bytecode | `representation, entry, class, name, descriptor, max_stack, max_locals, handlers, instructions, complete` |
 
 Field objects are flattened into detail; `constant_index` keeps the original constant
-pool index. `entry` is null for standalone class input. Signature/super/source_file/
+pool index. Member rows do not repeat `access_flags`: `get-class --at` renders the Java
+modifiers (`public abstract class`, `private static final` field, `public static final`
+method) and `get-method --at` renders one member, so a per-row copy would be the same fact
+twice. Class rows keep it because the listing is the only place that states whether a class
+is an interface, annotation or enum without fetching each class. `entry` is null for standalone class input. Signature/super/source_file/
 constant_index/utf16 may be null. `fields`/`methods` are class-table totals. `utf16` is
 null when decoding is lossless, otherwise an array of raw UTF-16 code units.
 

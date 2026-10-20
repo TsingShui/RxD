@@ -606,7 +606,8 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                                 ..RecordMeta::default()
                             },
                             json!({
-                                "access_flags":field.access,
+                                // Modifiers come from the Java rendering (`get-class`),
+                                // so a per-row copy would be the same fact twice.
                                 "signature":field.signature,
                                 "constant_index":field.constant_index,
                             })
@@ -638,7 +639,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                             },
                             json!({
                                 "proto":method.descriptor,
-                                "access_flags":method.access,
                                 "signature":method.signature,
                                 "exceptions":method.exceptions,
                                 "has_code":method.code.is_some(),
@@ -699,7 +699,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                         },
                         json!({
                             "proto":method.descriptor,
-                            "access_flags":method.access,
                             "signature":method.signature,
                             "exceptions":method.exceptions,
                             "has_code":method.code.is_some(),

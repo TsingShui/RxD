@@ -281,7 +281,6 @@ fn run_command(
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),
                 name: filter.as_deref(),
-                with_flags: args.with_flags,
             };
             let (chunks, records) = apk::list_fields_with_policy(
                 &args.apk_path,
@@ -293,7 +292,7 @@ fn run_command(
             let header = stream_header(
                 "fields",
                 std::slice::from_ref(&args.apk_path),
-                json!({"class":args.class, "filter":args.filter, "with_flags":args.with_flags}),
+                json!({"class":args.class, "filter":args.filter}),
             )?;
             let mut summary = String::new();
             finish_stream(&mut summary, records)?;
@@ -308,7 +307,6 @@ fn run_command(
             let selector = apk::MethodSelector {
                 class: args.class.as_deref(),
                 name: args.filter.as_deref(),
-                with_flags: args.with_flags,
             };
             let (chunks, records) = apk::list_methods_with_policy(
                 &args.apk_path,
@@ -321,7 +319,7 @@ fn run_command(
                 "methods",
                 std::slice::from_ref(&args.apk_path),
                 json!({
-                    "class":args.class, "filter":args.filter, "with_flags":args.with_flags,
+                    "class":args.class, "filter":args.filter,
                 }),
             )?;
             let mut summary = String::new();

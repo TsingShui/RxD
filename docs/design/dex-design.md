@@ -23,7 +23,7 @@ preserved; argument positions and exit-code semantics are.
 | `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required; rows carry `detail.entry`. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
-| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`, `--with-flags`. |
+| `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`. |
 
 `get-class` selects by `--at` only (the `Lx/y;` a `classes` row prints); the positional
 Dalvik-name form was removed so every FETCH has one selector spelling. APK/DEX commands
@@ -117,8 +117,8 @@ Fixed detail fields:
 | Record | Command | Detail |
 | --- | --- | --- |
 | class | classes | `at` = the class descriptor |
-| field | fields | `at` = `Lclass;->name:type`; `access_flags` with `--with-flags` |
-| method | methods | `at` = `Lclass;->name(proto)`; `access_flags` with `--with-flags` |
+| field | fields | `at` = `Lclass;->name:type`; `detail` is empty (modifiers come from `get-class`) |
+| method | methods | `at` = `Lclass;->name(proto)`; `detail` is empty (modifiers come from `get-class`/`get-method`) |
 | string | strings | `entry, index, value` (`index` = DEX `string_ids` index) |
 Ordering: records follow the archive central-directory order, and inside one entry the
 `class_defs` (classes) or code-item (xref) order. No backend sorts by identity, so a class
@@ -137,7 +137,13 @@ classes; `string.class` is always null. `reference.member` keeps `CLASS->MEMBER`
 references within one member are listed once; ordering is preserved.
 `entry.compression` is stored/deflated/other; sizes are bytes. `field.slot` is the
 instance-first runtime slot, `field_index` is the DEX `field_ids` index, and
-`method_index` is the DEX `method_ids` index. `access_flags` is an integer.
+`method_index` is the DEX `method_ids` index.
+
+Access flags are not repeated on `methods`/`fields` rows: `get-class --at` renders the
+whole class as Java (`public abstract class`, `private static final` field, `public static
+final` method) and `get-method --at` renders one member's modifiers, so a per-row integer
+would be the same fact spelled twice. On the 5.19M-method corpus that omission is also
+what keeps `methods` at 679 MB instead of ~731 MB.
 
 and Manifest XML stay outside the envelope and are byte-stable; JSON and Java are never
 mixed. `-o` copies stdout exactly. Input/analysis errors emit no success envelope.

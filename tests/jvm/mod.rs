@@ -62,14 +62,8 @@ fn assert_record(row: &Value) {
             "fields",
             "methods",
         ],
-        "field" => &["proto", "access_flags", "signature", "constant_index"],
-        "method" => &[
-            "proto",
-            "access_flags",
-            "signature",
-            "exceptions",
-            "has_code",
-        ],
+        "field" => &["proto", "signature", "constant_index"],
+        "method" => &["proto", "signature", "exceptions", "has_code"],
         "string" => &["class", "index", "value", "utf16"],
         "reference" => &["byte_offset", "mnemonic", "target"],
         "bytecode" => &[

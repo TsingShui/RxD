@@ -292,31 +292,6 @@ pub fn execute(
         (result, bytes)
     });
     let status = result.map_err(QueryError::from)?;
-    if status == 3 || status == 4 {
-        let mut candidates = if bytes.is_empty() {
-            None
-        } else {
-            Some(reply(&bytes, budgets.records)?)
-        };
-        if let Some(candidates) = candidates.as_mut() {
-            restore_paths(candidates, inputs);
-        }
-        return Err(QueryError {
-            code: if status == 3 {
-                "NOT_FOUND"
-            } else {
-                "AMBIGUOUS"
-            }
-            .into(),
-            message: if status == 3 {
-                "no matching DEX class or member"
-            } else {
-                "multiple DEX definitions match the selector"
-            }
-            .into(),
-            candidates,
-        });
-    }
     if status != 0 {
         return Err(QueryError::new(
             "ANALYSIS_ERROR",

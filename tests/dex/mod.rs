@@ -1,6 +1,6 @@
 //! End-to-end contracts for the migrated rasc CLI, without MCP.
 pub(super) mod support;
-use super::{fixture, success};
+use super::{fixture, refused, success};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -61,11 +61,9 @@ fn assert_record(row: &Value) {
             "compressed_size",
             "uncompressed_size",
         ],
-        "field" if row["detail"].get("access_flags").is_some() => &["access_flags"],
         "field" => &[],
         // `methods` prints one descriptor row per definition; `get-class --members` prints
         // its member table as text, so this is the only `method` record shape.
-        "method" if row["detail"].get("access_flags").is_some() => &["access_flags"],
         "method" => &[],
 
         other => panic!("unexpected dex record {other}"),
@@ -255,15 +253,9 @@ fn dex_fields_list_declarations_and_honour_class_and_name_filters() {
     let filtered = query("fields", &path, &["--filter", "zzz_no_such_field"]);
     success(&filtered);
     assert_eq!(dex_records(&filtered).len(), 0);
-    let flagged = query("fields", &path, &["--with-flags"]);
-    success(&flagged);
-    assert!(
-        dex_records(&flagged)
-            .iter()
-            .all(|row| row["detail"]["access_flags"].is_u64()),
-        "{}",
-        text(&flagged)
-    );
+    // Data rows stay empty: modifiers belong to the Java rendering (`get-class`), and a
+    // per-row integer would be a second spelling of the same fact.
+    refused(query("fields", &path, &["--with-flags"]));
 }
 
 #[test]
@@ -302,16 +294,12 @@ fn dex_methods_lists_definitions_and_honours_class_and_name_filters() {
     let none = query("methods", &path, &["--filter", "zzz_no_such_method"]);
     success(&none);
     assert_eq!(dex_records(&none).len(), 0);
-    // Access flags are opt-in.
-    let flagged = query("methods", &path, &["--class", "Fixture0", "--with-flags"]);
-    success(&flagged);
-    assert!(
-        dex_records(&flagged)
-            .iter()
-            .all(|row| row["detail"]["access_flags"].is_u64()),
-        "{}",
-        text(&flagged)
-    );
+    // `--with-flags` is gone; `get-class`/`get-method` render the Java modifiers.
+    refused(query(
+        "methods",
+        &path,
+        &["--class", "Fixture0", "--with-flags"],
+    ));
 }
 
 #[test]

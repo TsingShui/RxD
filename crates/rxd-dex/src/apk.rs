@@ -964,19 +964,6 @@ pub enum MemberKind {
     Method,
 }
 
-/// The status a lookup ends with: exactly one hit, none, or more than one.
-///
-/// Three answers rather than a bool because "not found" and "found twice" mean
-/// different things. More than one hit means more than one input defines the class, and
-/// a caller that silently kept the first would be choosing one of two layouts at random.
-pub fn lookup_status(hits: usize) -> i32 {
-    match hits {
-        0 => 3,
-        1 => 0,
-        _ => 4,
-    }
-}
-
 /// Every entry the archive holds, in central-directory order.
 ///
 /// No filtering and no de-duplication: this is a listing of what the file contains, so
@@ -1102,14 +1089,6 @@ mod tests {
     /// `RASC_REAL_APK=… cargo test --bin rasc -- --ignored real_apk_member_lines`.
     /// A class name is not an identity. Two entries defining it must not produce a plan:
     /// the plan decides which instance slots a collector dereferences.
-    #[test]
-    fn member_verdict_separates_none_from_several() {
-        assert_eq!(lookup_status(1), 0);
-        assert_eq!(lookup_status(0), 3);
-        assert_eq!(lookup_status(2), 4);
-        assert_eq!(lookup_status(7), 4);
-    }
-
     /// Real-data round trip: every member the DEX walk finds must be reachable from the
     /// runtime index the lookup takes, and the position must cross from instance fields
     /// into statics exactly where the field blocks meet.

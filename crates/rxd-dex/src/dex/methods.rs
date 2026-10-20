@@ -24,8 +24,6 @@ pub struct Selector<'a> {
     pub class: Option<&'a str>,
     /// Case-insensitive substring over the method name.
     pub name: Option<&'a str>,
-    /// Append `access_flags` to every record.
-    pub with_flags: bool,
 }
 
 /// Append one `{"record":"method","detail":{"descriptor":…}}` line per defined method.
@@ -102,7 +100,7 @@ fn render_class(
             method_idx = method_idx
                 .checked_add(read_uleb(dex.data, &mut cursor)?)
                 .context("method index overflow")?;
-            let access_flags = read_uleb(dex.data, &mut cursor)? as u16;
+            skip_uleb(dex.data, &mut cursor)?; // access_flags: rendered by get-class/get-method
             skip_uleb(dex.data, &mut cursor)?; // code_off: not needed to name a method
             let index = method_idx as usize;
             if index >= dex.header.methods_size {
@@ -130,12 +128,9 @@ fn render_class(
             descriptor_row.push_str(protos[proto_idx].as_deref().unwrap_or_default());
             out.push_str("{\"record\":\"method\",\"at\":");
             push_json_string(out, &descriptor_row);
-            out.push_str(",\"detail\":{");
-            if selector.with_flags {
-                out.push_str("\"access_flags\":");
-                out.push_str(&access_flags.to_string());
-            }
-            out.push_str("}}\n");
+            // Flags stay out of data rows: `get-class`/`get-method` render the Java
+            // modifiers, so a per-row integer would be a second spelling of the same fact.
+            out.push_str(",\"detail\":{}}\n");
             crate::profile::count(crate::profile::Counter::CodeItems, 1);
             rows += 1;
         }
@@ -224,7 +219,7 @@ fn render_fields_of(
             field_idx = field_idx
                 .checked_add(read_uleb(dex.data, &mut cursor)?)
                 .context("field index overflow")?;
-            let access_flags = read_uleb(dex.data, &mut cursor)? as u16;
+            skip_uleb(dex.data, &mut cursor)?; // access_flags: rendered by get-class
             let index = field_idx as usize;
             if index >= dex.header.fields_size {
                 anyhow::bail!("field index out of range");
@@ -247,12 +242,9 @@ fn render_fields_of(
             rendered.push_str(&ty);
             out.push_str("{\"record\":\"field\",\"at\":");
             push_json_string(out, &rendered);
-            out.push_str(",\"detail\":{");
-            if selector.with_flags {
-                out.push_str("\"access_flags\":");
-                out.push_str(&access_flags.to_string());
-            }
-            out.push_str("}}\n");
+            // Flags stay out of data rows: `get-class`/`get-method` render the Java
+            // modifiers, so a per-row integer would be a second spelling of the same fact.
+            out.push_str(",\"detail\":{}}\n");
             rows += 1;
         }
     }

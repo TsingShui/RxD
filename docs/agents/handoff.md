@@ -94,20 +94,28 @@ The tool catalogue follows the CLI by renovation, not by list maintenance:
 and the `asar_*` families), so the whole-suite run is their gate — `-- js` matches 14 of
 them by name, which is why the module filter is not used as evidence for those two.
 
-## Decisions still open
+## Decisions (all resolved)
 
-1. **pyc work ceiling.** pyc's decompile work accounting used `--max-work` default
-   16,777,216; the shared `Budget::work` is 1,000,000. The exact-work boundary tests in
-   `tests/pyc/boundaries.rs` were converted to call the `rxd_pyc` library directly with
-   explicit `Limits`, so the invariant is still covered without a CLI knob. Whether pyc
-   should get its own larger line in `Budget` (or the shared default should rise) is a
-   product call; today pyc runs on the shared 1,000,000.
-2. **Access flags: `--with-flags` asymmetry.** jar `methods`/`fields` rows always carry
-   `access_flags`; dex rows leave `detail` empty unless `--with-flags` is passed (5.19M
-   methods on a real corpus would otherwise add ~100 MB). Same question, two spellings.
-   Options: keep it as a documented, size-driven exception (current state), or always emit
-   flags on dex and accept the size. Not decided.
-3. **dex instruction offsets.** dex `xref` rows carry `entry` but no instruction offset or
+1. **pyc work ceiling.** Resolved: pyc stays on the shared `Budget::work = 1,000,000`; no
+   larger line was added. The exact-work boundary tests in `tests/pyc/boundaries.rs` call
+   the `rxd_pyc` library directly with explicit `Limits`, so the accounting invariant is
+   still covered without a CLI knob.
+2. **Access flags.** Resolved: `--with-flags` is gone and no member row repeats
+   `access_flags` (dex `methods`/`fields` and jar `methods`/`fields`). The authoritative
+   spelling of "what is this member" is the Java rendering: `get-class --at` prints
+   `public abstract class` / `private static final` members and `get-method --at` prints one
+   member's modifiers. On the 5.19M-method dex corpus the omission also saves ~52 MB. jar
+   `classes` rows keep `access_flags`, because that listing is the only place that says
+   whether a class is an interface, annotation or enum without fetching every class.
+3. **MCP dead status branch.** Resolved: `status == 3 || 4 → NOT_FOUND/AMBIGUOUS` and its
+   `candidates` payload were removed from `src/query/mod.rs`, together with the unused
+   `rxd_dex::apk::lookup_status` and its unit test. Nothing observable changed — the branch
+   was unreachable because `lookup_status` had no caller — but a missing DEX selector now has
+   exactly one producer (`src/cli/dex/mod.rs` maps the "not found" message to `NOT_FOUND`),
+   and the MCP surface no longer documents a candidate payload the DEX path cannot produce.
+   `QueryError::candidates` stays because kuna's ambiguous native query still fills it.
+
+4. **dex instruction offsets.** dex `xref` rows carry `entry` but no instruction offset or
    mnemonic; jar/dotnet/pyc/evm all keep theirs. Adding them means threading the offset
    through the dex scan path, which is the performance-critical one. User decision: do not
    add.
