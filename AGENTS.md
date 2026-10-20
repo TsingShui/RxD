@@ -212,7 +212,9 @@ A coordinate that no table carries is `NOT_FOUND`, never an empty result; a `--k
 contradicts the coordinate is an argument error naming both kinds, never an empty result.
 `--from JSONL` is the third way to name that anchor: the same coordinate, read from a
 previous stream's first unit record instead of typed, with the stream's identity checked
-against the input it is applied to.
+against the input it is applied to. A nullable outer key (`at`, `parent_at`, `context_at`,
+`start`, `end`, `source_id`) is `null` or absent, and consumers treat the two alike
+(ADR 0003).
 
 Original instructions versus reconstructed source is one flag, `--raw`, on every
 backend that can emit both; `--bytecode`, `--il` and future spellings are not separate

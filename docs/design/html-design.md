@@ -34,9 +34,9 @@ receipt is a single `file` record with `backend`/`command`/`schema_version` and
 ### Records and closed schema
 
 Record kinds are `element`/`text`/`comment`/`doctype`; an end tag is not a fifth
-record. Every data record carries the fixed nullable ADR 0003 navigation fields
-`id, source_id, parent_id, context_id, start, end`; nullable fields are always present
-and the field set never changes with input. IDs are
+record. Every data record carries the ADR 0003 navigation fields (`at, source_id, parent_at,
+context_at, start, end`); a field with no value is `null` or absent, and the field set
+never changes with input. IDs are
 `rxd1:html:<lowercase sha256>:<kind>:<start>:<end>`, where start/end are canonical
 decimal half-open UTF-8 byte ranges.
 

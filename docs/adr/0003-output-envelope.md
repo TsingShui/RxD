@@ -45,15 +45,17 @@ Fixed outer keys:
 | Key | Meaning | Presence |
 | --- | --- | --- |
 | `record` | Record discriminator | Always |
-| `id` | Content-bound ID usable by FETCH | Always; `null` when none |
-| `source_id` | SHA-256 of the owning content unit | Header only (null on records) |
-| `parent_id` | Parent record ID for tree structures | Always; `null` when none |
-| `context_id` | Nearest FETCH context for a hit record | Always; `null` when not applicable |
-| `start` / `end` | Original byte range for location/slicing | Always; `null` when none |
+| `at` | The row's coordinate, usable by FETCH | When the row names one; else `null` or absent |
+| `source_id` | SHA-256 of the owning content unit | Header only (null or absent on records) |
+| `parent_at` | Parent coordinate for tree structures | When there is one; else `null` or absent |
+| `context_at` | Nearest FETCH context for a hit record | When there is one; else `null` or absent |
+| `start` / `end` | Original byte range for location/slicing | When there is one; else `null` or absent |
 | `detail` | Format-specific content | Always |
 
-Outer keys are always present and use `null` rather than omission. Nullable MCP
-`outputSchema` fields and codemode `r.start ?? x` both handle this cleanly.
+`record` and `detail` are always present. The nullable navigation keys are `null` or
+absent, and **the two are the same thing**: a consumer must read them as
+`row.at ?? null`. The section "Absent and null are equivalent" below records why the
+contract allows omission, and what a consumer may rely on.
 
 ### 3. Detail is a deterministic per-record schema
 
@@ -150,6 +152,30 @@ Every backend is migrated: dex, jar, dotnet, js, wasm, pyc, evm, html and asar p
 An id nested inside `detail` (a caller id, a symbol or owner id, a reference target) uses
 the same copy-only coordinate, so any coordinate a caller can copy is one `--at` accepts.
 
+## Amendment: absent and null are equivalent
+
+The original text required every outer key to be present with `null` when it had no
+value. Two things made that a bad contract:
+
+- **Cost on the widest streams.** A nullable key that is always null costs its name plus
+  `null` on every row. DEX builds its rows by hand precisely because `xref` on a 523 MiB
+  APK emits ~118k rows and `methods` emits 5.19M; the six keys would add ~10 MB and 39%
+  of a class row for no information.
+- **It was already untrue.** DEX omits these keys on rows that have no coordinate, so the
+  contract described something no backend satisfied.
+
+The rule is now: `record` and `detail` are present on every data record; a nullable
+navigation key is present when the row has that value, and is either `null` or absent when
+it does not. Consumers must treat absence and `null` identically — `row.at ?? row.detail`,
+`row.context_at ?? null` — and may not require presence. MCP `outputSchema` marks these
+fields optional rather than required-and-nullable, so schema validation accepts both
+spellings.
+
+What a consumer *can* rely on is unaffected: a coordinate printed in `at`, `parent_at`,
+`context_at` or `detail.*` is one the backend's `--at` accepts, and a row whose `at` is
+absent or null is an occurrence (a reference site, a literal, an archive entry with no
+FETCH) rather than an addressable entity.
+
 ## Consequences
 
 - All streaming JSONL and single JSON commands change shape; tests, demos and benchmarks
@@ -157,5 +183,8 @@ the same copy-only coordinate, so any coordinate a caller can copy is one `--at`
 - `schema_version` moves from 1 to 2. The old constant is removed; no compatibility shim.
 - Each record gains one `detail` layer, slightly increasing tokens; fixed outer keys buy
   predictable codemode/MCP handling.
+- Nullable outer keys are present only when they have a value (see the amendment), so a
+  consumer reads them defensively; the keys that are always there are `record` and
+  `detail`.
 - The future MCP `outputSchema` uses this envelope directly.
 - Performance contracts are unchanged (ADR 0002 and the 150 ms requirement).

@@ -259,8 +259,8 @@ member/type descriptor (null for raw token mode); other header/summary extras ar
 The header retains `backend`, `command`, `source_id`, `input_bytes`,
 `schema_version: 2`, `query`; the summary retains `records` and `complete`.
 
-Every data record has `record`, `at`, `source_id`, `parent_at`, `context_at`, `start`,
-`end`, `detail`; absent values are null. `source_id` is the fixed PE buffer SHA-256;
+Every data record has `record` and `detail`, plus the other ADR 0003 keys when they have a
+value; absent values are `null` or omitted, and consumers treat the two alike. `source_id` is the fixed PE buffer SHA-256;
 `at`, `parent_at` and `context_at` are copy-only coordinates and never contain a hash.
 Fixed detail fields:
 

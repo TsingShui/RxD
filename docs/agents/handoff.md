@@ -33,8 +33,8 @@ exposes `--max-*`.
    (`get-method`, `get-function`, `get-code`). Backends with no second representation
    (dex, pyc) have no `--raw` because there is nothing to switch away from.
 5. **Record shape.** Identity in `at`, caller in `context_at`, extras in `detail`, and no
-   per-record `source_id` (the header carries it; the shared envelope still serializes
-   `source_id: null`). Ids nested inside `detail` are the same copy-only coordinate, so any
+   per-record `source_id` (the header carries it; a backend may omit it or print `null`,
+   and ADR 0003 says the two are equivalent). Ids nested inside `detail` are the same copy-only coordinate, so any
    coordinate a caller copies is one `--at` accepts.
 6. **`strings` rows carry `{value,index}`** plus the platform fields. `index` is the
    backend's own identifier for that string: DEX `string_ids`, JVM constant pool, pyc

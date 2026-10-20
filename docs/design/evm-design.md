@@ -119,7 +119,7 @@ resource parameters; stdout is unchanged.
 
 `blocks`, `interface`, `strings` and every xref branch (block/function/PUSH/data,
 including empty results) share the same fixed `header.detail` and `summary.detail` field
-sets; absent values are explicit null. A data record carries identity in `at`, extras in
+sets; a value that does not apply is `null` or absent (ADR 0003). A data record carries identity in `at`, extras in
 `detail`, the caller in `context_at`, and always `source_id=null`: the header carries the
 source identity once. Objects are built before bounded serialization, so new nullable
 fields and the trailing newline are covered by the shared output-byte ceiling; failure

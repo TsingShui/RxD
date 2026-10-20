@@ -98,9 +98,11 @@ query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 
-Data records contain exactly `record` and `detail`. No DEX unit has a copy-only
-coordinate, so ADR 0003's six nullable navigation keys would be `null` on every row;
-DEX omits them instead of repeating them (39% of a class row). The header still carries
+Data records contain exactly `record` and `detail`, plus the one navigation key that
+applies (`at` for a class/method/field row, `context_at` for a reference row). The other
+nullable keys of ADR 0003 are omitted, not repeated as `null`; the ADR's
+"absent and null are equivalent" rule is what makes that legal, and it saves 39% of a
+class row and ~10 MB on a wide `xref`. The header still carries
 backend/command/source_id once, and DEX deliberately does not rehash large archives,
 avoiding extra reads against the 150 ms budget. Class identity and routing come from
 detail `descriptor`/`name` (and `entry`); `xref.detail.member` carries the referring

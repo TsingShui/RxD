@@ -164,7 +164,8 @@ when absent); detail is `analysis/python_version/code_count/instruction_validati
 Summary records/complete describe data records; detail is `code_count/analysis/
 instruction_validation`; analysis is always `metadata`.
 
-Code meta: record/at/source_id/parent_at/context_at/start/end/detail always present;
+Code meta: record/detail always present, the other ADR 0003 keys present when they have a
+value (absent or `null` otherwise);
 `at` is `code:<index>`, source_id is null (the header carries it), context_at null, root
 parent null. Outer start/end are the real half-open file range of
 the code marshal **definition** in the fixed input, never instruction offsets or generated
