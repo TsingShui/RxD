@@ -36,7 +36,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             assert_eq!(row["detail"]["status"], "unreferenced");
             assert!(row["context_at"].is_null());
             assert!(row["parent_at"].is_null());
-            assert!(row["detail"]["declaring_type_id"].is_null());
+            assert!(row["parent_at"].is_null());
             assert!(row["detail"]["method_token"].is_null());
             assert_eq!(row["detail"]["il_offsets"], serde_json::json!([]));
         } else {
@@ -62,7 +62,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                 let owner_token = expected_method["declaring_type_token"].as_u64().unwrap();
                 let owner_id = format!("0x{owner_token:08x}");
                 assert_eq!(row["context_at"], method_id);
-                assert_eq!(row["detail"]["declaring_type_id"], owner_id);
+                assert_eq!(row["parent_at"], owner_id);
                 assert_eq!(row["parent_at"], owner_id);
                 let fetched = run("get-method", &path, &["--at", &method_id, "--raw"]);
                 success(&fetched);
@@ -87,7 +87,6 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                     .map(String::as_str)
                     .collect::<Vec<_>>(),
                 [
-                    "declaring_type_id",
                     "il_offsets",
                     "index",
                     "method_token",
@@ -237,7 +236,7 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
             success(&fetched);
             let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
             assert_eq!(fetched["detail"]["method"]["detail"]["token"], method);
-            assert_eq!(fetched["parent_at"], row["detail"]["declaring_type_id"]);
+            assert_eq!(fetched["parent_at"], row["parent_at"]);
         }
     }
     // Values not expressible as argv UTF-8 remain reachable by raw user-string token.
@@ -382,7 +381,7 @@ fn dotnet_string_search_routes_directly_to_original_method_and_class() {
         method["detail"]["il_hex"],
         expected()["methods"]["Unicode"]["il_hex"]
     );
-    let owner = hit["detail"]["declaring_type_id"]
+    let owner = hit["parent_at"]
         .as_str()
         .expect("search must return class FETCH context");
     let class = run("get-class", &path, &["--at", owner, "--raw"]);

@@ -44,7 +44,7 @@ Check the complete summary, then route the hit contexts:
 fixture=tests/fixtures/dotnet/Fixture.dll
 $rxd dotnet strings "$fixture" -f hello -o target/string-hits.jsonl
 caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["context_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
-owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["detail"]["declaring_type_id"] for r in rows if r["record"]=="string" and r["context_at"]))')
+owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["parent_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
 $rxd dotnet get-method "$fixture" --at "$caller" --raw
 $rxd dotnet get-class "$fixture" --at "$owner" --raw
 $rxd dotnet xref "$fixture" -f $'hello\nlambda' --kind string
@@ -60,7 +60,7 @@ $rxd dotnet strings tests/fixtures/dotnet/strings/Strings.dll -f unused
 ```
 
 The unreferenced entry has `status: unreferenced`; context_at, parent_at, method_token
-and declaring_type_id are null and il_offsets is `[]`. NUL or isolated surrogates cannot
+and parent_at are null and il_offsets is `[]`. NUL or isolated surrogates cannot
 be expressed in UTF-8 argv; use the returned original token with `xref`. Entries with
 `value: null` still retain complete `utf16_units`.
 

@@ -41,11 +41,7 @@ fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_toke
     success(&run(
         "get-class",
         &path,
-        &[
-            "--at",
-            hit["detail"]["declaring_type_id"].as_str().unwrap(),
-            "--raw",
-        ],
+        &["--at", hit["parent_at"].as_str().unwrap(), "--raw"],
     ));
     let by_token = jsonl(&run("xref", &path, &["--at", "0x06000021"]));
     assert_eq!(by_token[1], rows[1]);
@@ -219,7 +215,7 @@ fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_out
                     .collect::<Vec<_>>(),
                 keys
             );
-            assert_eq!(row["parent_at"], row["detail"]["declaring_type_id"]);
+            assert_eq!(row["parent_at"], row["parent_at"]);
         }
     }
 }

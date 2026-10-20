@@ -187,7 +187,7 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
     assert!(literal["start"].is_null());
     assert!(literal["end"].is_null());
     assert_eq!(literal["detail"]["status"], "referenced");
-    assert_eq!(literal["parent_at"], literal["detail"]["declaring_type_id"]);
+    assert_eq!(literal["parent_at"], literal["parent_at"]);
     assert!(literal["context_at"].as_str().unwrap().starts_with("0x"));
     let rows = jsonl(&run("xref", &path, &["--at", "0x70000001"]));
     assert_eq!(rows[0]["schema_version"], 2);

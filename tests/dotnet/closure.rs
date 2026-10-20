@@ -55,11 +55,7 @@ fn assert_original_method(row: &Value, expected: &Value) {
 fn navigate(path: &Path, hit: &Value, expected: &Value, class_name: &str) -> (Value, Value) {
     let method = fetch(path, "get-method", hit["context_at"].as_str().unwrap());
     assert_original_method(&method, expected);
-    let class = fetch(
-        path,
-        "get-class",
-        hit["detail"]["declaring_type_id"].as_str().unwrap(),
-    );
+    let class = fetch(path, "get-class", hit["parent_at"].as_str().unwrap());
     assert_eq!(class["detail"]["type"]["detail"]["full_name"], class_name);
     assert!(
         class["detail"]["methods"]
@@ -176,7 +172,7 @@ fn dotnet_navigation_rejects_late_fetch_failures_without_partial_output() {
     let strings = jsonl(&run("strings", &path, &["--filter", "deep λ"]));
     let hit = &strings[1];
     let method_id = hit["context_at"].as_str().unwrap();
-    let type_id = hit["detail"]["declaring_type_id"].as_str().unwrap();
+    let type_id = hit["parent_at"].as_str().unwrap();
     success(&run("get-method", &copied, &["--at", method_id, "--raw"]));
     let destination = directory.path().join("fetch.json");
     for (command, _id) in [("get-method", method_id), ("get-class", type_id)] {

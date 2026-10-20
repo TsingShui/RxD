@@ -177,7 +177,7 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
   original inventory. `--il` sets reason null and bypasses the native engine.
 - `strings` scans the `#US` heap and all readable IL methods, emitting one record per
   `(heap offset, method token)` with `il_offsets` preserving all ordered, unique
-  `ldstr` offsets. `context_at` routes to get-method; `detail.declaring_type_id` routes
+  `ldstr` offsets. `context_at` routes to get-method; `parent_at` routes
   to get-class; duplicate heap entries keep independent identity. An unreferenced
   entry emits exactly one `status: unreferenced` inventory record with null context/
   owner/method and `offsets: []`; no FETCH route is invented. Valid UTF-16 becomes a
@@ -269,7 +269,7 @@ Fixed detail fields:
 | `type` | `token, name, namespace, full_name, flags, kind, declaring_type_token, declaring_type_id, extends_token, interfaces, generic_parameters` |
 | `field` | `token, declaring_type_token, declaring_type_id, declaring_type, name, signature, flags` |
 | `method` | `token, declaring_type, declaring_type_token, declaring_type_is_value_type, name, signature, parameters, signature_flags, return_type, has_this, has_body, rva, flags, impl_flags, declaring_type_id, generic_parameters` |
-| `string` | `index, offset, token, value, utf16_units, status, method_token, declaring_type_id, il_offsets` (`index` = position in the assembly literal inventory) |
+| `string` | `index, value, utf16_units, status, method_token, il_offsets`; the `#US` token is the row's `at` and the owning type is `parent_at`, so neither is repeated in `detail` (`index` = position in the assembly literal inventory) |
 | `reference` | `method_token, declaring_type, declaring_type_id, name, il_offset, opcode, target_token, target_kind, canonical_target_id, canonical_target_token, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments` |
 | `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
 
@@ -278,7 +278,7 @@ type has no `parent_at`; nested types use the direct owning type coordinate. Fie
 method/method_body `parent_at` is the declaring type. `reference.at` is null;
 `context_at` is the caller method coordinate, directly usable by get-method, while its
 original token and IL offset live in detail. `reference.parent_at` and
-`reference.detail.declaring_type_id` are the caller's declaring type, usable for
+`reference.parent_at` are the caller's declaring type, usable for
 whole-class FETCH; other listing records have `context_at: null`.
 
 `string.parent_at` is the using declaring type and `context_at` the using method; an

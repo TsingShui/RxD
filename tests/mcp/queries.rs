@@ -1041,7 +1041,7 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
         .iter()
         .find(|row| row["record"] == "method" && row["detail"]["has_body"] == true)
         .unwrap();
-    let declaring_type = method["detail"]["declaring_type_id"].clone();
+    let declaring_type = method["parent_at"].clone();
     for (name, extra) in [
         ("dotnet_fields", json!({"filter":"Count"})),
         ("dotnet_strings", json!({"filter":""})),
