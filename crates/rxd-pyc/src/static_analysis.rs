@@ -182,15 +182,14 @@ impl Analysis {
     /// substring, an optional exact name, and an optional exact index.
     pub fn select_codes(
         &mut self,
-        filter: Option<&str>,
-        case_sensitive: bool,
+        filter: Option<&rxd_core::filter::Contains>,
         name: Option<&str>,
         index: Option<usize>,
     ) -> Result<Vec<usize>> {
         if index.is_some_and(|index| index >= self.codes.len()) {
             return Err(Error::new("INVALID_QUERY", "code index does not exist"));
         }
-        let filter = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
+
         let mut selected = Vec::new();
         for i in 0..self.codes.len() {
             self.charge_work(1)?;

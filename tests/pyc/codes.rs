@@ -224,8 +224,8 @@ fn pyc_codes_bounds_exact_name_match_work_cumulatively() {
     let mut perf = pyc_perf("codes");
     let mut analysis =
         rxd_pyc::static_analysis::Analysis::load(&path, Some((3, 12)), limits, &mut perf).unwrap();
-    assert!(analysis.select_codes(None, false, None, None).is_ok());
-    let error = analysis.select_codes(None, false, Some(&text), None).unwrap_err();
+    assert!(analysis.select_codes(None, None, None).is_ok());
+    let error = analysis.select_codes(None, Some(&text), None).unwrap_err();
     assert_eq!(error.code, "RESOURCE_LIMIT");
 }
 
@@ -407,7 +407,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         let mut perf = pyc_perf("codes");
         let mut loaded =
             rxd_pyc::static_analysis::Analysis::load(&path, None, exact, &mut perf).unwrap();
-        assert_eq!(loaded.select_codes(None, false, None, None).unwrap().len(), 15);
+        assert_eq!(loaded.select_codes(None, None, None).unwrap().len(), 15);
 
         let mut less = exact;
         match field {
@@ -418,7 +418,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         }
         let mut perf = pyc_perf("codes");
         let error = rxd_pyc::static_analysis::Analysis::load(&path, None, less, &mut perf)
-            .and_then(|mut loaded| loaded.select_codes(None, false, None, None));
+            .and_then(|mut loaded| loaded.select_codes(None, None, None));
         assert_eq!(error.err().unwrap().code, "RESOURCE_LIMIT", "{field}");
     }
     // A rejected selector leaves an existing output file untouched.

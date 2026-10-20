@@ -56,7 +56,8 @@ fn codes_library(
     let mut perf = pyc_perf("codes");
     let result = rxd_pyc::static_analysis::Analysis::load(path, version, limits, &mut perf)
         .and_then(|mut analysis| {
-            let selected = analysis.select_codes(filter, false, name, index);
+            let filter = filter.map(|needle| rxd_core::filter::Contains::new(needle, false));
+            let selected = analysis.select_codes(filter.as_ref(), name, index);
             perf.counters.work = Some(analysis.evidence.work);
             perf.counters.records = selected.as_ref().ok().map(Vec::len);
             selected

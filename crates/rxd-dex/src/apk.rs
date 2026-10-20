@@ -830,13 +830,13 @@ pub fn list_strings(
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Vec<StringEntry>> {
+    let filter = filter.map(|needle| rxd_core::filter::Contains::new(needle, false));
     list_strings_with_policy(
         path,
         ArchivePolicy::default(),
         threads,
         debug,
-        filter,
-        false,
+        filter.as_ref(),
         limit,
         offset,
     )
@@ -847,17 +847,13 @@ pub fn list_strings_with_policy(
     policy: ArchivePolicy,
     threads: usize,
     debug: bool,
-    filter: Option<&str>,
-    case_sensitive: bool,
+    filter: Option<&rxd_core::filter::Contains>,
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Vec<StringEntry>> {
     if threads == 0 {
         bail!("worker count must be greater than zero");
     }
-    // The folded needle and the mode travel together, so one place decides what matching
-    // means: `rxd_core::filter`.
-    let filter = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
     let take = limit.unwrap_or(usize::MAX);
     let skip = offset.unwrap_or(0);
     // The walk may stop once it holds everything the page needs, which is the skipped matches
@@ -902,7 +898,7 @@ pub fn list_strings_with_policy(
                     if stop_early && found.load(stop) >= fill {
                         return Ok(false);
                     }
-                    let matches = match &filter {
+                    let matches = match filter {
                         None => true,
                         // An ASCII needle against ASCII bytes is a comparison, not a decode;
                         // anything else takes the Unicode fold.

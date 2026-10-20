@@ -283,16 +283,10 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             index,
             options,
         } => {
-            return static_commands::codes(
-                input,
-                version,
-                filter,
-                case.sensitive(),
-                name,
-                index,
-                options,
-                perf,
-            );
+            let filter = filter
+                .as_deref()
+                .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
+            return static_commands::codes(input, version, filter, name, index, options, perf);
         }
         command => command,
     };

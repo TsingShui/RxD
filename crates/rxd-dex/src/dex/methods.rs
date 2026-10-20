@@ -117,7 +117,7 @@ fn render_class(
             }
             let name = names[name_idx].as_deref().unwrap_or_default();
             if let Some(pattern) = selector.name
-                && !rxd_core::filter::Contains::new(pattern, selector.case_sensitive).matches(&name)
+                && !rxd_core::filter::Contains::new(pattern, selector.case_sensitive).matches(name)
             {
                 continue;
             }

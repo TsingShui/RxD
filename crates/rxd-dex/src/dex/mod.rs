@@ -167,8 +167,7 @@ pub(crate) fn for_each_class_definition(
 /// the same ordered, deduplicated view the map did (`(method_idx, index)` ascending).
 type Hit = (u32, u32);
 
-/// One reference hit: where it was found, what references the target, and which
-/// of the query's targets that method references.
+/// One reference hit: the calling method and the one target it references.
 ///
 /// The scanner returns these as data; rendering them into output lines is the
 /// CLI's job, so the output format lives in exactly one place.
@@ -183,12 +182,11 @@ pub struct ReferenceRow {
     /// it as one `String` saves an allocation per row - the class and the name are appended
     /// as they are decoded, the same way `push_target_name` does for the matched targets.
     pub member: String,
-    /// Names of the referenced targets, in ascending index order.
-    /// The referenced targets, joined by `; ` in ascending index order.
+    /// The one referenced target, as its coordinate.
     ///
-    /// This is the shape the row prints, so building it here saves a `Vec` allocation per
-    /// row plus one owned `String` per matched index - the names are appended as they are
-    /// decoded instead.
+    /// One row is one (caller, target) pair rather than one caller with its targets joined,
+    /// so this field is always a single coordinate `--at` takes back - the same shape jar and
+    /// dotnet print for every reference row.
     pub matched: String,
 }
 
@@ -261,13 +259,8 @@ pub(crate) fn for_each_reference(
         }
         hits.sort_unstable();
         hits.dedup();
-        let mut at = 0usize;
-        while at < hits.len() {
-            let method_idx = hits[at].0;
-            let start = at;
-            while at < hits.len() && hits[at].0 == method_idx {
-                at += 1;
-            }
+        let mut member_memo: Option<(u32, String)> = None;
+        for &(method_idx, index) in &hits {
             let method = dex.method(method_idx as usize)?;
             let member_bound = dex
                 .string_bytes(dex.type_string_idx(method.class_idx as usize)?)?
@@ -277,23 +270,24 @@ pub(crate) fn for_each_reference(
             if member_bound > max_scratch_bytes {
                 return Err(ReferenceScratchLimit.into());
             }
-            let member = dex.member_name(method_idx as usize)?;
+            // Rows are sorted by caller, so the same member name repeats for every target
+            // that caller references.
+            let member = match &member_memo {
+                Some((memoized, member)) if *memoized == method_idx => member.clone(),
+                _ => {
+                    let member = dex.member_name(method_idx as usize)?;
+                    member_memo = Some((method_idx, member.clone()));
+                    member
+                }
+            };
             let mut matched = String::new();
-            for &(_, index) in &hits[start..at] {
-                let separator = usize::from(!matched.is_empty()) * 2;
-                let next_bound = member
-                    .len()
-                    .saturating_add(matched.len())
-                    .saturating_add(separator)
-                    .saturating_add(dex.target_name_len_upper_bound(kind, index as usize)?);
-                if next_bound > max_scratch_bytes {
-                    return Err(ReferenceScratchLimit.into());
-                }
-                if separator != 0 {
-                    matched.push_str("; ");
-                }
-                dex.push_target_name(kind, index as usize, &mut matched)?;
+            let bound = member
+                .len()
+                .saturating_add(dex.target_name_len_upper_bound(kind, index as usize)?);
+            if bound > max_scratch_bytes {
+                return Err(ReferenceScratchLimit.into());
             }
+            dex.push_target_name(kind, index as usize, &mut matched)?;
             if !visit(ReferenceRow {
                 method_index: method_idx,
                 member,
@@ -307,28 +301,26 @@ pub(crate) fn for_each_reference(
 }
 
 fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<Vec<ReferenceRow>> {
-    let mut rows: Vec<ReferenceRow> = Vec::new();
+    let mut rows: Vec<ReferenceRow> = Vec::with_capacity(hits.len());
     let mut memo = TargetMemo::default();
-    // The hits arrive sorted by method and deduplicated, so one pass groups them: a run
-    // of equal method indices is that method's matched set, in ascending index order.
-    let mut at = 0usize;
-    while at < hits.len() {
-        let method_idx = hits[at].0;
-        let start = at;
-        while at < hits.len() && hits[at].0 == method_idx {
-            at += 1;
-        }
-        let mut matched_names = String::new();
-        for &(_, index) in &hits[start..at] {
-            if !matched_names.is_empty() {
-                matched_names.push_str("; ");
+    // One row per hit: the hits arrive sorted by caller, so a caller that references several
+    // matched targets repeats its member name - memoized here instead of re-decoded.
+    let mut member_memo: Option<(u32, String)> = None;
+    for &(method_idx, index) in hits {
+        let mut matched = String::new();
+        dex.push_target_name(kind, index as usize, &mut memo, &mut matched)?;
+        let member = match &member_memo {
+            Some((memoized, member)) if *memoized == method_idx => member.clone(),
+            _ => {
+                let member = dex.member_name(method_idx as usize)?;
+                member_memo = Some((method_idx, member.clone()));
+                member
             }
-            dex.push_target_name(kind, index as usize, &mut memo, &mut matched_names)?;
-        }
+        };
         rows.push(ReferenceRow {
             method_index: method_idx,
-            member: dex.member_name(method_idx as usize)?,
-            matched: matched_names,
+            member,
+            matched,
         });
     }
     Ok(rows)

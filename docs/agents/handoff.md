@@ -167,7 +167,13 @@ them by name, which is why the module filter is not used as evidence for those t
    `rxd_core::filter` (`Contains`/`equals`), so the CLI and the nine libraries cannot drift.
    A coordinate (`--at`, `--from`) is always matched exactly: folding one could select a
    different overload.
-9. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
+9. **dex rows are one (caller, target) pair.** Resolved: `xref` used to join a caller's
+   matched targets into one `detail.target` as `A; B`, which made the field a list rather than
+   the coordinate every other backend prints. Rows are now one pair each, so
+   `detail.target` is always a single coordinate `--at` takes back; a wide search reports a
+   caller once per target (the 523 MiB corpus went from 108,126 to 118,270 rows for
+   `xref -f String --kind type`).
+10. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
    substring, including the member name and `--class` (dex previously compared both
    exactly). `--fuzzy-class` is gone; there is no exact-search mode, because exactness is
    what `--at` is for.

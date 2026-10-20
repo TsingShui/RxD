@@ -231,8 +231,7 @@ fn append(writer: &mut BoundedOutput, value: &impl Serialize) -> Result<()> {
 pub fn codes(
     input: PathBuf,
     version: Option<(u8, u8)>,
-    filter: Option<String>,
-    case_sensitive: bool,
+    filter: Option<rxd_core::filter::Contains>,
     name: Option<String>,
     index: Option<usize>,
     options: Options,
@@ -242,7 +241,7 @@ pub fn codes(
     let limits = options.limits();
     let mut analysis = Analysis::load(&input, version, limits, perf)?;
     let selected = perf.measure("query", || {
-        analysis.select_codes(filter.as_deref(), case_sensitive, name.as_deref(), index)
+        analysis.select_codes(filter.as_ref(), name.as_deref(), index)
     });
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;
@@ -251,7 +250,7 @@ pub fn codes(
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
         append(&mut writer,&rxd_core::envelope::header("pyc","codes",Some(&analysis.source_id),Some(analysis.bytes.len()),
-            json!({"filter":filter,"name":name,"index":index,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
+            json!({"filter":filter.as_ref().map(|filter| filter.text()),"name":name,"index":index,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
             json!({"analysis":"metadata","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
         for &index in &selected { append(&mut writer,&record(&analysis,index)?)?; }
         append(&mut writer,&rxd_core::envelope::summary(selected.len(),true,

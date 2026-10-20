@@ -528,7 +528,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
                 match &node.detail {
                     Detail::Element { tag, .. } => needle.matches(tag),
                     _ => {
-                        needle.matches(&node.kind)
+                        needle.matches(node.kind)
                             || text
                                 .get(node.start..node.end)
                                 .is_some_and(|raw| needle.matches(raw))

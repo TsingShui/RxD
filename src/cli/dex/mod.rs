@@ -228,13 +228,16 @@ fn run_command(
             }
         }
         Command::Strings(args) => {
+            let filter = args
+                .filter
+                .as_deref()
+                .map(|needle| rxd_core::filter::Contains::new(needle, args.case.sensitive()));
             let strings = apk::list_strings_with_policy(
                 &args.apk_path,
                 archive_policy,
                 args.threads,
                 args.debug,
-                args.filter.as_deref(),
-                args.case.sensitive(),
+                filter.as_ref(),
                 args.limit,
                 args.offset,
             )?;
