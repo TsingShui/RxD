@@ -87,15 +87,6 @@ fn invalid(message: &str) -> Error {
     Error::new("INVALID_INPUT", message)
 }
 fn reserve(a: &mut Analysis, scan: &mut Scan, minimum: usize) -> Result<()> {
-    if scan.hits.len().saturating_add(scan.unsupported.len()) >= a.limits.records {
-        return Err(Error::new(
-            "RESOURCE_LIMIT",
-            "reference evidence record budget exceeded",
-        ));
-    }
-    if scan.retained_output_minimum.saturating_add(minimum) > a.limits.output_bytes {
-        return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
-    }
     a.charge_work(1)?;
     scan.retained_output_minimum = scan.retained_output_minimum.saturating_add(minimum);
     Ok(())

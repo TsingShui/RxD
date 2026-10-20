@@ -576,7 +576,6 @@ pub struct Limits {
     pub expanded_bytes: usize,
     pub entries: usize,
     pub work: usize,
-    pub output_bytes: usize,
 }
 
 impl Default for Limits {
@@ -588,7 +587,6 @@ impl Default for Limits {
             expanded_bytes: budget.metadata_bytes,
             entries: budget.entries,
             work: budget.work,
-            output_bytes: budget.output_bytes,
         }
     }
 }

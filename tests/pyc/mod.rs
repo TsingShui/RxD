@@ -38,10 +38,8 @@ fn shared_static_limits() -> rxd_pyc::static_analysis::Limits {
     let budget = rxd_core::Budget::default();
     rxd_pyc::static_analysis::Limits {
         input_bytes: budget.input_bytes,
-        entities: budget.entities,
+        entities: usize::MAX,
         work: budget.work,
-        records: budget.records,
-        output_bytes: budget.output_bytes,
     }
 }
 
@@ -186,7 +184,6 @@ fn shared_decompile_limits() -> rxd_pyc::Limits {
     let budget = rxd_core::Budget::default();
     rxd_pyc::Limits {
         input_bytes: budget.input_bytes,
-        output_bytes: budget.output_bytes,
         work: budget.work,
         ast_depth: rxd_core::Limits::default().ast_depth,
     }

@@ -332,7 +332,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             .clone(),
         );
         attach_protocol(&mut value, "wasm", command.name());
-        append(&mut output, &value, limits.output_bytes)?;
+        append(&mut output, &value)?;
         perf.record("query", query_start);
         perf.counters.records = Some(1);
         perf.counters.output_bytes = Some(output.len());
@@ -359,7 +359,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             .unwrap()
             .clone(),
         ),
-        limits.output_bytes,
     )?;
 
     let filter = command.filter();
@@ -368,7 +367,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             type_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -376,7 +374,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             import_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -384,7 +381,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             export_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -392,7 +388,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             function_rows(&module, *func, name.as_deref()),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -400,7 +395,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             table_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -408,7 +402,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             memory_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -416,7 +409,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             global_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -424,7 +416,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             data_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -432,7 +423,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             element_rows(&module),
             filter,
             command.case_sensitive(),
-            limits,
             &mut output,
             &mut records,
         )?,
@@ -442,7 +432,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 string_rows(&strings),
                 filter,
                 command.case_sensitive(),
-                limits,
                 &mut output,
                 &mut records,
             )?;
@@ -466,7 +455,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 push_limited(
                     &mut output,
                     &mut records,
-                    limits,
                     &rxd_core::envelope::reference(
                         RecordMeta {
                             context_at: Some(&reference.id),
@@ -480,11 +468,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         Command::Get { .. } => unreachable!(),
     }
 
-    append(
-        &mut output,
-        &summary(records, true, serde_json::Map::new()),
-        limits.output_bytes,
-    )?;
+    append(&mut output, &summary(records, true, serde_json::Map::new()))?;
     perf.record("query", query_start);
     perf.counters.records = Some(records);
     perf.counters.output_bytes = Some(output.len());
@@ -778,7 +762,6 @@ fn emit_rows(
     rows: Vec<Row>,
     filter: Option<&str>,
     case_sensitive: bool,
-    limits: Limits,
     output: &mut Vec<u8>,
     records: &mut usize,
 ) -> anyhow::Result<()> {
@@ -792,7 +775,6 @@ fn emit_rows(
         push_limited(
             output,
             records,
-            limits,
             &record(
                 row.kind,
                 RecordMeta {
@@ -808,27 +790,14 @@ fn emit_rows(
     Ok(())
 }
 
-fn push_limited(
-    output: &mut Vec<u8>,
-    records: &mut usize,
-    limits: Limits,
-    value: &Value,
-) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        *records < limits.records,
-        "RESOURCE_LIMIT: record budget exceeded"
-    );
-    append(output, value, limits.output_bytes)?;
+fn push_limited(output: &mut Vec<u8>, records: &mut usize, value: &Value) -> anyhow::Result<()> {
+    append(output, value)?;
     *records += 1;
     Ok(())
 }
 
-fn append(output: &mut Vec<u8>, value: &Value, limit: usize) -> anyhow::Result<()> {
+fn append(output: &mut Vec<u8>, value: &Value) -> anyhow::Result<()> {
     let bytes = serde_json::to_vec(value)?;
-    anyhow::ensure!(
-        bytes.len().saturating_add(1) <= limit.saturating_sub(output.len()),
-        "RESOURCE_LIMIT: output byte budget exceeded"
-    );
     output.extend_from_slice(&bytes);
     output.push(b'\n');
     Ok(())

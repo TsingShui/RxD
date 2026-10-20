@@ -54,7 +54,6 @@ pub fn declaration_ids(
     semantic: &Semantic<'_>,
     symbol: SymbolId,
     source: &Source,
-    limits: Limits,
 ) -> Result<Option<Vec<String>>> {
     if !semantic.source_type().is_typescript() {
         return Ok(None);
@@ -62,12 +61,6 @@ pub fn declaration_ids(
     let redeclarations = semantic.scoping().symbol_redeclarations(symbol);
     if redeclarations.len() < 2 {
         return Ok(None);
-    }
-    if redeclarations.len() > limits.records {
-        return Err(Error::new(
-            "RESOURCE_LIMIT",
-            "merged declaration budget exceeded",
-        ));
     }
     let mut result = Vec::new();
     for declaration in redeclarations {

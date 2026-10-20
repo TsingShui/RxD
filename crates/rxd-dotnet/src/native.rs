@@ -5,8 +5,8 @@ use anyhow::{Result, ensure};
 use serde::Deserialize;
 
 use crate::{
-    ClassBody, ClassDecompilation, ClassSourceMap, Decompilation, Input, Limits, Method,
-    MethodBody, SourceMap,
+    ClassBody, ClassDecompilation, ClassSourceMap, Decompilation, Input, Method, MethodBody,
+    SourceMap,
     decompile::{class_fallback, fallback},
 };
 
@@ -61,6 +61,10 @@ fn external_library_path() -> Option<PathBuf> {
     // Relocated distributions must never fall back to a build-machine path.
     Some(env!("RXD_DOTNET_NATIVE_LIBRARY").into())
 }
+
+/// Largest payload the pinned native ABI emits in one response. A property of the C
+/// interface, not a limit on how much a query may answer.
+const MAX_PAYLOAD_BYTES: usize = 32 * 1024 * 1024;
 
 impl Engine {
     fn load() -> std::result::Result<Option<Self>, String> {
@@ -148,16 +152,13 @@ enum DecodedPayload {
 }
 
 impl Engine {
-    fn decode_payload(&self, ptr: *mut u8, out_len: i32, limits: Limits) -> Result<DecodedPayload> {
+    fn decode_payload(&self, ptr: *mut u8, out_len: i32) -> Result<DecodedPayload> {
         if ptr.is_null() {
             return Ok(DecodedPayload::Fallback("engine_failure".into()));
         }
         // The matching ABI allocator owns this payload. Free it exactly once,
         // including malformed JSON, invalid lengths and adjustable cap failures.
-        let payload = if out_len > 0
-            && out_len <= 32 * 1024 * 1024
-            && out_len as usize <= limits.output_bytes
-        {
+        let payload = if out_len > 0 && out_len as usize <= MAX_PAYLOAD_BYTES {
             // SAFETY: the trusted ABI allocation contains out_len readable bytes.
             serde_json::from_slice::<Payload>(unsafe {
                 std::slice::from_raw_parts(ptr, out_len as usize)
@@ -171,8 +172,8 @@ impl Engine {
             (self.free)(ptr);
         }
         ensure!(
-            out_len <= 0 || out_len as usize <= limits.output_bytes,
-            "RESOURCE_LIMIT: decompilation output budget exceeded"
+            out_len <= 0 || out_len as usize <= MAX_PAYLOAD_BYTES,
+            "UNSUPPORTED_INPUT: the native engine returned more than one ABI payload can carry"
         );
         let Some(payload) = payload else {
             return Ok(DecodedPayload::Fallback("invalid_engine_output".into()));
@@ -207,12 +208,7 @@ impl Engine {
     }
 }
 
-pub(super) fn render(
-    input: &Input,
-    method: &Method,
-    body: &MethodBody,
-    limits: Limits,
-) -> Result<Decompilation> {
+pub(super) fn render(input: &Input, method: &Method, body: &MethodBody) -> Result<Decompilation> {
     static ENGINE: OnceLock<std::result::Result<Option<Engine>, String>> = OnceLock::new();
     let Some(engine) = ENGINE
         .get_or_init(Engine::load)
@@ -233,7 +229,7 @@ pub(super) fn render(
     // SAFETY: input.view owns the immutable, validated module buffer throughout
     // the call; out_len is writable; method is a validated MethodDef token.
     let ptr = unsafe { (engine.method)(bytes.as_ptr(), length, method.token as i32, &mut out_len) };
-    let (code, warnings, mapping) = match engine.decode_payload(ptr, out_len, limits)? {
+    let (code, warnings, mapping) = match engine.decode_payload(ptr, out_len)? {
         DecodedPayload::Code {
             code,
             warnings,
@@ -275,11 +271,7 @@ pub(super) fn render(
     })
 }
 
-pub(super) fn render_class(
-    input: &Input,
-    class: &ClassBody<'_>,
-    limits: Limits,
-) -> Result<ClassDecompilation> {
+pub(super) fn render_class(input: &Input, class: &ClassBody<'_>) -> Result<ClassDecompilation> {
     static ENGINE: OnceLock<std::result::Result<Option<Engine>, String>> = OnceLock::new();
     let Some(engine) = ENGINE
         .get_or_init(Engine::load)
@@ -307,7 +299,7 @@ pub(super) fn render_class(
             &mut out_len,
         )
     };
-    let (code, warnings, sites) = match engine.decode_payload(ptr, out_len, limits)? {
+    let (code, warnings, sites) = match engine.decode_payload(ptr, out_len)? {
         DecodedPayload::Code {
             code,
             warnings,

@@ -47,7 +47,7 @@ pub fn render_class(
         }
     }
     #[cfg(feature = "csharp-decompiler")]
-    return crate::native::render_class(input, class, limits);
+    return crate::native::render_class(input, class);
     #[cfg(not(feature = "csharp-decompiler"))]
     Ok(class_fallback("class_engine_unavailable"))
 }
@@ -71,10 +71,6 @@ pub fn render(
         .len()
         .saturating_add(input.fields.len())
         .saturating_add(input.methods.len());
-    ensure!(
-        entities <= limits.entities,
-        "RESOURCE_LIMIT: module entity budget exceeded"
-    );
     // Admission uses analysis units, not file bytes (padding is not analysis work).
     ensure!(
         body.work_used
@@ -83,15 +79,11 @@ pub fn render(
             <= limits.work,
         "RESOURCE_LIMIT: decompilation work budget exceeded"
     );
-    ensure!(
-        body.il_hex.len() <= limits.output_bytes,
-        "RESOURCE_LIMIT: original IL output budget exceeded"
-    );
     let mut work = Work::new(limits.work);
     work.charge(body.work_used.saturating_add(entities))?;
     validate_operands(input, method, body, &mut work)?;
     #[cfg(feature = "csharp-decompiler")]
-    return crate::native::render(input, method, body, limits);
+    return crate::native::render(input, method, body);
     #[cfg(not(feature = "csharp-decompiler"))]
     {
         let _ = method;

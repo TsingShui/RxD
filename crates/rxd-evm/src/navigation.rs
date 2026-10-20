@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::{io::Write, path::Path};
 
-use crate::{BoundedOutput, Carrier, Encoding, Limits, hex};
+use crate::{Carrier, Encoding, Limits, Output, hex};
 
 #[derive(Debug, Serialize)]
 pub struct Instruction {
@@ -291,7 +291,6 @@ impl Navigation {
         include: bool,
         filter: Option<&str>,
         case_sensitive: bool,
-        limits: Limits,
         perf: &mut Perf,
     ) -> Result<Vec<u8>> {
         let needle = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
@@ -305,12 +304,6 @@ impl Navigation {
             })
             .collect();
         perf.counters.records = Some(selected.len());
-        if selected.len() > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
         let header = envelope::header(
             "evm",
             "blocks",
@@ -328,11 +321,7 @@ impl Navigation {
             summary_detail(object(json!({"blocks": selected.len(),
             "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "discovery_complete": null}))),
         );
-        let mut output = BoundedOutput {
-            bytes: Vec::new(),
-            limit: limits.output_bytes,
-            exceeded: false,
-        };
+        let mut output = Output { bytes: Vec::new() };
         write_record(&mut output, &header)?;
         for block in selected {
             write_record(&mut output, &self.block_record(block, false))?;
@@ -341,32 +330,18 @@ impl Navigation {
         Ok(output.bytes)
     }
 
-    pub fn block_json(&self, at: &str, limits: Limits, perf: &mut Perf) -> Result<Vec<u8>> {
+    pub fn block_json(&self, at: &str, perf: &mut Perf) -> Result<Vec<u8>> {
         let block = self.select_block(at)?;
         perf.counters.records = Some(1);
-        if limits.records == 0 {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
-        let mut output = BoundedOutput {
-            bytes: Vec::new(),
-            limit: limits.output_bytes,
-            exceeded: false,
-        };
+        let mut output = Output { bytes: Vec::new() };
         write_record(&mut output, &self.block_record(block, true))?;
         Ok(output.bytes)
     }
 }
 
-pub(crate) fn write_record(output: &mut BoundedOutput, record: &Value) -> Result<()> {
+pub(crate) fn write_record(output: &mut Output, record: &Value) -> Result<()> {
     if let Err(error) = serde_json::to_writer(&mut *output, record) {
-        return Err(if output.exceeded {
-            Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded")
-        } else {
-            Error::new("INVALID_INPUT", error.to_string())
-        });
+        return Err(Error::new("INVALID_INPUT", error.to_string()));
     }
     output
         .write_all(b"\n")

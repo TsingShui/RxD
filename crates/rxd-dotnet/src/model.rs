@@ -3,22 +3,16 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub entities: usize,
     pub work: usize,
     pub instructions: usize,
-    pub output_bytes: usize,
-    pub records: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self {
             input_bytes: rxd_core::MAX_INPUT_BYTES,
-            entities: 100_000,
             work: 16 * 1024 * 1024,
             instructions: 100_000,
-            output_bytes: 32 * 1024 * 1024,
-            records: 100_000,
         }
     }
 }

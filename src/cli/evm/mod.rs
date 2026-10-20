@@ -215,13 +215,9 @@ pub fn execute(command: Command) -> Result<()> {
     // One budget table for every backend; the CLI exposes no knob for it.
     let budget = Budget::default();
     let limits = Limits::from_budget(budget);
-    let mut effective_limits = [
-        ("input_bytes", limits.input_bytes),
-        ("records", limits.records),
-        ("output_bytes", limits.output_bytes),
-    ]
-    .into_iter()
-    .collect::<std::collections::BTreeMap<_, _>>();
+    let mut effective_limits = [("input_bytes", limits.input_bytes)]
+        .into_iter()
+        .collect::<std::collections::BTreeMap<_, _>>();
     if command.query().is_none() {
         effective_limits.insert("work", limits.work);
     }
@@ -254,11 +250,7 @@ pub fn execute(command: Command) -> Result<()> {
         let bytes = if let Some(query) = command.query() {
             let analysis = Analysis::read(&options.input, encoding, query, limits, &mut perf)?;
             perf.measure("serialize", || {
-                analysis.json(
-                    command.name(),
-                    options.include_bytecode,
-                    limits.output_bytes,
-                )
+                analysis.json(command.name(), options.include_bytecode)
             })?
         } else {
             let navigation = Navigation::read(&options.input, encoding, limits, &mut perf)?;
@@ -287,7 +279,6 @@ pub fn execute(command: Command) -> Result<()> {
                     options.include_bytecode,
                     blocks.filter.as_deref(),
                     blocks.case.sensitive(),
-                    limits,
                     &mut perf,
                 ),
                 Command::Interface(interface) => {
@@ -343,7 +334,7 @@ pub fn execute(command: Command) -> Result<()> {
                             Expect::Content(&navigation.carrier.source_id),
                         )
                         .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
-                    navigation.block_json(&at, limits, &mut perf)
+                    navigation.block_json(&at, &mut perf)
                 }
                 Command::GetFunction(function) => {
                     // `--at`, `--from` and `--selector` all name one candidate; the stream is

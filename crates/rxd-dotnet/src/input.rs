@@ -96,10 +96,6 @@ impl Input {
                 .checked_add(summary.row_count as usize)
                 .context("RESOURCE_LIMIT: row count")?;
         }
-        ensure!(
-            rows[2] as usize + rows[4] as usize + rows[6] as usize <= limits.entities,
-            "RESOURCE_LIMIT: metadata entities"
-        );
         ensure!(total <= limits.work, "RESOURCE_LIMIT: metadata work");
         crate::validation::validate(&view, validation)
             .context("INVALID_INPUT: metadata structure and references")?;
@@ -252,7 +248,7 @@ impl Input {
                 .with_context(|| format!("UNSUPPORTED: unresolved call signature 0x{token:08x}"))?
         };
         if call.return_type.contains('!') || call.parameters.iter().any(|ty| ty.contains('!')) {
-            let mut work = Work::new(self.limits.work.min(self.limits.output_bytes));
+            let mut work = Work::new(self.limits.work);
             let type_args =
                 crate::metadata::type_arguments(self, call.declaring_type_token, &mut work)?;
             let same_owner = call.declaring_type_token == context.declaring_type_token;
@@ -427,10 +423,6 @@ impl Input {
             .context("INVALID_INPUT: missing string heap")?
             .get(index as usize)
             .context("INVALID_INPUT: string index")?;
-        ensure!(
-            name.len() <= self.limits.output_bytes,
-            "RESOURCE_LIMIT: metadata name bytes"
-        );
         Ok(name)
     }
 

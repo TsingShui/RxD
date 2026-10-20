@@ -40,7 +40,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
         None => Vec::new(),
     };
-    let mut work = Work::new(input.limits.work.min(input.limits.output_bytes));
+    let mut work = Work::new(input.limits.work);
     let mut names = BTreeMap::new();
     let is_core_library = |name: &str| {
         matches!(
@@ -1050,10 +1050,7 @@ pub(crate) fn compressed(bytes: &[u8], pos: &mut usize, work: &mut Work) -> Resu
 }
 
 pub(crate) fn strings(input: &Input) -> Result<Vec<StringRecord>> {
-    strings_with_work(
-        input,
-        &mut Work::new(input.limits.work.min(input.limits.output_bytes)),
-    )
+    strings_with_work(input, &mut Work::new(input.limits.work))
 }
 
 pub(crate) fn strings_with_work(input: &Input, work: &mut Work) -> Result<Vec<StringRecord>> {
@@ -1087,10 +1084,6 @@ pub(crate) fn strings_with_work(input: &Input, work: &mut Work) -> Result<Vec<St
         output = output
             .checked_add(length.checked_mul(3).context("RESOURCE_LIMIT: strings")?)
             .context("RESOURCE_LIMIT: strings")?;
-        ensure!(
-            output <= input.limits.output_bytes && result.len() < input.limits.entities,
-            "RESOURCE_LIMIT: user strings"
-        );
         ensure!(
             data[length - 1] <= 1,
             "INVALID_INPUT: user string terminal flag"

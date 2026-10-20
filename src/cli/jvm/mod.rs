@@ -332,7 +332,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         body["schema_version"] = json!(SCHEMA_VERSION);
         body["source_id"] = json!(input.source_id);
         let mut output = Vec::new();
-        append(&mut output, &body, limits.output_bytes)?;
+        append(&mut output, &body)?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
@@ -364,7 +364,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
             ),
-            limits.output_bytes,
         )?;
         let mut records = 0usize;
         for selected in &input.classes {
@@ -402,20 +401,11 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                         .unwrap()
                         .clone(),
                     ),
-                    limits.output_bytes,
                 )?;
                 records += 1;
-                anyhow::ensure!(
-                    records <= limits.entries,
-                    "RESOURCE_LIMIT: record budget exceeded"
-                );
             }
         }
-        append(
-            &mut output,
-            &summary(records, true, serde_json::Map::new()),
-            limits.output_bytes,
-        )?;
+        append(&mut output, &summary(records, true, serde_json::Map::new()))?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
@@ -461,7 +451,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
             ),
-            limits.output_bytes,
         )?;
         for hit in &hits {
             append(
@@ -483,13 +472,11 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
                 ),
-                limits.output_bytes,
             )?;
         }
         append(
             &mut output,
             &summary(hits.len(), true, serde_json::Map::new()),
-            limits.output_bytes,
         )?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
@@ -517,7 +504,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
             ),
-            limits.output_bytes,
         )?;
         let mut records = 0usize;
         let pattern = filter.map(|value| rxd_core::filter::Contains::new(&value, case.sensitive()));
@@ -548,15 +534,10 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
                 ),
-                limits.output_bytes,
             )?;
             records += 1;
         }
-        append(
-            &mut output,
-            &summary(records, true, serde_json::Map::new()),
-            limits.output_bytes,
-        )?;
+        append(&mut output, &summary(records, true, serde_json::Map::new()))?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
@@ -672,7 +653,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             bytecode["command"] = json!("get-method");
             bytecode["schema_version"] = json!(SCHEMA_VERSION);
             bytecode["source_id"] = json!(input.source_id);
-            append(&mut output, &bytecode, limits.output_bytes)?;
+            append(&mut output, &bytecode)?;
         } else {
             let source = rxd_jvm::render_method(&input, &at, limits)?;
             let mut body = record(
@@ -696,7 +677,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             body["command"] = json!("get-method");
             body["schema_version"] = json!(SCHEMA_VERSION);
             body["source_id"] = json!(input.source_id);
-            append(&mut output, &body, limits.output_bytes)?;
+            append(&mut output, &body)?;
         }
     } else {
         let class_name = class_filter.as_deref().map(rxd_jvm::normalize_class_name);
@@ -722,7 +703,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
             ),
-            limits.output_bytes,
         )?;
         let mut records = 0usize;
         let exact_name = exact_name.as_deref();
@@ -765,7 +745,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                             .unwrap()
                             .clone(),
                         ),
-                        limits.output_bytes,
                     )?;
                     records += 1;
                 }
@@ -801,7 +780,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                             .unwrap()
                             .clone(),
                         ),
-                        limits.output_bytes,
                     )?;
                     records += 1;
                 }
@@ -832,7 +810,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
                 ),
-                limits.output_bytes,
             )?;
             records += 1;
             if listing == Listing::Classes {
@@ -863,7 +840,6 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                         .unwrap()
                         .clone(),
                     ),
-                    limits.output_bytes,
                 )?;
                 records += 1;
             }
@@ -878,20 +854,15 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     .unwrap()
                     .clone(),
             ),
-            limits.output_bytes,
         )?;
     }
     super::write_output(&output, options.output.as_deref())?;
     Ok(())
 }
 
-fn append(output: &mut Vec<u8>, record: &serde_json::Value, limit: usize) -> anyhow::Result<()> {
-    let bytes = serde_json::to_vec(record)?;
-    anyhow::ensure!(
-        bytes.len() < limit.saturating_sub(output.len()),
-        "RESOURCE_LIMIT: output byte budget exceeded"
-    );
-    output.extend_from_slice(&bytes);
+fn append(output: &mut Vec<u8>, record: &serde_json::Value) -> anyhow::Result<()> {
+    serde_json::to_writer(&mut *output, record)
+        .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
     output.push(b'\n');
     Ok(())
 }

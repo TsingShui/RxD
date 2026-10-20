@@ -37,7 +37,6 @@ pub fn refs(module: &Module, target: u32) -> Result<Vec<Reference>> {
                     opcode,
                     target_index: target,
                 });
-                ensure!(out.len() <= limits.records, "RESOURCE_LIMIT: records");
             }
         }
     }

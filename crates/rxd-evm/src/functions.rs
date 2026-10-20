@@ -15,7 +15,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
-    BoundedOutput, Limits, Navigation, hex,
+    Limits, Navigation, Output, hex,
     navigation::{object, work, write_record},
 };
 
@@ -1401,12 +1401,6 @@ impl FunctionNavigation {
             }
         }
         work(perf, operations, limits.work)?;
-        if bytes > limits.output_bytes {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM output byte budget exceeded",
-            ));
-        }
         Ok(())
     }
 
@@ -1443,12 +1437,6 @@ impl FunctionNavigation {
                 })
                 .sum(),
         );
-        if limits.records == 0 {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
         let reconstruction = if raw {
             crate::reconstruction::Reconstruction::not_requested()
         } else {
@@ -1459,11 +1447,7 @@ impl FunctionNavigation {
             let mut record = self.function_record(navigation, function, Some(raw));
             record["detail"]["reconstruction"] = serde_json::to_value(reconstruction)
                 .map_err(|e| Error::new("INVALID_INPUT", e.to_string()))?;
-            let mut output = BoundedOutput {
-                bytes: Vec::new(),
-                limit: limits.output_bytes,
-                exceeded: false,
-            };
+            let mut output = Output { bytes: Vec::new() };
             write_record(&mut output, &record)?;
             Ok(output.bytes)
         })();
@@ -1491,12 +1475,6 @@ impl FunctionNavigation {
             })
             .collect();
         perf.counters.records = Some(selected.len());
-        if selected.len() > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
         let disassembly_complete = navigation.decoded_end == navigation.carrier.bytecode.len();
         let header = envelope::header(
             "evm",
@@ -1527,11 +1505,7 @@ impl FunctionNavigation {
         );
         let stage = perf.start_stage();
         let result = (|| {
-            let mut output = BoundedOutput {
-                bytes: Vec::new(),
-                limit: limits.output_bytes,
-                exceeded: false,
-            };
+            let mut output = Output { bytes: Vec::new() };
             write_record(&mut output, &header)?;
             for function in selected {
                 self.prepare_record(navigation, function, false, limits, perf)?;

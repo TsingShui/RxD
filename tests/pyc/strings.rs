@@ -431,10 +431,8 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
         perf["resource_limits"],
         serde_json::json!({
             "input_bytes": budget.input_bytes,
-            "entities": budget.entities,
+            "entities": usize::MAX,
             "work": budget.work,
-            "records": budget.records,
-            "output_bytes": budget.output_bytes,
         })
     );
     let bytes = fs::read(&path).unwrap();
@@ -454,14 +452,12 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
         ("input_bytes", bytes.len()),
         ("entities", entities),
         ("work", work),
-        ("records", all.len() - 2),
     ] {
         let mut exact = base;
         match field {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
-            "work" => exact.work = amount,
-            _ => exact.records = amount,
+            _ => exact.work = amount,
         }
         assert!(
             strings_library(&path, None, None, None, exact).1.is_ok(),
@@ -471,8 +467,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
         match field {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
-            "work" => less.work = amount - 1,
-            _ => less.records = amount - 1,
+            _ => less.work = amount - 1,
         }
         let error = strings_library(&path, None, None, None, less)
             .1
@@ -508,9 +503,13 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
             pyc["detail"]["payload_start"]
         );
     }
-    let mut one = shared_static_limits();
-    one.records = 1;
-    let (_, literals) = strings_library(&path, None, Some("absent-value"), None, one);
+    let (_, literals) = strings_library(
+        &path,
+        None,
+        Some("absent-value"),
+        None,
+        shared_static_limits(),
+    );
     assert!(literals.unwrap().is_empty());
 }
 

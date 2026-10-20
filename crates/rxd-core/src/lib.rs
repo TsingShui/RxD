@@ -215,20 +215,10 @@ pub struct Budget {
     pub metadata_bytes: usize,
     /// Physical archive entries.
     pub entries: usize,
-    /// Entities one analysis may enumerate (types, methods, strings).
-    pub entities: usize,
     /// Instructions one method may decode to.
     pub instructions: usize,
     /// Work units one query may spend.
     pub work: usize,
-    /// Not a ceiling: one command prints every record its query matches.
-    ///
-    /// The field stays because a command that streams still needs a number for its own
-    /// arithmetic (a bounded writer, a remaining-bytes subtraction); it is set high enough
-    /// that no analysis fails on volume. A caller that wants fewer rows narrows the query.
-    pub records: usize,
-    /// Not a ceiling: output is as large as the query's answer. See `records`.
-    pub output_bytes: usize,
     /// AST nesting one syntax tree may reach, checked after parsing.
     pub ast_depth: usize,
     /// Semantic index nodes one query may allocate.
@@ -242,11 +232,8 @@ impl Default for Budget {
             entry_bytes: MAX_ENTRY_BYTES,
             metadata_bytes: MAX_METADATA_BYTES,
             entries: MAX_ARCHIVE_ENTRIES,
-            entities: 100_000,
             instructions: 100_000,
             work: MAX_WORK_UNITS,
-            records: usize::MAX,
-            output_bytes: usize::MAX,
             ast_depth: 512,
             semantic_nodes: 1_000_000,
         }
@@ -260,9 +247,6 @@ pub const MAX_SPAN_BYTES: usize = u32::MAX as usize;
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub entities: usize,
-    pub records: usize,
-    pub output_bytes: usize,
     pub ast_depth: usize,
     pub semantic_nodes: usize,
 }
@@ -273,9 +257,6 @@ impl Default for Limits {
         let budget = Budget::default();
         Self {
             input_bytes: budget.input_bytes,
-            entities: budget.entities,
-            records: budget.records,
-            output_bytes: budget.output_bytes,
             ast_depth: budget.ast_depth,
             semantic_nodes: budget.semantic_nodes,
         }

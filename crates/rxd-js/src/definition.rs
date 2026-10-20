@@ -238,15 +238,7 @@ pub fn run(
                     .source_type
                     .is_typescript()
                     .then(|| lexical::space(&semantic, symbol_id)),
-                declaration_ids: lexical::declaration_ids(
-                    &semantic,
-                    symbol_id,
-                    source,
-                    Limits {
-                        records: limits.records.saturating_sub(1),
-                        ..limits
-                    },
-                )?,
+                declaration_ids: lexical::declaration_ids(&semantic, symbol_id, source)?,
                 location,
             },
             declaration,

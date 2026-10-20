@@ -350,9 +350,6 @@ fn extract_html(
         &destination,
         rxd_core::Limits {
             input_bytes: budgets.input_bytes,
-            output_bytes: budgets.output_bytes,
-            records: budgets.records,
-            entities: budgets.entities,
             ast_depth: budgets.ast_depth,
             semantic_nodes: budgets.semantic_nodes,
         },
@@ -385,9 +382,6 @@ fn extract_asar(
             output: Some(&destination),
             limits: rxd_core::Limits {
                 input_bytes: budgets.input_bytes,
-                output_bytes: budgets.output_bytes,
-                records: budgets.records,
-                entities: budgets.entities,
                 ast_depth: budgets.ast_depth,
                 semantic_nodes: budgets.semantic_nodes,
             },

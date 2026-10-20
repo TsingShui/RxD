@@ -213,9 +213,6 @@ fn visit(
         if !matched {
             return Ok(());
         }
-        if literals.len() >= analysis.limits.records {
-            return Err(Error::new("RESOURCE_LIMIT", "record budget exceeded"));
-        }
         // Bound decoding, paths and retained alias evidence before allocating.
         let alias_work = aliases
             .iter()

@@ -1,4 +1,4 @@
-use super::{BoundedOutput, static_commands};
+use super::{Output, static_commands};
 use clap::Args;
 use rxd_core::{Error, Result, perf::Perf};
 use rxd_pyc::{
@@ -104,10 +104,7 @@ pub fn fetch(
                 evidence,
             },
         };
-        let mut out = BoundedOutput {
-            bytes: Vec::new(),
-            limit: limits.output_bytes,
-        };
+        let mut out = Output { bytes: Vec::new() };
         serde_json::to_writer(&mut out, &row)
             .map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))?;
         std::io::Write::write_all(&mut out, b"\n")

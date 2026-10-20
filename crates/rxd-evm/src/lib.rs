@@ -41,11 +41,13 @@ pub enum Query {
     Metadata,
 }
 
+/// Abstract-interpreter states one path may hold. Bound on the analysis machine, not on
+/// the answer: it is the same number the previous entity budget gave this interpreter.
+const STATES: usize = 100_000;
+
 #[derive(Clone, Copy)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub records: usize,
-    pub output_bytes: usize,
     /// Explicit work budget for navigation; native producer queries retain their own budgets.
     pub work: usize,
     pub states: usize,
@@ -57,17 +59,15 @@ pub struct Limits {
 impl Limits {
     /// Project the one shared budget table onto the EVM ceilings.
     ///
-    /// The abstract interpreter's context graph, retained stack cells and value arena have
-    /// no dedicated field in [`rxd_core::Budget`], so they take their ceilings from the
-    /// shared entity, entry and work budgets instead of backend-local numbers. Limits are
-    /// reported in the `--perf` sidecar and are never CLI knobs.
+    /// The abstract interpreter's context graph, retained stack cells and value arena keep
+    /// their own state-machine ceilings - they bound what one path may hold while it runs,
+    /// not how much a query may answer - and the archive/work numbers come from the shared
+    /// table. Limits are reported in the `--perf` sidecar and are never CLI knobs.
     pub fn from_budget(budget: rxd_core::Budget) -> Self {
         Self {
             input_bytes: budget.input_bytes,
-            records: budget.records,
-            output_bytes: budget.output_bytes,
             work: budget.work,
-            states: budget.entities,
+            states: STATES,
             stack_cells: budget.entries,
             reconstruction_work: budget.work,
             values: budget.entries,
@@ -259,12 +259,6 @@ impl Analysis {
                 .as_ref()
                 .map_or(0, |metadata| metadata.entries.len());
         perf.counters.records = Some(records);
-        if records > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
         if let Some(instructions) = &result.disassembled {
             perf.counters.instructions = Some(instructions.len());
         }
@@ -279,12 +273,7 @@ impl Analysis {
         })
     }
 
-    pub fn json(
-        &self,
-        command: &str,
-        include_bytecode: bool,
-        max_output_bytes: usize,
-    ) -> Result<Vec<u8>> {
+    pub fn json(&self, command: &str, include_bytecode: bool) -> Result<Vec<u8>> {
         #[derive(Serialize)]
         struct Engine {
             name: &'static str,
@@ -395,17 +384,9 @@ impl Analysis {
                 complete: true,
             },
         };
-        let mut output = BoundedOutput {
-            bytes: Vec::new(),
-            limit: max_output_bytes,
-            exceeded: false,
-        };
+        let mut output = Output { bytes: Vec::new() };
         if let Err(error) = serde_json::to_writer(&mut output, &report) {
-            return Err(if output.exceeded {
-                Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded")
-            } else {
-                Error::new("INVALID_INPUT", error.to_string())
-            });
+            return Err(Error::new("INVALID_INPUT", error.to_string()));
         }
         io::Write::write_all(&mut output, b"\n")
             .map_err(|_| Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded"))?;
@@ -413,18 +394,12 @@ impl Analysis {
     }
 }
 
-struct BoundedOutput {
+struct Output {
     bytes: Vec<u8>,
-    limit: usize,
-    exceeded: bool,
 }
 
-impl io::Write for BoundedOutput {
+impl io::Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            self.exceeded = true;
-            return Err(io::Error::other("output byte budget exceeded"));
-        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }

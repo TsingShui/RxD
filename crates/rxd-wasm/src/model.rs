@@ -7,11 +7,8 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub entities: usize,
     pub work: usize,
     pub instructions: usize,
-    pub records: usize,
-    pub output_bytes: usize,
 }
 
 impl Default for Limits {
@@ -19,11 +16,8 @@ impl Default for Limits {
         let budget = rxd_core::Budget::default();
         Self {
             input_bytes: budget.input_bytes,
-            entities: budget.entities,
             work: budget.work,
             instructions: budget.instructions,
-            records: budget.records,
-            output_bytes: budget.output_bytes,
         }
     }
 }

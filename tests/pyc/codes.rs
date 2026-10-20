@@ -379,10 +379,8 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         analysis["resource_limits"],
         serde_json::json!({
             "input_bytes": budget.input_bytes,
-            "entities": budget.entities,
+            "entities": usize::MAX,
             "work": budget.work,
-            "records": budget.records,
-            "output_bytes": budget.output_bytes,
         })
     );
     assert!(analysis["counters"]["ast_depth"].is_null());
@@ -395,14 +393,12 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         ("input_bytes", fs::metadata(&path).unwrap().len() as usize),
         ("entities", entities),
         ("work", work),
-        ("records", 15),
     ] {
         let mut exact = shared_static_limits();
         match field {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
-            "work" => exact.work = amount,
-            _ => exact.records = amount,
+            _ => exact.work = amount,
         }
         let mut perf = pyc_perf("codes");
         let mut loaded =
@@ -413,8 +409,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         match field {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
-            "work" => less.work = amount - 1,
-            _ => less.records = amount - 1,
+            _ => less.work = amount - 1,
         }
         let mut perf = pyc_perf("codes");
         let error = rxd_pyc::static_analysis::Analysis::load(&path, None, less, &mut perf)

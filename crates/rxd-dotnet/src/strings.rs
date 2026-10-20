@@ -52,7 +52,7 @@ pub(crate) fn uses(
             } else {
                 text.to_lowercase()
             };
-            Utf16Needle::new(&text, &mut work, input.limits.output_bytes)
+            Utf16Needle::new(&text, &mut work)
         })
         .transpose()?;
     let mut groups = Vec::new();
@@ -92,10 +92,6 @@ pub(crate) fn uses(
             let key = *key;
             let offsets = owners.remove(&key).expect("selected string owner");
             work.charge(1)?;
-            ensure!(
-                groups.len() < input.limits.records,
-                "RESOURCE_LIMIT: string records"
-            );
             groups.push(StringUse {
                 literal_index,
                 method_token: Some(key.1),
@@ -104,10 +100,6 @@ pub(crate) fn uses(
             used = true;
         }
         if !used {
-            ensure!(
-                groups.len() < input.limits.records,
-                "RESOURCE_LIMIT: string records"
-            );
             groups.push(StringUse {
                 literal_index,
                 method_token: None,
@@ -154,10 +146,6 @@ pub(crate) fn references(
     for site in sites {
         work.charge(1)?;
         if tokens.contains(&(site.target_token & 0xffffff)) {
-            ensure!(
-                matched.len() < input.limits.records,
-                "RESOURCE_LIMIT: string reference records"
-            );
             matched.push(site);
         }
     }
@@ -183,10 +171,6 @@ pub(crate) fn token_references(input: &Input, token: u32) -> Result<Vec<StringRe
     for site in sites {
         work.charge(1)?;
         if site.target_token == token {
-            ensure!(
-                matched.len() < input.limits.records,
-                "RESOURCE_LIMIT: string reference records"
-            );
             matched.push(site);
         }
     }
@@ -200,13 +184,11 @@ struct Utf16Needle {
 }
 
 impl Utf16Needle {
-    fn new(value: &str, work: &mut Work, memory_limit: usize) -> Result<Self> {
+    fn new(value: &str, work: &mut Work) -> Result<Self> {
         let count = value.encode_utf16().count();
+        // The needle is the caller's own pattern; its working memory is charged as work,
+        // not refused against an output ceiling.
         work.charge(count)?;
-        ensure!(
-            count <= memory_limit / (std::mem::size_of::<u16>() + std::mem::size_of::<usize>()),
-            "RESOURCE_LIMIT: string selector working memory"
-        );
         let units: Vec<_> = value.encode_utf16().collect();
         let mut prefix = vec![0; count];
         let mut matched = 0;

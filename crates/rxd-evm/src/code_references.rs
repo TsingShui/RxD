@@ -7,7 +7,7 @@ use rxd_core::{
 use serde_json::{Value, json};
 
 use crate::{
-    BoundedOutput, Edge, FunctionNavigation, Limits, Navigation,
+    Edge, FunctionNavigation, Limits, Navigation, Output,
     functions::block_local_edges,
     navigation::{Listing, object, work, write_record},
     references::{self, HeaderDetail, SummaryDetail},
@@ -186,12 +186,6 @@ impl<'a> References<'a> {
         {
             return Ok(());
         }
-        if self.hits.len() >= limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
         self.hits.push(hit);
         Ok(())
     }
@@ -236,7 +230,6 @@ impl<'a> References<'a> {
         navigation: &Navigation,
         functions: &FunctionNavigation,
         listing: Listing<'_>,
-        limits: Limits,
     ) -> Result<Vec<u8>> {
         let needle = listing
             .filter
@@ -262,11 +255,7 @@ impl<'a> References<'a> {
             },
         );
         let coverage = &self.coverage;
-        let mut output = BoundedOutput {
-            bytes: Vec::new(),
-            limit: limits.output_bytes,
-            exceeded: false,
-        };
+        let mut output = Output { bytes: Vec::new() };
         write_record(&mut output, &header)?;
         let mut emitted = 0;
         for hit in &self.hits {
@@ -319,6 +308,6 @@ pub fn refs_json(
     perf.record("query", stage);
     let references = result?;
     perf.measure("serialize", || {
-        references.json(navigation, functions, listing, limits)
+        references.json(navigation, functions, listing)
     })
 }

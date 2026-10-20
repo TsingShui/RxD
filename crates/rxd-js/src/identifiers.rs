@@ -6,7 +6,7 @@
 use oxc_ast::{AstKind, ast::Program};
 use oxc_ast_visit::Visit;
 use oxc_span::Span;
-use rxd_core::{Error, Limits, Result, Source, perf::Perf};
+use rxd_core::{Result, Source, perf::Perf};
 use serde::Serialize;
 
 use crate::{
@@ -119,7 +119,6 @@ pub fn run(
     wanted: &str,
     role: IdentifierRole,
     within: Option<&str>,
-    limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<Identifier>> {
     let region = match within {
@@ -141,12 +140,6 @@ pub fn run(
             records: Vec::new(),
         };
         visitor.visit_program(program);
-        if visitor.records.len() > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "identifier record budget exceeded",
-            ));
-        }
         visitor
             .records
             .sort_by_key(|record| (record.start, record.end));

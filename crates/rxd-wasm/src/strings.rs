@@ -49,7 +49,6 @@ pub fn strings(module: &Module) -> Result<Vec<StringRecord>> {
         }
     }
 
-    ensure!(out.len() <= limits.records, "RESOURCE_LIMIT: records");
     Ok(out)
 }
 

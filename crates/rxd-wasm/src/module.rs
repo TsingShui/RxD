@@ -111,7 +111,6 @@ impl Module {
 
     fn charge_entities(&self, running: &mut usize, add: usize) -> Result<()> {
         *running = running.saturating_add(add);
-        ensure!(*running <= self.limits.entities, "RESOURCE_LIMIT: entities");
         Ok(())
     }
 

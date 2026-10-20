@@ -52,23 +52,8 @@ pub(crate) fn body<'a>(input: &'a Input, root: &'a TypeInfo) -> Result<ClassBody
         .filter(|event| selected.contains(&event.declaring_type_token))
         .collect();
     work.charge(input.methods.len())?;
-    let method_count = input
-        .methods
-        .iter()
-        .filter(|method| selected.contains(&method.declaring_type_token))
-        .count();
-    let record_count = method_count
-        .checked_mul(2)
-        .and_then(|count| {
-            count.checked_add(2 + types.len() + fields.len() + properties.len() + events.len())
-        })
-        .context("RESOURCE_LIMIT: class record count")?;
-    ensure!(
-        record_count <= input.limits.records,
-        "RESOURCE_LIMIT: class record budget"
-    );
     let mut footprint = Counter {
-        remaining: input.limits.output_bytes,
+        remaining: usize::MAX,
     };
     for ty in &types {
         serde_json::to_writer(&mut footprint, ty)?;
@@ -91,12 +76,7 @@ pub(crate) fn body<'a>(input: &'a Input, root: &'a TypeInfo) -> Result<ClassBody
         serde_json::to_writer(&mut footprint, method)
             .context("RESOURCE_LIMIT: class metadata output")?;
         let body = if method.has_body {
-            let body = crate::il::body_with_budget(
-                input,
-                method,
-                input.limits.work - work.used(),
-                footprint.remaining,
-            )?;
+            let body = crate::il::body_with_budget(input, method, input.limits.work - work.used())?;
             work.charge(body.work_used)?;
             serde_json::to_writer(&mut footprint, &body)
                 .context("RESOURCE_LIMIT: aggregate class IL output")?;

@@ -491,12 +491,6 @@ struct Text<'a, 'b> {
 impl Text<'_, '_> {
     fn append(&mut self, text: &str) -> BuildResult<()> {
         self.builder.charge(text.len())?;
-        if self.bytes.len().saturating_add(text.len()) > self.builder.limits.output_bytes {
-            return Err(Failure::Resource(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM reconstructed text exceeds output byte budget",
-            )));
-        }
         self.bytes.push_str(text);
         Ok(())
     }

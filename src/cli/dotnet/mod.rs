@@ -146,20 +146,9 @@ impl Options {
         let budget = Budget::default();
         Limits {
             input_bytes: budget.input_bytes,
-            entities: budget.entities,
             work: budget.work,
             instructions: budget.instructions,
-            output_bytes: budget.output_bytes,
-            records: budget.records,
         }
-    }
-
-    fn max_output_bytes(&self) -> usize {
-        Budget::default().output_bytes
-    }
-
-    fn max_records(&self) -> usize {
-        Budget::default().records
     }
 }
 
@@ -328,7 +317,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 json!({"method":method_record(&input, method)?,"body_present":true,"representation":decompilation.representation,"decompiled":decompilation.decompiled,"reason":decompilation.reason,"reason_detail":reason_detail,"warnings":decompilation.warnings,"code":decompilation.code,"mapping":decompilation.mapping,"file_offset":body.file_offset,"code_offset":body.code_offset,"code_size":body.code_size,"work_used":body.work_used,"max_stack":body.max_stack,"init_locals":body.init_locals,"locals":body.locals,"local_signature_token":body.local_signature_token,"instructions":instructions,"handlers":body.handlers,"il_hex":body.il_hex,"complete":true}),
             ),
         );
-        append(&mut output, &value, limits.output_bytes)?;
+        append(&mut output, &value)?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
         let at = selector.resolve(
             &["type"],
@@ -416,14 +405,8 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             },
             payload,
         );
-        append(&mut output, &value, limits.output_bytes)?;
+        append(&mut output, &value)?;
     } else {
-        if let Some(target) = reference_result
-            .as_ref()
-            .and_then(|result| result.target.as_deref())
-        {
-            descriptor_fits(target, limits.output_bytes.saturating_sub(output.len()))?;
-        }
         let query = match &command {
             Command::Classes { class, .. } => json!({"class":class}),
             Command::Fields { class, name, .. } => json!({"class":class,"name":name}),
@@ -454,7 +437,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                     Map::new()
                 },
             ),
-            limits.output_bytes,
         )?;
         match &command {
             Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
@@ -503,7 +485,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                             &reference.site,
                             reference.target.as_deref(),
                             None,
-                            limits.output_bytes.saturating_sub(output.len()),
                         )?;
                         record(&mut output, &mut records, options, &value)?;
                     }
@@ -529,24 +510,15 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                         let literal = literals
                             .as_ref()
                             .and_then(|map| map.get(&(site.target_token & 0x00ff_ffff)));
-                        let value = reference_record(
-                            &input,
-                            &site,
-                            None,
-                            literal.map(String::as_str),
-                            limits.output_bytes.saturating_sub(output.len()),
-                        )?;
+                        let value =
+                            reference_record(&input, &site, None, literal.map(String::as_str))?;
                         record(&mut output, &mut records, options, &value)?;
                     }
                 }
             }
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
         }
-        append(
-            &mut output,
-            &envelope::summary(records, true, Map::new()),
-            limits.output_bytes,
-        )?;
+        append(&mut output, &envelope::summary(records, true, Map::new()))?;
     }
     perf.record("query", query_start);
     perf.counters.records = Some(
@@ -584,11 +556,7 @@ fn reference_record(
     // The decoded `#US` literal this site loads, when the query went through the string
     // route: a token alone does not say which text the row is about.
     literal: Option<&str>,
-    remaining: usize,
 ) -> anyhow::Result<Value> {
-    if let Some(target) = target {
-        descriptor_fits(target, remaining)?;
-    }
     let method = &input.methods[(site.method_token & 0xffffff) as usize - 1];
     let start = site.code_offset + site.il_offset as usize;
     Ok(envelope::reference(
@@ -605,66 +573,30 @@ fn reference_record(
     ))
 }
 
-// Count encoded descriptor bytes without constructing a serde_json::Value.
-// The cap therefore applies before json! duplicates expanded signature trees.
-fn descriptor_fits(value: &impl serde::Serialize, limit: usize) -> anyhow::Result<()> {
-    struct Count {
-        used: usize,
-        limit: usize,
-    }
-    impl Write for Count {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            if bytes.len() > self.limit.saturating_sub(self.used) {
-                return Err(io::Error::other(
-                    "RESOURCE_LIMIT: descriptor output byte budget exceeded",
-                ));
-            }
-            self.used += bytes.len();
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-    serde_json::to_writer(Count { used: 0, limit }, value).map_err(|error| {
-        anyhow::anyhow!("RESOURCE_LIMIT: descriptor output byte budget exceeded: {error}")
-    })
-}
-
 fn record(
     output: &mut Vec<u8>,
     records: &mut usize,
-    options: &Options,
+    _options: &Options,
     value: &Value,
 ) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        *records < options.max_records(),
-        "RESOURCE_LIMIT: record budget exceeded"
-    );
-    append(output, value, options.max_output_bytes())?;
+    append(output, value)?;
     *records += 1;
     Ok(())
 }
 
-fn append(output: &mut Vec<u8>, value: &Value, limit: usize) -> anyhow::Result<()> {
-    let mut writer = BoundedOutput { output, limit };
+fn append(output: &mut Vec<u8>, value: &Value) -> anyhow::Result<()> {
+    let mut writer = Output { output };
     serde_json::to_writer(&mut writer, value)
-        .map_err(|error| anyhow::anyhow!("RESOURCE_LIMIT: output byte budget exceeded: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
     writer.write_all(b"\n")?;
     Ok(())
 }
 
-struct BoundedOutput<'a> {
+struct Output<'a> {
     output: &'a mut Vec<u8>,
-    limit: usize,
 }
-impl Write for BoundedOutput<'_> {
+impl Write for Output<'_> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.output.len()) {
-            return Err(io::Error::other(
-                "RESOURCE_LIMIT: output byte budget exceeded",
-            ));
-        }
         self.output.extend_from_slice(bytes);
         Ok(bytes.len())
     }

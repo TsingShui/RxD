@@ -6,7 +6,7 @@
 use oxc_ast::{AstKind, ast::Expression};
 use oxc_ast_visit::Visit;
 use oxc_span::Span;
-use rxd_core::{Error, Limits, Result, Source, perf::Perf};
+use rxd_core::{Result, Source, perf::Perf};
 use serde::Serialize;
 
 use crate::{lexical::Locations, strings::JsString, structure::Collector};
@@ -115,7 +115,6 @@ pub fn run(
     collector: &Collector<'_>,
     wanted: &str,
     within: Option<&str>,
-    limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<Call>> {
     let region = match within {
@@ -134,9 +133,6 @@ pub fn run(
             records: Vec::new(),
         };
         visitor.visit_program(program);
-        if visitor.records.len() > limits.records {
-            return Err(Error::new("RESOURCE_LIMIT", "call record budget exceeded"));
-        }
         visitor
             .records
             .sort_by_key(|record| (record.start, record.end));

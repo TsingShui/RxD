@@ -219,16 +219,10 @@ fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
 /// Serialize into a bounded buffer before exposing any query result.
 struct Output {
     bytes: Vec<u8>,
-    limit: usize,
-    exceeded: bool,
 }
 
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            self.exceeded = true;
-            return Err(io::Error::other("output byte budget exceeded"));
-        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -240,17 +234,13 @@ impl Write for Output {
 impl Output {
     fn json(&mut self, value: &impl Serialize) -> Result<()> {
         if let Err(error) = serde_json::to_writer(&mut *self, value) {
-            return Err(if self.exceeded {
-                Error::new("RESOURCE_LIMIT", "output byte budget exceeded")
-            } else {
-                Error::new("INVALID_INPUT", error.to_string())
-            });
+            return Err(Error::new("INVALID_INPUT", error.to_string()));
         }
         self.raw(b"\n")
     }
     fn raw(&mut self, bytes: &[u8]) -> Result<()> {
         self.write_all(bytes)
-            .map_err(|_| Error::new("RESOURCE_LIMIT", "output byte budget exceeded"))
+            .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))
     }
 }
 
@@ -476,11 +466,7 @@ pub fn run_source(
     } else {
         "script"
     };
-    let mut output = Output {
-        bytes: Vec::new(),
-        limit: limits.output_bytes,
-        exceeded: false,
-    };
+    let mut output = Output { bytes: Vec::new() };
     let mut header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
         json!({"path":source.path,"root_id":envelope::short(&root.id),"source_type":final_mode,
             "analysis":null,"syntax":syntax_info.syntax,"declaration_file":syntax_info.declaration_file,"origin":source.origin})
@@ -565,12 +551,6 @@ pub fn run_source(
                         group_ok && belongs && depth_ok && kind_ok && name_ok && contains_ok
                     })
                     .collect();
-                if indices.len() > limits.records {
-                    return Err(Error::new(
-                        "RESOURCE_LIMIT",
-                        "output record budget exceeded",
-                    ));
-                }
                 Ok(indices)
             })();
             perf.record("query", query_start);
@@ -607,7 +587,6 @@ pub fn run_source(
                 &name,
                 role,
                 within.as_deref(),
-                limits,
                 perf,
             )?;
             perf.counters.records = Some(result.len());
@@ -627,7 +606,6 @@ pub fn run_source(
                 &collector,
                 &name,
                 within.as_deref(),
-                limits,
                 perf,
             )?;
             perf.counters.records = Some(result.len());
@@ -647,7 +625,6 @@ pub fn run_source(
                 &collector,
                 &name,
                 within.as_deref(),
-                limits,
                 perf,
             )?;
             perf.counters.records = Some(result.len());
@@ -729,7 +706,6 @@ pub fn run_source(
                 &source,
                 &collector,
                 within.as_deref(),
-                limits,
                 perf,
             )?;
             let mut header = header;

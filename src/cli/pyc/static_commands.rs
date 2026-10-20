@@ -1,4 +1,4 @@
-use super::BoundedOutput;
+use super::Output;
 use clap::Args;
 use rxd_core::envelope;
 use rxd_core::{Error, Result, perf::Perf};
@@ -22,10 +22,10 @@ impl Options {
         let budget = super::budget();
         Limits {
             input_bytes: budget.input_bytes,
-            entities: budget.entities,
+            // No enumeration ceiling: the marshal reader's field stays for its own
+            // arithmetic, not as a limit on how much a correct query may report.
+            entities: usize::MAX,
             work: budget.work,
-            records: budget.records,
-            output_bytes: budget.output_bytes,
         }
     }
 }
@@ -121,16 +121,6 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
                 });
         }
     }
-    scalar_bytes = scalar_bytes.saturating_add(
-        entry
-            .incoming
-            .iter()
-            .map(|e| 100_usize.saturating_add(e.path.len().saturating_mul(2)))
-            .sum::<usize>(),
-    );
-    if scalar_bytes > analysis.limits.output_bytes {
-        return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
-    }
     let fields = definition
         .fields
         .iter()
@@ -221,7 +211,7 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
     })
 }
 
-fn append(writer: &mut BoundedOutput, value: &impl Serialize) -> Result<()> {
+fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
     serde_json::to_writer(&mut *writer, value)
         .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
     std::io::Write::write_all(writer, b"\n")
@@ -248,7 +238,7 @@ pub fn codes(
     perf.counters.matches = Some(selected.len());
     perf.counters.records = Some(selected.len());
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
-        let mut writer = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
+        let mut writer = Output { bytes: Vec::new() };
         append(&mut writer,&rxd_core::envelope::header("pyc","codes",Some(&analysis.source_id),Some(analysis.bytes.len()),
             json!({"filter":filter.as_ref().map(|filter| filter.text()),"name":name,"index":index,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
             json!({"analysis":"metadata","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;

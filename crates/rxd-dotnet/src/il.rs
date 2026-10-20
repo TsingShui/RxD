@@ -10,16 +10,15 @@ use dotscope::{
 use crate::{ExceptionHandler, Input, Instruction, Method, MethodBody, Operand, input::Work};
 
 pub(crate) fn body(input: &Input, method: &Method) -> Result<MethodBody> {
-    body_with_budget(input, method, input.limits.work, input.limits.output_bytes)
+    body_with_budget(input, method, input.limits.work)
 }
 
 pub(crate) fn body_with_budget(
     input: &Input,
     method: &Method,
     work_limit: usize,
-    output_limit: usize,
 ) -> Result<MethodBody> {
-    decode_body(input, method, work_limit, output_limit, None)
+    decode_body(input, method, work_limit, None)
 }
 
 pub(crate) fn scan_body(
@@ -28,20 +27,13 @@ pub(crate) fn scan_body(
     work_limit: usize,
     strings: &BTreeSet<u32>,
 ) -> Result<MethodBody> {
-    decode_body(
-        input,
-        method,
-        work_limit,
-        input.limits.output_bytes,
-        Some(strings),
-    )
+    decode_body(input, method, work_limit, Some(strings))
 }
 
 fn decode_body(
     input: &Input,
     method: &Method,
     work_limit: usize,
-    output_limit: usize,
     strings: Option<&BTreeSet<u32>>,
 ) -> Result<MethodBody> {
     ensure!(
@@ -84,10 +76,6 @@ fn decode_body(
     ensure!(code_size > 0, "INVALID_INPUT: empty method code");
     ensure!(code_size <= work_limit, "RESOURCE_LIMIT: method code work");
     let code = slice(bytes, code_offset, code_size)?;
-    ensure!(
-        code_size.checked_mul(2).is_some_and(|s| s <= output_limit),
-        "RESOURCE_LIMIT: IL bytes"
-    );
     let last_rva = (method.rva as usize)
         .checked_add(header_size)
         .and_then(|v| v.checked_add(code_size - 1))
@@ -96,7 +84,7 @@ fn decode_body(
         file.rva_to_offset(last_rva)? == code_offset + code_size - 1,
         "INVALID_INPUT: method crosses noncontiguous PE sections"
     );
-    let mut work = Work::new(work_limit.min(output_limit));
+    let mut work = Work::new(work_limit);
     work.charge(code_size)?;
     let locals = if local_signature_token == 0 {
         Vec::new()
@@ -216,7 +204,6 @@ fn decode_body(
         footprint = footprint
             .checked_add(96)
             .context("RESOURCE_LIMIT: IL working size")?;
-        ensure!(footprint <= output_limit, "RESOURCE_LIMIT: IL working size");
         instructions.push(Instruction {
             offset: offset.try_into()?,
             size,
@@ -448,9 +435,7 @@ fn handlers(
             result
                 .len()
                 .checked_add(count)
-                .is_some_and(|n| n <= input.limits.entities
-                    && n <= input.limits.instructions
-                    && n <= input.limits.output_bytes / 128),
+                .is_some_and(|n| n <= input.limits.instructions),
             "RESOURCE_LIMIT: exception clauses"
         );
         for row in data[4..].chunks_exact(row_size) {

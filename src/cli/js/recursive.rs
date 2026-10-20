@@ -144,9 +144,6 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
             serde_json::to_vec(&scan_summary)
         })
         .map_err(|e| Error::new("INVALID_INPUT", e.to_string()))?;
-    if summary.len() + 1 > limits.output_bytes - output.len() {
-        return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
-    }
     output.extend_from_slice(&summary);
     output.push(b'\n');
     perf.counters.records = Some(records);
@@ -164,11 +161,7 @@ fn run_serial(
     output: &mut Vec<u8>,
 ) -> Result<()> {
     let limits = shared.limits;
-    let remaining = Limits {
-        records: limits.records - *records,
-        output_bytes: limits.output_bytes - output.len(),
-        ..limits
-    };
+    let remaining = limits;
     let previous = std::mem::take(&mut perf.counters);
     let result = rxd_js::run(
         path,
@@ -241,18 +234,6 @@ fn run_parallel(
     for (path, (result, shard)) in files.iter().zip(results) {
         let bytes = result.map_err(|e| at_path(path, e))?;
         let file_records = shard.counters.records.unwrap_or(0);
-        if *records + file_records > limits.records {
-            return Err(at_path(
-                path,
-                Error::new("RESOURCE_LIMIT", "output record budget exceeded"),
-            ));
-        }
-        if output.len() + bytes.len() > limits.output_bytes {
-            return Err(at_path(
-                path,
-                Error::new("RESOURCE_LIMIT", "output byte budget exceeded"),
-            ));
-        }
         *records += file_records;
         perf.merge(&shard);
         output.extend_from_slice(&bytes);

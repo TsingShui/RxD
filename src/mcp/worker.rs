@@ -48,11 +48,8 @@ fn plan_asar(
         .paths
         .first()
         .ok_or_else(|| QueryError::new("INVALID_QUERY", "ASAR capture has no input"))?;
-    let limits = rxd_core::Limits {
-        records: max_files,
-        output_bytes,
-        ..Default::default()
-    };
+    let _ = output_bytes;
+    let limits = rxd_core::Limits::default();
     let mut perf = rxd_core::perf::Perf::new(false, "analysis", "asar", "entries");
     let rxd_asar::Response::List(bytes) = rxd_asar::run(
         rxd_asar::Query::Entries {

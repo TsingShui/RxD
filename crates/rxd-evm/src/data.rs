@@ -106,28 +106,6 @@ impl DataInventory {
                 .filter(|w| w.operation.source.is_none() || w.operation.length.is_none())
                 .count();
             let unvisited = sites.difference(&seen).count();
-            let unknown_payload_lower_bound = witnesses
-                .iter()
-                .filter(|w| w.operation.source.is_none() || w.operation.length.is_none())
-                .fold(0usize, |total, w| {
-                    let entry = if let Some(owner) = w.owner {
-                        &functions.functions[owner].contexts[w.context.expect("function context")]
-                            .entry
-                    } else {
-                        w.entry.as_ref().expect("observed ownerless entry")
-                    };
-                    total
-                        .saturating_add(128)
-                        .saturating_add(w.entry_blocks.len().saturating_mul(80))
-                        .saturating_add(entry.stack.len().saturating_mul(24))
-                        .saturating_add(entry.memory.len().saturating_mul(80))
-                });
-            if unknown_payload_lower_bound > limits.output_bytes {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "EVM copy coverage byte budget exceeded",
-                ));
-            }
             let mut regions = BTreeSet::new();
             let code_end = metadata.map_or(navigation.carrier.bytecode.len(), |m| m.0);
             let mut cursor = 0;
@@ -370,17 +348,10 @@ impl DataInventory {
                 routes.into_iter().map(Some).collect()
             };
             records = records.saturating_add(routes.len());
-            Self::check_records(records, limits)?;
             payload_lower_bound = payload_lower_bound.saturating_add(
                 (bytes.len().saturating_mul(2) + matches.len().saturating_mul(64))
                     .saturating_mul(routes.len()),
             );
-            if payload_lower_bound > limits.output_bytes {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "EVM data evidence byte budget exceeded",
-                ));
-            }
             work(perf, routes.len(), limits.work)?;
             found.push(DataMatch {
                 literal,
@@ -389,22 +360,6 @@ impl DataInventory {
             });
         }
         Ok((found, records))
-    }
-
-    pub(crate) fn check_records(records: usize, limits: Limits) -> Result<()> {
-        if records > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
-        if records.saturating_mul(128) > limits.output_bytes {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM output byte budget exceeded",
-            ));
-        }
-        Ok(())
     }
 
     fn context(
@@ -488,7 +443,6 @@ impl DataInventory {
                 })
             })
             .collect();
-        Self::check_records(routes.len(), limits)?;
         let mut payload_lower_bound = 0usize;
         for &route in &routes {
             let (start, end, _) = Self::available(navigation, &self.witnesses[route]).unwrap();
@@ -503,12 +457,6 @@ impl DataInventory {
                     .saturating_mul(2),
             );
             work(perf, 1, limits.work)?;
-        }
-        if payload_lower_bound > limits.output_bytes {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM copied evidence byte budget exceeded",
-            ));
         }
         work(perf, routes.len(), limits.work)?;
         Ok((literal.clone(), routes, status))

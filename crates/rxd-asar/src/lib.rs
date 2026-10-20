@@ -53,13 +53,9 @@ struct Entry {
 
 struct Output {
     bytes: Vec<u8>,
-    limit: usize,
 }
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            return Err(io::Error::other("output byte budget exceeded"));
-        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -120,17 +116,8 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             contains,
             case_sensitive,
         } => {
-            if entries.len() > limits.records {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "output record budget exceeded",
-                ));
-            }
             perf.counters.records = Some(entries.len());
-            let mut result = Output {
-                bytes: Vec::new(),
-                limit: limits.output_bytes,
-            };
+            let mut result = Output { bytes: Vec::new() };
             perf.measure("serialize", || -> Result<()> {
                 result.json(&envelope::header(
                     "asar",
@@ -193,12 +180,6 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             let entry = entries
                 .get(&file)
                 .ok_or_else(|| invalid(format!("entry not found: {file}")))?;
-            if limits.records == 0 {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "output record budget exceeded",
-                ));
-            }
             // Never replace the archive or an unpacked source while preparing an artifact.
             let mut sources = vec![input.to_owned()];
             if matches!(entry.storage, Storage::Unpacked) {
@@ -216,29 +197,13 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                     }
                 }
             }
-            let bytes = perf
-                .measure("read", || {
-                    archive.read(&file, entry, limits.input_bytes.min(limits.output_bytes))
-                })
-                .map_err(|error| {
-                    if error.code == "RESOURCE_LIMIT" && limits.output_bytes < limits.input_bytes {
-                        Error::new("RESOURCE_LIMIT", "output byte budget exceeded")
-                    } else {
-                        error
-                    }
-                })?;
+            let bytes = perf.measure("read", || archive.read(&file, entry, limits.input_bytes))?;
             perf.counters.input_bytes = Some(bytes.len());
-            if bytes.len() > limits.output_bytes {
-                return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
-            }
             let source_id = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
             if perf.enabled() {
                 perf.source_id = Some(source_id.clone());
             }
-            let mut receipt = Output {
-                bytes: Vec::new(),
-                limit: limits.output_bytes - bytes.len(),
-            };
+            let mut receipt = Output { bytes: Vec::new() };
             perf.measure("serialize", || -> Result<()> {
                 let mut receipt_record = envelope::record(
                     "file",

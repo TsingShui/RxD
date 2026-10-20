@@ -50,7 +50,7 @@ Input must be a regular file; directories return `INVALID_INPUT` (exit 1) with e
 stdout and preserved `-o` target. Ceilings come only from the shared
 `rxd_core::Budget` table projected into the backend `Limits`; the CLI exposes no
 `--max-*` flag. Input 8 GiB (32-bit spans keep actual addressable content below 4 GiB),
-no output ceiling, work 1,000,000 and AST depth from the shared core limits; marshal
+no record or output ceiling, work 1,000,000 and AST depth from the shared core limits; marshal
 parsing/reference expansion 128 levels and 1,000,000 objects, cumulative bytes read/
 copied 128 MiB, long-to-decimal squared-digit work 16,777,216. Cycles are rejected
 immediately; shared objects cannot bypass object budgets by exponential expansion.
@@ -511,7 +511,7 @@ range is `INVALID_INPUT` (exit 1), with atomic stdout/`-o`. Refs does not scan l
 exception semantics; get-code validates those.
 
 Budgets inherit the five static limits, the marshal limits and the shared `instructions`
-ceiling (100,000); entities count parser definitions/occurrences/index edges, with no new
+ceiling; entities count parser definitions/occurrences/index edges, with no new
 AST entities. The per-code instruction ceiling is checked before decode. Work accumulates from
 parser/index and charges actual decoder scans/raw projection, boundary construction/
 checks, each supported operand resolution, name candidate/actual byte comparisons, hit/

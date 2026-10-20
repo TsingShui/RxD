@@ -20,8 +20,6 @@ pub struct Limits {
     pub input_bytes: usize,
     pub entities: usize,
     pub work: usize,
-    pub records: usize,
-    pub output_bytes: usize,
 }
 impl Limits {
     pub fn perf_limits(self) -> BTreeMap<&'static str, usize> {
@@ -29,8 +27,6 @@ impl Limits {
             ("input_bytes", self.input_bytes),
             ("entities", self.entities),
             ("work", self.work),
-            ("records", self.records),
-            ("output_bytes", self.output_bytes),
         ])
     }
 }
@@ -216,9 +212,6 @@ impl Analysis {
                 }
             };
             if index.is_none_or(|index| index == i) && name_matches && filter_matches {
-                if selected.len() >= self.limits.records {
-                    return Err(Error::new("RESOURCE_LIMIT", "record budget exceeded"));
-                }
                 selected.push(i);
             }
         }

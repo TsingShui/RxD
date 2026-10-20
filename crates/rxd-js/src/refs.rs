@@ -178,12 +178,6 @@ pub fn run(
             });
         }
         let symbol = symbol.expect("resolved symbol");
-        if scoping.get_resolved_reference_ids(symbol).len() > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "output record budget exceeded",
-            ));
-        }
         let declaration_location = location(scoping.symbol_span(symbol));
         let target = declaration_location.entity_id.clone();
         let declaration = Some(declaration_location);
@@ -206,15 +200,7 @@ pub fn run(
             selected,
             declaration,
             references,
-            declaration_ids: lexical::declaration_ids(
-                &semantic,
-                symbol,
-                source,
-                Limits {
-                    records: limits.records - scoping.get_resolved_reference_ids(symbol).len(),
-                    ..limits
-                },
-            )?,
+            declaration_ids: lexical::declaration_ids(&semantic, symbol, source)?,
         })
     })
 }

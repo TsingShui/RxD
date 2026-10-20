@@ -114,8 +114,8 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 
 Defaults: header 8 MiB, 10,000 container entries, 4,096 UTF-8 path bytes. Input defaults
 to 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), charged for the selected file; 100,000 result records;
-no output ceiling covering all list JSONL or extract file plus receipt. Budget overflow,
+addressable content below 4 GiB), charged for the selected file; every result record;
+no record or output ceiling covering all list JSONL or extract file plus receipt. Parsing ceilings,
 path traversal, duplicate paths, malformed headers, links, out-of-range targets and
 overflow never rely on running the sample.
 

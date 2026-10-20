@@ -1,4 +1,4 @@
-use super::{BoundedOutput, static_commands::Options};
+use super::{Output, static_commands::Options};
 use rxd_core::{Error, Result, envelope, perf::Perf};
 use rxd_pyc::{
     static_analysis::Analysis,
@@ -43,46 +43,15 @@ struct Record<'a> {
     end: Option<usize>,
     detail: Detail<'a>,
 }
-fn record<'a>(
-    analysis: &'a Analysis,
-    literal: &'a Literal,
-    remaining: usize,
-) -> Result<Record<'a>> {
+fn record<'a>(analysis: &'a Analysis, literal: &'a Literal) -> Result<Record<'a>> {
     let definition = &analysis.evidence.occurrences[literal.definition];
     let payload = definition.payload.unwrap();
     let bytes = analysis.payload(literal.definition).unwrap();
     let value = (literal.kind == "str")
         .then(|| std::str::from_utf8(bytes).ok())
         .flatten();
-    let scalar_size = bytes
-        .len()
-        .saturating_mul(2)
-        .saturating_add(value.map_or(0, str::len));
-    fn path_bytes(path: &[usize]) -> usize {
-        path.iter()
-            .fold(path.len().saturating_sub(1), |size, &index| {
-                size.saturating_add(if index == 0 {
-                    1
-                } else {
-                    index.ilog10() as usize + 1
-                })
-            })
-    }
     // A lower bound on the fixed envelope plus both serialized path representations.
     // Do not overestimate numeric paths: the exact total-output boundary must succeed.
-    let path_size = path_bytes(&literal.path).saturating_mul(2);
-    let alias_size = literal.aliases.iter().fold(0usize, |sum, alias| {
-        sum.saturating_add(path_bytes(&alias.path))
-            .saturating_add(38)
-    });
-    if scalar_size
-        .saturating_add(path_size)
-        .saturating_add(alias_size)
-        .saturating_add(512)
-        > remaining
-    {
-        return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
-    }
     let occurrence = literal
         .occurrence
         .map(|id| &analysis.evidence.occurrences[id]);
@@ -134,7 +103,7 @@ fn record<'a>(
         },
     })
 }
-fn append(writer: &mut BoundedOutput, value: &impl Serialize) -> Result<()> {
+fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
     serde_json::to_writer(&mut *writer, value)
         .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
     std::io::Write::write_all(writer, b"\n")
@@ -164,12 +133,6 @@ pub fn run(
             .or(filter_hex.as_ref())
             .map_or(0, String::len);
         analysis.charge_work(query_bytes)?;
-        if query_bytes > limits.output_bytes {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "query output byte budget exceeded",
-            ));
-        }
         let hex = filter_hex.as_ref().map(|value| {
             value
                 .as_bytes()
@@ -205,7 +168,7 @@ pub fn run(
     perf.counters.records = Some(literals.len());
     perf.counters.matches = Some(literals.len());
     let serialized = perf.measure("serialize", || -> Result<Vec<u8>> {
-        let mut writer = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
+        let mut writer = Output { bytes: Vec::new() };
         append(&mut writer, &envelope::header("pyc", "strings", Some(&analysis.source_id), Some(analysis.bytes.len()),
             json!({"filter":filter.as_deref(),"filter_hex":filter_hex.as_deref(),"version":version.map(|(major,minor)|format!("{major}.{minor}"))}),
             json!({"analysis":"constants","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned","containers":["tuple","frozenset"]}).as_object().unwrap().clone()))?;
@@ -214,7 +177,7 @@ pub fn run(
             let alias_work = literal.aliases.iter().fold(0usize, |sum, alias| sum.saturating_add(alias.path.len()+1));
             // Charge raw hex conversion and each path/alias projection before allocating.
             analysis.charge_work(raw_length.saturating_add(literal.path.len()).saturating_add(alias_work))?;
-            let row = record(&analysis, literal, writer.limit.saturating_sub(writer.bytes.len()))?;
+            let row = record(&analysis, literal)?;
             append(&mut writer, &row)?;
         }
         append(&mut writer, &envelope::summary(literals.len(), true, json!({"code_count":analysis.codes.len(),"analysis":"constants","instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;

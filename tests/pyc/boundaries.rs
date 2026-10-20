@@ -142,15 +142,9 @@ fn pyc_enforces_exact_raw_and_json_output_budgets_with_perf_stages() {
         row["detail"]["source"].as_str().unwrap().as_bytes(),
         raw.stdout
     );
-    // The shared table is the only ceiling; the library enforces exact raw output.
-    let mut limits = shared_decompile_limits();
-    limits.output_bytes = raw.stdout.len();
-    let (_, result) = decompile_library(&path, Some((3, 12)), limits);
+    // Output volume is not a ceiling: the library always answers completely.
+    let (_, result) = decompile_library(&path, Some((3, 12)), shared_decompile_limits());
     assert_eq!(result.unwrap().source.as_bytes(), raw.stdout);
-    let mut limits = shared_decompile_limits();
-    limits.output_bytes = raw.stdout.len() - 1;
-    let (_, result) = decompile_library(&path, Some((3, 12)), limits);
-    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
     assert_no_budget_flags(&path, "decompile");
     let records: Vec<Value> = String::from_utf8(json.stderr)
         .unwrap()

@@ -14,9 +14,6 @@ mod locations;
 fn invalid(s: &str) -> Error {
     Error::new("INVALID_INPUT", s)
 }
-fn limit() -> Error {
-    Error::new("RESOURCE_LIMIT", "output byte budget exceeded")
-}
 pub fn hex(bytes: &[u8]) -> String {
     const H: &[u8; 16] = b"0123456789abcdef";
     let mut s = String::with_capacity(bytes.len() * 2);
@@ -444,9 +441,6 @@ pub fn build(a: &mut Analysis, owner: usize, max_instructions: usize) -> Result<
         .saturating_add(code.code.len().saturating_mul(2))
         .saturating_add(code.line_table.len().saturating_mul(2))
         .saturating_add(code.exception_table.len().saturating_mul(2));
-    if minimum > a.limits.output_bytes {
-        return Err(limit());
-    }
     let definitions = selected_definitions(a, owner)?;
     for &d in &definitions {
         let row = &a.evidence.occurrences[d];
@@ -508,9 +502,6 @@ pub fn build(a: &mut Analysis, owner: usize, max_instructions: usize) -> Result<
             }
             minimum = minimum.saturating_add(rows.saturating_mul(TABLE_ENTRY_MIN_BYTES));
         }
-    }
-    if minimum > a.limits.output_bytes {
-        return Err(limit());
     }
     a.charge_work(
         code.line_table

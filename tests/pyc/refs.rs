@@ -599,7 +599,6 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
             "work" => exact.work = amount,
-            "records" => exact.records = amount,
             _ => {}
         }
         assert!(
@@ -613,7 +612,6 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
             "work" => less.work = amount - 1,
-            "records" => less.records = amount - 1,
             _ => {}
         }
         let instructions = if field == "instructions" { 98 } else { 99 };

@@ -1,6 +1,6 @@
 //! Explicit decoded PUSH-immediate evidence and owner routes. No runtime string inference.
 use crate::{
-    BoundedOutput, FunctionNavigation, Limits, Navigation, hex,
+    FunctionNavigation, Limits, Navigation, Output, hex,
     navigation::{Listing, object, work, write_record},
     references::{self, HeaderDetail, SummaryDetail},
 };
@@ -124,12 +124,6 @@ impl LiteralQuery {
             }
             if matched == needle.len() {
                 work(perf, 1, limits.work)?;
-                if (matches.len() + 1).saturating_mul(64) > limits.output_bytes {
-                    return Err(Error::new(
-                        "RESOURCE_LIMIT",
-                        "EVM matched evidence byte budget exceeded",
-                    ));
-                }
                 let begin = start + i + 1 - needle.len();
                 let end = start + i + 1;
                 let (cs, ce) = navigation.carrier.carrier_range(begin, end);
@@ -451,20 +445,8 @@ impl LiteralInventory {
             work(perf, route_count, limits.work)?;
             records += route_count;
             perf.counters.records = Some(records);
-            if records > limits.records {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "EVM result record budget exceeded",
-                ));
-            }
             // Every fixed envelope alone exceeds this conservative lower bound.
             // Bound prepared match storage before exact bounded serialization.
-            if records.saturating_mul(128) > limits.output_bytes {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "EVM output byte budget exceeded",
-                ));
-            }
             found.push(LiteralMatch {
                 literal,
                 candidates,
@@ -499,16 +481,11 @@ impl LiteralInventory {
         perf.record("search", stage);
         let (data_found, data_records) = data_found?;
         let records = immediate_records.saturating_add(data_records);
-        crate::data::DataInventory::check_records(records, limits)?;
         perf.counters.records = Some(records);
         perf.counters.matches = Some(found.len() + data_found.len());
         let stage = perf.start_stage();
         let result = (|| {
-            let mut output = BoundedOutput {
-                bytes: Vec::new(),
-                limit: limits.output_bytes,
-                exceeded: false,
-            };
+            let mut output = Output { bytes: Vec::new() };
             let mut header = self.header(
                 navigation,
                 "strings",
@@ -581,11 +558,7 @@ impl LiteralInventory {
             perf.counters.matches = Some(1);
             let stage = perf.start_stage();
             let result = (|| {
-                let mut output = BoundedOutput {
-                    bytes: Vec::new(),
-                    limit: limits.output_bytes,
-                    exceeded: false,
-                };
+                let mut output = Output { bytes: Vec::new() };
                 write_record(
                     &mut output,
                     &references::header(
@@ -631,7 +604,7 @@ impl LiteralInventory {
             return result;
         }
         let stage = perf.start_stage();
-        let selected = (|| {
+        let selected = (|| -> Result<&Literal> {
             work(
                 perf,
                 id.len().saturating_add(self.literals.len()),
@@ -640,12 +613,6 @@ impl LiteralInventory {
             let literal = self.select(navigation, &id)?;
             let count = functions.owners[literal.block].len().max(1);
             work(perf, count, limits.work)?;
-            if count > limits.records {
-                return Err(Error::new(
-                    "RESOURCE_LIMIT",
-                    "EVM result record budget exceeded",
-                ));
-            }
             Ok(literal)
         })();
         perf.record("references", stage);
@@ -653,19 +620,9 @@ impl LiteralInventory {
         let routes = Self::routes(functions, literal);
         perf.counters.records = Some(routes.len());
         perf.counters.matches = Some(1);
-        if routes.len() > limits.records {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "EVM result record budget exceeded",
-            ));
-        }
         let stage = perf.start_stage();
         let result = (|| {
-            let mut output = BoundedOutput {
-                bytes: Vec::new(),
-                limit: limits.output_bytes,
-                exceeded: false,
-            };
+            let mut output = Output { bytes: Vec::new() };
             write_record(
                 &mut output,
                 &references::header(

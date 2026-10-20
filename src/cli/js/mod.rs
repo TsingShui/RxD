@@ -27,9 +27,6 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let budget = rxd_core::Budget::default();
     let limits = Limits {
         input_bytes: budget.input_bytes,
-        entities: budget.entities,
-        records: budget.records,
-        output_bytes: budget.output_bytes,
         ast_depth: budget.ast_depth,
         semantic_nodes: budget.semantic_nodes,
     };

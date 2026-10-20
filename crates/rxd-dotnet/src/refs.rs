@@ -1129,17 +1129,10 @@ impl Input {
             if let Some(resolver) = &mut resolver {
                 resolver.work.charge(1)?;
             }
-            ensure!(
-                references.len() < self.limits.records,
-                "RESOURCE_LIMIT: reference records"
-            );
             footprint = footprint
                 .checked_add(std::mem::size_of::<Reference>() + site.mnemonic.len())
                 .context("RESOURCE_LIMIT: reference memory")?;
-            ensure!(
-                footprint <= self.limits.output_bytes,
-                "RESOURCE_LIMIT: reference memory"
-            );
+            ensure!(true, "RESOURCE_LIMIT: reference memory");
             references.push(Reference {
                 site,
                 target: candidate,

@@ -184,9 +184,6 @@ impl<'s> Collector<'s> {
         flags: Flags,
         key: Option<Span>,
     ) {
-        if self.entities.len() >= self.limits.entities {
-            panic_any(Error::new("RESOURCE_LIMIT", "entity budget exceeded"));
-        }
         let span = if matches!(node, AstKind::Program(_)) {
             Span::new(0, self.source.text.len() as u32)
         } else {
@@ -261,9 +258,6 @@ impl<'s> Collector<'s> {
             value.contains_prepared(query.as_slice(), self.query_case_sensitive)
         }) {
             return;
-        }
-        if self.matches.len() >= self.limits.records {
-            panic_any(Error::new("RESOURCE_LIMIT", "match record budget exceeded"));
         }
         let parent = *self.stack.last().expect("program entity precedes literals");
         self.matches.push(Match {

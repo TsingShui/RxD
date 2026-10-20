@@ -11,7 +11,6 @@ use rxd_core::{Error, Result, perf::Perf};
 #[derive(Clone, Copy)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub output_bytes: usize,
     pub work: usize,
     pub ast_depth: usize,
 }
@@ -41,7 +40,6 @@ pub fn run(
 ) -> Result<Decompilation> {
     perf.resource_limits = Some(std::collections::BTreeMap::from([
         ("input_bytes", limits.input_bytes),
-        ("output_bytes", limits.output_bytes),
         ("work", limits.work),
         ("ast_depth", limits.ast_depth),
         ("marshal_depth", 128),
@@ -70,12 +68,7 @@ pub fn run(
             })?;
             let source = perf.measure("generate", || {
                 pycdc::budget::cancelled(|| {
-                    generate_limited(
-                        &result.body,
-                        loaded.version,
-                        result.clean,
-                        limits.output_bytes,
-                    )
+                    generate_limited(&result.body, loaded.version, result.clean, usize::MAX)
                 })
             })?;
             Ok((result.clean, source))

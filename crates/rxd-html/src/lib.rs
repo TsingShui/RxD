@@ -143,9 +143,6 @@ impl Catalog<'_> {
         detail: Detail,
     ) -> Result<usize> {
         self.slice(start, end)?;
-        if self.nodes.len() >= self.limits.records {
-            return Err(resource("HTML record budget exceeded"));
-        }
         let parent = self.stack.last().copied();
         let depth = self.stack.len();
         let index = self.nodes.len();
@@ -279,13 +276,9 @@ impl Catalog<'_> {
 
 struct Output {
     bytes: Vec<u8>,
-    limit: usize,
 }
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            return Err(io::Error::other("output byte budget exceeded"));
-        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -562,10 +555,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         });
         Ok(selected)
     })?;
-    let mut output = Output {
-        bytes: Vec::new(),
-        limit: limits.output_bytes,
-    };
+    let mut output = Output { bytes: Vec::new() };
     perf.measure("serialize", || -> Result<()> {
         output.json(&envelope::header("html", "entries", Some(&hash), Some(text.len()),
             json!({"kind":kind,"tag":tag,"attr":query_attr,"depth":depth,"within":within,"contains":contains}),
@@ -643,17 +633,11 @@ pub fn extract(
         ));
     }
     let bytes = text.as_bytes()[start..end].to_vec();
-    if bytes.len() > limits.output_bytes {
-        return Err(resource("output byte budget exceeded"));
-    }
     let source_id = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
     if perf.enabled() {
         perf.source_id = Some(source_id.clone());
     }
-    let mut receipt = Output {
-        bytes: Vec::new(),
-        limit: limits.output_bytes - bytes.len(),
-    };
+    let mut receipt = Output { bytes: Vec::new() };
     perf.measure("serialize", || -> Result<()> {
         let mut receipt_record = envelope::record(
             "file",

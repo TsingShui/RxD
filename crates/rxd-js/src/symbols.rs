@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use oxc_ast::{AstKind, ast::Program};
 use oxc_span::GetSpan;
-use rxd_core::{Error, Limits, Result, Source, perf::Perf};
+use rxd_core::{Result, Source, perf::Perf};
 use serde::Serialize;
 
 use crate::{
@@ -105,7 +105,6 @@ pub fn run(
     source: &Source,
     collector: &Collector<'_>,
     within: Option<&str>,
-    limits: Limits,
     perf: &mut Perf,
 ) -> Result<Symbols> {
     let root = perf.measure("query", || {
@@ -115,7 +114,7 @@ pub fn run(
             .map(|i| i.unwrap_or(0))
     })?;
     let region = &collector.entities[root].entity;
-    let semantic = lexical::build(program, limits, perf)?;
+    let semantic = lexical::build(program, rxd_core::Limits::default(), perf)?;
     perf.measure("query", || {
         if lexical::is_dynamic(&semantic) {
             return Ok(Symbols {
@@ -148,12 +147,6 @@ pub fn run(
                         });
                         let symbol = reference.symbol_id();
                         if symbol.is_none() {
-                            if bindings.len() + unresolved.len() >= limits.records {
-                                return Err(Error::new(
-                                    "RESOURCE_LIMIT",
-                                    "output record budget exceeded",
-                                ));
-                            }
                             unresolved.push((
                                 span,
                                 id.name.as_str(),
@@ -170,31 +163,15 @@ pub fn run(
                 if let Some(previous) = bindings.get_mut(&symbol) {
                     *previous |= declared;
                 } else {
-                    if bindings.len() + unresolved.len() >= limits.records {
-                        return Err(Error::new(
-                            "RESOURCE_LIMIT",
-                            "output record budget exceeded",
-                        ));
-                    }
                     bindings.insert(symbol, declared);
                 }
             }
         }
         let locations = Locations::new(collector);
         let mut records = Vec::with_capacity(bindings.len() + unresolved.len());
-        let mut declaration_budget = limits.records - bindings.len() - unresolved.len();
         for (symbol, declared) in bindings {
             let span = scoping.symbol_span(symbol);
-            let declaration_ids = lexical::declaration_ids(
-                &semantic,
-                symbol,
-                source,
-                Limits {
-                    records: declaration_budget,
-                    ..limits
-                },
-            )?;
-            declaration_budget -= declaration_ids.as_ref().map_or(0, Vec::len);
+            let declaration_ids = lexical::declaration_ids(&semantic, symbol, source)?;
             records.push(Record::Symbol(Symbol {
                 id: source.entity_id("symbol", span.start, span.end),
                 name: lexical::name(&semantic, symbol),

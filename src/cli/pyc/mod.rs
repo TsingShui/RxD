@@ -115,23 +115,18 @@ fn decompile_limits() -> Limits {
     let budget = budget();
     Limits {
         input_bytes: budget.input_bytes,
-        output_bytes: budget.output_bytes,
         work: budget.work,
         // AST nesting is projected from the shared core limits the budget drives.
         ast_depth: rxd_core::Limits::default().ast_depth,
     }
 }
 
-struct BoundedOutput {
+struct Output {
     bytes: Vec<u8>,
-    limit: usize,
 }
 
-impl std::io::Write for BoundedOutput {
+impl std::io::Write for Output {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            return Err(std::io::Error::other("output byte budget exceeded"));
-        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -289,7 +284,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
     };
     validate_output(&input, options.output.as_deref())?;
     let limits = decompile_limits();
-    let output_limit = limits.output_bytes;
     let result = rxd_pyc::run(&input, version, limits, perf)?;
     perf.source_id = Some(result.source_id.clone());
     perf.counters.input_bytes = Some(result.input_bytes);
@@ -322,22 +316,16 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             object.insert("schema_version".into(), json!(envelope::SCHEMA_VERSION));
             object.insert("backend".into(), json!("pyc"));
             object.insert("command".into(), json!("decompile"));
-            let mut writer = BoundedOutput {
-                bytes: Vec::new(),
-                limit: output_limit,
-            };
+            let mut writer = Output { bytes: Vec::new() };
             serde_json::to_writer(&mut writer, &row)
-                .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
+                .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
             std::io::Write::write_all(&mut writer, b"\n")
-                .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
+                .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
             Ok(writer.bytes)
         })?
     } else {
         result.source.into_bytes()
     };
-    if bytes.len() > output_limit {
-        return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
-    }
     perf.counters.output_bytes = Some(bytes.len());
     perf.counters.records = Some(1);
     perf.measure("write", || {

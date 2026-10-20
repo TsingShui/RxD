@@ -498,7 +498,6 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
             "work" => exact.work = amount,
-            "records" => exact.records = amount,
             _ => {}
         }
         let limit = if field == "instructions" {
@@ -517,7 +516,6 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
             "work" => less.work = amount - 1,
-            "records" => less.records = amount - 1,
             _ => {}
         }
         let limit = if field == "instructions" {
@@ -591,10 +589,16 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         1_000,
     );
     assert!(scan.is_ok());
-    let mut tiny = shared_static_limits();
-    tiny.output_bytes = 1;
-    let (_, error) = xref_library(&deep_path, Some((3, 12)), &deep_id, None, tiny, 1_000);
-    assert_eq!(error.err().unwrap().code, "RESOURCE_LIMIT");
+    // Output volume is no longer a ceiling; the same query answers completely.
+    let (_, result) = xref_library(
+        &deep_path,
+        Some((3, 12)),
+        &deep_id,
+        None,
+        shared_static_limits(),
+        1_000,
+    );
+    assert!(result.is_ok());
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use super::{BoundedOutput, static_commands};
+use super::{Output, static_commands};
 use clap::Args;
 use rxd_core::{Error, Result, envelope, perf::Perf};
 use rxd_pyc::{
@@ -26,7 +26,7 @@ struct Record<'a> {
     end: usize,
     detail: &'a references::Hit,
 }
-fn append(out: &mut BoundedOutput, value: &impl Serialize) -> Result<()> {
+fn append(out: &mut Output, value: &impl Serialize) -> Result<()> {
     serde_json::to_writer(&mut *out, value)
         .map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))?;
     std::io::Write::write_all(out, b"\n").map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))
@@ -50,13 +50,6 @@ pub fn run(
     let mut analysis = loaded?;
     let mut scan = Scan::default();
     let result = perf.measure("query", || -> Result<()> {
-        let selector_bytes = name.as_ref().or(at.as_ref()).map_or(0, String::len);
-        if selector_bytes > limits.output_bytes {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "query output byte budget exceeded",
-            ));
-        }
         let selected = within
             .as_deref()
             .map(|id| analysis.parse_code_id(id))
@@ -104,7 +97,7 @@ pub fn run(
         "all_codes"
     };
     let bytes = perf.measure("serialize", || -> Result<_> {
-        let mut out = BoundedOutput { bytes: Vec::new(), limit: limits.output_bytes };
+        let mut out = Output { bytes: Vec::new() };
         append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
             json!({"name":name,"at":at,"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;

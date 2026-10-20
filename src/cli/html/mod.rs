@@ -15,8 +15,6 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let budget = Budget::default();
     let limits = Limits {
         input_bytes: budget.input_bytes,
-        records: budget.records,
-        output_bytes: budget.output_bytes,
         ast_depth: 512,
         ..Limits::default()
     };
