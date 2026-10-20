@@ -1,5 +1,5 @@
 use super::super::default_threads;
-use super::super::xref::{Anchor, Kind as XrefKind, Target, TargetArgs};
+use super::super::xref::{Anchor, Expect, Kind as XrefKind, Target, TargetArgs, selector_stream};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rxd_dex::query::{MemberQuery, Pattern, Query, format_class_name};
@@ -211,13 +211,27 @@ impl XrefArgs {
     /// A coordinate becomes an exact identity: the class is normalized to the descriptor
     /// form the tables hold, and the descriptor selects one overload. A content search stays
     /// a substring. The two never mix in one query.
-    pub fn query(&self) -> Result<Query> {
-        let target = self.target.resolve()?;
-        target_query(&target)
+    pub fn query(&self, target: &Target) -> Result<Query> {
+        target_query(target)
     }
 
+    /// Resolve the anchor, reading it from `--from` when that face was used.
+    ///
+    /// A DEX archive's header carries no content identity, so the stream is checked against
+    /// the archive size: that catches a stream from another file, which is the mistake worth
+    /// catching, but it is a mismatch guard rather than an identity.
     pub fn target(&self) -> Result<Target> {
-        self.target.resolve()
+        match self.target.selector() {
+            Some(path) => {
+                let bytes = std::fs::metadata(&self.apk_path)?.len();
+                self.target.resolve_from(selector_stream(
+                    path,
+                    &["method", "field", "type", "string"],
+                    Expect::Bytes(bytes),
+                )?)
+            }
+            None => self.target.resolve(),
+        }
     }
 
     pub fn output_path(&self) -> Option<&Path> {

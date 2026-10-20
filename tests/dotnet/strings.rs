@@ -109,20 +109,66 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
     );
 }
 
+/// `--at` is an identity whose table names its kind; `-f` is a content search and can only
+/// look at literals, because a .NET member is a token rather than a name; `--from` takes the
+/// coordinate a previous stream printed.
 #[test]
-fn dotnet_exact_string_refs_match_every_equal_heap_entry_and_original_load_site() {
+fn dotnet_xref_takes_a_token_a_literal_search_or_a_previous_stream() {
+    let path = string_input();
+    let method = method_id(&path, "Unicode");
+    let mismatched = run("xref", &path, &["--at", &method, "--kind", "field"]);
+    assert_eq!(mismatched.status.code(), Some(2));
+    rejected(mismatched);
+    let diagnostic =
+        String::from_utf8_lossy(&run("xref", &path, &["--at", &method, "--kind", "field"]).stderr)
+            .to_string();
+    assert!(
+        diagnostic.contains("is a method token, but --kind field was given"),
+        "{diagnostic}"
+    );
+    let no_names = run("xref", &path, &["-f", "Unicode", "--kind", "method"]);
+    assert_eq!(no_names.status.code(), Some(2));
+    rejected(no_names);
+
+    // A stream is only another spelling of `--at`, so the rows must be identical.
+    let methods = jsonl(&run("methods", &path, &[]));
+    let row = methods
+        .iter()
+        .find(|row| row["at"] == method.as_str())
+        .unwrap();
+    let stream = tempfile::NamedTempFile::new().unwrap();
+    fs::write(stream.path(), format!("{row}\n")).unwrap();
+    let anchored = jsonl(&run("xref", &path, &["--at", &method]));
+    let streamed = jsonl(&run(
+        "xref",
+        &path,
+        &["--from", stream.path().to_str().unwrap()],
+    ));
+    assert_eq!(streamed[1..], anchored[1..]);
+    assert!(streamed[0]["query"]["from"].as_str().is_some());
+}
+
+#[test]
+fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site() {
     let path = string_input();
     let oracle = string_expected();
     for value in ["shared 世界\nλ", "", "🙂世界", "SHARED 世界\nλ", "absent"] {
-        let rows = jsonl(&run("xref", &path, &["--string", value]));
-        assert_eq!(rows, jsonl(&run("xref", &path, &["--string", value])));
-        assert_eq!(rows[0]["query"]["string"], value);
+        let rows = jsonl(&run("xref", &path, &["-f", value, "--kind", "string"]));
+        assert_eq!(
+            rows,
+            jsonl(&run("xref", &path, &["-f", value, "--kind", "string"]))
+        );
+        assert_eq!(rows[0]["query"]["filter"], value);
         let mut expected = Vec::new();
         for entry in oracle["entries"]
             .as_array()
             .unwrap()
             .iter()
-            .filter(|entry| entry["value"] == value)
+            .filter(|entry| {
+                entry["value"]
+                    .as_str()
+                    .is_some_and(|literal| literal.contains(value))
+            })
         {
             for site in entry["uses"].as_array().unwrap() {
                 expected.push((
@@ -194,7 +240,7 @@ fn dotnet_string_token_scan_rejects_damaged_unused_heap_data() {
     fs::write(&path, bytes).unwrap();
     for (command, args) in [
         ("strings", vec!["--filter", "shared"]),
-        ("xref", vec!["--string", "shared 世界\nλ"]),
+        ("xref", vec!["-f", "shared 世界\nλ", "--kind", "string"]),
         ("xref", vec!["--at", "0x70000001"]),
     ] {
         let output = run(command, &path, &args);
@@ -226,7 +272,7 @@ fn dotnet_string_scans_reject_damage_even_when_the_selected_value_is_absent() {
         fs::write(&path, bytes).unwrap();
         for (command, args) in [
             ("strings", vec!["--filter", "absent"]),
-            ("xref", vec!["--string", "absent"]),
+            ("xref", vec!["-f", "absent", "--kind", "string"]),
             ("xref", vec!["--at", "0x70000001"]),
         ] {
             let output = run(command, &path, &args);
@@ -237,7 +283,7 @@ fn dotnet_string_scans_reject_damage_even_when_the_selected_value_is_absent() {
     }
     for args in [
         vec![],
-        vec!["--at", "0x70000001", "--string", "shared"],
+        vec!["--at", "0x70000001", "-f", "shared", "--kind", "string"],
         vec!["--at", "0x70000002"],
         vec!["--at", "0x70000000"],
         vec!["--at", "0x70ffffff"],
@@ -264,7 +310,7 @@ fn dotnet_string_scans_account_cumulative_work_and_fail_atomically_at_cli_limits
     fs::write(&destination, b"previous result").unwrap();
     for (command, query) in [
         ("strings", vec!["--filter", "shared"]),
-        ("xref", vec!["--string", "shared 世界\nλ"]),
+        ("xref", vec!["-f", "shared 世界\nλ", "--kind", "string"]),
         ("xref", vec!["--at", "0x70000001"]),
     ] {
         fs::write(&destination, b"previous result").unwrap();
@@ -371,12 +417,15 @@ fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
             if value.contains('\0') {
                 continue;
             }
-            let by_value = jsonl(&run("xref", &path, &["--string", value]));
+            let by_value = jsonl(&run("xref", &path, &["-f", value, "--kind", "string"]));
             assert_eq!(
                 by_value[0]["detail"]["target"]["target_kind"],
                 "user_string"
             );
-            assert_eq!(&by_value[0]["detail"]["target"]["value"], value);
+            assert_eq!(
+                by_value[0]["detail"]["target"]["filter"].as_str(),
+                Some(value.as_str())
+            );
         }
     }
 }

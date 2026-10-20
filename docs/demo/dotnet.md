@@ -20,6 +20,9 @@ $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --raw
 $rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method Add | $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --from -
 $rxd dotnet strings tests/fixtures/dotnet/Fixture.dll -f hello
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -f hello --kind string
+$rxd dotnet methods tests/fixtures/dotnet/Fixture.dll > target/methods.jsonl
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --from target/methods.jsonl
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --perf
 ```
 
@@ -44,7 +47,7 @@ caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("targe
 owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["detail"]["declaring_type_id"] for r in rows if r["record"]=="string" and r["context_at"]))')
 $rxd dotnet get-method "$fixture" --at "$caller" --raw
 $rxd dotnet get-class "$fixture" --at "$owner" --raw
-$rxd dotnet xref "$fixture" --string $'hello\nlambda'
+$rxd dotnet xref "$fixture" -f $'hello\nlambda' --kind string
 ```
 
 `string.detail.il_offsets` lists every original `ldstr` offset of that heap entry in the
@@ -147,10 +150,11 @@ original bodies/EH.
 ```sh
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x0a000001
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
-$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --string 'hello'
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -f hello --kind string
 ```
 
-String xref match UTF-16 exactly across every equal heap entry and original `ldstr` site.
+`-f ... --kind string` matches every heap entry that *contains* the pattern, and every
+original `ldstr` site of those entries.
 The header names the literal it resolved to rather than `null`:
 
 ```sh

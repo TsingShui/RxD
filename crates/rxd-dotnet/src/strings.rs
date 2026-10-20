@@ -92,18 +92,27 @@ pub(crate) fn uses(input: &Input, contains: Option<&str>) -> Result<StringUses> 
     Ok(StringUses { literals, groups })
 }
 
-pub(crate) fn references(input: &Input, value: &str) -> Result<Vec<StringReference>> {
+/// References to every literal *containing* `pattern`.
+///
+/// The search face is a case-sensitive substring on every backend, so a pattern that is
+/// part of a longer literal still finds the sites that load it.
+pub(crate) fn references(input: &Input, pattern: &str) -> Result<Vec<StringReference>> {
     let Scan {
         literals,
         sites,
         work_used,
     } = scan(input)?;
     let mut work = Work::new(input.limits.work.saturating_sub(work_used));
-    work.charge(value.len())?;
+    work.charge(pattern.len())?;
     work.charge(literals.len())?;
     let tokens: BTreeSet<_> = literals
         .iter()
-        .filter(|literal| literal.value.as_deref() == Some(value))
+        .filter(|literal| {
+            literal
+                .value
+                .as_deref()
+                .is_some_and(|value| value.contains(pattern))
+        })
         .map(|literal| literal.offset)
         .collect();
     let mut matched = Vec::new();

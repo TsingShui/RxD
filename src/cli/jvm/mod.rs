@@ -6,7 +6,7 @@ use rxd_core::{Error, Result};
 use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
-use super::xref::{Anchor, Kind as XrefKind, Target, TargetArgs};
+use super::xref::{Anchor, Expect, Kind as XrefKind, Target, TargetArgs, selector_stream};
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -369,10 +369,19 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
     } = command
     {
         let limits = options.limits();
-        let target = target
-            .resolve()
-            .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?;
         let input = Input::read(&input, limits, options.release)?;
+        let target = match target.selector() {
+            Some(path) => target
+                .resolve_from(selector_stream(
+                    path,
+                    &["method", "field", "type"],
+                    Expect::Content(&input.source_id),
+                )?)
+                .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?,
+            None => target
+                .resolve()
+                .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?,
+        };
         let mut names = Normalized { owned: Vec::new() };
         let query = ref_query(&target, &mut names);
         let hits = rxd_jvm::find_refs(&input, &query, limits)?;

@@ -20,7 +20,7 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-f PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-f … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
-| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref` / `get-method`/`get-class --at`, `--raw` for original IL |
+| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-f … --kind string` or `--from` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref` / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row) or `--name`, `get-code --at`, whole-module `decompile` |
@@ -167,7 +167,9 @@ contain unsupported-method stubs; inspect bytecode when necessary.
 
 ```sh
 rxd dotnet strings library.dll -f Authorization
-rxd dotnet xref library.dll --string Authorization
+rxd dotnet xref library.dll -f Authorization --kind string
+rxd dotnet xref library.dll --at "$METHOD_AT"
+rxd dotnet methods library.dll > target/methods.jsonl && rxd dotnet xref library.dll --from target/methods.jsonl
 rxd dotnet get-method library.dll --at "$METHOD_AT" --raw
 rxd dotnet get-method library.dll --at "$METHOD_AT"
 rxd dotnet get-class library.dll --at "$TYPE_AT" --raw

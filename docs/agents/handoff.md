@@ -66,6 +66,8 @@ exposes `--max-*`.
 - `xref` two faces: `src/cli/xref.rs` (shared surface) + dex/jar projection, `detail.target`
   became a full coordinate, js `--at`/`--byte`, wasm `xref --at func:N`, pyc `xref --at`,
   and the MCP subcommand-selector machinery removed.
+- `--from` for dex/jar, dotnet `--string` folded into `-f … --kind string` (substring), and
+  the dotnet token-table kind inference; `src/cli/xref.rs` also owns the stream reader now.
 
 ## MCP surface (done, merge `a3068e1`)
 
@@ -145,7 +147,21 @@ them by name, which is why the module filter is not used as evidence for those t
    is `src/cli/xref.rs`; dex and jar both project it, and the MCP subcommand-selector
    machinery in `src/query/reflect.rs` was deleted because no command has subcommands any
    more (`dex_xref`/`jar_xref` are one tool each, down from four).
-6. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
+6. **`--from` is the third way to name an anchor.** dex and jar gained it (dotnet already
+   had it), through one shared reader (`src/cli/xref.rs::selector_stream`): the first
+   `method`/`field`/`type`/`string` record carrying an `at` wins, and the stream is checked
+   against the input it is applied to. dotnet and jar compare the content identity
+   (`SOURCE_MISMATCH`); dex compares `input_bytes`, because a DEX header carries no content
+   identity and hashing a 523 MiB archive would break the latency budget. That is a
+   mismatch guard, documented as such, not an identity.
+7. **dotnet `--string` became `-f … --kind string`.** Resolved: the search face is a
+   case-sensitive substring on every backend, so `--string`'s exact-equality semantics was
+   the odd one out and is gone (an empty pattern is "no restriction", as everywhere else).
+   `--at` reads the kind off the token's table (`0x70` string, `0x01/0x02/0x1b` type,
+   `0x04` field, `0x06/0x2b` method, `0x0a` ambiguous) and a contradicting `--kind` is an
+   argument error. `-f` accepts only `--kind string`: .NET member identity is a token, so a
+   name search would be a new capability, and the error says exactly that.
+8. **Fuzzy by default.** Resolved: every `xref` content search is a case-sensitive
    substring, including the member name and `--class` (dex previously compared both
    exactly). `--fuzzy-class` is gone; there is no exact-search mode, because exactness is
    what `--at` is for.

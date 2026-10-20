@@ -113,7 +113,7 @@ fn run_command(
     match command {
         Command::Xref(args) => {
             let target = args.target()?;
-            let query = args.query()?;
+            let query = args.query(&target)?;
             let scan_started = Instant::now();
             let hits = apk::find_reference_hits_with_policy(
                 &args.apk_path,

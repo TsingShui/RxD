@@ -249,6 +249,38 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
     );
 }
 
+/// `--from` is another spelling of `--at`: the same coordinate, the same rows. A stream
+/// from a different archive is refused, because a DEX header carries the input size as its
+/// only evidence of which archive it describes.
+#[test]
+fn dex_xref_takes_its_anchor_from_a_previous_stream() {
+    let dex = const_string_dex(3);
+    let (_dir, path) = fixture(&dex, "input.dex");
+    let methods = query("methods", &path, &[]);
+    success(&methods);
+    let row = dex_records(&methods)[0].clone();
+    let at = row["at"].as_str().unwrap().to_owned();
+    let (stream_dir, stream) = fixture(format!("{row}\n").as_bytes(), "methods.jsonl");
+
+    let anchored = query("xref", &path, &["--at", &at]);
+    success(&anchored);
+    let streamed = query("xref", &path, &["--from", stream.to_str().unwrap()]);
+    success(&streamed);
+    assert_eq!(dex_records(&anchored), dex_records(&streamed));
+
+    // The size in the stream header is checked against this archive.
+    let foreign = format!(
+        "{}\n{}\n",
+        json!({"record":"header","source_id":null,"input_bytes":1,"query":{},"detail":{}}),
+        row
+    );
+    let (_foreign_dir, foreign_path) = fixture(foreign.as_bytes(), "foreign.jsonl");
+    let refused = query("xref", &path, &["--from", foreign_path.to_str().unwrap()]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("describes a 1-byte input"));
+    drop(stream_dir);
+}
+
 #[test]
 fn dex_strings_filter_pagination_and_output_file_keep_identical_bytes() {
     let (dir, path) = fixture(const_string_dex(3), "input.dex");

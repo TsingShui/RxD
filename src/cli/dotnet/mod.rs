@@ -1,10 +1,9 @@
 use std::{
     collections::BTreeMap,
-    io::{self, Read, Write},
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
-use anyhow::Context;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
@@ -38,87 +37,15 @@ impl Selector {
     fn resolve(&self, units: &[&str], source_id: &str) -> anyhow::Result<String> {
         match &self.at {
             Some(at) => Ok(at.clone()),
-            None => read_selector(
+            None => crate::cli::xref::selector_stream(
                 self.from
                     .as_deref()
                     .expect("clap requires exactly one selector"),
                 units,
-                source_id,
+                crate::cli::xref::Expect::Content(source_id),
             ),
         }
     }
-}
-
-/// Bounded read of one JSONL stream: the first record whose `record` is in `units`
-/// and which carries an `at` coordinate wins. A mismatched `source_id` is an error,
-/// never a silent fetch from another input.
-fn read_selector(path: &Path, units: &[&str], source_id: &str) -> anyhow::Result<String> {
-    const LIMIT: u64 = 64 * 1024;
-    let mut text = String::new();
-    if path == Path::new("-") {
-        // The parent reads stdin because the isolated worker has none; a direct
-        // invocation (no worker) falls back to reading it here.
-        match std::env::var("RXD_SELECTOR_STDIN") {
-            Ok(stream) => text = stream,
-            Err(_) => {
-                io::stdin()
-                    .take(LIMIT)
-                    .read_to_string(&mut text)
-                    .context("INVALID_QUERY: cannot read --from stdin")?;
-            }
-        }
-    } else {
-        std::fs::File::open(path)
-            .and_then(|file| file.take(LIMIT).read_to_string(&mut text).map(|_| ()))
-            .with_context(|| format!("INVALID_QUERY: cannot read --from {}", path.display()))?;
-    }
-    // Identity is carried once by the stream header, so a record's own `source_id` is
-    // normally null: the header supplies the binding a unit row is checked against.
-    let mut header_source: Option<String> = None;
-    for line in text.lines() {
-        let Ok(row) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let kind = row
-            .get("record")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if kind == "header" {
-            header_source = row
-                .get("source_id")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            continue;
-        }
-        if !units.contains(&kind) {
-            continue;
-        }
-        let Some(at) = row.get("at").and_then(Value::as_str) else {
-            continue;
-        };
-        let found = row
-            .get("source_id")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| header_source.clone());
-        if let Some(found) = found {
-            anyhow::ensure!(
-                found == source_id,
-                "INVALID_QUERY: --from stream came from a different input (stream {}…, this input {}…); re-run the listing for this file",
-                short_source(&found),
-                short_source(source_id)
-            );
-        }
-        return Ok(at.to_string());
-    }
-    anyhow::bail!(
-        "INVALID_QUERY: --from stream carries no {} record with an `at` coordinate",
-        units.join("/")
-    )
-}
-
-fn short_source(id: &str) -> &str {
-    id.get(..12).unwrap_or(id)
 }
 
 #[derive(Subcommand)]
@@ -198,21 +125,33 @@ pub enum Command {
     /// Find exact/semantic member and type operands or decoded user-string loads.
     Xref {
         input: PathBuf,
-        /// Reference target: the metadata token of a member or type, such as
-        /// `0x0a00001f`; it also covers external members and generic instantiations.
-        #[arg(long, required_unless_present_any = ["string","from"], conflicts_with_all = ["string","from"])]
+        /// Exact target: the metadata token of a member or type, such as `0x0a00001f`; it
+        /// also covers external members, generic instantiations and `#US` string tokens
+        /// (`0x70…`).
+        #[arg(long, value_name = "TOKEN", conflicts_with_all = ["filter", "from"])]
         at: Option<String>,
-        #[arg(long, required_unless_present_any = ["at","from"], conflicts_with_all = ["at","from"])]
-        string: Option<String>,
+        /// Case-sensitive substring of a decoded user-string literal.
+        #[arg(short = 'f', long, value_name = "PATTERN")]
+        filter: Option<String>,
+        /// Target kind: read off the token's table when it names one; required with
+        /// `--filter`, which can only search literals.
+        #[arg(long, value_enum)]
+        kind: Option<Kind>,
         /// Read the target from a previous JSONL stream (a file, or `-` for stdin);
         /// `method`, `field` and `type` records are accepted.
-        #[arg(long, value_name = "JSONL", required_unless_present_any = ["at","string"], conflicts_with_all = ["at","string"])]
+        #[arg(long, value_name = "JSONL", conflicts_with_all = ["at", "filter"])]
         from: Option<PathBuf>,
 
         #[command(flatten)]
         options: Options,
     },
 }
+
+/// Which kind of target a reference query names.
+///
+/// The kind is read off a token's table, so it is only needed where the token cannot say:
+/// a `--filter` content search, and asserting a table that covers two kinds (`MemberRef`).
+type Kind = crate::cli::xref::Kind;
 
 #[derive(Args)]
 pub struct Options {
@@ -324,37 +263,35 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     let query_start = perf.start_stage();
     let mut output = Vec::new();
     let mut records = 0;
-    let mut reference_result = if let Command::Xref {
-        at, string, from, ..
+    // One target, resolved before the scan: the same two faces every backend takes, and a
+    // token is the only thing .NET can match on exactly.
+    let xref_target = if let Command::Xref {
+        at,
+        filter,
+        kind,
+        from,
+        ..
     } = &command
     {
-        anyhow::ensure!(
-            usize::from(at.is_some()) + usize::from(string.is_some()) + usize::from(from.is_some())
-                == 1,
-            "INVALID_QUERY: exactly one reference target is required (`--at`, `--string` or `--from`)"
-        );
-        let at = match (at, from) {
-            (Some(at), _) => Some(at.clone()),
-            (None, Some(path)) => Some(read_selector(
-                path,
-                &["method", "field", "type"],
+        Some(
+            dotnet_target(
+                at.as_deref(),
+                filter.as_deref(),
+                *kind,
+                from.as_deref(),
                 &input.source_id,
-            )?),
-            (None, None) => None,
-        };
-        let target = at.as_deref().map(parse_token).transpose()?;
-        // A user-string token (0x70 table) has no member identity; it takes the
-        // string route.
-        let string_route = string.is_some() || target.is_some_and(|token| token >> 24 == 0x70);
-        if string_route {
-            None
-        } else {
-            Some(perf.measure("references", || {
-                input.references(target.expect("clap requires one target"), true)
-            })?)
-        }
+            )
+            .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?,
+        )
     } else {
         None
+    };
+    let mut reference_result = match xref_target.as_ref() {
+        // A user-string token (0x70 table) has no member identity; it takes the string route.
+        Some(Target::Token { token, .. }) if token >> 24 != 0x70 => {
+            Some(perf.measure("references", || input.references(*token, true))?)
+        }
+        _ => None,
     };
     // The header names the reference target: a member identity, or the `#US` literal
     // when the query went through the string route.
@@ -363,13 +300,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             Some(target) => serde_json::to_value(target)?,
             None => Value::Null,
         },
-        (None, Command::Xref { at, string, .. }) => {
-            if let Some(value) = string {
-                json!({"target_kind": "user_string", "value": value})
-            } else if let Some(token) = at.as_deref().and_then(|value| parse_token(value).ok()) {
+        (None, _) => match xref_target.as_ref() {
+            Some(Target::Literal(pattern)) => {
+                json!({"target_kind": "user_string", "filter": pattern})
+            }
+            Some(Target::Token { token, .. }) => {
                 let mut target =
                     json!({"target_kind": "user_string", "token": format!("0x{token:08x}")});
-                if let Some(record) = user_string(&input, token) {
+                if let Some(record) = user_string(&input, *token) {
                     match (record.value, record.utf16_units) {
                         (Some(text), _) => target["value"] = Value::from(text),
                         (None, Some(units)) => {
@@ -379,11 +317,9 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                     }
                 }
                 target
-            } else {
-                Value::Null
             }
-        }
-        _ => Value::Null,
+            None => Value::Null,
+        },
     };
     if let Command::Get { selector, raw, .. } = &command {
         let at = selector.resolve(&["method"], &input.source_id)?;
@@ -516,8 +452,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             } => json!({"type":type_name,"method":method}),
             Command::Strings { filter, .. } => json!({"filter":filter}),
             Command::Xref {
-                at, string, from, ..
-            } => json!({"at":at,"from":from,"string":string}),
+                at, filter, from, ..
+            } => json!({
+                "kind": xref_target.as_ref().map(Target::kind).map(Kind::as_str),
+                "at": at,
+                "filter": filter,
+                "class": Value::Null,
+                "from": from.as_ref().map(|path| path.display().to_string()),
+            }),
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
         };
         append(
@@ -571,7 +513,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                     )?;
                 }
             }
-            Command::Xref { at, string, .. } => {
+            Command::Xref { .. } => {
                 if let Some(result) = reference_result.take() {
                     for reference in result.references {
                         let value = reference_record(
@@ -583,14 +525,13 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                         record(&mut output, &mut records, options, &value)?;
                     }
                 } else {
-                    let sites = if let Some(value) = string {
-                        perf.measure("strings", || input.string_references(value))?
-                    } else {
-                        let token = at
-                            .as_deref()
-                            .and_then(|value| parse_token(value).ok())
-                            .expect("a `0x70` token routes here only with `--at`");
-                        perf.measure("strings", || input.user_string_references(token))?
+                    let sites = match xref_target.as_ref().expect("resolved for this command") {
+                        Target::Literal(pattern) => {
+                            perf.measure("strings", || input.string_references(pattern))?
+                        }
+                        Target::Token { token, .. } => {
+                            perf.measure("strings", || input.user_string_references(*token))?
+                        }
                     };
                     for site in sites {
                         let value = reference_record(
@@ -1136,6 +1077,88 @@ fn detail(value: Value) -> Map<String, Value> {
 
 /// A dotnet coordinate is the ECMA-335 metadata token itself: eight hex digits,
 /// optional `0x`. A kind prefix is refused with the value to use instead.
+/// The one target a .NET reference query names.
+enum Target {
+    /// A metadata or `#US` token: an identity, matched exactly.
+    Token { token: u32, kind: Kind },
+    /// A case-sensitive substring of a decoded user-string literal.
+    Literal(String),
+}
+
+impl Target {
+    fn kind(&self) -> Kind {
+        match self {
+            Self::Token { kind, .. } => *kind,
+            Self::Literal(_) => Kind::String,
+        }
+    }
+}
+
+/// Resolve the reference target from its two faces.
+///
+/// A token says its own kind through its table, so `--kind` is only an assertion here. That
+/// matters because a token is a per-module row number: `0x0600000b` is a different method in
+/// every assembly, which is why a `--from` stream is checked against this input's identity.
+fn dotnet_target(
+    at: Option<&str>,
+    filter: Option<&str>,
+    kind: Option<Kind>,
+    from: Option<&Path>,
+    source_id: &str,
+) -> anyhow::Result<Target> {
+    let faces =
+        usize::from(at.is_some()) + usize::from(filter.is_some()) + usize::from(from.is_some());
+    anyhow::ensure!(
+        faces == 1,
+        "INVALID_QUERY: exactly one reference target is required (`--at TOKEN`, `-f PATTERN \
+         --kind string`, or `--from JSONL`)"
+    );
+    if let Some(pattern) = filter {
+        anyhow::ensure!(
+            kind == Some(crate::cli::xref::Kind::String),
+            "INVALID_QUERY: a .NET member or type identity is a metadata token, not a name, so \
+             `-f` can only search literals: give `--kind string`, or anchor with `--at TOKEN` / \
+             `--from JSONL`"
+        );
+        return Ok(Target::Literal(pattern.to_owned()));
+    }
+    let coordinate = match (at, from) {
+        (Some(coordinate), _) => coordinate.to_owned(),
+        (None, Some(path)) => crate::cli::xref::selector_stream(
+            path,
+            &["method", "field", "type"],
+            crate::cli::xref::Expect::Content(source_id),
+        )?,
+        (None, None) => unreachable!("checked above"),
+    };
+    let token = parse_token(&coordinate)?;
+    let inferred = token_kind(token);
+    if let (Some(given), Some(inferred)) = (kind, inferred)
+        && given != inferred
+    {
+        anyhow::bail!(
+            "--at {coordinate} is a {} token, but --kind {} was given",
+            inferred.as_str(),
+            given.as_str()
+        );
+    }
+    Ok(Target::Token {
+        token,
+        kind: kind.or(inferred).unwrap_or(Kind::Method),
+    })
+}
+
+/// The kind a token's table names, or `None` where the table covers two (`MemberRef`).
+fn token_kind(token: u32) -> Option<Kind> {
+    match token >> 24 {
+        0x70 => Some(Kind::String),
+        0x01 | 0x02 | 0x1b => Some(Kind::Type),
+        0x04 => Some(Kind::Field),
+        0x06 | 0x2b => Some(Kind::Method),
+        _ => None,
+    }
+}
+
 fn parse_token(value: &str) -> anyhow::Result<u32> {
     if let Some((kind, _)) = value.split_once(':') {
         anyhow::bail!(

@@ -94,8 +94,9 @@ rxd dotnet get-method app.dll --at 0x06000001 --raw
 rxd dotnet get-class app.dll --at 0x02000002 --raw
 rxd dotnet strings app.dll -f 'example'
 rxd dotnet xref app.dll --at 0x0a000001
-rxd dotnet xref app.dll --string 'example'
+rxd dotnet xref app.dll -f example --kind string
 rxd dotnet xref app.dll --at 0x06000001
+rxd dotnet xref app.dll --from target/methods.jsonl
 rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
 ```
 
@@ -184,18 +185,23 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
   and no lossy replacement. Empty strings, NUL and supplementary Unicode are
   preserved. `-f/--filter` matches UTF-16 subsequences (empty needle matches all) with a
   bounded linear algorithm.
-- `xref --string VALUE` matches UTF-16 values exactly and case-sensitively across all
-  equal heap entries and every original `ldstr` site, ordered by method token then IL
-  offset. It is mutually exclusive with `--at`; exactly one target is required.
-  When CLI UTF-8 argv cannot express NUL or isolated surrogates, use the original
-  `token` returned by strings with `xref --at 0x70000001`. String SEARCH/XREF still
-  validates the whole heap and readable methods even with zero hits; corrupt/resource
-  failures never become a complete zero result.
-- `xref` takes exactly one target: `--at` (the metadata token of a member or type,
-  which also covers external `MemberRef`, `TypeSpec` and `MethodSpec` targets),
-  `--string` (a `#US` literal, a different kind of target), or `--from` (read the
-  target from a previous stream). Two flags cover targets and one covers delivery;
-  there is no separate `--token` flag, because a token is the coordinate. There is one matching algorithm:
+- `xref -f/--filter PATTERN --kind string` matches UTF-16 values containing the pattern,
+  case-sensitively, across every heap entry and its original `ldstr` sites, ordered by
+  method token then IL offset. The search face is a substring on every backend, so a
+  pattern inside a longer literal still finds its load sites. When CLI UTF-8 argv cannot
+  express NUL or isolated surrogates, use the original `token` returned by strings with
+  `xref --at 0x70000001`. String SEARCH/XREF still validates the whole heap and readable
+  methods even with zero hits; corrupt/resource failures never become a complete zero
+  result.
+- `xref` takes exactly one target: `--at` (the metadata token of a member or type, which
+  also covers external `MemberRef`, `TypeSpec`, `MethodSpec` and `#US` targets), `-f
+  PATTERN --kind KIND` (a content search), or `--from` (read the target from a previous
+  stream). A token says its own kind through its table (`0x70` string, `0x01/0x02/0x1b`
+  type, `0x04` field, `0x06/0x2b` method; `0x0a` covers both member kinds, so it asserts
+  nothing), and a contradicting `--kind` is an argument error naming both kinds.
+  `-f` accepts only `--kind string`: a .NET member or type identity is a token, not a
+  name, so a name search is a different capability rather than a spelling of this one,
+  and the error says so. There is one matching algorithm:
   operands are resolved to provable member/type identity, so a `MethodDef` token also
   matches its `MemberRef` and `MethodSpec` spellings instead of requiring the identical
   operand. There is no token-equality mode and no mode flag. A user-string token

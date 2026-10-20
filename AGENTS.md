@@ -207,6 +207,9 @@ kind, so `--kind` is only needed to read `--at` as a literal. `-f/--filter` sear
 (case-sensitive substring), which cannot say what kind it looks for, so it requires `--kind`.
 A coordinate that no table carries is `NOT_FOUND`, never an empty result; a `--kind` that
 contradicts the coordinate is an argument error naming both kinds, never an empty result.
+`--from JSONL` is the third way to name that anchor: the same coordinate, read from a
+previous stream's first unit record instead of typed, with the stream's identity checked
+against the input it is applied to.
 
 Original instructions versus reconstructed source is one flag, `--raw`, on every
 backend that can emit both; `--bytecode`, `--il` and future spellings are not separate

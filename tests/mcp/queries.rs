@@ -1046,7 +1046,7 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
         ("dotnet_fields", json!({"filter":"Count"})),
         ("dotnet_strings", json!({"filter":""})),
         ("dotnet_xref", json!({"at":method["at"]})),
-        ("dotnet_xref", json!({"string":"missing"})),
+        ("dotnet_xref", json!({"filter":"missing","kind":"string"})),
         ("dotnet_get_method", json!({"at":method["at"],"raw":true})),
         ("dotnet_get_class", json!({"at":declaring_type,"raw":true})),
     ] {

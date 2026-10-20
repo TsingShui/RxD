@@ -684,6 +684,41 @@ fn jvm_strings_lists_class_constant_literals_with_navigation_identity() {
     assert_eq!(absent.last().unwrap()["complete"], true);
 }
 
+/// `--from` is another spelling of `--at`, and the stream's content identity must be this
+/// archive's: a coordinate from another input is refused rather than resolved.
+#[test]
+fn jvm_xref_takes_its_anchor_from_a_previous_stream() {
+    let path = input("flow-deflated.jar");
+    let methods = jvm_jsonl(&run(&["methods"], &path));
+    let row = methods
+        .iter()
+        .find(|row| row["record"] == "method")
+        .unwrap()
+        .clone();
+    let at = row["at"].as_str().unwrap().to_owned();
+    let dir = tempfile::tempdir().unwrap();
+    let stream = dir.path().join("methods.jsonl");
+    fs::write(&stream, format!("{row}\n")).unwrap();
+
+    let anchored = jvm_jsonl(&run(&["xref", "--at", &at], &path));
+    let streamed = jvm_jsonl(&run(&["xref", "--from", stream.to_str().unwrap()], &path));
+    assert_eq!(streamed[1..], anchored[1..]);
+
+    let foreign = dir.path().join("foreign.jsonl");
+    fs::write(
+        &foreign,
+        format!(
+            "{}\n{}\n",
+            serde_json::json!({"record":"header","source_id":"0".repeat(64),"input_bytes":1,"query":{},"detail":{}}),
+            row
+        ),
+    )
+    .unwrap();
+    let refused = run(&["xref", "--from", foreign.to_str().unwrap()], &path);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("came from a different input"));
+}
+
 #[test]
 fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     let path = input("flow-deflated.jar");
