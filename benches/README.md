@@ -167,7 +167,7 @@ Default output is ignored `target/benchmarks/latest/`:
 - `synthetic-*.js`: replayable inputs.
 
 Headline latency includes real serialization and temporary-file output with
-`--perf/--debug` off. Phase diagnostics are sampled separately and never pooled with
+`--perf` off. Phase diagnostics are sampled separately and never pooled with
 headline samples. `--binary PATH` skips the build and marks the report `custom`; the
 caller must verify provenance. Preparation, input generation, result checks, hashing and
 report generation are outside single-command wall time; full workflows include routing
@@ -188,7 +188,7 @@ target/release/rxd js find tests/fixtures/example.js --string '/api/login' \
 
 `--perf` writes two JSONL records to stderr, `scope: analysis` and `scope: cli`, with
 independent `perf_version: 1`. It never changes query stdout, schema, ordering or exit
-code and can combine with `--debug`. Ordinary errors also emit perf; abnormal process
+code and are the only timing channel. Ordinary errors also emit perf; abnormal process
 termination may leave only the CLI record; argument-parse failures and help/version emit
 none.
 

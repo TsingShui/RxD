@@ -61,7 +61,7 @@ existing `-o` file.
 All PYC commands share `-o` input identity protection: reject absolute/relative and `..`
 paths, symlinked parent directories and inputs that resolve to the same file; Unix also
 compares device/inode for hard links and case aliases, returning `INVALID_QUERY`.
-Different targets use atomic replacement. `--perf`/`--debug` write only to stderr.
+Different targets use atomic replacement. `--perf` writes only to stderr.
 Isolated workers are not OS sandboxes.
 
 `decompile` takes its work and AST-depth ceilings from the shared `Budget`/core limits;
@@ -207,7 +207,7 @@ reference expansion 1,000,000, copy 128 MiB and long squared work 16,777,216 rem
 
 `-o` atomically writes the same complete response and does not repeat stdout. Any input/
 budget/query error has no partial result and leaves an existing output. Diagnostics/
-`--debug`/`--perf` go to stderr. `resource_limits` echoes the five effective budgets;
+`--perf` goes to stderr. `resource_limits` echoes the five effective budgets;
 counters.entities/work/records are actual; ast_depth null; stages read/hash/parse/visit/
 query/serialize/write. Decompile keeps decompile/generate; new nullable perf fields are
 null. Worker isolation is not an OS sandbox; no analyzed code executes.

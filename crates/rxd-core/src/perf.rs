@@ -49,6 +49,9 @@ pub struct Perf {
     pub counters: Counters,
     pub limits: Option<Limits>,
     pub resource_limits: Option<BTreeMap<&'static str, usize>>,
+    /// Backend counters with no shared meaning (DEX entry counts, string totals, ...).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<&'static str, usize>,
     stages_ns: BTreeMap<&'static str, u64>,
     total_ns: u64,
     peak_rss_bytes: Option<u64>,
@@ -90,6 +93,7 @@ impl Perf {
             counters: Counters::default(),
             limits: None,
             resource_limits: None,
+            extra: BTreeMap::new(),
             stages_ns: if enabled {
                 stages.iter().map(|&s| (s, 0)).collect()
             } else {
@@ -197,22 +201,20 @@ impl Perf {
         let _ = stderr.write_all(b"\n");
     }
 
-    pub fn debug_analysis(&self) {
-        let stage = |s| self.stages_ns.get(s).copied().unwrap_or_default();
-        eprintln!(
-            "debug: read_hash={}ns parse={}ns visit={}ns query={}ns serialize={}ns write={}ns total={}ns",
-            stage("read") + stage("hash") + stage("utf8"),
-            stage("parse"),
-            stage("visit"),
-            stage("query"),
-            stage("serialize"),
-            stage("write"),
-            self.total_ns
-        );
+    /// Record a stage a backend already timed itself, without wrapping it in a closure.
+    pub fn stage_ns(&mut self, stage: &'static str, nanos: u64) {
+        if !self.enabled() {
+            return;
+        }
+        *self.stages_ns.entry(stage).or_insert(0) += nanos;
     }
 
-    pub fn debug_cli(&self) {
-        eprintln!("debug: worker_end_to_end={}ns", self.total_ns);
+    /// Record a backend-specific counter.
+    pub fn extra(&mut self, name: &'static str, units: usize) {
+        if !self.enabled() {
+            return;
+        }
+        *self.extra.entry(name).or_insert(0) += units;
     }
 }
 

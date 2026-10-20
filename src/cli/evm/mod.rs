@@ -134,8 +134,6 @@ pub struct Options {
     output: Option<PathBuf>,
     #[arg(long)]
     perf: bool,
-    #[arg(long)]
-    debug: bool,
     // Every ceiling comes from rxd_core::Budget; no CLI flag exposes one.
 }
 
@@ -201,20 +199,11 @@ impl Command {
     pub fn perf(&self) -> bool {
         self.options().perf
     }
-
-    pub fn debug(&self) -> bool {
-        self.options().debug
-    }
 }
 
 pub fn execute(command: Command) -> Result<()> {
     let options = command.options();
-    let mut perf = Perf::new(
-        options.perf || options.debug,
-        "analysis",
-        "evm",
-        command.name(),
-    );
+    let mut perf = Perf::new(options.perf, "analysis", "evm", command.name());
     // One budget table for every backend; the CLI exposes no knob for it.
     let budget = Budget::default();
     let limits = Limits::from_budget(budget);
@@ -362,5 +351,5 @@ pub fn execute(command: Command) -> Result<()> {
             super::write_output(&bytes, options.output.as_deref())
         })
     })();
-    super::finish(perf, options.perf, options.debug, result)
+    super::finish(perf, options.perf, result)
 }

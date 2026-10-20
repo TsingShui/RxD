@@ -64,11 +64,6 @@ impl Command {
             Self::Extract { .. } => "extract",
         }
     }
-    pub(crate) fn debug(&self) -> bool {
-        match self {
-            Self::Entries { common, .. } | Self::Extract { common, .. } => common.debug,
-        }
-    }
     pub(crate) fn perf(&self) -> bool {
         match self {
             Self::Entries { common, .. } | Self::Extract { common, .. } => common.perf,

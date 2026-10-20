@@ -3654,14 +3654,17 @@ fn output_files_match_stdout_and_keep_previous_contents_on_failure() {
 }
 
 #[test]
-fn output_order_is_deterministic_and_debug_stays_on_stderr() {
+fn output_order_is_deterministic_and_perf_stays_on_stderr() {
     let plain = invoke("entities", &example(), &[]);
-    let debug = invoke("entities", &example(), &["--debug"]);
+    let profiled = invoke("entities", &example(), &["--perf"]);
     success(&plain);
-    success(&debug);
-    assert_eq!(plain.stdout, debug.stdout);
-    assert!(String::from_utf8_lossy(&debug.stderr).contains("read_hash="));
-    assert!(String::from_utf8_lossy(&debug.stderr).contains("worker_end_to_end="));
+    success(&profiled);
+    assert_eq!(plain.stdout, profiled.stdout);
+    let reports = perf_reports(&profiled);
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["scope"], "analysis");
+    assert_eq!(reports[1]["scope"], "cli");
+    assert!(reports[1]["stages_ns"]["spawn_wait"].as_u64().is_some());
 }
 
 #[test]
@@ -3845,13 +3848,13 @@ fn perf_reports_failed_stages_without_partial_stdout() {
 }
 
 #[test]
-fn perf_tracks_file_writes_and_can_coexist_with_debug() {
+fn perf_tracks_file_writes() {
     let dir = tempfile::tempdir().unwrap();
     let destination = dir.path().join("result.jsonl");
     let output = invoke(
         "entities",
         &example(),
-        &["-o", destination.to_str().unwrap(), "--perf", "--debug"],
+        &["-o", destination.to_str().unwrap(), "--perf"],
     );
     success(&output);
     assert!(output.stdout.is_empty());
@@ -3863,8 +3866,10 @@ fn perf_tracks_file_writes_and_can_coexist_with_debug() {
     );
     assert_eq!(reports[1]["counters"]["output_bytes"], 0);
     assert!(reports[0]["stages_ns"]["write"].as_u64().unwrap() > 0);
-    assert!(String::from_utf8_lossy(&output.stderr).contains("read_hash="));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("worker_end_to_end="));
+    // stderr carries the records and nothing else: one analysis report per backend stage,
+    // one parent-process report.
+    assert!(reports.iter().all(|report| report["record"] == "perf"));
+    assert!(reports[1]["stages_ns"]["spawn_wait"].as_u64().is_some());
 }
 
 #[test]

@@ -11,7 +11,6 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let common = command.common();
     let input = common.input.clone();
     let destination = common.output.clone();
-    let debug = common.debug;
     let emit_perf = common.perf;
     let mode = match common.source_type {
         Mode::Auto => SourceMode::Auto,
@@ -35,7 +34,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
         semantic_nodes: budget.semantic_nodes,
     };
     let scan = command.scan().map(|s| (s.recursive, s.threads));
-    let mut perf = Perf::new(debug || emit_perf, "analysis", "js", command.name());
+    let mut perf = Perf::new(emit_perf, "analysis", "js", command.name());
     perf.limits = Some(limits);
     let query = command.into_query();
     let result = (|| {
@@ -59,5 +58,5 @@ pub(super) fn execute(command: Command) -> Result<()> {
         };
         perf.measure("write", || write_output(&bytes, destination.as_deref()))
     })();
-    finish(perf, emit_perf, debug, result)
+    finish(perf, emit_perf, result)
 }

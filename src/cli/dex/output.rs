@@ -14,7 +14,7 @@ fn payload_writer() -> impl Write {
 /// as well.
 ///
 /// Diagnostics deliberately do not travel through here: they go to stderr, so a
-/// redirected payload can never pick up `--debug` lines, and the file always
+/// redirected payload can never pick up the `--perf` record, and the file always
 /// receives exactly the bytes stdout received.
 pub(super) fn emit(payload: &str, output: Option<&Path>) -> Result<()> {
     if let Some(path) = output {

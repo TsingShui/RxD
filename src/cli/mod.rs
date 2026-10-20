@@ -173,33 +173,6 @@ impl Cli {
             _ => false,
         }
     }
-    pub fn debug(&self) -> bool {
-        match &self.backend {
-            #[cfg(feature = "mcp")]
-            Backend::Mcp { .. } => false,
-            Backend::Skill { .. } => false,
-            #[cfg(feature = "backend-kuna")]
-            Backend::Kuna { .. } => false,
-            #[cfg(feature = "backend-dotnet")]
-            Backend::Dotnet { command } => command.debug(),
-            #[cfg(feature = "backend-js")]
-            Backend::Js { command } => command.debug(),
-            #[cfg(feature = "backend-asar")]
-            Backend::Asar { command } => command.debug(),
-            #[cfg(feature = "backend-html")]
-            Backend::Html { command } => command.debug(),
-            #[cfg(feature = "backend-dex")]
-            Backend::Dex { .. } => false,
-            #[cfg(feature = "backend-jvm")]
-            Backend::Jvm { .. } => false,
-            #[cfg(feature = "backend-wasm")]
-            Backend::Wasm { command } => command.debug(),
-            #[cfg(feature = "backend-evm")]
-            Backend::Evm { command } => command.debug(),
-            #[cfg(feature = "backend-pyc")]
-            Backend::Pyc { command } => command.debug(),
-        }
-    }
     pub fn perf(&self) -> bool {
         match &self.backend {
             #[cfg(feature = "mcp")]
@@ -379,13 +352,10 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     feature = "backend-wasm",
     feature = "backend-pyc"
 ))]
-fn finish(mut perf: Perf, emit_perf: bool, debug: bool, result: Result<()>) -> Result<()> {
+fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     perf.finish(result.as_ref().err().map(|error| error.code));
     if emit_perf {
         perf.emit();
-    }
-    if debug {
-        perf.debug_analysis();
     }
     result
 }

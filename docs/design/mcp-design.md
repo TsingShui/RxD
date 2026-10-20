@@ -134,7 +134,7 @@ runtime (`src/query/reflect.rs`), so a renamed or added flag cannot leave one su
 behind. The names are the shared CLI vocabulary: `entities`, `functions`, `classes`,
 `methods`, `fields`, `entries`, `types`, `codes`, `blocks`, `interface`. Only three
 things are MCP-specific: the path positional becomes `input` (`inputs` for `--apk` list
-commands), `-o/--output` becomes the artifact channel, and `--perf`/`--debug` are
+commands), `-o/--output` becomes the artifact channel, and `--perf` is
 hidden. Every other flag appears verbatim with its help text as the property
 description: a row selector is `at`, a substring filter is `filter`, original bytes are
 `raw`, `dotnet_xref` takes `at`/`from`/`string`, and `dex_xref`/`jar_xref` take `kind`

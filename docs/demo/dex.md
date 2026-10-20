@@ -32,7 +32,7 @@ target/release/rxd skill install --dir target/skills
 The second writes `target/skills/rxd/SKILL.md`; see the
 [installation guide](../../README.md#-installation) for user Agent directories.
 
-`-o` writes the same bytes while still emitting stdout; diagnostics and `--debug` go to
+`-o` writes the same bytes while still emitting stdout; the `--perf` record goes to
 stderr. Multi-input index commands may repeat `--apk` or supply multiple files. Method
 indices, field_ids and field slots use the actual input's indices. Exit 3 means no index
 

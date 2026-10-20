@@ -118,6 +118,9 @@ pub struct Options {
     release: u16,
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
+    /// Emit the analysis perf record as JSONL on stderr.
+    #[arg(long)]
+    perf: bool,
 }
 
 /// The budgets every JVM analysis runs under.
@@ -248,6 +251,20 @@ fn ref_query<'a>(target: &'a Target, names: &'a mut Normalized) -> rxd_jvm::RefQ
 }
 
 impl Command {
+    /// Whether this invocation asked for the perf sidecar.
+    pub fn perf(&self) -> bool {
+        match self {
+            Self::Classes { options, .. }
+            | Self::Entries { options, .. }
+            | Self::Fields { options, .. }
+            | Self::Methods { options, .. }
+            | Self::Strings { options, .. }
+            | Self::Xref { options, .. }
+            | Self::Get { options, .. }
+            | Self::GetClass { options, .. } => options.perf,
+        }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Self::Classes { .. } => "classes",
@@ -263,7 +280,14 @@ impl Command {
 }
 
 pub fn execute(command: Command) -> Result<()> {
-    let result = execute_inner(command);
+    let emit_perf = command.perf();
+    let name = command.name();
+    let mut perf = rxd_core::perf::Perf::new(emit_perf, "analysis", "jvm", name);
+    let result = perf.measure("query", || execute_inner(command));
+    perf.finish(result.as_ref().err().map(|_| "IO_ERROR"));
+    if emit_perf {
+        perf.emit();
+    }
     result.map_err(|error| {
         let message = format!("{error:#}");
         let code = [

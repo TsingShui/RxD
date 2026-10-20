@@ -163,35 +163,30 @@ pub fn count(counter: Counter, units: u64) {
     profile().counters[counter.slot()].fetch_add(units, Ordering::Relaxed);
 }
 
-/// Emit the stage/counter report, one deterministic line per category.
-pub fn report(command: &str, wall: Duration) {
+/// One stage or counter total: its declared label and its accumulated value.
+type Totals = Vec<(&'static str, u64)>;
+
+/// The stage and counter totals this process has accumulated.
+///
+/// The CLI folds these into the shared perf record, so a DEX query reports the same JSONL
+/// sidecar as every other backend instead of its own text lines.
+pub fn values() -> (Totals, Totals) {
     if !enabled() {
-        return;
+        return (Vec::new(), Vec::new());
     }
     let profile = profile();
-    let stages: Vec<String> = STAGES
+    let stages = STAGES
         .iter()
-        .map(|(label, stage)| {
-            let nanos = profile.stages[stage.slot()].load(Ordering::Relaxed);
-            format!("{label}={:.3} ms", nanos as f64 / 1e6)
-        })
+        .map(|(label, stage)| (*label, profile.stages[stage.slot()].load(Ordering::Relaxed)))
         .collect();
-    let counters: Vec<String> = COUNTERS
+    let counters = COUNTERS
         .iter()
         .map(|(label, counter)| {
-            format!(
-                "{label}={}",
-                profile.counters[counter.slot()].load(Ordering::Relaxed)
+            (
+                *label,
+                profile.counters[counter.slot()].load(Ordering::Relaxed),
             )
         })
         .collect();
-    crate::diag::diagnose(format_args!("[dex] {command} stages {}", stages.join(" ")));
-    crate::diag::diagnose(format_args!(
-        "[dex] {command} counters {}",
-        counters.join(" ")
-    ));
-    crate::diag::diagnose(format_args!(
-        "[dex] {command} wall {:.3} ms",
-        wall.as_secs_f64() * 1e3
-    ));
+    (stages, counters)
 }

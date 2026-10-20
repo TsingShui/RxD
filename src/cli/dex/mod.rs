@@ -1,7 +1,7 @@
 //! CLI entry point: argument parsing, dispatch, output.
 //!
 //! stdout carries a command's payload and nothing else: every diagnostic,
-//! including `--debug` timing, goes to stderr, so redirecting a result can never
+//! including the `--perf` record, goes to stderr, so redirecting a result can never
 //! capture debug lines. An `-o` file receives exactly the bytes stdout received.
 
 mod args;
@@ -36,14 +36,17 @@ fn archive_policy(value: Option<&str>) -> apk::ArchivePolicy {
 }
 pub(super) fn execute(command: Command) -> i32 {
     restore_default_sigpipe();
-    match run_command(command, archive_policy_from_env(), Instant::now()) {
+    let (perf_on, name) = (command.perf(), command.name());
+    let code = match run_command(command, archive_policy_from_env(), Instant::now()) {
         Ok(code) => code,
         Err(error) if is_broken_pipe(&error) => 0,
         Err(error) => {
             eprintln!("Error: {error:#}");
             1
         }
-    }
+    };
+    emit_perf(perf_on, name);
+    code
 }
 
 /// Execute in an isolated MCP worker, preserving domain errors for the typed adapter.
@@ -93,20 +96,45 @@ fn restore_default_sigpipe() {
 #[cfg(not(unix))]
 fn restore_default_sigpipe() {}
 
-/// This is the only place the CLI reports timing, so `--debug` reads the same
-/// for every subcommand.
-fn debug_timing(command: &'static str, started: Instant) {
-    rxd_dex::profile::report(command, started.elapsed());
+/// Emit the shared perf record under `--perf`.
+///
+/// A DEX archive has no content hash to report (hashing 523 MiB would cost more than the
+/// query), so `source_id` stays null and the archive counts ride in `extra`.
+fn emit_perf(perf_on: bool, command: &'static str) {
+    if !perf_on {
+        return;
+    }
+    let mut perf = rxd_core::perf::Perf::new(true, "analysis", "dex", command);
+    let (stages, counters) = rxd_dex::profile::values();
+    for (stage, nanos) in stages {
+        perf.stage_ns(stage, nanos);
+    }
+    let counter = |name: &str| {
+        counters
+            .iter()
+            .find(|(label, _)| *label == name)
+            .map(|(_, value)| *value as usize)
+    };
+    perf.counters.input_bytes = counter("bytes");
+    perf.counters.entities = counter("classes");
+    perf.counters.work = counter("code_items");
+    perf.counters.matches = counter("hits");
+    for name in ["entries", "dex", "classes", "code_items", "hits", "strings"] {
+        if let Some(value) = counter(name) {
+            perf.extra(name, value);
+        }
+    }
+    perf.finish(None);
+    perf.emit();
 }
 
 /// Runs the parsed command.
 fn run_command(
     command: Command,
     archive_policy: apk::ArchivePolicy,
-    started: Instant,
+    _started: Instant,
 ) -> Result<i32> {
-    rxd_dex::profile::enable(command.debug());
-    let command_name = command.name();
+    rxd_dex::profile::enable(command.perf());
     // Only a member lookup has a verdict of its own (one hit, none, several); every
     // other command either produced its payload or failed.
     let status = 0;
@@ -120,7 +148,7 @@ fn run_command(
                 archive_policy,
                 &query,
                 args.threads,
-                args.debug,
+                args.perf,
             )?;
             let scanned = scan_started.elapsed();
             // The comparator is the string order, so an unstable sort produces exactly the
@@ -139,7 +167,7 @@ fn run_command(
                 push_reference(&mut payload, &hit.dex_name, &hit.member, &hit.matched)?;
             }
             finish_stream(&mut payload, hits.len())?;
-            if args.debug {
+            if args.perf {
                 rxd_dex::diag::diagnose(format_args!(
                     "[xref] rows={} scan={:.2} ms sort={:.2} ms assemble={:.2} ms payload={} MiB",
                     payload.lines().count(),
@@ -161,7 +189,7 @@ fn run_command(
                 &args.apk_path,
                 archive_policy,
                 args.threads,
-                args.debug,
+                args.perf,
             )?;
             #[cfg(feature = "mcp")]
             if crate::query::is_capturing() {
@@ -217,7 +245,7 @@ fn run_command(
                     .chain(std::iter::once(summary)),
                 args.output.as_deref(),
             )?;
-            if args.debug {
+            if args.perf {
                 // The window now covers rendering and writing, not rendering alone.
                 rxd_dex::diag::diagnose(format_args!(
                     "[classes] render={:.2} ms payload={} MiB (list {:.2} ms)",
@@ -236,7 +264,7 @@ fn run_command(
                 &args.apk_path,
                 archive_policy,
                 args.threads,
-                args.debug,
+                args.perf,
                 filter.as_ref(),
                 args.limit,
                 args.offset,
@@ -273,7 +301,7 @@ fn run_command(
                 &name,
                 &prototype,
                 args.threads,
-                args.debug,
+                args.perf,
             )?;
             emit(&source, args.output.as_deref())?;
         }
@@ -288,7 +316,7 @@ fn run_command(
                 archive_policy,
                 &selector,
                 args.threads,
-                args.debug,
+                args.perf,
             )?;
             let header = stream_header(
                 "fields",
@@ -315,7 +343,7 @@ fn run_command(
                 archive_policy,
                 &selector,
                 args.threads,
-                args.debug,
+                args.perf,
             )?;
             let header = stream_header(
                 "methods",
@@ -390,12 +418,12 @@ fn run_command(
                     archive_policy,
                     &class_name,
                     args.threads,
-                    args.debug,
+                    args.perf,
                 )?;
                 let Some((dex_name, source)) = hit else {
                     bail!("Class {class_name} not found in APK.");
                 };
-                if args.debug {
+                if args.perf {
                     rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));
                     rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
                 }
@@ -406,7 +434,6 @@ fn run_command(
             }
         }
     }
-    debug_timing(command_name, started);
     Ok(status)
 }
 

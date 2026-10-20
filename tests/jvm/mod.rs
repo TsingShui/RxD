@@ -810,11 +810,12 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         .filter(|v| v["record"] == "reference")
         .collect();
     assert!(!field_refs.is_empty());
+    // `-f` is a case-insensitive substring, so the match may sit inside a longer name
+    // (`builderFactories`); the field part is what the query named.
     assert!(field_refs.iter().all(|v| {
-        v["detail"]["target"]
-            .as_str()
-            .unwrap()
-            .contains("->factories:")
+        let target = v["detail"]["target"].as_str().unwrap().to_lowercase();
+        let field = target.rsplit("->").next().unwrap_or_default();
+        field.contains("factories:")
     }));
 
     // No match is a clean, complete empty result.

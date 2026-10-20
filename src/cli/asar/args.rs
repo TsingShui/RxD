@@ -55,9 +55,6 @@ impl Command {
 }
 
 impl Command {
-    pub(crate) fn debug(&self) -> bool {
-        self.common().debug
-    }
     pub(crate) fn perf(&self) -> bool {
         self.common().perf
     }

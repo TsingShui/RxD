@@ -38,9 +38,6 @@ pub(crate) struct Common {
     /// Atomically replace this output file after a successful query.
     #[arg(short, long)]
     pub(super) output: Option<PathBuf>,
-    /// Print stage timings to stderr.
-    #[arg(long)]
-    pub(super) debug: bool,
     /// Emit versioned phase timings and counters as JSONL on stderr.
     #[arg(long)]
     pub(super) perf: bool,
@@ -334,9 +331,6 @@ impl Command {
 }
 
 impl Command {
-    pub(crate) fn debug(&self) -> bool {
-        self.common().debug
-    }
     pub(crate) fn perf(&self) -> bool {
         self.common().perf
     }

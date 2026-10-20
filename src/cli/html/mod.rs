@@ -19,10 +19,9 @@ pub(super) fn execute(command: Command) -> Result<()> {
         ast_depth: 512,
         ..Limits::default()
     };
-    let mut perf = Perf::new(common.debug || common.perf, "analysis", "html", name);
+    let mut perf = Perf::new(common.perf, "analysis", "html", name);
     perf.limits = Some(limits);
     let emit_perf = common.perf;
-    let debug = common.debug;
     let result = (|| match command {
         Command::Entries {
             common,
@@ -70,5 +69,5 @@ pub(super) fn execute(command: Command) -> Result<()> {
             })
         }
     })();
-    finish(perf, emit_perf, debug, result)
+    finish(perf, emit_perf, result)
 }

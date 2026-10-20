@@ -38,7 +38,7 @@ and binwalk integration are planned, not available commands.
 
 ## Consume results and preserve identity
 
-- stdout contains payload; diagnostics and supported `--perf`/`--debug` output
+- stdout contains payload; diagnostics and the `--perf` record
   use stderr. Do not mix them. JSONL lists/searches/references have header →
   records → summary. Require successful exit and `summary.complete: true`; JS
   directory scans also have per-file summaries and a final `scan_summary`

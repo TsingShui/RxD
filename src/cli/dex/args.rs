@@ -46,9 +46,9 @@ pub struct GetMethodArgs {
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
 }
 
 #[derive(Debug, Args)]
@@ -66,9 +66,9 @@ pub struct FieldsArgs {
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
 }
 
 #[derive(Debug, Args)]
@@ -86,9 +86,9 @@ pub struct MethodsArgs {
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
 }
 
 #[derive(Debug, Args)]
@@ -102,9 +102,9 @@ pub struct ClassesArgs {
     pub case: CaseArgs,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
     pub apk_path: PathBuf,
 }
 
@@ -134,9 +134,9 @@ pub struct MemberByIndexArgs {
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
 }
 
 #[derive(Debug, Args)]
@@ -157,9 +157,9 @@ pub struct StringsArgs {
     pub threads: usize,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
     pub apk_path: PathBuf,
 }
 
@@ -172,9 +172,9 @@ pub struct EntriesArgs {
     pub case: CaseArgs,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
     pub apk_path: PathBuf,
 }
 
@@ -182,9 +182,9 @@ pub struct EntriesArgs {
 pub struct ManifestArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
     pub apk_path: PathBuf,
 }
 
@@ -193,8 +193,9 @@ pub struct GetClassArgs {
     /// `Lx/y;` or `x.y`: the `at` a `classes` row prints.
     #[arg(long)]
     pub at: String,
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
     #[arg(short, long)]
@@ -204,9 +205,9 @@ pub struct GetClassArgs {
 
 #[derive(Debug, Args)]
 pub struct XrefArgs {
-    /// Print phase timings on stderr.
+    /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
-    pub debug: bool,
+    pub perf: bool,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
     #[command(flatten)]
@@ -327,18 +328,18 @@ fn type_coordinate(coordinate: &str) -> String {
 }
 
 impl Command {
-    /// Whether this invocation asked for `--debug` diagnostics.
-    pub(crate) fn debug(&self) -> bool {
+    /// Whether this invocation asked for the perf record.
+    pub(crate) fn perf(&self) -> bool {
         match self {
-            Self::Getclass(args) => args.debug,
-            Self::Entries(args) => args.debug,
-            Self::Strings(args) => args.debug,
-            Self::Xref(args) => args.debug,
-            Self::Manifest(args) => args.debug,
-            Self::Classes(args) => args.debug,
-            Self::Methods(args) => args.debug,
-            Self::Fields(args) => args.debug,
-            Self::GetMethod(args) => args.debug,
+            Self::Getclass(args) => args.perf,
+            Self::Entries(args) => args.perf,
+            Self::Strings(args) => args.perf,
+            Self::Xref(args) => args.perf,
+            Self::Manifest(args) => args.perf,
+            Self::Classes(args) => args.perf,
+            Self::Methods(args) => args.perf,
+            Self::Fields(args) => args.perf,
+            Self::GetMethod(args) => args.perf,
         }
     }
 

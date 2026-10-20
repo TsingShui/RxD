@@ -104,7 +104,20 @@ fn proof_sites(path: &Path, tokens: &[u32]) -> Vec<Value> {
         .collect()
 }
 fn assert_proof_sites(rows: &[Value], expected: &[Value]) {
-    let actual: Vec<_> = rows[1..rows.len()-1].iter().map(|row| serde_json::json!({"method_token":row["context_at"],"il_offset":row["detail"]["il_offset"],"opcode":row["detail"]["opcode"],"target_token":row["detail"]["target_token"]})).collect();
+    // The caller is `context_at` now; normalize both sides to the numeric token the oracle
+    // stores so the comparison stays about identity, not spelling.
+    let actual: Vec<_> = rows[1..rows.len() - 1]
+        .iter()
+        .map(|row| {
+            let caller = row["context_at"].as_str().unwrap();
+            serde_json::json!({
+                "method_token": u64::from_str_radix(caller.trim_start_matches("0x"), 16).unwrap(),
+                "il_offset": row["detail"]["il_offset"],
+                "opcode": row["detail"]["opcode"],
+                "target_token": row["detail"]["target_token"],
+            })
+        })
+        .collect();
     assert_eq!(actual, expected);
     assert_eq!(rows[0]["schema_version"], 2);
     assert_eq!(rows.last().unwrap()["records"], expected.len());
@@ -171,7 +184,12 @@ fn dotnet_field_refs_keep_signature_owner_instantiations_and_external_scopes_dis
             assert!(row["detail"]["signature"].is_null());
             assert!(!row["detail"]["type_signature"].is_null());
             if status != "resolved" {
-                assert!(row["detail"]["target"].is_null());
+                // The operand token is still the coordinate the row names, even when it
+                // resolves to no member; `resolution_status` says so.
+                assert_eq!(
+                    row["detail"]["target"],
+                    format!("0x{:08x}", row["detail"]["target_token"].as_u64().unwrap())
+                );
             }
         }
     }

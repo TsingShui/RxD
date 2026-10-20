@@ -25,9 +25,11 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
         .filter(|row| row["record"] == "string")
         .collect();
     for entry in oracle["entries"].as_array().unwrap() {
+        // A literal is identified by its `#US` token, which is the row's `at`.
+        let token = format!("0x{:08x}", entry["token"].as_u64().unwrap());
         let groups: Vec<_> = records
             .iter()
-            .filter(|row| row["detail"]["offset"] == entry["offset"])
+            .filter(|row| row["at"] == token.as_str())
             .collect();
         let uses = entry["uses"].as_array().unwrap();
         if uses.is_empty() {
@@ -50,7 +52,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
             assert_eq!(groups.len(), owners.len());
             for (row, (method_token, offsets)) in groups.iter().zip(owners) {
                 assert_eq!(row["detail"]["status"], "referenced");
-                assert_eq!(row["context_at"], method_token);
+                assert_eq!(row["context_at"], format!("0x{method_token:08x}"));
                 assert_eq!(row["detail"]["il_offsets"], serde_json::json!(offsets));
                 let expected_method = oracle["methods"]
                     .as_array()
@@ -86,15 +88,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                     .keys()
                     .map(String::as_str)
                     .collect::<Vec<_>>(),
-                [
-                    "il_offsets",
-                    "index",
-                    "method_token",
-                    "offset",
-                    "status",
-                    "utf16_units",
-                    "value"
-                ]
+                ["il_offsets", "index", "status", "utf16_units", "value"]
             );
         }
     }
@@ -196,10 +190,11 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
             .as_array()
             .unwrap()
             .iter()
+            // `-f` folds case by default, so the oracle folds with it.
             .filter(|entry| {
                 entry["value"]
                     .as_str()
-                    .is_some_and(|literal| literal.contains(value))
+                    .is_some_and(|literal| literal.to_lowercase().contains(&value.to_lowercase()))
             })
         {
             for site in entry["uses"].as_array().unwrap() {
@@ -215,7 +210,7 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
         assert_eq!(rows.last().unwrap()["complete"], true);
         for (row, (method, offset, token)) in rows[1..rows.len() - 1].iter().zip(expected) {
             assert_eq!(row["record"], "reference");
-            assert_eq!(row["context_at"], method);
+            assert_eq!(row["context_at"], format!("0x{method:08x}"));
             assert_eq!(row["detail"]["il_offset"], offset);
             assert_eq!(row["detail"]["target_token"], token);
             assert_eq!(row["detail"]["opcode"], "ldstr");

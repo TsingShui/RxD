@@ -135,9 +135,12 @@ fn dotnet_semantic_method_refs_keep_instantiations_nested_members_and_ambiguous_
         let rows = jsonl(&run("xref", &path, &["--at", token]));
         assert_eq!(rows.last().unwrap()["records"], 1);
         assert_eq!(rows[1]["detail"]["resolution_status"], status);
+        // `target` is the coordinate: the canonical token when the operand resolves to one,
+        // otherwise the operand's own token. `target_token` stays the operand's token.
+        let operand = rows[1]["detail"]["target_token"].as_u64().unwrap() as u32;
         assert_eq!(
-            rows[1]["detail"]["target_token"],
-            serde_json::json!(canonical)
+            rows[1]["detail"]["target"],
+            format!("0x{:08x}", canonical.unwrap_or(operand))
         );
         assert_eq!(rows[0]["detail"]["target"]["resolution_status"], status);
     }
@@ -260,7 +263,13 @@ fn dotnet_method_refs_compare_scoped_signature_types_instead_of_display_names() 
     let external = jsonl(&run("xref", &semantic_input(), &["--at", "0x0a00000e"]));
     assert_eq!(external.last().unwrap()["records"], 1);
     assert_eq!(external[1]["detail"]["resolution_status"], "unresolved");
-    assert!(external[1]["detail"]["target"].is_null());
+    assert_eq!(
+        external[1]["detail"]["target"],
+        format!(
+            "0x{:08x}",
+            external[1]["detail"]["target_token"].as_u64().unwrap()
+        )
+    );
 }
 
 #[test]

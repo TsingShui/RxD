@@ -171,8 +171,6 @@ pub struct Options {
     output: Option<PathBuf>,
     #[arg(long)]
     perf: bool,
-    #[arg(long)]
-    debug: bool,
 }
 
 impl Options {
@@ -226,16 +224,11 @@ impl Command {
     pub fn perf(&self) -> bool {
         self.options().perf
     }
-
-    pub fn debug(&self) -> bool {
-        self.options().debug
-    }
 }
 
 pub fn execute(command: Command) -> Result<()> {
     let emit_perf = command.perf();
-    let debug = command.debug();
-    let mut perf = Perf::new(emit_perf || debug, "analysis", "dotnet", command.name());
+    let mut perf = Perf::new(emit_perf, "analysis", "dotnet", command.name());
     let result = execute_inner(command, &mut perf).map_err(|error| {
         let message = format!("{error:#}");
         let code = [
@@ -254,7 +247,7 @@ pub fn execute(command: Command) -> Result<()> {
         });
         Error::coded(code, message)
     });
-    super::finish(perf, emit_perf, debug, result)
+    super::finish(perf, emit_perf, result)
 }
 
 fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {

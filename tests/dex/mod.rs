@@ -463,7 +463,7 @@ fn dex_getclass_preserves_source_debug_and_missing_class_status() {
         &[
             "--at",
             "LFixture1;",
-            "--debug",
+            "--perf",
             "-o",
             output_file.to_str().unwrap(),
         ],
@@ -471,7 +471,12 @@ fn dex_getclass_preserves_source_debug_and_missing_class_status() {
     success(&wrapped_out);
     assert_eq!(wrapped_out.stdout, original.stdout);
     assert_eq!(fs::read(output_file).unwrap(), original.stdout);
-    assert!(String::from_utf8_lossy(&wrapped_out.stderr).contains("Hit DEX: classes.dex"));
+    // One perf record on stderr; the per-entry trace is a developer switch (`RXD_TRACE`).
+    assert!(
+        String::from_utf8_lossy(&wrapped_out.stderr).contains("\"backend\":\"dex\""),
+        "{}",
+        String::from_utf8_lossy(&wrapped_out.stderr)
+    );
     let missing = query("get-class", &bare, &["--at", "Absent"]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(missing.stdout.is_empty());

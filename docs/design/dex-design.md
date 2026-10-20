@@ -30,27 +30,21 @@ preserved; argument positions and exit-code semantics are.
 Dalvik-name form was removed so every FETCH has one selector spelling. APK/DEX commands
 keep `--threads` / `--thread`
 alias and supported range. The default thread count comes from
-`available_parallelism`; zero threads is an error. All diagnostics go to stderr. `--debug`
-is preserved; DEX adds no `--perf` flag.
+`available_parallelism`; zero threads is an error. All diagnostics go to stderr. `--perf`
+emits the shared perf record as JSONL; the per-entry trace is behind `RXD_TRACE`.
 
-`--debug` also reports the library's own stage profile, one deterministic line each for
-stages, counters and wall time:
+`--perf` carries the library's own stage profile in the shared record: `stages_ns` holds
+the same map/zip/select/inflate/header/members/scan/render/engine/emit/manifest stages,
+`counters` holds bytes/classes/code_items/hits, and `extra` holds the DEX entry counts
+(`entries`, `dex`, `classes`, `code_items`, `hits`, `strings`). Stages are declared once
+(`crates/rxd-dex/src/profile.rs`) so two records are comparable key by key. Stage times
+are summed across the parallel workers (a 97-DEX archive reports inflate as the total of
+every worker's inflate work); counters are aggregated work units. With profiling off every
+call site costs one relaxed load and no clock read.
 
-```
-[dex] xref stages map=0.032 ms zip=0.641 ms select=0.004 ms inflate=1190.402 ms
-      header=0.002 ms members=24.363 ms scan=3200.269 ms render=28.176 ms
-      engine=0.000 ms emit=0.000 ms manifest=0.000 ms
-[dex] xref counters entries=97 dex=97 classes=928795 code_items=4939532 hits=108126
-      bytes=759818368 strings=0
-[dex] xref wall 459.417 ms
-```
-
-Stages are declared once (`crates/rxd-dex/src/profile.rs`) and always printed in that
-order, zero or not, so two reports are comparable line by line. Stage times are summed
-across the parallel workers (a 97-DEX archive reports inflate as the total of every
-worker's inflate work), while `wall` is the command's real elapsed time; counters are
-aggregated work units. With profiling off every call site costs one relaxed load and no
-clock read.
+The per-entry trace (`[APK] … skipped`, per-entry inflate/process, per-command record
+counts) is developer output, not part of the contract, and is enabled with `RXD_TRACE=1`.
+It stays off by default so stderr carries only the perf record.
 
 `-o` writes the same bytes as stdout and still emits stdout. This differs from the
 JS/ASAR file-output contract: DEX keeps its original direct write and does not promise

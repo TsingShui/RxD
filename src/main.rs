@@ -50,13 +50,7 @@ fn main() -> ExitCode {
     }
     if !cli.internal_worker {
         let emit_perf = cli.perf();
-        let debug = cli.debug();
-        let mut perf = Perf::new(
-            emit_perf || debug,
-            "cli",
-            cli.backend_name(),
-            cli.command_name(),
-        );
+        let mut perf = Perf::new(emit_perf, "cli", cli.backend_name(), cli.command_name());
         perf.include_args(process_start, args_ns);
         let result = run_worker(&mut perf);
         let (code, error_code) = match result {
@@ -70,9 +64,6 @@ fn main() -> ExitCode {
         perf.finish(error_code);
         if emit_perf {
             perf.emit();
-        }
-        if debug {
-            perf.debug_cli();
         }
         return ExitCode::from(code as u8);
     }

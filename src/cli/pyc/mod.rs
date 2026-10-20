@@ -103,8 +103,6 @@ pub struct Options {
     output: Option<PathBuf>,
     #[arg(long)]
     perf: bool,
-    #[arg(long)]
-    debug: bool,
 }
 
 /// The one shared budget table; pyc projects it instead of restating ceilings.
@@ -220,24 +218,13 @@ impl Command {
             Self::Xref { options, .. } => options.common.perf,
         }
     }
-
-    pub fn debug(&self) -> bool {
-        match self {
-            Self::Decompile { options, .. } => options.debug,
-            Self::Codes { options, .. } => options.debug,
-            Self::Strings { options, .. } => options.debug,
-            Self::GetCode { options, .. } => options.common.debug,
-            Self::Xref { options, .. } => options.common.debug,
-        }
-    }
 }
 
 pub fn execute(command: Command) -> Result<()> {
     let emit_perf = command.perf();
-    let debug = command.debug();
-    let mut perf = Perf::new(emit_perf || debug, "analysis", "pyc", command.name());
+    let mut perf = Perf::new(emit_perf, "analysis", "pyc", command.name());
     let result = execute_inner(command, &mut perf);
-    super::finish(perf, emit_perf, debug, result)
+    super::finish(perf, emit_perf, result)
 }
 
 fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {

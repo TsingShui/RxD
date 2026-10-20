@@ -9,7 +9,6 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let common = command.common();
     let input = common.input.clone();
     let destination = common.output.clone();
-    let debug = common.debug;
     let emit_perf = common.perf;
     let budget = Budget::default();
     let limits = Limits {
@@ -20,7 +19,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
     };
     let max_entries = budget.entries;
     let max_header_bytes = budget.metadata_bytes;
-    let mut perf = Perf::new(debug || emit_perf, "analysis", "asar", command.name());
+    let mut perf = Perf::new(emit_perf, "analysis", "asar", command.name());
     perf.limits = Some(limits);
     let query = match command {
         Command::Entries { filter, case, .. } => rxd_asar::Query::Entries {
@@ -49,5 +48,5 @@ pub(super) fn execute(command: Command) -> Result<()> {
             }
         })
     })();
-    finish(perf, emit_perf, debug, result)
+    finish(perf, emit_perf, result)
 }

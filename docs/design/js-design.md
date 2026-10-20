@@ -158,7 +158,7 @@ structure.
 `get` accepts structure IDs, symbol IDs and context fragment IDs and emits the exact
 original range without reformatting or extra newlines. `--json` wraps source and
 structure metadata in one JSON object. Every command supports `-o FILE` with bytes
-identical to stdout. Diagnostics go to stderr; `--debug` reports phase timings. Each
+identical to stdout. Diagnostics go to stderr; `--perf` reports phase timings as JSONL. Each
 invocation is independent, with no implicit background service or persistent index.
 
 ## Recursive scan
