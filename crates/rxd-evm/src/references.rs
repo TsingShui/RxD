@@ -108,7 +108,7 @@ pub fn refs_json(
             crate::code_references::refs_json(navigation, functions, &id, listing, limits, perf)
         }
         _ => Err(Error::new(
-            "INVALID_ID",
+            "INVALID_QUERY",
             "expected an EVM literal, block or function ID",
         )),
     }

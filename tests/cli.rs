@@ -819,7 +819,7 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
                 &["--byte", &source.find(marker).unwrap().to_string()],
             ),
             1,
-            "INVALID_TARGET",
+            "NOT_FOUND",
         );
     }
     let symbols = jsonl(&invoke("symbols", &path, &[]));
@@ -1451,10 +1451,18 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         format!("rxd1:js:{fingerprint}:fragment.object_property:011:32"),
         format!("rxd1:js:{fingerprint}:fragment.object_property:32:11"),
     ] {
-        failure(invoke("slice", &path, &["--at", &forged]), 1, "INVALID_ID");
+        failure(
+            invoke("slice", &path, &["--at", &forged]),
+            1,
+            "INVALID_QUERY",
+        );
     }
     for command in ["entities", "symbols"] {
-        failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
+        failure(
+            invoke(command, &path, &["--within", id]),
+            1,
+            "INVALID_QUERY",
+        );
     }
     for (command, args) in [
         ("find", vec!["-f", "/api/check"]),
@@ -1974,7 +1982,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
                 &["--at", &format!("rxd1:js:{fingerprint}:symbol:{a}:{b}")],
             ),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
     }
     for forged in [
@@ -1984,10 +1992,18 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         format!("rxd1:js:{fingerprint}:symbol:06:12"),
         format!("rxd1:js:{fingerprint}:symbol:12:6"),
     ] {
-        failure(invoke("slice", &path, &["--at", &forged]), 1, "INVALID_ID");
+        failure(
+            invoke("slice", &path, &["--at", &forged]),
+            1,
+            "INVALID_QUERY",
+        );
     }
     for command in ["entities", "symbols"] {
-        failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
+        failure(
+            invoke(command, &path, &["--within", id]),
+            1,
+            "INVALID_QUERY",
+        );
     }
     let profile = invoke("slice", &path, &["--at", id, "--perf"]);
     success(&profile);
@@ -2238,7 +2254,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
         failure(
             invoke("symbols", &path, &["--within", &id]),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
     }
     let root = js_full_id(&rows[0], rows[0]["detail"]["root_id"].as_str().unwrap());
@@ -2462,7 +2478,7 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
             &["--byte", &(source.find("obj.x").unwrap() + 4).to_string()],
         ),
         1,
-        "INVALID_TARGET",
+        "NOT_FOUND",
     );
     let unknown = jsonl(&invoke(
         "xref",
@@ -2538,13 +2554,9 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
         assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
     }
     for byte in ["16", "999"] {
-        failure(
-            invoke("xref", &path, &["--byte", byte]),
-            1,
-            "INVALID_OFFSET",
-        );
+        failure(invoke("xref", &path, &["--byte", byte]), 1, "INVALID_QUERY");
     }
-    failure(invoke("xref", &path, &["--byte", "0"]), 1, "INVALID_TARGET");
+    failure(invoke("xref", &path, &["--byte", "0"]), 1, "NOT_FOUND");
     failure(
         invoke("xref", dir.path(), &["--byte", "0"]),
         1,
@@ -3439,11 +3451,11 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
         format!("rxd2:js:{source_id}:program:0:14"),
         "garbage".into(),
     ] {
-        failure(invoke("slice", &path, &["--at", &id]), 1, "INVALID_ID");
+        failure(invoke("slice", &path, &["--at", &id]), 1, "INVALID_QUERY");
         failure(
             invoke("entities", &path, &["--within", &id]),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
     }
 }
@@ -3498,13 +3510,13 @@ fn empty_files_zero_matches_and_invalid_offsets_have_distinct_results() {
     failure(
         invoke("locate", &path, &["--byte", "0"]),
         1,
-        "INVALID_OFFSET",
+        "INVALID_QUERY",
     );
     let (_dir, path) = fixture("()=>1", "bundle.js");
     failure(
         invoke("locate", &path, &["--byte", "5"]),
         1,
-        "INVALID_OFFSET",
+        "INVALID_QUERY",
     );
     let located = invoke("locate", &path, &["--byte", "4"]);
     success(&located);
@@ -3781,13 +3793,8 @@ fn perf_reports_failed_stages_without_partial_stdout() {
     // Ceilings are internal, so the failures a caller can still provoke are query failures;
     // each must still report its stage twice (analysis + write) with no partial stdout.
     for (command, arguments, error, stage) in [
-        ("slice", vec!["--at", "invalid"], "INVALID_ID", "query"),
-        (
-            "locate",
-            vec!["--byte", "999999"],
-            "INVALID_OFFSET",
-            "query",
-        ),
+        ("slice", vec!["--at", "invalid"], "INVALID_QUERY", "query"),
+        ("locate", vec!["--byte", "999999"], "INVALID_QUERY", "query"),
     ] {
         let mut arguments = arguments;
         arguments.push("--perf");

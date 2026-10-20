@@ -9,7 +9,7 @@ use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
-use rxd_core::{Budget, Error, Result};
+use rxd_core::{Budget, Result};
 use rxd_dotnet::{Input, Limits};
 use serde_json::{Map, Value, json};
 
@@ -196,24 +196,7 @@ impl Command {
 pub fn execute(command: Command) -> Result<()> {
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "dotnet", command.name());
-    let result = execute_inner(command, &mut perf).map_err(|error| {
-        let message = format!("{error:#}");
-        let code = [
-            "RESOURCE_LIMIT",
-            "INVALID_QUERY",
-            "INVALID_INPUT",
-            "UNSUPPORTED_INPUT",
-            "UNSUPPORTED_IL",
-        ]
-        .into_iter()
-        .find(|code| message.contains(code))
-        .unwrap_or(if message.contains("UNSUPPORTED:") {
-            "UNSUPPORTED_INPUT"
-        } else {
-            "IO_ERROR"
-        });
-        Error::coded(code, message)
-    });
+    let result = execute_inner(command, &mut perf).map_err(super::classify);
     super::finish(perf, emit_perf, result)
 }
 

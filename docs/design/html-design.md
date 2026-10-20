@@ -144,7 +144,7 @@ preserves original depth and parent/context IDs even when ancestors are filtered
 ID validation is three layers: syntax (`rxd1`/`html`/64 lowercase hex/one of four
 kinds/canonical decimal), then container hash, then exact catalog membership. A
 syntactically valid ID with a different hash (foreign/stale) returns `SOURCE_MISMATCH`;
-malformed, non-canonical or missing same-hash IDs return `INVALID_ID`. Bounds checks
+malformed, non-canonical or missing same-hash IDs return `INVALID_QUERY`. Bounds checks
 never replace membership lookup. Content ranges derive from the matched element, never
 from invented IDs or caller ranges.
 

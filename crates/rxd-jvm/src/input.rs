@@ -250,7 +250,12 @@ impl Input {
                 }
             }
         }
-        bail!("INVALID_QUERY: {coordinate} is not a method of this input")
+        // Well formed and absent: the caller re-reads a listing, it does not fix the query.
+        Err(rxd_core::Error::failure(
+            rxd_core::Failure::NotFound,
+            format!("no method {coordinate} in this input"),
+        )
+        .into())
     }
 
     /// Select exactly one class by its internal, dotted or descriptor name.
@@ -260,9 +265,12 @@ impl Input {
             .classes
             .iter()
             .filter(|class| class.class.name == wanted);
-        let selected = hits
-            .next()
-            .with_context(|| format!("INVALID_QUERY: class {name} not found in this input"))?;
+        let selected = hits.next().ok_or_else(|| {
+            rxd_core::Error::failure(
+                rxd_core::Failure::NotFound,
+                format!("no class {name} in this input"),
+            )
+        })?;
         // Duplicate definitions are already rejected at read time, so a second
         // hit would be a logic error rather than ambiguous input.
         ensure!(

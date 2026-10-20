@@ -1171,7 +1171,7 @@ impl FunctionNavigation {
         let fields: Vec<_> = canonical.split(':').collect();
         let invalid = || {
             Error::new(
-                "INVALID_ID",
+                "INVALID_QUERY",
                 "expected a canonical content-bound EVM function ID",
             )
         };
@@ -1458,7 +1458,7 @@ impl FunctionNavigation {
         let result = (|| {
             let mut record = self.function_record(navigation, function, Some(raw));
             record["detail"]["reconstruction"] = serde_json::to_value(reconstruction)
-                .map_err(|e| Error::new("FORMAT_ERROR", e.to_string()))?;
+                .map_err(|e| Error::new("INVALID_INPUT", e.to_string()))?;
             let mut output = BoundedOutput {
                 bytes: Vec::new(),
                 limit: limits.output_bytes,

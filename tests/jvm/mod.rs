@@ -416,7 +416,7 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
             &input("fixture/ModernFixture.class"),
         ),
         2,
-        "INVALID_QUERY",
+        "NOT_FOUND",
     );
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("method.java");
@@ -432,7 +432,7 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
         ],
         &path,
     );
-    failure(output, 2, "INVALID_QUERY");
+    failure(output, 2, "NOT_FOUND");
     assert_eq!(fs::read(&destination).unwrap(), b"existing");
     let output = run(
         &[
@@ -639,9 +639,10 @@ fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly
     let by_descriptor = run(&["get-class", "--at", "Lfixture/FlowFixture;"], &path);
     success(&by_descriptor);
     assert_eq!(whole.stdout, by_descriptor.stdout);
-    // A missing class is an INVALID_QUERY with no partial stdout.
+    // A missing class is NOT_FOUND with no partial stdout: the query is fine, the
+    // coordinate names nothing (ADR 0015).
     let missing = run(&["get-class", "--at", "fixture.Absent"], &path);
-    failure(missing.clone(), 2, "INVALID_QUERY");
+    failure(missing.clone(), 2, "NOT_FOUND");
     assert!(missing.stdout.is_empty());
     // -o writes the source atomically and keeps stdout empty.
     let dir = tempfile::tempdir().unwrap();

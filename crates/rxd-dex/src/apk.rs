@@ -400,16 +400,17 @@ pub fn list_classes(path: &Path, threads: usize, debug: bool) -> Result<Vec<Clas
 
 /// Split `Lx/y;->name(proto)` into its class, name and prototype.
 pub fn parse_method_coordinate(coordinate: &str) -> Result<(String, String, String)> {
-    let (class, rest) = coordinate
-        .split_once("->")
-        .with_context(|| format!("{coordinate} is not 'Lclass;->name(proto)'"))?;
-    let open = rest
-        .find('(')
-        .with_context(|| format!("{coordinate} has no method prototype"))?;
+    let malformed = || {
+        rxd_core::Error::failure(
+            rxd_core::Failure::Query,
+            format!("{coordinate} is not `Lclass;->name(proto)`"),
+        )
+    };
+    let (class, rest) = coordinate.split_once("->").ok_or_else(malformed)?;
+    let open = rest.find('(').ok_or_else(malformed)?;
     let (name, prototype) = rest.split_at(open);
-    if class.is_empty() || name.is_empty() || !prototype.ends_with(')') && !prototype.contains(')')
-    {
-        bail!("{coordinate} is not 'Lclass;->name(proto)'");
+    if class.is_empty() || name.is_empty() || !prototype.ends_with(')') {
+        return Err(malformed().into());
     }
     Ok((class.to_owned(), name.to_owned(), prototype.to_owned()))
 }
@@ -429,11 +430,21 @@ pub fn decompile_method_with_policy(
     debug: bool,
 ) -> Result<String> {
     let hit = map_class_hit(path, policy, class, threads, debug, |data| {
-        crate::emitter::render_method(data, class, name, prototype)?
-            .with_context(|| format!("{class} does not declare {name}{prototype}"))
+        crate::emitter::render_method(data, class, name, prototype)?.with_context(|| {
+            // The class exists and the member does not: absence, not a bad query.
+            rxd_core::Error::failure(
+                rxd_core::Failure::NotFound,
+                format!("no method {class}->{name}{prototype} in this input"),
+            )
+        })
     })?;
-    hit.map(|(_, source)| source)
-        .with_context(|| format!("no DEX in {} defines {class}", path.display()))
+    hit.map(|(_, source)| source).ok_or_else(|| {
+        rxd_core::Error::failure(
+            rxd_core::Failure::NotFound,
+            format!("no class {class} in this input"),
+        )
+        .into()
+    })
 }
 
 /// Which methods a `functions`-style listing reports.

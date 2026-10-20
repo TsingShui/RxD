@@ -76,7 +76,12 @@ pub struct Definition {
 
 fn validate_id(source: &Source, id: &str) -> Result<Span> {
     let parts: Vec<_> = id.split(':').collect();
-    let invalid = || Error::new("INVALID_ID", "malformed or unsupported symbol ID");
+    let invalid = || {
+        Error::new(
+            "INVALID_QUERY",
+            "malformed or unsupported symbol coordinate",
+        )
+    };
     if parts.len() != 6
         || parts[0] != "rxd1"
         || parts[1] != "js"
@@ -98,7 +103,7 @@ fn validate_id(source: &Source, id: &str) -> Result<Span> {
     if parts[2] != source.id {
         return Err(Error::new(
             "SOURCE_MISMATCH",
-            "symbol ID belongs to different source content",
+            "symbol coordinate belongs to different source content",
         ));
     }
     if source.entity_id("symbol", span.start, span.end) != id {
@@ -128,9 +133,10 @@ pub fn run(
                     .then_some((node_id, symbol))
             })
             .ok_or_else(|| {
-                Error::new(
-                    "INVALID_ID",
-                    "ID does not identify a canonical source binding",
+                // The coordinate is well formed and names no binding: absence.
+                rxd_core::Error::failure(
+                    rxd_core::Failure::NotFound,
+                    "coordinate does not identify a canonical source binding",
                 )
             })?;
         let declaration = std::iter::once((node_id, nodes.get_node(node_id)))
@@ -221,10 +227,7 @@ pub fn run(
                 })
             })
             .ok_or_else(|| {
-                Error::new(
-                    "INVALID_TARGET",
-                    "binding has no supported source declaration",
-                )
+                Error::new("NOT_FOUND", "binding has no supported source declaration")
             })?;
         let location = Locations::new(collector).get(span);
         Ok(Definition {

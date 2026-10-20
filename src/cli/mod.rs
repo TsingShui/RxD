@@ -255,6 +255,32 @@ impl Cli {
         }
     }
 }
+/// Turn one backend failure into one coded error.
+///
+/// This is the only place that decides a code it was not handed: an error that already
+/// carries one keeps it, a device failure is `IO_ERROR`, and anything else is what a
+/// parser produces when the bytes do not make sense - `INVALID_INPUT`. Backends that know
+/// better say so with `rxd_core::Error::failure`, so no code is ever guessed from prose.
+pub(crate) fn classify(error: anyhow::Error) -> rxd_core::Error {
+    use rxd_core::{Error, Failure};
+    match error.downcast::<Error>() {
+        Ok(error) => error,
+        Err(error) => match error.downcast::<std::io::Error>() {
+            Ok(error) => Error::failure(Failure::Io, error.to_string()),
+            Err(error) => {
+                let message = format!("{error:#}");
+                match rxd_core::leading_code(&message) {
+                    // A backend that spells its code into a context is still reporting a
+                    // class, and this is the one place that reads it. Repeated prefixes
+                    // collapse, so the printed diagnostic carries the code once.
+                    (Some(kind), rest) => Error::coded(kind.code(), rest),
+                    (None, _) => Error::failure(Failure::Input, message),
+                }
+            }
+        },
+    }
+}
+
 /// Restore the default `SIGPIPE` disposition so a closed consumer (`| head`,
 /// `| grep -m1`) ends this process quietly instead of turning a normal Unix idiom
 /// into `IO_ERROR: Broken pipe`.
@@ -286,7 +312,7 @@ pub fn execute(cli: Cli) -> Result<i32> {
         #[cfg(feature = "backend-html")]
         Backend::Html { command } => html::execute(command).map(|()| 0),
         #[cfg(feature = "backend-dex")]
-        Backend::Dex { command } => Ok(dex::execute(command)),
+        Backend::Dex { command } => dex::execute(command),
         #[cfg(feature = "backend-jvm")]
         Backend::Jvm { command } => jvm::execute(command).map(|()| 0),
         #[cfg(feature = "backend-wasm")]

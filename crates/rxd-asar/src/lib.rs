@@ -74,7 +74,7 @@ impl Output {
                 if e.is_io() {
                     "RESOURCE_LIMIT"
                 } else {
-                    "FORMAT_ERROR"
+                    "INVALID_INPUT"
                 },
                 e.to_string(),
             )

@@ -10,7 +10,10 @@ pub fn refs(module: &Module, target: u32) -> Result<Vec<Reference>> {
     let limits = module.limits();
     ensure!(
         target < module.total_functions(),
-        "INVALID_QUERY: target function index out of range"
+        rxd_core::Error::failure(
+            rxd_core::Failure::NotFound,
+            format!("no function func:{target} in this module"),
+        ),
     );
     let mut out = Vec::new();
     let mut work = 0usize;

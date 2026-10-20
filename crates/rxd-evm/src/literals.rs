@@ -261,7 +261,7 @@ impl LiteralInventory {
     fn select<'a>(&'a self, navigation: &Navigation, at: &str) -> Result<&'a Literal> {
         let invalid = || {
             Error::new(
-                "INVALID_ID",
+                "INVALID_QUERY",
                 "expected a canonical content-bound EVM PUSH literal ID",
             )
         };

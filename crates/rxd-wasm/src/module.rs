@@ -404,7 +404,10 @@ impl Module {
         let func_index = self.coordinate_function(at)?;
         ensure!(
             func_index < self.total_functions(),
-            "INVALID_QUERY: function index out of range"
+            rxd_core::Error::failure(
+                rxd_core::Failure::NotFound,
+                format!("no function func:{func_index} in this module"),
+            ),
         );
         Ok(func_index)
     }
@@ -432,7 +435,7 @@ impl Module {
                 .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         {
             return Err(anyhow::anyhow!(
-                "INVALID_ID: malformed or unsupported WASM coordinate"
+                "INVALID_QUERY: malformed or unsupported WASM coordinate"
             ));
         }
         if parts[2] != self.source_id {
@@ -446,13 +449,16 @@ impl Module {
         );
         parts[4]
             .parse()
-            .map_err(|_| anyhow::anyhow!("INVALID_ID: function index"))
+            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: function index"))
     }
 
     pub fn defined_position(&self, func_index: u32) -> Result<usize> {
         ensure!(
             func_index < self.total_functions(),
-            "INVALID_QUERY: function index out of range"
+            rxd_core::Error::failure(
+                rxd_core::Failure::NotFound,
+                format!("no function func:{func_index} in this module"),
+            ),
         );
         ensure!(
             func_index >= self.imported_funcs,

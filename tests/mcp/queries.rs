@@ -1525,7 +1525,10 @@ fn mcp_latest_evm_navigation_routes_returned_ids_to_exact_cli_fetch_and_referenc
         None,
     );
     assert!(!absent_cli.status.success(), "{absent_cli:?}");
-    assert_eq!(absent["structuredContent"]["error"]["code"], "INVALID_ID");
+    assert_eq!(
+        absent["structuredContent"]["error"]["code"],
+        "INVALID_QUERY"
+    );
     assert!(
         String::from_utf8_lossy(&absent_cli.stderr).contains(
             absent["structuredContent"]["error"]["message"]

@@ -166,7 +166,7 @@ content-bound ID is also accepted:
 The carrier hash is 64 lowercase hex; encoding is raw/hex; offsets are canonical decimal
 without leading zeros (except 0). The ID binds the fixed carrier and explicit encoding
 interpretation; decoded SHA-256 stays in detail. Copy/rename does not change the ID.
-Wrong grammar/boundaries return `INVALID_ID`; a whole ID naming a different input
+Wrong grammar/boundaries return `INVALID_QUERY`; a whole ID naming a different input
 identity returns `SOURCE_MISMATCH`; user input never drives arbitrary slicing.
 
 Navigation decodes the fixed input boundedly and requests native disassemble/
@@ -229,7 +229,7 @@ content-bound form is
 `rxd1:evm:<carrier-sha256>:<raw|hex>:function:<lowercase-selector-8-hex>:<abi|fallback>:<canonical-decimal-entry>`.
 Carrier/encoding rules match block coordinates. FETCH validates selector/dispatch/entry
 against current discovery; user-reported ranges are rejected. Wrong grammar/kind/
-undiscovered units return `INVALID_ID`; a whole ID naming a different carrier/encoding
+undiscovered units return `INVALID_QUERY`; a whole ID naming a different carrier/encoding
 returns `SOURCE_MISMATCH`. Copy/rename is stable.
 
 Candidates come from unchanged EVMole selector/dispatch; the native result map collapses
@@ -440,7 +440,7 @@ Literal coordinate:
 width 0..32, printed as `at` and expanded by `--at`; the whole content-bound form is
 `rxd1:evm:<carrier-sha256>:<raw|hex>:literal:push:<canonical-decimal-opcode-PC>:<canonical-decimal-PUSH-width>`. It binds one real validated PUSH occurrence; equal immediates are not
 merged. Copy/rename is stable; carrier/encoding mismatch is `SOURCE_MISMATCH`; wrong
-grammar/kind/width/position or no established literal is `INVALID_ID`. IDs never drive
+grammar/kind/width/position or no established literal is `INVALID_QUERY`. IDs never drive
 slicing.
 
 `evm xref --at LITERAL_COORDINATE` queries only that exact occurrence's decoded PUSH
@@ -523,7 +523,7 @@ Data coordinate:
 printed as `at` and expanded by `--at`; the whole content-bound form is
 `rxd1:evm:<carrier-sha256>:<raw|hex>:literal:data:<unindexed|metadata|copied>:<decoded-start>:<decoded-end-exclusive>`.
 The fixed input must re-establish the exact origin/range; IDs never slice directly.
-Wrong grammar/candidate is `INVALID_ID`; carrier/encoding mismatch is
+Wrong grammar/candidate is `INVALID_QUERY`; carrier/encoding mismatch is
 `SOURCE_MISMATCH`. The same candidate keeps its ID across query kinds; copy/rename is
 stable; raw/hex bind their carrier and outer start/end map exact digits.
 

@@ -382,7 +382,7 @@ pub fn selector_stream(path: &Path, units: &[&str], expect: Expect<'_>) -> Resul
     } else {
         std::fs::File::open(path)
             .and_then(|file| file.take(LIMIT).read_to_string(&mut text).map(|_| ()))
-            .with_context(|| format!("INVALID_QUERY: cannot read --from {}", path.display()))?;
+            .with_context(|| format!("IO_ERROR: cannot read --from {}", path.display()))?;
     }
     // Identity is carried once by the stream header, so a record's own `source_id` is
     // normally null: the header supplies the binding a unit row is checked against.
@@ -434,10 +434,14 @@ fn check_identity(row: &Value, expect: Expect<'_>) -> Result<()> {
             None => Ok(()),
         },
         Expect::Bytes(expected) => match row.get("input_bytes").and_then(Value::as_u64) {
-            Some(found) if found != expected => bail!(
-                "INVALID_QUERY: --from stream describes a {found}-byte input, but this input \
-                 is {expected} bytes; re-run the listing for this file"
-            ),
+            Some(found) if found != expected => Err(rxd_core::Error::failure(
+                rxd_core::Failure::Mismatch,
+                format!(
+                    "--from stream describes a {found}-byte input, but this input is \
+                     {expected} bytes; re-run the listing for this file"
+                ),
+            )
+            .into()),
             _ => Ok(()),
         },
     }
@@ -447,12 +451,18 @@ fn ensure_same(found: &str, expected: &str) -> Result<()> {
     if found == expected {
         return Ok(());
     }
-    bail!(
-        "INVALID_QUERY: --from stream came from a different input (stream {}…, this input \
-         {}…); re-run the listing for this file",
-        found.get(..12).unwrap_or(found),
-        expected.get(..12).unwrap_or(expected)
+    // The stream is well formed and describes another input: that is a mismatch, not a
+    // malformed query (ADR 0015).
+    Err(rxd_core::Error::failure(
+        rxd_core::Failure::Mismatch,
+        format!(
+            "--from stream came from a different input (stream {}…, this input {}…); \
+             re-run the listing for this file",
+            found.get(..12).unwrap_or(found),
+            expected.get(..12).unwrap_or(expected)
+        ),
     )
+    .into())
 }
 
 #[cfg(test)]

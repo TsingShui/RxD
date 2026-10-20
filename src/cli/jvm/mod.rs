@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
+use rxd_core::Result;
 use rxd_core::envelope::{RecordMeta, SCHEMA_VERSION, header, record, summary};
-use rxd_core::{Error, Result};
 use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
@@ -295,21 +295,7 @@ pub fn execute(command: Command) -> Result<()> {
     if emit_perf {
         perf.emit();
     }
-    result.map_err(|error| {
-        let message = format!("{error:#}");
-        let code = [
-            "RESOURCE_LIMIT",
-            "INVALID_QUERY",
-            "INVALID_INPUT",
-            "UNSUPPORTED_INPUT",
-            "UNSUPPORTED_BYTECODE",
-            "DECOMPILE_ERROR",
-        ]
-        .into_iter()
-        .find(|code| message.contains(code))
-        .unwrap_or("IO_ERROR");
-        Error::coded(code, message)
-    })
+    result.map_err(super::classify)
 }
 
 fn execute_inner(command: Command) -> anyhow::Result<()> {

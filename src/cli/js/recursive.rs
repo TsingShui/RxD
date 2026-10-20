@@ -143,7 +143,7 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
             scan_summary["command"] = json!(query.name());
             serde_json::to_vec(&scan_summary)
         })
-        .map_err(|e| Error::new("FORMAT_ERROR", e.to_string()))?;
+        .map_err(|e| Error::new("INVALID_INPUT", e.to_string()))?;
     if summary.len() + 1 > limits.output_bytes - output.len() {
         return Err(Error::new("RESOURCE_LIMIT", "output byte budget exceeded"));
     }

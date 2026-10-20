@@ -404,7 +404,7 @@ impl Analysis {
             return Err(if output.exceeded {
                 Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded")
             } else {
-                Error::new("FORMAT_ERROR", error.to_string())
+                Error::new("INVALID_INPUT", error.to_string())
             });
         }
         io::Write::write_all(&mut output, b"\n")

@@ -161,7 +161,7 @@ independently.
 
 `--byte` must be inside a declaration identifier or identifier reference. Whitespace,
 strings, comments, keywords, static property keys and `foo` in `obj.foo` return
-`INVALID_TARGET`; `key` in `obj[key]` is a lexical reference. Header detail reports
+`NOT_FOUND`; `key` in `obj[key]` is a lexical reference. Header detail reports
 `resolution: resolved|unresolved|dynamic`, the selected name/range, and the canonical
 declaration. Reference detail has `read`, `write`, `member_write`, `type_reference` and
 `value_reference`. `parent_at` routes to `slice`; the declaration and initializer are not

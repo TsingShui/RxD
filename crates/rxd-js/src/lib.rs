@@ -190,7 +190,7 @@ fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
     {
         return Err(Error::new(
-            "INVALID_ID",
+            "INVALID_QUERY",
             format!("{at} is not a `<kind>:<start>:<end>` coordinate"),
         ));
     }
@@ -203,7 +203,7 @@ fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
     let kind = parts[3];
     if kind != "symbol" && kind != "identifier" {
         return Err(Error::new(
-            "INVALID_ID",
+            "INVALID_QUERY",
             format!(
                 "{at} is a {kind} node, not a name occurrence; xref anchors on a `symbols` row \
                  (`symbol:6:9`) or an occurrence position (`identifier:26:31`)"
@@ -212,7 +212,7 @@ fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
     }
     let start = parts[4]
         .parse::<u64>()
-        .map_err(|_| Error::new("INVALID_ID", format!("{at} has no byte offset")))?;
+        .map_err(|_| Error::new("INVALID_QUERY", format!("{at} has no byte offset")))?;
     Ok(start)
 }
 
@@ -243,7 +243,7 @@ impl Output {
             return Err(if self.exceeded {
                 Error::new("RESOURCE_LIMIT", "output byte budget exceeded")
             } else {
-                Error::new("FORMAT_ERROR", error.to_string())
+                Error::new("INVALID_INPUT", error.to_string())
             });
         }
         self.raw(b"\n")
@@ -663,7 +663,7 @@ pub fn run_source(
             if byte >= source.text.len() as u64 {
                 perf.record("query", query_start);
                 return Err(Error::new(
-                    "INVALID_OFFSET",
+                    "INVALID_QUERY",
                     "byte offset must be smaller than file length",
                 ));
             }
@@ -795,7 +795,10 @@ pub fn run_source(
                         .selected(&collector, &source)
                         .filter(|fragment| fragment.id == id)
                         .ok_or_else(|| {
-                            Error::new("INVALID_ID", "ID does not identify a real source fragment")
+                            Error::new(
+                                "INVALID_QUERY",
+                                "coordinate does not identify a real source fragment",
+                            )
                         })
                 })();
                 perf.record("query", query_start);

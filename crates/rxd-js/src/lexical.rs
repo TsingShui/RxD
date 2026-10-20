@@ -106,7 +106,7 @@ pub fn declaration_ids(
                 .map(|key| key.id(source))
                 .ok_or_else(|| {
                     Error::new(
-                        "INVALID_TARGET",
+                        "NOT_FOUND",
                         "merged declaration has no source navigation target",
                     )
                 })?,

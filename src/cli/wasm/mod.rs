@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use super::filter::CaseArgs;
 use super::xref::{Expect, Selector};
 use clap::{Args, Subcommand};
+use rxd_core::Result;
 use rxd_core::envelope::{RecordMeta, attach_protocol, header, record, summary};
 use rxd_core::perf::Perf;
-use rxd_core::{Error, Result};
 use rxd_wasm::{Limits, Module};
 use serde_json::{Map, Value, json};
 
@@ -267,21 +267,7 @@ impl Command {
 pub fn execute(command: Command) -> Result<()> {
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "wasm", command.name());
-    let result = execute_inner(command, &mut perf).map_err(|error| {
-        let message = format!("{error:#}");
-        let code = [
-            "RESOURCE_LIMIT",
-            "INVALID_QUERY",
-            "INVALID_ID",
-            "SOURCE_MISMATCH",
-            "INVALID_INPUT",
-            "UNSUPPORTED_INPUT",
-        ]
-        .into_iter()
-        .find(|code| message.contains(code))
-        .unwrap_or("IO_ERROR");
-        Error::coded(code, message)
-    });
+    let result = execute_inner(command, &mut perf).map_err(super::classify);
     super::finish(perf, emit_perf, result)
 }
 

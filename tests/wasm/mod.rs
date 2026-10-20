@@ -591,7 +591,7 @@ fn wasm_get_expands_short_coordinates_and_rejects_foreign_hashes() {
     failure(
         run("get-function", &path, &["--at", "bogus"]),
         1,
-        "INVALID_ID",
+        "INVALID_QUERY",
     );
     // A coordinate of another kind is not a function.
     failure(

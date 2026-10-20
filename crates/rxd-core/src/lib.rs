@@ -13,6 +13,112 @@ pub struct Error {
     pub message: String,
 }
 
+/// One failure class, chosen by whoever knows the reason (ADR 0015).
+///
+/// A failure carries exactly one code as data. The set is closed: a new code is a
+/// contract change, not a message. Grouping is by what the caller can do about it, which
+/// is also what decides the exit status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Failure {
+    /// The query is malformed or its arguments contradict each other.
+    Query,
+    /// The query is well formed and names no record.
+    NotFound,
+    /// A name matches more than one identity; the caller must use a coordinate.
+    Ambiguous,
+    /// The input bytes are corrupt or are not this backend's format.
+    Input,
+    /// The input is well formed and uses something this build does not implement.
+    Unsupported,
+    /// A coordinate or stream came from a different input.
+    Mismatch,
+    /// A declared budget was reached; the message names it.
+    Resource,
+    /// Understanding the input worked and recovering source from it did not.
+    Decompile,
+    /// The filesystem, a pipe or another device failed.
+    Io,
+    /// An invariant broke: a bug, or a worker that died.
+    Internal,
+}
+
+impl Failure {
+    pub const ALL: [Failure; 10] = [
+        Failure::Query,
+        Failure::NotFound,
+        Failure::Ambiguous,
+        Failure::Input,
+        Failure::Unsupported,
+        Failure::Mismatch,
+        Failure::Resource,
+        Failure::Decompile,
+        Failure::Io,
+        Failure::Internal,
+    ];
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Failure::Query => "INVALID_QUERY",
+            Failure::NotFound => "NOT_FOUND",
+            Failure::Ambiguous => "AMBIGUOUS",
+            Failure::Input => "INVALID_INPUT",
+            Failure::Unsupported => "UNSUPPORTED_INPUT",
+            Failure::Mismatch => "SOURCE_MISMATCH",
+            Failure::Resource => "RESOURCE_LIMIT",
+            Failure::Decompile => "DECOMPILE_ERROR",
+            Failure::Io => "IO_ERROR",
+            Failure::Internal => "INTERNAL_ERROR",
+        }
+    }
+
+    /// The exit status is a property of the class, not of each command: a query the caller
+    /// can fix exits 2, everything else exits 1.
+    pub fn exit_code(self) -> u8 {
+        match self {
+            Failure::Query | Failure::NotFound | Failure::Ambiguous => 2,
+            _ => 1,
+        }
+    }
+
+    /// Classify a code, including the spellings older releases printed.
+    pub fn from_code(code: &str) -> Option<Failure> {
+        Some(match code {
+            "INVALID_QUERY" => Failure::Query,
+            "NOT_FOUND" => Failure::NotFound,
+            "AMBIGUOUS" => Failure::Ambiguous,
+            "INVALID_INPUT" => Failure::Input,
+            "UNSUPPORTED_INPUT" | "UNSUPPORTED" => Failure::Unsupported,
+            "SOURCE_MISMATCH" => Failure::Mismatch,
+            "RESOURCE_LIMIT" => Failure::Resource,
+            "DECOMPILE_ERROR" => Failure::Decompile,
+            "IO_ERROR" => Failure::Io,
+            "INTERNAL_ERROR" => Failure::Internal,
+            // Retired codes stay readable, so output from an older release still
+            // classifies: an identifier is a coordinate now, and a format error is an
+            // input error.
+            "INVALID_ID" | "SOURCE_MISMATCH_ID" => Failure::Query,
+            "FORMAT_ERROR" => Failure::Input,
+            _ => return None,
+        })
+    }
+}
+
+impl Error {
+    pub fn failure(kind: Failure, message: impl Into<String>) -> Self {
+        Self::coded(kind.code(), message)
+    }
+
+    /// The class of this error, when its code is one the contract knows.
+    pub fn kind(&self) -> Option<Failure> {
+        Failure::from_code(self.code)
+    }
+
+    /// The process exit status this error must produce.
+    pub fn exit_code(&self) -> u8 {
+        self.kind().map_or(1, Failure::exit_code)
+    }
+}
+
 impl Error {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
@@ -29,18 +135,35 @@ impl Error {
     /// leading repetitions of this error's own `code:` are folded away here; the
     /// printed diagnostic carries the code exactly once.
     pub fn coded(code: &'static str, message: impl Into<String>) -> Self {
-        let message = message.into();
-        let prefix = format!("{code}: ");
-        let mut rest = message.as_str();
-        while let Some(stripped) = rest.strip_prefix(prefix.as_str()) {
-            rest = stripped;
-        }
-        if rest.len() == message.len() {
-            Self::new(code, message)
-        } else {
-            Self::new(code, rest.to_string())
-        }
+        Self::new(code, strip_codes(&message.into()))
     }
+}
+
+/// Remove leading `CODE: ` tokens from a message.
+///
+/// A backend error may already begin with its code, because `anyhow` contexts are
+/// strings; the boundary applies the class once, so the printed diagnostic never reads
+/// `INVALID_QUERY: INVALID_INPUT: ...`. Only a leading, known code is removed - a code
+/// word inside a sentence is data, not a prefix.
+pub fn strip_codes(message: &str) -> String {
+    let mut rest = message;
+    while let Some((head, tail)) = rest.split_once(": ") {
+        if Failure::from_code(head).is_none() {
+            break;
+        }
+        rest = tail;
+    }
+    rest.to_owned()
+}
+
+/// When a message starts with a code, that code and the rest of the message.
+pub fn leading_code(message: &str) -> (Option<Failure>, &str) {
+    if let Some((head, tail)) = message.split_once(": ")
+        && let Some(kind) = Failure::from_code(head)
+    {
+        return (Some(kind), tail);
+    }
+    (None, message)
 }
 
 impl fmt::Display for Error {

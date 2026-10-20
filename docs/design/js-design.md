@@ -233,7 +233,7 @@ Type declaration names/hierarchy support source navigation; enum initializers re
 original expressions without evaluation. Enum members are bindings in their
 initializer scope, and identifiers or static string/template member names can be
 xref/slice source bindings; ordinary JS/JSX static property names remain
-`INVALID_TARGET`.
+`NOT_FOUND`.
 
 TS/TSX symbol records and slice symbol metadata add `space: type|value|type_value`,
 meaning the lexical uses Oxc permits, not runtime existence or inferred type. Refs
@@ -418,7 +418,7 @@ implemented.
 `N` must be less than the original length and inside a declaration identifier or
 identifier-reference span; it may be inside a multibyte character or escaped
 identifier. Whitespace, strings, comments, keywords, static property keys and `foo` in
-`obj.foo` return `INVALID_TARGET`; object/destructuring shorthand that is both binding
+`obj.foo` return `NOT_FOUND`; object/destructuring shorthand that is both binding
 and reference is selectable. `key` in `obj[key]` is a normal lexical reference.
 
 Refs header detail adds `analysis: lexical`, `resolution`, `selected`, `declaration`:
@@ -515,7 +515,7 @@ unchanged. Perf adds the semantic phase/counts only for xref/symbols/slice-symbo
 buffer, after entity/depth checks, it builds a node-budgeted semantic index and
 validates version, backend, content fingerprint, symbol kind, exact canonical
 identifier range and real binding. Reference, later redeclaration, non-canonical
-numeric encoding and arbitrary valid slices return `INVALID_ID`; different source
+numeric encoding and arbitrary valid slices return `INVALID_QUERY`; different source
 content returns `SOURCE_MISMATCH`. Structure IDs keep the existing parser-only path.
 
 The original extraction range is chosen from the canonical declaration identifier's
@@ -588,7 +588,7 @@ are not promised small or complete runtime context.
 `slice FILE --at CONTEXT_AT [--json]` re-parses the same fixed input, checks entity/AST
 depth budgets and validates version, backend, content identity, kind and real AST
 range. Missing nodes, wrong kinds, forged ranges and non-canonical numeric encoding
-return `INVALID_ID`; changed content returns `SOURCE_MISMATCH`. It uses parser
+return `INVALID_QUERY`; changed content returns `SOURCE_MISMATCH`. It uses parser
 traversal only, no semantic index; the semantic-node ceiling does not apply.
 Outline/symbols `--within` still accept only structure IDs. Symbol IDs remain separate.
 
@@ -671,17 +671,16 @@ isolation exists. `slice` is subject to the same parse depth and output checks.
 
 | Code | Condition |
 | --- | --- |
-| `INVALID_INPUT` | Invalid UTF-8, unsupported input mode, parser error or semantic-query diagnostic |
-| `INVALID_OFFSET` | Byte position out of range |
-| `INVALID_TARGET` | Refs byte position is not a binding identifier/reference |
-| `INVALID_ID` | Invalid ID format or no matching structure |
-| `SOURCE_MISMATCH` | ID content fingerprint differs from current input |
+| `INVALID_QUERY` | Malformed coordinate, byte position out of range, contradictory flags |
+| `NOT_FOUND` | A well-formed coordinate that names no structure, fragment or binding |
+| `INVALID_INPUT` | Invalid UTF-8, unsupported input mode, parser error or semantic diagnostic |
+| `SOURCE_MISMATCH` | Coordinate content fingerprint differs from this input |
 | `RESOURCE_LIMIT` | Input/index/output budget exceeded |
-| `FORMAT_ERROR` | Result cannot be serialized by contract |
 | `IO_ERROR` | Read or write failure |
 
-Exit 0 means complete success including zero results; 1 means input/query/resource/I/O
-failure; 2 means CLI argument error. Stderr diagnostics include a stable code and
+Codes are ADR 0015's closed set. Exit 0 means complete success including zero results;
+2 means the query was wrong and can be corrected; 1 means the input, a budget, the
+environment or an invariant failed. Stderr diagnostics include a stable code and
 understandable reason. Ctrl-C returns non-zero and stops output; cancellation is not
 success.
 

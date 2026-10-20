@@ -60,7 +60,7 @@ section exactly (duplicates preserved).
   coordinate is expanded against the header source identity inside the library; a
   full `rxd1:wasm:<sha256>:func:<n>` id keeps its own hash, so one naming different
   content fails as `SOURCE_MISMATCH` instead of being rewritten, and a malformed
-  coordinate is `INVALID_ID` rather than guessed. Imported function indices have no
+  coordinate is `INVALID_QUERY` rather than guessed. Imported function indices have no
   code body and are `INVALID_QUERY`.
 - `get-function` emits one JSON `function_view` record. It first tries structured
   decompilation: on success it returns `representation: clike`, `decompiled: true`,
@@ -88,7 +88,7 @@ section exactly (duplicates preserved).
 
 `-o` atomically writes exactly the stdout content. Failures emit no partial stdout
 and never overwrite an existing output. Diagnostics go to stderr. `INVALID_QUERY`
-and argument errors exit 2; `INVALID_ID`, `SOURCE_MISMATCH`, input, resource and I/O
+and argument errors exit 2; `INVALID_QUERY`, `SOURCE_MISMATCH`, input, resource and I/O
 failures exit 1.
 
 ## Envelope (schema_version=2)

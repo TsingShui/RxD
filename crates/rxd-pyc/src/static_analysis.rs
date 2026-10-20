@@ -133,7 +133,7 @@ impl Analysis {
     }
     pub fn parse_code_id(&mut self, id: &str) -> Result<usize> {
         self.charge_work(id.len())?;
-        let invalid = || Error::new("INVALID_QUERY", "invalid or stale PYC code ID");
+        let invalid = || Error::new("INVALID_QUERY", "malformed or stale PYC code coordinate");
         // A row prints the copy-only `code:<index>`; identity lives in the header, so the
         // short form is expanded here instead of making a caller reassemble the hash.
         let (digest, ordinal) = match id.strip_prefix("code:") {

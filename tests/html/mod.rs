@@ -190,7 +190,7 @@ fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
         id.replace(":0:", ":00:"),
         id.replacen("element:", "unknown:", 1),
     ] {
-        fails(run(&path, &["--within", &candidate]), "INVALID_ID");
+        fails(run(&path, &["--within", &candidate]), "INVALID_QUERY");
     }
     // A row prints the copy-only short coordinate, so it is a valid selector.
     assert!(run(&path, &["--within", id]).status.success());
@@ -413,7 +413,10 @@ fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
         id.replace(":0:", ":00:"),
         id.replacen("element:", "unknown:", 1),
     ] {
-        fails(extract(&path, &candidate, &destination, &[]), "INVALID_ID");
+        fails(
+            extract(&path, &candidate, &destination, &[]),
+            "INVALID_QUERY",
+        );
         assert_eq!(fs::read(&destination).unwrap(), b"old");
     }
     fails(

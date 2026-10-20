@@ -228,7 +228,7 @@ pub fn validate_id(source: &Source, id: &str) -> Result<()> {
         || parts[5].parse::<u32>().is_err()
     {
         return Err(Error::new(
-            "INVALID_ID",
+            "INVALID_QUERY",
             "malformed or unsupported fragment ID",
         ));
     }

@@ -255,9 +255,9 @@ Each result appears in `structuredContent` and as one JSON text compatibility bl
 Consumers check `isError` before interpreting success. Domain failure has
 `{error: {code, message, candidates}}`; `candidates` is nullable and carries the complete
 typed result when the surface has one, so no caller parses diagnostics. A coordinate that
-no longer names a row is `INVALID_ID`, a DEX selector that matches nothing is
-`NOT_FOUND`, and `INVALID_QUERY`, input/identity errors, `RESOURCE_LIMIT`,
-`TARGET_INVALID`, `TIMEOUT` and `WORKER_ERROR` guide recovery. Protocol faults are
+no longer names a row is `NOT_FOUND`, exactly as on the CLI (ADR 0015); `INVALID_QUERY`,
+input/identity errors, `RESOURCE_LIMIT`, `TARGET_INVALID`, `TIMEOUT` and `WORKER_ERROR`
+guide recovery. Protocol faults are
 JSON-RPC errors. Cancellation suppresses responses as required by the SDK;
 completion/cancellation races follow the negotiated protocol.
 

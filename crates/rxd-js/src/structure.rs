@@ -307,20 +307,25 @@ impl<'s> Collector<'s> {
             || parts[5].parse::<u32>().is_err()
         {
             return Err(Error::new(
-                "INVALID_ID",
-                "malformed or unsupported entity ID",
+                "INVALID_QUERY",
+                "malformed or unsupported coordinate",
             ));
         }
         if parts[2] != self.source.id {
             return Err(Error::new(
                 "SOURCE_MISMATCH",
-                "entity ID belongs to different source content",
+                "entity coordinate belongs to different source content",
             ));
         }
         self.entities
             .iter()
             .position(|e| e.entity.id == id)
-            .ok_or_else(|| Error::new("INVALID_ID", "ID does not identify a real structure"))
+            .ok_or_else(|| {
+                rxd_core::Error::failure(
+                    rxd_core::Failure::NotFound,
+                    "coordinate does not identify a real structure",
+                )
+            })
     }
 
     pub fn is_descendant(&self, candidate: usize, root: usize) -> bool {

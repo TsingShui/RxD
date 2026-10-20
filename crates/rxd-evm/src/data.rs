@@ -228,7 +228,7 @@ impl DataInventory {
     fn select(&self, navigation: &Navigation, at: &str) -> Result<&DataLiteral> {
         let invalid = || {
             Error::new(
-                "INVALID_ID",
+                "INVALID_QUERY",
                 "expected a canonical content-bound EVM data literal ID",
             )
         };

@@ -88,7 +88,7 @@ pub fn run(
 ) -> Result<References> {
     if byte >= source.text.len() as u64 {
         return Err(Error::new(
-            "INVALID_OFFSET",
+            "INVALID_QUERY",
             "byte offset must be smaller than file length",
         ));
     }
@@ -143,7 +143,7 @@ pub fn run(
             })
             .ok_or_else(|| {
                 Error::new(
-                    "INVALID_TARGET",
+                    "NOT_FOUND",
                     "byte offset must select a binding identifier or identifier reference",
                 )
             })?;

@@ -136,13 +136,13 @@ impl Navigation {
                     instructions.binary_search_by_key(&last, |i| i.decoded_offset);
                 let (Ok(first), Ok(final_instruction)) = (first, final_instruction) else {
                     return Err(Error::new(
-                        "FORMAT_ERROR",
+                        "INVALID_INPUT",
                         "native basic block is not instruction-aligned",
                     ));
                 };
                 if final_instruction < first {
                     return Err(Error::new(
-                        "FORMAT_ERROR",
+                        "INVALID_INPUT",
                         "native basic block has reversed bounds",
                     ));
                 }
@@ -188,7 +188,7 @@ impl Navigation {
         let fields: Vec<_> = canonical.split(':').collect();
         let invalid = || {
             Error::new(
-                "INVALID_ID",
+                "INVALID_QUERY",
                 "expected a canonical content-bound EVM block ID",
             )
         };
@@ -365,7 +365,7 @@ pub(crate) fn write_record(output: &mut BoundedOutput, record: &Value) -> Result
         return Err(if output.exceeded {
             Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded")
         } else {
-            Error::new("FORMAT_ERROR", error.to_string())
+            Error::new("INVALID_INPUT", error.to_string())
         });
     }
     output

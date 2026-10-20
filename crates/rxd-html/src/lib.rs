@@ -300,7 +300,7 @@ impl Output {
                 if error.is_io() {
                     "RESOURCE_LIMIT"
                 } else {
-                    "FORMAT_ERROR"
+                    "INVALID_INPUT"
                 },
                 error.to_string(),
             )
@@ -372,7 +372,7 @@ fn validate_id(id: &str, hash: &str, ids: &[String]) -> Result<usize> {
         id
     };
     if !canonical_id(id) {
-        return Err(Error::new("INVALID_ID", "malformed HTML record ID"));
+        return Err(Error::new("INVALID_QUERY", "malformed HTML record ID"));
     }
     if id.split(':').nth(2) != Some(hash) {
         return Err(Error::new(
@@ -382,7 +382,12 @@ fn validate_id(id: &str, hash: &str, ids: &[String]) -> Result<usize> {
     }
     ids.iter()
         .position(|candidate| candidate == id)
-        .ok_or_else(|| Error::new("INVALID_ID", "ID does not identify a real HTML record"))
+        .ok_or_else(|| {
+            Error::new(
+                "INVALID_QUERY",
+                "coordinate does not identify a real HTML record",
+            )
+        })
 }
 
 fn parse_catalog<'a>(

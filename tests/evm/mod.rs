@@ -375,7 +375,7 @@ fn evm_block_ids_survive_copy_and_reject_stale_sources_encodings_and_forged_boun
                 &["--at", &forged, "-o", destination.to_str().unwrap()],
             ),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
@@ -510,7 +510,7 @@ fn evm_block_navigation_reports_effective_limits_and_publishes_atomically() {
             ],
         ),
         1,
-        "INVALID_ID",
+        "INVALID_QUERY",
     );
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     fs::write(&path, "0xgg").unwrap();
@@ -919,7 +919,7 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
         failure(
             run("get-function", &path, "hex", &["--at", &invalid]),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
     }
     failure(
@@ -1730,7 +1730,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
                 &["--at", &forged, "-o", destination.to_str().unwrap()],
             ),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
@@ -1754,7 +1754,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
     failure(
         run("xref", &path, "hex", &["--at", &forged]),
         1,
-        "INVALID_ID",
+        "INVALID_QUERY",
     );
     failure(
         run(
@@ -1904,7 +1904,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     assert!(failed.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     let reports = perf_reports(&failed);
-    assert_eq!(reports[0]["error_code"], "INVALID_ID");
+    assert_eq!(reports[0]["error_code"], "INVALID_QUERY");
 }
 
 #[test]
@@ -2428,7 +2428,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         failure(
             run("xref", &path, "hex", &["--at", &invalid]),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
     }
     failure(
@@ -3098,7 +3098,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
         failure(
             run("xref", &path, "raw", &["--at", &forged]),
             1,
-            "INVALID_ID",
+            "INVALID_QUERY",
         );
     }
     fs::write(&copy, b"\x60\x04\x60\x07\x5f\x39\x00CHANGED").unwrap();

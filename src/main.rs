@@ -44,7 +44,7 @@ fn main() -> ExitCode {
             Ok(code) => ExitCode::from(code as u8),
             Err(error) => {
                 eprintln!("{error}");
-                ExitCode::FAILURE
+                ExitCode::from(error.exit_code())
             }
         };
     }
@@ -54,11 +54,11 @@ fn main() -> ExitCode {
         perf.include_args(process_start, args_ns);
         let result = run_worker(&mut perf);
         let (code, error_code) = match result {
-            Ok(0) => (0, None),
-            Ok(code) => (code, Some("WORKER_ERROR")),
+            Ok(0) => (0u32, None),
+            Ok(code) => (code as u32, Some("WORKER_ERROR")),
             Err(error) => {
                 eprintln!("{error}");
-                (1, Some(error.code))
+                (u32::from(error.exit_code()), Some(error.code))
             }
         };
         perf.finish(error_code);
@@ -92,7 +92,8 @@ fn main() -> ExitCode {
     };
     if let Err(error) = result {
         eprintln!("{error}");
-        return ExitCode::from(if error.code == "INVALID_QUERY" { 2 } else { 1 });
+        // The status belongs to the failure class, in one place (ADR 0015).
+        return ExitCode::from(error.exit_code());
     }
     ExitCode::SUCCESS
 }

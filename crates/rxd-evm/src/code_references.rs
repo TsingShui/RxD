@@ -68,7 +68,7 @@ impl<'a> References<'a> {
             ),
             _ => {
                 return Err(Error::new(
-                    "INVALID_ID",
+                    "INVALID_QUERY",
                     "expected an EVM block or function ID",
                 ));
             }

@@ -35,19 +35,17 @@ fn archive_policy(value: Option<&str>) -> apk::ArchivePolicy {
     }
     policy
 }
-pub(super) fn execute(command: Command) -> i32 {
+pub(super) fn execute(command: Command) -> rxd_core::Result<i32> {
     restore_default_sigpipe();
     let (perf_on, name) = (command.perf(), command.name());
-    let code = match run_command(command, archive_policy_from_env(), Instant::now()) {
-        Ok(code) => code,
-        Err(error) if is_broken_pipe(&error) => 0,
-        Err(error) => {
-            eprintln!("Error: {error:#}");
-            1
-        }
+    let result = match run_command(command, archive_policy_from_env(), Instant::now()) {
+        Ok(code) => Ok(code),
+        // A consumer that closed the pipe is a normal Unix idiom, not a failure.
+        Err(error) if is_broken_pipe(&error) => Ok(0),
+        Err(error) => Err(super::classify(error)),
     };
     emit_perf(perf_on, name);
-    code
+    result
 }
 
 /// Execute in an isolated MCP worker, preserving domain errors for the typed adapter.
@@ -55,19 +53,7 @@ pub(super) fn execute(command: Command) -> i32 {
 pub(crate) fn execute_query(command: Command, max_entry_bytes: usize) -> rxd_core::Result<i32> {
     let mut policy = apk::ArchivePolicy::default();
     policy.max_inflated_entry = policy.max_inflated_entry.min(max_entry_bytes);
-    run_command(command, policy, Instant::now()).map_err(|error| {
-        let message = format!("{error:#}");
-        let code = if message.contains("RESOURCE_LIMIT") || message.contains("inflated entry") {
-            "RESOURCE_LIMIT"
-        } else if message.contains("INVALID_QUERY") {
-            "INVALID_QUERY"
-        } else if message.contains("not found") || message.contains("not defined") {
-            "NOT_FOUND"
-        } else {
-            "INVALID_INPUT"
-        };
-        rxd_core::Error::new(code, message)
-    })
+    run_command(command, policy, Instant::now()).map_err(super::classify)
 }
 
 /// Whether an error is only a consumer that closed the pipe.
@@ -473,7 +459,10 @@ fn run_command(
                     args.perf,
                 )?;
                 let Some((dex_name, source)) = hit else {
-                    bail!("Class {class_name} not found in APK.");
+                    bail!(rxd_core::Error::failure(
+                        rxd_core::Failure::NotFound,
+                        format!("no class {class_name} in this input"),
+                    ));
                 };
                 if args.perf {
                     rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));

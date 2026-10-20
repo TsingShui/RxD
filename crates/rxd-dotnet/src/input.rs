@@ -150,9 +150,13 @@ impl Input {
             "INVALID_QUERY: token 0x{token:08x} is in table 0x{:02x}, not the `{kind}` table 0x{table:02x}; copy the `at` of a `{kind}` record from `rxd dotnet outline`",
             token >> 24,
         );
+        // The token is well formed and names no row: that is absence, not a bad query.
         ensure!(
             token & 0xffffff > 0 && token & 0xffffff <= self.rows[table as usize],
-            "INVALID_QUERY: token 0x{token:08x} is outside the `{kind}` table row range",
+            rxd_core::Error::failure(
+                rxd_core::Failure::NotFound,
+                format!("no {kind} at token 0x{token:08x} in this input"),
+            ),
         );
         Ok(token)
     }
