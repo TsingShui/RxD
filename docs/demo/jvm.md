@@ -14,23 +14,27 @@ query:
 target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar --class fixture.FlowFixture
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I'
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' --raw
-target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' -o target/add.java
+target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' -o target/add.json
+jq -r '.detail.code' target/add.json
 # locate → fetch without copying a coordinate: pipe the whole stream, header included,
 # so the fetch can refuse a stream that describes another archive
 target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar | \
   target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --from -
 ```
 
-`get-method` default Java and `get-class` Java are outside the envelope. `--raw`
-returns one `record="bytecode"` JSON object; instructions are in `detail.instructions`
-and the original Code range is outer start/end.
+Every FETCH is one JSON record: `get-method` and `get-class` answer with
+`record="method_body"` / `record="class_body"`, the Java source in `detail.code`,
+`detail.representation="java"` and `detail.decompiled=true`. `--raw` keeps the same
+record and switches `detail.representation` to `bytecode`, with instructions in
+`detail.instructions` and the original Code range in outer start/end.
 
-Whole-class decompilation accepts internal, dotted or descriptor class names and emits a
-single Java source file:
+Whole-class decompilation accepts internal, dotted or descriptor class names and returns
+one `class_body` record:
 
 ```sh
 target/release/rxd jar get-class tests/fixtures/jvm/flow-deflated.jar --at fixture.FlowFixture
-target/release/rxd jar get-class tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;' -o target/FlowFixture.java
+target/release/rxd jar get-class tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;' -o target/FlowFixture.json
+jq -r '.detail.code' target/FlowFixture.json > target/FlowFixture.java
 ```
 
 List constant-pool string literals (`--class`/`--filter` narrow the scope):

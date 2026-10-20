@@ -323,7 +323,19 @@ fn run_command(
                 args.threads,
                 args.perf,
             )?;
-            emit(&source, args.output.as_deref())?;
+            let payload = fetch_record(
+                "get-method",
+                "method_body",
+                &at,
+                serde_json::json!({
+                    "representation": "java",
+                    "decompiled": true,
+                    "complete": true,
+                    "code": source,
+                }),
+            )?;
+            emit(&payload, args.output.as_deref())?;
+            return Ok(status);
         }
         Command::Fields(args) => {
             let selector = apk::MethodSelector {
@@ -455,14 +467,45 @@ fn run_command(
                     rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));
                     rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
                 }
-                let mut payload = String::with_capacity(source.len() + 256);
-                payload.push_str(&source);
-                payload.push('\n');
+                let payload = fetch_record(
+                    "get-class",
+                    "class_body",
+                    &class_name,
+                    serde_json::json!({
+                        "representation": "java",
+                        "decompiled": true,
+                        "complete": true,
+                        "code": source,
+                    }),
+                )?;
                 emit(&payload, args.output.as_deref())?;
             }
         }
     }
     Ok(status)
+}
+
+/// One FETCH result: the source is a field of a record, never the whole answer, so a
+/// consumer parses the same envelope as every other command (ADR 0003).
+fn fetch_record(
+    command: &str,
+    kind: &str,
+    at: &str,
+    detail: serde_json::Value,
+) -> anyhow::Result<String> {
+    let mut record = serde_json::Map::new();
+    record.insert("record".into(), serde_json::json!(kind));
+    record.insert("at".into(), serde_json::json!(at));
+    record.insert("backend".into(), serde_json::json!("dex"));
+    record.insert("command".into(), serde_json::json!(command));
+    record.insert("schema_version".into(), serde_json::json!(2));
+    // A DEX archive carries no content hash, so the record names no input identity. Its
+    // size is only the `--from` mismatch guard; putting it here would make the same DEX
+    // print two different records depending on whether it sits in a bare file or an APK.
+    record.insert("detail".into(), detail);
+    let mut line = serde_json::to_string(&serde_json::Value::Object(record))?;
+    line.push('\n');
+    Ok(line)
 }
 
 /// A DEX data record. No DEX unit has a copy-only coordinate, so the envelope's six

@@ -144,8 +144,11 @@ final` method) and `get-method --at` renders one member's modifiers, so a per-ro
 would be the same fact spelled twice. On the 5.19M-method corpus that omission is also
 what keeps `methods` at 679 MB instead of ~731 MB.
 
-and Manifest XML stay outside the envelope and are byte-stable; JSON and Java are never
-mixed. `-o` copies stdout exactly. Input/analysis errors emit no success envelope.
+`get-class`/`get-method` answer with one record each - `class_body` / `method_body` -
+whose `detail.code` is the Java source, because a FETCH is a record like any other and a
+consumer should not special-case two commands into raw text. Manifest XML stays outside
+the envelope and is byte-stable; JSON and XML are never mixed. `-o` copies stdout
+exactly. Input/analysis errors emit no success envelope.
 
 ## Resources and dependencies
 
@@ -194,7 +197,8 @@ rasc schema-v1 byte comparisons are not used for the schema-v2 JSON protocol.
 
 `dex_get_class/entries/strings/xref/manifest/classes` reuse existing parsing and
 result assembly in isolated workers. JSONL projects to header/records/summary;
-Java/XML is wrapped with representation/source/complete/source_id. Original null
+`get-class`/`get-method` already answer with a record, and Manifest XML is wrapped with
+representation/source/complete/source_id. Original null
 id/source_id semantics remain; a target only pins input and does not claim entity
 closure.
 

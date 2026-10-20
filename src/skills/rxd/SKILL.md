@@ -150,7 +150,10 @@ rxd jar get-method library.jar --at "$METHOD_AT"
 rxd jar get-class library.jar --at "$CLASS_AT"
 ```
 
-DEX records carry no per-row `source_id`: route `xref` rows with their
+Every `get-class`/`get-method` answers with one JSON record (`class_body` /
+`method_body`) whose `detail.code` is the source; `--raw` keeps the record and
+switches `detail.representation` to the original instructions. DEX records carry no
+per-row `source_id`: route `xref` rows with their
 `context_at` (the caller) and `detail.entry` (which DEX); reuse the unchanged
 archive. DEX strings have global table
 indices and no owning class. A duplicate class is an ambiguity, not a reason to

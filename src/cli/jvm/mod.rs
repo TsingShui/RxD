@@ -323,11 +323,31 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         let input = Input::read(&input, limits, options.release)?;
         let coordinate = selector.resolve(&["class"], Expect::Content(&input.source_id))?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
-        anyhow::ensure!(
-            source.len() <= limits.output_bytes,
-            "RESOURCE_LIMIT: output byte budget exceeded"
+        // One FETCH is one record: the source is a field of it, not the whole answer, so a
+        // consumer parses the same envelope as every other command (ADR 0003).
+        let mut body = record(
+            "class_body",
+            RecordMeta {
+                at: Some(coordinate.as_str()),
+                ..RecordMeta::default()
+            },
+            json!({
+                "representation": "java",
+                "decompiled": true,
+                "complete": true,
+                "code": source,
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
         );
-        super::write_output(source.as_bytes(), options.output.as_deref())?;
+        body["backend"] = json!("jvm");
+        body["command"] = json!("get-class");
+        body["schema_version"] = json!(SCHEMA_VERSION);
+        body["source_id"] = json!(input.source_id);
+        let mut output = Vec::new();
+        append(&mut output, &body, limits.output_bytes)?;
+        super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
     if let Command::Strings {
@@ -640,7 +660,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("INVALID_QUERY: method has no Code attribute"))?;
             let mut bytecode = record(
-                "bytecode",
+                "method_body",
                 RecordMeta {
                     at: Some(Input::method_at(selected, index).as_str()),
                     start: Some(code.range.start),
@@ -649,8 +669,8 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                 },
                 json!({
                     "representation":"bytecode",
-                    "class":selected.class.name,
-                    "proto":method.descriptor,
+                    "decompiled":false,
+                    "code":serde_json::Value::Null,
                     "max_stack":code.max_stack,
                     "max_locals":code.max_locals,
                     "handlers":code.handlers,
@@ -665,14 +685,32 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             bytecode["backend"] = json!("jvm");
             bytecode["command"] = json!("get-method");
             bytecode["schema_version"] = json!(SCHEMA_VERSION);
+            bytecode["source_id"] = json!(input.source_id);
             append(&mut output, &bytecode, limits.output_bytes)?;
         } else {
             let source = rxd_jvm::render_method(&input, &at, limits)?;
-            anyhow::ensure!(
-                source.len() <= limits.output_bytes,
-                "RESOURCE_LIMIT: output byte budget exceeded"
+            let mut body = record(
+                "method_body",
+                RecordMeta {
+                    at: Some(at.as_str()),
+                    ..RecordMeta::default()
+                },
+                json!({
+                    "representation": "java",
+                    "decompiled": true,
+                    "complete": true,
+                    "code": source,
+                    "instructions": serde_json::Value::Null,
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
             );
-            output.extend_from_slice(source.as_bytes());
+            body["backend"] = json!("jvm");
+            body["command"] = json!("get-method");
+            body["schema_version"] = json!(SCHEMA_VERSION);
+            body["source_id"] = json!(input.source_id);
+            append(&mut output, &body, limits.output_bytes)?;
         }
     } else {
         let class_name = class_filter.as_deref().map(rxd_jvm::normalize_class_name);

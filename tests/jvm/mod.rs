@@ -40,15 +40,20 @@ fn assert_record(row: &Value) {
         "end",
         "detail",
     ];
-    if row["record"] == "bytecode" {
+    // A single FETCH record keeps its protocol identity outside `detail`.
+    if matches!(row["record"].as_str(), Some("method_body" | "class_body")) {
         keys.extend(["backend", "command", "schema_version"]);
         assert_eq!(row["backend"], "jvm");
         assert_eq!(row["command"], "get-method");
         assert_eq!(row["schema_version"], 2);
     }
     assert_keys(row, &keys);
-    // Identity lives in the stream header now; a row does not repeat it.
-    assert!(row["source_id"].is_null());
+    // Identity lives in the stream header; only a standalone FETCH names it.
+    if matches!(row["record"].as_str(), Some("method_body" | "class_body")) {
+        assert!(row["source_id"].is_string());
+    } else {
+        assert!(row["source_id"].is_null());
+    }
     assert!(row["parent_at"].is_null());
     let fields: &[&str] = match row["record"].as_str().unwrap() {
         "class" => &[
@@ -66,21 +71,24 @@ fn assert_record(row: &Value) {
         "method" => &["proto", "signature", "exceptions", "has_code"],
         "string" => &["class", "index", "value", "utf16"],
         "reference" => &["byte_offset", "mnemonic", "target"],
-        "bytecode" => &[
+        "method_body" => &[
             "representation",
-            "class",
-            "proto",
+            "decompiled",
+            "code",
             "max_stack",
             "max_locals",
             "handlers",
             "instructions",
             "complete",
         ],
+        "class_body" => &["representation", "decompiled", "complete", "code"],
         other => panic!("unexpected JVM record: {other}"),
     };
     assert_keys(&row["detail"], fields);
     match row["record"].as_str().unwrap() {
-        "method" | "bytecode" => assert!(row["at"].as_str().unwrap().starts_with('L')),
+        "method" | "method_body" | "class_body" => {
+            assert!(row["at"].as_str().unwrap().starts_with('L'))
+        }
         "class" => assert!(row["at"].as_str().unwrap().starts_with('L')),
         _ => assert!(row["at"].is_null()),
     }
@@ -89,7 +97,7 @@ fn assert_record(row: &Value) {
     } else {
         assert!(row["context_at"].is_null());
     }
-    if row["record"] != "bytecode" {
+    if row["record"] != "method_body" {
         assert!(row["start"].is_null());
         assert!(row["end"].is_null());
     }
@@ -301,15 +309,20 @@ fn jvm_stored_and_deflated_jars_preserve_class_content_ids_and_original_bytecode
     let id = method(&class, "add");
     let java = run(&["get-method", "--at", &id], &class);
     success(&java);
+    let body: Value = serde_json::from_slice(&java.stdout).unwrap();
+    assert_record(&body);
+    assert_eq!(body["record"], "method_body");
+    assert_eq!(body["detail"]["representation"], "java");
+    assert_eq!(body["detail"]["decompiled"], true);
     assert_eq!(
-        java.stdout,
-        b"public static int add(int left, int right)\n{\n    return (left + right);\n}\n"
+        body["detail"]["code"],
+        "public static int add(int left, int right)\n{\n    return (left + right);\n}\n"
     );
     let raw = run(&["get-method", "--at", &id, "--raw"], &class);
     success(&raw);
     let record: Value = serde_json::from_slice(&raw.stdout).unwrap();
     assert_record(&record);
-    assert_eq!(record["record"], "bytecode");
+    assert_eq!(record["record"], "method_body");
     assert_eq!(record["at"], id);
     assert_eq!(record["detail"]["representation"], "bytecode");
     assert_eq!(record["detail"]["complete"], true);
@@ -588,7 +601,10 @@ fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly
     let path = input("flow-deflated.jar");
     let whole = run(&["get-class", "--at", "fixture.FlowFixture"], &path);
     success(&whole);
-    let source = String::from_utf8_lossy(&whole.stdout);
+    let body: Value = serde_json::from_slice(&whole.stdout).unwrap();
+    assert_record(&body);
+    assert_eq!(body["record"], "class_body");
+    let source = body["detail"]["code"].as_str().unwrap();
     // One source file with the class header, its field, and multiple method bodies.
     assert!(source.contains("public class FlowFixture {"));
     assert!(source.contains("private int value;"));
@@ -626,7 +642,8 @@ fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly
         &input("fixture/InterfaceSuperFixture.class"),
     );
     success(&degraded);
-    let text = String::from_utf8_lossy(&degraded.stdout);
+    let degraded: Value = serde_json::from_slice(&degraded.stdout).unwrap();
+    let text = degraded["detail"]["code"].as_str().unwrap();
     assert!(text.contains("class InterfaceSuperFixture"));
     assert!(text.contains("throw new UnsupportedOperationException("));
 }

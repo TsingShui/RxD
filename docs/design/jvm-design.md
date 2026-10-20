@@ -30,9 +30,9 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | Command | Output |
 | --- | --- |
 | `jar classes [--class CLASS]`, `jar methods|fields [--class CLASS] [--name NAME] [-o FILE]` | header/match/summary JSONL, one object kind per command, `detail.analysis: metadata` |
-| `jar get-method INPUT --at METHOD_ID [-o FILE]` | Decompiled Java declaration for one method |
-| `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
-| `jar get-class INPUT --at CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
+| `jar get-method INPUT --at METHOD_ID [-o FILE]` | One `method_body` record: Java in `detail.code` |
+| `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | The same `method_body` record with `representation: bytecode`: opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
+| `jar get-class INPUT --at CLASS [-o FILE]` | One `class_body` record: whole-class Java in `detail.code` (fields, constructors, all method bodies) by internal/dotted/descriptor name |
 | `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
 | `jar get-method INPUT --at COORD \| --from JSONL` | One method as Java, or its original instructions with `--raw`; `--from` reads the coordinate from a previous stream (header included) and refuses a stream from another input |
 | `jar get-class INPUT --at COORD \| --from JSONL` | One class as Java, same selector |
@@ -165,8 +165,11 @@ constant_index, reference`; each exception-table entry has `start, end, target,
 catch_type`. These are typed detail content, not independent FETCH records; offsets are
 method-relative original JVM offsets. Inapplicable values are null.
 
-Default `get-method` Java and `get-class` Java stay byte-stable outside the envelope;
-they are decompiled source text, not structured JSON.
+`get-method` and `get-class` return one JSON record each, like every other FETCH: the
+decompiled source is `detail.code` with `representation: java` and `decompiled: true`,
+and `--raw` swaps the representation to `bytecode` without changing the record shape. A
+consumer therefore parses one envelope for every command instead of special-casing these
+two into raw text (ADR 0003).
 
 ## Supported scope
 

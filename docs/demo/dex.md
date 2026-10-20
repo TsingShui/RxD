@@ -52,14 +52,17 @@ The old rasc MCP transport is not imported; the shared stdio entry is in the
 ## Consuming schema v2
 
 JSONL even for zero results; success requires exit 0 and `summary.complete=true`.
-Navigation fields are always present but null; FETCH coordinates are never constructed
+A FETCH answers with one JSON record (`class_body` / `method_body`) whose
+`detail.code` is the Java source. Navigation fields are always present but null; FETCH
+coordinates are never constructed
 from indices. Route from `classes` rows (their `at` is `Lx/y;`) or from a `methods` row's
 `context_at`/`at` into `get-class`/`get-method`:
 
 ```sh
 target/release/rxd dex xref /path/to/app.apk -f Authorization --kind string > target/dex-xref.jsonl
 jq -r 'select(.record == "reference") | .context_at' target/dex-xref.jsonl
-target/release/rxd dex get-class /path/to/app.apk --at 'Lcom/example/Main;' > target/Main.java
+target/release/rxd dex get-class /path/to/app.apk --at 'Lcom/example/Main;' > target/Main.json
+jq -r '.detail.code' target/Main.json > target/Main.java
 ```
 
 `strings.detail.value/index` use the global DEX string table; `detail.class` is always
