@@ -139,7 +139,7 @@ fn mcp_native_worker_rss_limit_reaps_native_request_and_preserves_other_queries(
             .contains("RSS")
     );
     let recovery = client.tool(
-        "js_outline",
+        "js_entities",
         json!({"input":{"path":root.join("tests/fixtures/example.js")}}),
     );
     assert_ne!(recovery["isError"], true, "{recovery}");

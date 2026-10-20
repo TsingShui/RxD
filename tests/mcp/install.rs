@@ -27,6 +27,7 @@ fn ok(output: &Output) {
     );
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_install_pi_recorded_launch_queries_from_another_directory() {
     let temp = TempDir::new().unwrap();
@@ -67,9 +68,9 @@ fn mcp_install_pi_recorded_launch_queries_from_another_directory() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|tool| tool["name"] == "js_outline")
+            .any(|tool| tool["name"] == "js_entities")
     );
-    let query = client.tool("js_outline", json!({"input":{"path":"sample.js"}}));
+    let query = client.tool("js_entities", json!({"input":{"path":"sample.js"}}));
     assert_ne!(query["isError"], true, "{query}");
     assert!(
         query["structuredContent"]["records"]
@@ -78,7 +79,7 @@ fn mcp_install_pi_recorded_launch_queries_from_another_directory() {
             .iter()
             .any(|record| record["detail"]["name"] == "greeting")
     );
-    let denied = client.tool("js_outline", json!({"input":{"path":outside}}));
+    let denied = client.tool("js_entities", json!({"input":{"path":outside}}));
     assert_eq!(
         denied["structuredContent"]["error"]["code"],
         "ACCESS_DENIED"
@@ -373,6 +374,7 @@ fn mcp_install_preflights_read_only_files_preserves_permissions_and_refuses_syml
     assert!(!bytes.is_empty());
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_install_relocation_all_recorded_launches_and_remote_conflict_replacement() {
     let temp = TempDir::new().unwrap();
@@ -458,17 +460,20 @@ fn mcp_install_relocation_all_recorded_launches_and_remote_conflict_replacement(
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|tool| tool["name"] == "js_outline")
+                .any(|tool| tool["name"] == "js_entities")
         );
-        let result = client.tool("js_outline", json!({"input":{"path":"sample.js"}}));
+        let result = client.tool("js_entities", json!({"input":{"path":"sample.js"}}));
         assert_ne!(result["isError"], true, "{result}");
-        assert_eq!(
-            result["structuredContent"]["records"][1]["detail"]["name"],
-            "greeting"
+        assert!(
+            result["structuredContent"]["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["detail"]["name"] == "greeting")
         );
         assert_eq!(
             client.tool(
-                "js_outline",
+                "js_entities",
                 json!({"input":{"path":other_cwd.join("outside.js")}})
             )["structuredContent"]["error"]["code"],
             "ACCESS_DENIED"

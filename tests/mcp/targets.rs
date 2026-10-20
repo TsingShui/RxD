@@ -16,6 +16,7 @@ fn error(result: &Value, code: &str) {
     );
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls() {
     let root = tempfile::tempdir().unwrap();
@@ -35,28 +36,28 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
     let target = info["target_id"].as_str().unwrap().to_owned();
     let input = json!({"target_id":target});
     fs::write(&path, "function replacement(){return 0;}\n").unwrap();
-    let outlined = client.tool("js_outline", json!({"input":input}));
-    let outlined = success(&outlined);
-    assert_eq!(outlined["header"]["source_id"], info["source_id"]);
-    assert_eq!(outlined["header"]["detail"]["path"], json!(path));
-    let entity = outlined["records"]
+    let entities = client.tool("js_entities", json!({"input":input}));
+    let entities = success(&entities);
+    assert_eq!(entities["header"]["source_id"], info["source_id"]);
+    assert_eq!(entities["header"]["detail"]["path"], json!(path));
+    let entity = entities["records"]
         .as_array()
         .unwrap()
         .iter()
         .find(|entity| entity["detail"]["name"] == "original")
         .unwrap();
-    let fetched = client.tool("js_get", json!({"input":input,"id":entity["id"]}));
+    let fetched = client.tool("js_get", json!({"input":input,"at":entity["at"]}));
     assert_eq!(
         success(&fetched)["detail"]["source"],
         "function original(){return \"你好\";}"
     );
-    let changed = client.tool("js_outline", json!({"input":{"path":path}}));
+    let changed = client.tool("js_entities", json!({"input":{"path":path}}));
     assert_ne!(success(&changed)["header"]["source_id"], info["source_id"]);
-    let wrong_identity = client.tool("js_get", json!({"input":{"path":path},"id":entity["id"]}));
+    let wrong_identity = client.tool("js_get", json!({"input":{"path":path},"at":entity["at"]}));
     assert_eq!(wrong_identity["isError"], true, "{wrong_identity}");
     success(&client.tool("rxd_close", json!({"target_id":target})));
     error(
-        &client.tool("js_outline", json!({"input":input})),
+        &client.tool("js_entities", json!({"input":input})),
         "TARGET_INVALID",
     );
     error(
@@ -65,13 +66,14 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
     );
     error(
         &client.tool(
-            "js_outline",
+            "js_entities",
             json!({"input":{"target_id":"another-process-handle"}}),
         ),
         "TARGET_INVALID",
     );
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_one_shot_queries_do_not_consume_durable_target_slots() {
     let root = tempfile::tempdir().unwrap();
@@ -95,7 +97,7 @@ fn mcp_one_shot_queries_do_not_consume_durable_target_slots() {
         "RESOURCE_LIMIT",
     );
     for _ in 0..3 {
-        let query = client.tool("js_outline", json!({"input":{"path":second}}));
+        let query = client.tool("js_entities", json!({"input":{"path":second}}));
         assert!(
             success(&query)["records"]
                 .as_array()
@@ -108,6 +110,7 @@ fn mcp_one_shot_queries_do_not_consume_durable_target_slots() {
     success(&client.tool("rxd_open", json!({"path":second})));
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_snapshot_byte_quotas_fail_explicitly_and_release_after_close() {
     let root = tempfile::tempdir().unwrap();
@@ -142,6 +145,7 @@ fn mcp_snapshot_byte_quotas_fail_explicitly_and_release_after_close() {
     success(&client.tool("rxd_open", json!({"path":second})));
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_expired_target_handles_fail_and_their_slot_can_be_reused() {
     let root = tempfile::tempdir().unwrap();
@@ -162,13 +166,14 @@ fn mcp_expired_target_handles_fail_and_their_slot_can_be_reused() {
     let target = success(&opened)["target_id"].as_str().unwrap();
     std::thread::sleep(std::time::Duration::from_millis(80));
     error(
-        &client.tool("js_outline", json!({"input":{"target_id":target}})),
+        &client.tool("js_entities", json!({"input":{"target_id":target}})),
         "TARGET_INVALID",
     );
     let reopened = client.tool("rxd_open", json!({"path":path}));
     assert_ne!(success(&reopened)["target_id"], target);
 }
 
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_recursive_target_freezes_selected_sources_and_preserves_file_boundaries() {
     let root = tempfile::tempdir().unwrap();
@@ -188,11 +193,11 @@ fn mcp_recursive_target_freezes_selected_sources_and_preserves_file_boundaries()
     let target = info["target_id"].as_str().unwrap();
     fs::write(&first, "function replacement(){}\n").unwrap();
     fs::write(root.path().join("added.js"), "function added(){}\n").unwrap();
-    let outlined = client.tool("js_outline", json!({"input":{"target_id":target}}));
-    let outlined = success(&outlined);
-    assert_eq!(outlined["scan_summary"]["complete"], true);
-    assert_eq!(outlined["scan_summary"]["detail"]["files"], 2);
-    let files = outlined["files"].as_array().unwrap();
+    let entities = client.tool("js_entities", json!({"input":{"target_id":target}}));
+    let entities = success(&entities);
+    assert_eq!(entities["scan_summary"]["complete"], true);
+    assert_eq!(entities["scan_summary"]["detail"]["files"], 2);
+    let files = entities["files"].as_array().unwrap();
     assert_eq!(files.len(), 2);
     assert_eq!(files[0]["header"]["detail"]["path"], json!(first));
     assert_eq!(files[1]["header"]["detail"]["path"], json!(second));
@@ -210,10 +215,11 @@ fn mcp_recursive_target_freezes_selected_sources_and_preserves_file_boundaries()
             .iter()
             .any(|record| record["detail"]["name"] == "second")
     );
-    let changed = client.tool("js_outline", json!({"input":{"path":root.path()}}));
+    let changed = client.tool("js_entities", json!({"input":{"path":root.path()}}));
     assert_eq!(success(&changed)["scan_summary"]["detail"]["files"], 3);
 }
 
+#[cfg(all(feature = "backend-dex", feature = "backend-js"))]
 #[test]
 fn mcp_input_bundle_preserves_supplied_order_and_duplicate_identity() {
     let root = tempfile::tempdir().unwrap();
@@ -259,13 +265,14 @@ fn mcp_input_bundle_preserves_supplied_order_and_duplicate_identity() {
     );
     error(
         &client.tool(
-            "js_outline",
+            "js_entities",
             json!({"input":{"target_id":info["target_id"]}}),
         ),
         "INVALID_QUERY",
     );
 }
 
+#[cfg(all(feature = "backend-asar", feature = "backend-js"))]
 #[test]
 fn mcp_asar_dependencies_and_child_targets_remain_stable_after_parent_changes_and_close() {
     let root = tempfile::tempdir().unwrap();
@@ -302,10 +309,7 @@ fn mcp_asar_dependencies_and_child_targets_remain_stable_after_parent_changes_an
     fs::write(&archive, b"changed invalid archive").unwrap();
     fs::write(unpacked.join("pkg/bundle.js"), "function changed(){}\n").unwrap();
     let input = json!({"target_id":parent["target_id"]});
-    let extracted = client.tool(
-        "asar_extract",
-        json!({"input":input,"file":"pkg/bundle.js"}),
-    );
+    let extracted = client.tool("asar_extract", json!({"input":input,"at":"pkg/bundle.js"}));
     let child = &success(&extracted)["child_target"];
     assert_eq!(
         child["source_id"],
@@ -315,16 +319,16 @@ fn mcp_asar_dependencies_and_child_targets_remain_stable_after_parent_changes_an
     assert_eq!(child["origin"]["entry"], "pkg/bundle.js");
     assert_eq!(child["origin"]["parent_target_id"], parent["target_id"]);
     error(
-        &client.tool("asar_extract", json!({"input":input,"file":"alias.js"})),
+        &client.tool("asar_extract", json!({"input":input,"at":"alias.js"})),
         "INVALID_INPUT",
     );
     success(&client.tool("rxd_close", json!({"target_id":parent["target_id"]})));
-    let outlined = client.tool(
-        "js_outline",
+    let entities = client.tool(
+        "js_entities",
         json!({"input":{"target_id":child["target_id"]}}),
     );
     assert!(
-        success(&outlined)["records"]
+        success(&entities)["records"]
             .as_array()
             .unwrap()
             .iter()
@@ -333,6 +337,7 @@ fn mcp_asar_dependencies_and_child_targets_remain_stable_after_parent_changes_an
 }
 
 #[cfg(unix)]
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking() {
     use std::{ffi::CString, os::unix::fs::symlink};
@@ -360,10 +365,10 @@ fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking(
         &client.tool("rxd_open", json!({"path":fifo})),
         "INVALID_INPUT",
     );
-    let outlined = client.tool("js_outline", json!({"input":{"path":alias}}));
-    assert_eq!(success(&outlined)["header"]["detail"]["path"], json!(alias));
+    let entities = client.tool("js_entities", json!({"input":{"path":alias}}));
+    assert_eq!(success(&entities)["header"]["detail"]["path"], json!(alias));
     assert!(
-        success(&outlined)["records"]
+        success(&entities)["records"]
             .as_array()
             .unwrap()
             .iter()
@@ -372,6 +377,7 @@ fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking(
 }
 
 #[cfg(unix)]
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
     use std::{
@@ -420,7 +426,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
         })),
     };
     for _ in 0..20 {
-        let result = client.tool("js_outline", json!({"input":{"path":input_path}}));
+        let result = client.tool("js_entities", json!({"input":{"path":input_path}}));
         if result["isError"] != true {
             let result = success(&result);
             assert_eq!(
@@ -437,7 +443,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
         }
     }
     drop(mutator);
-    let result = client.tool("js_outline", json!({"input":{"path":input_path}}));
+    let result = client.tool("js_entities", json!({"input":{"path":input_path}}));
     assert_eq!(
         success(&result)["header"]["source_id"],
         format!("{:x}", Sha256::digest(source.as_bytes()))
@@ -445,6 +451,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "backend-asar")]
 #[test]
 fn mcp_asar_dependency_capture_rejects_missing_and_linked_sources_and_releases_failed_captures() {
     use std::os::unix::fs::symlink;
@@ -484,6 +491,7 @@ fn mcp_asar_dependency_capture_rejects_missing_and_linked_sources_and_releases_f
 }
 
 #[cfg(unix)]
+#[cfg(feature = "backend-js")]
 #[test]
 fn mcp_closing_a_target_keeps_already_acquired_worker_bytes_available() {
     struct StoppedWorker(u32);
@@ -504,7 +512,7 @@ fn mcp_closing_a_target_keeps_already_acquired_worker_bytes_available() {
     let target = success(&opened)["target_id"].as_str().unwrap();
     client.send(
         json!({"jsonrpc":"2.0","id":100,"method":"tools/call","params":{
-            "name":"js_outline","arguments":{"input":{"target_id":target}}
+            "name":"js_entities","arguments":{"input":{"target_id":target}}
         }}),
     );
     let worker = super::runtime::child_worker(client.pid());
@@ -518,7 +526,7 @@ fn mcp_closing_a_target_keeps_already_acquired_worker_bytes_available() {
     let stopped = StoppedWorker(worker);
     success(&client.tool("rxd_close", json!({"target_id":target})));
     error(
-        &client.tool("js_outline", json!({"input":{"target_id":target}})),
+        &client.tool("js_entities", json!({"input":{"target_id":target}})),
         "TARGET_INVALID",
     );
     drop(stopped);
@@ -555,6 +563,7 @@ fn mcp_startup_rejects_capture_depth_above_the_safe_protocol_process_ceiling() {
 }
 
 #[cfg(windows)]
+#[cfg(feature = "backend-asar")]
 #[test]
 fn mcp_child_artifacts_reject_windows_device_and_aliased_filenames_before_writing() {
     let root = tempfile::tempdir().unwrap();
@@ -571,10 +580,7 @@ fn mcp_child_artifacts_reject_windows_device_and_aliased_filenames_before_writin
         files.insert(name.into(), json!({"size":4,"offset":"0"}));
         crate::write_asar(&archive, &json!({"files":files}), b"data");
         error(
-            &client.tool(
-                "asar_extract",
-                json!({"input":{"path":archive},"file":name}),
-            ),
+            &client.tool("asar_extract", json!({"input":{"path":archive},"at":name})),
             "INVALID_INPUT",
         );
     }
@@ -585,7 +591,7 @@ fn mcp_child_artifacts_reject_windows_device_and_aliased_filenames_before_writin
     );
     let result = client.tool(
         "asar_extract",
-        json!({"input":{"path":archive},"file":"safe.bin"}),
+        json!({"input":{"path":archive},"at":"safe.bin"}),
     );
     assert_eq!(
         success(&result)["child_target"]["source_id"],

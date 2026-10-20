@@ -245,7 +245,7 @@ impl AnalysisService {
             .split_once('_')
             .map(|p| p.0)
             .ok_or_else(|| QueryError::new("INVALID_QUERY", "tool has no backend"))?;
-        let mode = if name == "asar_list" {
+        let mode = if name == "asar_entries" {
             CaptureMode::File
         } else {
             capture_mode(backend)?

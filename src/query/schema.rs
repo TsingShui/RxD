@@ -8,6 +8,10 @@
 use serde_json::{Value, json};
 
 pub(super) fn output() -> Value {
+    // Every record carries the same nullable outer navigation fields: `at` names the
+    // record, `parent_at` its structural owner and `context_at` the caller that reported
+    // it, so a caller never needs a backend-specific identity key.
+    let nullable_string = json!({"anyOf":[{"type":"string"},{"type":"null"}]});
     json!({
         "type": "object",
         "description": "The backend's own result records. Streams carry header, records and summary; single results are returned unchanged; source text is returned as `text`.",
@@ -17,8 +21,11 @@ pub(super) fn output() -> Value {
             "summary": {"type": "object"},
             "files": {"type": "array", "items": {"type": "object"}},
             "scan_summary": {"type": "object"},
-            "source_id": {"type": "string"},
-            "representation": {"type": "string"},
+            "at": nullable_string,
+            "parent_at": nullable_string,
+            "context_at": nullable_string,
+            "source_id": nullable_string,
+            "representation": nullable_string,
             "complete": {"type": "boolean"},
             "text": {"type": "string"},
         },

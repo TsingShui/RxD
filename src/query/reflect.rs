@@ -2,10 +2,9 @@
 //!
 //! There is exactly one definition of an analysis command: the CLI. Walking the
 //! `clap` tree gives every tool's name, description, flags, types and enums, so a
-//! renamed or added flag cannot leave the MCP contract behind. Only three things are
+//! renamed or added flag cannot leave the MCP contract behind. Only two things are
 //! MCP-specific and therefore live here instead of in clap: captured inputs replace
-//! the path positional, `--output` becomes an artifact channel, and the server's
-//! resource ceilings are appended to the argv.
+//! the path positional, and `--output` becomes an artifact channel.
 
 use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
@@ -21,15 +20,7 @@ const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug"];
 
 /// Numeric flags keep `integer` in the schema; clap remains the authority on values.
 const NUMERIC: &[&str] = &[
-    "byte",
-    "depth",
-    "field_index",
-    "func",
-    "limit",
-    "method_index",
-    "offset",
-    "release",
-    "threads",
+    "byte", "depth", "func", "limit", "offset", "release", "threads",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -94,6 +85,7 @@ fn hidden(arg: &Arg, first_positional: bool) -> bool {
 
 fn arg_spec(arg: &Arg) -> ArgSpec {
     let long = arg.get_long().map(str::to_owned);
+    let kind = kind_of(arg);
     ArgSpec {
         key: long
             .as_deref()
@@ -101,14 +93,18 @@ fn arg_spec(arg: &Arg) -> ArgSpec {
             .replace('-', "_"),
         long,
         help: arg.get_help().map(|help| help.to_string()),
-        kind: kind_of(arg),
+        kind,
         required: arg.is_required_set(),
-        enum_values: arg
-            .get_possible_values()
-            .iter()
-            .filter(|value| !value.is_hide_set())
-            .map(|value| value.get_name().to_owned())
-            .collect(),
+        // A boolean flag is a switch, never a `true`/`false` value enum.
+        enum_values: if kind == Kind::Bool {
+            Vec::new()
+        } else {
+            arg.get_possible_values()
+                .iter()
+                .filter(|value| !value.is_hide_set())
+                .map(|value| value.get_name().to_owned())
+                .collect()
+        },
     }
 }
 
@@ -262,7 +258,6 @@ pub(super) fn argv(
     spec: &ToolSpec,
     arguments: &Value,
     inputs: &[std::path::PathBuf],
-    ceilings: &[(&str, usize)],
 ) -> Result<Vec<std::ffi::OsString>, super::QueryError> {
     use std::ffi::OsString;
     let mut argv: Vec<OsString> = vec![
@@ -299,17 +294,6 @@ pub(super) fn argv(
             Some(long) => argv.push(format!("--{long}={}", value_text(value)).into()),
             None => positionals.push(value_text(value).into()),
         }
-    }
-    // The server's budgets are ceilings: a caller may ask for less, never for more.
-    for (flag, ceiling) in ceilings {
-        let id = flag.replace('-', "_");
-        let requested = arguments
-            .get(&id)
-            .and_then(Value::as_u64)
-            .and_then(|value| usize::try_from(value).ok());
-        let bound = requested.map_or(*ceiling, |value| value.min(*ceiling));
-        let spelling = flag.replace('_', "-");
-        argv.push(format!("--{spelling}={bound}").into());
     }
     if !spec.subcommands.is_empty() {
         let kind = arguments["kind"].as_str().ok_or_else(|| {

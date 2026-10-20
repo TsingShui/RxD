@@ -131,30 +131,38 @@ cannot be called. Startup and catalog discovery do not load ILSpy or unpack Kuna
 **The CLI is the single contract source.** A tool is exactly one analysis command:
 `<backend>_<command>`, and its schema and argv are reflected from the `clap` tree at
 runtime (`src/query/reflect.rs`), so a renamed or added flag cannot leave one surface
-behind. Only three things are MCP-specific: the path positional becomes `input`
-(`inputs` for `--apk` list commands), `-o/--output` becomes the artifact channel, and
-`--perf`/`--debug` are hidden. Every other flag appears verbatim with its help text as
-the property description: `dotnet_xref` takes `at`/`from`/`string`, `dex_get_class`
-takes `dalvik_class`, `dex_xref`/`jar_xref` take `kind` plus that kind's own arguments,
-and `--max-*` resource flags are ordinary arguments named after the flag. Naming is the
-flag spelling (`--max-input-bytes` → `max_input_bytes`), never a second vocabulary.
-Process-wide budgets still bound every call: a request may ask for a lower limit, never a
-higher one, and the server ceiling is applied to the argv it builds.
+behind. The names are the shared CLI vocabulary: `entities`, `functions`, `classes`,
+`methods`, `fields`, `entries`, `types`, `codes`, `blocks`, `interface`. Only three
+things are MCP-specific: the path positional becomes `input` (`inputs` for `--apk` list
+commands), `-o/--output` becomes the artifact channel, and `--perf`/`--debug` are
+hidden. Every other flag appears verbatim with its help text as the property
+description: a row selector is `at`, a substring filter is `filter`, original bytes are
+`raw`, `dotnet_xref` takes `at`/`from`/`string`, and `dex_xref`/`jar_xref` take `kind`
+plus that kind's own arguments. Naming is the flag spelling, never a second vocabulary.
+
+No backend exposes a `--max-*` ceiling any more, so no ceiling reaches a worker as a
+flag: every shared limit comes from `rxd_core::Budget`, and the server's only per-call
+knob is the thread budget. A command that declares `--threads` is given
+`min(requested, max-threads / worker-slots)`, so a caller may ask for fewer threads,
+never for more. Request-level budgets stay where the protocol already has them: the
+captured output is capped at one quarter of `max-response-bytes`, the record sink is
+capped at the shared record ceiling, and the complete RPC frame is checked against
+`max-response-bytes`.
 
 | Backend | Analysis tools |
 | --- | --- |
-| js | outline, find, identifiers, calls, members, locate, xref, symbols, get |
-| asar | list, extract |
-| html | list, extract |
-| dex | get_class, entries, strings, xref, manifest, classes |
-| jar | outline, strings, xref, get_method, get_class |
-| dotnet | outline, strings, xref, get_method, get_class |
-| wasm | outline, strings, xref, get_function |
-| pyc | outline, strings, xref, get_code, decompile |
-| evm | analyze, interface, storage, disassemble, basic_blocks, cfg, metadata, outline, strings, xref, get_block, get_function |
+| js | entities, functions, classes, methods, find, identifiers, calls, members, locate, xref, symbols, get |
+| asar | entries, extract |
+| html | entries, extract |
+| dex | get_class, entries, strings, xref, manifest, classes, get_method, fields, methods |
+| jar | classes, entries, fields, methods, get_method, get_class, strings, xref |
+| dotnet | classes, fields, methods, get_method, get_class, strings, xref |
+| wasm | types, imports, exports, functions, tables, memories, globals, data, elements, strings, xref, get_function |
+| pyc | codes, strings, xref, get_code, decompile |
+| evm | analyze, interface, storage, disassemble, basic_blocks, cfg, metadata, blocks, strings, xref, get_block, get_function |
 | kuna (bundled-kuna only) | functions, decompile |
 
-There are 52 built-in analysis tools plus `rxd_open`/`rxd_close`; linked Kuna adds only
+There are 69 built-in analysis tools plus `rxd_open`/`rxd_close`; linked Kuna adds only
 the two listed tools. DEX keeps descriptor/entry/index selection and null entity IDs.
 EVM projects inferred analysis and accepted static navigation/reconstruction contracts;
 unknown discovery, ownership and unsupported reconstruction remain explicit. Native
@@ -204,50 +212,57 @@ logical labels are preserved. `--max-snapshot-depth` accepts 1–256, default 64
 Every DEX tool requires one captured file; a bundle passed to a single-input operation
 fails.
 
-HTML `html_list` captures one regular immutable file for a path or file target. Its
+HTML `html_entries` captures one regular immutable file for a path or file target. Its
 `lexical_naive_v1` records are not a DOM or browser-complete parse; no page code executes
 and no external resources load. Header/records/summary retain CLI values and order with
-logical paths restored (not byte-identical JSONL). Filters `kind/tag/attr/within/depth`
-map to the CLI flags of the same name; resource flags are the CLI's own (`max_input_bytes`,
-`max_records`, `max_output_bytes`, `max_depth`). `html_extract` reuses backend validation,
-selection, receipt and artifact identity: it returns the original receipt with
-`detail.path: null` plus `child_target`; `include_bytes: true` adds `bytes_base64` and
-omission avoids the copy. The child owns the exact selected bytes independently of parent
-close; target-origin retains container/node/range and the parent handle where available.
-There is no host output destination argument.
+logical paths restored (not byte-identical JSONL). Filters `kind/tag/attr/within/depth/
+filter` are the CLI flags of the same name; records carry their `at` coordinate and the
+reporting node in `context_at`. `html_extract` reuses backend validation, selection,
+receipt and artifact identity: its `at` argument is the coordinate an `entries` row
+prints, and it returns the CLI receipt with `detail.path: null` plus `child_target`;
+`include_bytes: true` adds `bytes_base64` and omission avoids the copy. The child owns the
+exact selected bytes independently of parent close; target-origin retains
+container/node/range and the parent handle where available. There is no host output
+destination argument.
 
 ASAR open/extract captures only declared unpacked dependencies under roots; missing/
-linked/size-mismatching dependencies fail explicitly. Direct `asar_list` captures archive
+linked/size-mismatching dependencies fail explicitly. Direct `asar_entries` captures archive
 metadata and does not require unrelated unpacked files to be readable. Existing archive
-links remain listable but cannot be followed. `asar_extract` returns the original receipt
-with `detail.path: null` plus `child_target`; the child owns its bytes independently,
-and origin identifies archive/entry and parent handle where available. `include_bytes:
-true` adds `bytes_base64`; omission avoids the copy. There is no host output destination.
+links remain listable but cannot be followed; each file row prints its archive-relative
+path as `at`. `asar_extract` takes that same `at` and returns the CLI receipt with
+`detail.path: null` plus `child_target`; the child owns its bytes independently, and
+origin identifies archive/entry and parent handle where available. `include_bytes: true`
+adds `bytes_base64`; omission avoids the copy. There is no host output destination.
 Content/format checks, not entry extension, select the next backend.
 
 ## Structured results and errors
 
 Results are shaped generically from the captured stream, with no per-tool mapping:
 ordinary JSONL becomes `{header, records, summary}`, recursive JS becomes
-`{files: [{header, records, summary}], scan_summary}` including zero-file scans, a single
-JSON object is returned unchanged (a FETCH record or a whole-class document), and any
-other output (XML manifest, Java source, original text) is returned as `{text: "..."}`.
-Stable outer navigation fields remain required and nullable under schema version 2.
-Original text is unchanged, including line endings. JS get uses its native source record
-(`detail.source`); instruction/C#/PYC results retain native fallback/completeness. JS isolated UTF-16 surrogate values project as
+`{files: [{header, records, summary}], scan_summary}` including zero-file scans (an
+empty scan is `{files: [], scan_summary}`), a single JSON object is returned unchanged
+(a FETCH record or a whole-class document), and any other output (XML manifest, Java or
+C# source, original text) is returned as `{text: "..."}`. Stable outer navigation fields
+remain nullable under schema version 2: `at` names a record, `parent_at` its structural
+owner and `context_at` the caller that reported it, so no caller depends on a
+backend-specific identity key. Original text is unchanged, including line endings. JS get
+uses its native source record (`detail.source`); instruction/C#/PYC results retain native
+fallback/completeness. JS isolated UTF-16 surrogate values project as
 `{utf16_units: [integer, ...]}`; ordinary values remain strings. These code units preserve
 the original value without replacement.
 
 Each result appears in `structuredContent` and as one JSON text compatibility block.
 Consumers check `isError` before interpreting success. Domain failure has
-`{error: {code, message, candidates}}`; candidates are nullable or the complete typed DEX
-candidate result. `NOT_FOUND` and `AMBIGUOUS` stay distinct. `INVALID_QUERY`, input/
-identity errors, `RESOURCE_LIMIT`, `TARGET_INVALID`, `TIMEOUT` and `WORKER_ERROR` guide
-recovery. Protocol faults are JSON-RPC errors. Cancellation suppresses responses as
-required by the SDK; completion/cancellation races follow the negotiated protocol.
+`{error: {code, message, candidates}}`; `candidates` is nullable and carries the complete
+typed result when the surface has one, so no caller parses diagnostics. A coordinate that
+no longer names a row is `INVALID_ID`, a DEX selector that matches nothing is
+`NOT_FOUND`, and `INVALID_QUERY`, input/identity errors, `RESOURCE_LIMIT`,
+`TARGET_INVALID`, `TIMEOUT` and `WORKER_ERROR` guide recovery. Protocol faults are
+JSON-RPC errors. Cancellation suppresses responses as required by the SDK;
+completion/cancellation races follow the negotiated protocol.
 
-Success means complete delivery of the selected query, including explicit filters/
-limits. It never means successful source reconstruction unless native fields say so.
+Success means complete delivery of the selected query, including explicit filters. It
+never means successful source reconstruction unless native fields say so.
 Budget failure returns an error, not success with a shortened record list or text.
 
 ## Scheduling and finite defaults
@@ -283,10 +298,15 @@ and correlation IDs are part of transport accounting. Worker request/results and
 are bounded, concurrently drained, and workers are stopped/reaped on cancel, timeout or
 EOF. A failed worker does not stop the protocol service or unrelated admitted work.
 
-Per-call `limits` exposes only backend-supported knobs and can only reduce server
-ceilings. Default shared query caps: input 256 MiB, records/entities 100,000, work
-16,777,216, instructions/semantic nodes 1,000,000, AST depth 128. Effective serialized
-output is capped at one quarter of the response ceiling (default 8 MiB) and 32 MiB. The
+A CLI-projected tool has no per-call `limits` argument: a backend ceiling has no CLI
+flag, so a tool argument cannot carry one either. Only the typed native Kuna adapter
+keeps its own native `limits`, because those are its own protocol fields, not CLI flags.
+Shared caps come from `rxd_core::Budget` (input 256 MiB,
+records/entities 100,000, work 16,777,216, instructions/semantic nodes 1,000,000, AST depth
+128), and the server enforces only what the protocol owns: the captured serialized output
+is capped at one quarter of the response ceiling (default 8 MiB) and 32 MiB, the record
+sink at the shared record ceiling, and the complete RPC frame at `max-response-bytes`. A
+result that exceeds any of those fails with `RESOURCE_LIMIT`; it is never shortened. The
 final complete-RPC size check includes JSON escaping, base64, provenance, compatibility
 copy and correlation metadata; a result may still fail it. Backend-native lower caps
 continue to apply where the adapter preserves them.
@@ -315,10 +335,12 @@ TLS, authentication, authorization, uploads, caller isolation and remote retenti
 outside this release and require separate design. This entry point exposes no network
 listener.
 
-EVM navigation uses the current CLI's fixed nullable stream fields and returned carrier/
-encoding-bound IDs. `evm_strings` accepts explicit text/bytes/number interpretations;
-`evm_xref` preserves PUSH-use, CODECOPY and code-flow evidence; `evm_get_function`
-requires exactly one ID or selector and keeps raw/default reconstruction and structuring
-facts. Lower-only navigation budgets are work/states/stack_cells, with
-reconstruction_work/values for default function FETCH; block FETCH uses work. Native
-defaults remain ceilings, including 4 MiB carrier input.
+EVM navigation uses the current CLI's fixed nullable stream fields and carrier/encoding
+bound coordinates: `evm_interface` lists content-bound function candidates,
+`evm_blocks` lists content-bound basic blocks, and `evm_get_block`/`evm_get_function`/
+`evm_xref` take the `at` a row prints. `evm_strings` accepts explicit text/bytes/number
+interpretations; `evm_xref` preserves PUSH-use, CODECOPY and code-flow evidence;
+`evm_get_function` requires exactly one `at` or `selector` and keeps raw/default
+reconstruction and structuring facts. Native defaults remain ceilings through
+`rxd_core::Budget`, including 4 MiB carrier input; no navigation budget can be lowered
+per call.

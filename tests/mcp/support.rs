@@ -129,6 +129,7 @@ impl Client {
     pub fn disconnect(&mut self) {
         self.input.take();
     }
+    #[cfg(feature = "backend-js")]
     pub fn pid(&self) -> u32 {
         self.child.id()
     }

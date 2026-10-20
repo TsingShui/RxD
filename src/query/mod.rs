@@ -324,12 +324,6 @@ pub fn execute(
         ));
     }
     let mut structured = reply(&bytes, budgets.records)?;
-    if structured.get("representation").is_some() {
-        structured["source_id"] = inputs[0]
-            .source_id
-            .as_ref()
-            .map_or(Value::Null, |id| json!(id));
-    }
     restore_paths(&mut structured, inputs);
     Ok(QueryResult {
         structured,
@@ -370,13 +364,13 @@ fn extract_html(
     inputs: &[CapturedInput],
     budgets: QueryBudgets,
 ) -> Result<QueryResult, QueryError> {
-    let id = arguments["id"].as_str().unwrap().to_owned();
+    let at = arguments["at"].as_str().unwrap().to_owned();
     let content = arguments["content"].as_bool().unwrap_or(false);
     let destination = synthetic_extraction_destination(&inputs[0].path);
     let mut perf = Perf::new(false, "analysis", "html", "extract");
     let response = rxd_html::extract(
         &inputs[0].path,
-        &id,
+        &at,
         content,
         &destination,
         rxd_core::Limits {
@@ -394,7 +388,7 @@ fn extract_html(
         structured,
         artifact: Some(ExtractedArtifact {
             bytes: response.bytes,
-            name: id,
+            name: at,
             source_id,
         }),
     })
@@ -406,11 +400,11 @@ fn extract_asar(
     inputs: &[CapturedInput],
     budgets: QueryBudgets,
 ) -> Result<QueryResult, QueryError> {
-    let file = arguments["file"].as_str().unwrap().to_owned();
+    let at = arguments["at"].as_str().unwrap().to_owned();
     let destination = synthetic_extraction_destination(&inputs[0].path);
     let mut perf = Perf::new(false, "analysis", "asar", "extract");
     let response = rxd_asar::run(
-        rxd_asar::Query::Extract { at: file.clone() },
+        rxd_asar::Query::Extract { at: at.clone() },
         rxd_asar::Options {
             input: &inputs[0].path,
             output: Some(&destination),
@@ -435,7 +429,7 @@ fn extract_asar(
         structured,
         artifact: Some(ExtractedArtifact {
             bytes,
-            name: file,
+            name: at,
             source_id,
         }),
     })
@@ -454,6 +448,11 @@ fn reply(bytes: &[u8], record_limit: usize) -> Result<Value, QueryError> {
     if trimmed.starts_with('{')
         && let Ok(record) = lossless::parse(trimmed.as_bytes())
     {
+        // A zero-file scan reports only its summary; keep the recursive envelope that
+        // already-matching files produce so a caller reads one shape.
+        if record["record"] == "scan_summary" {
+            return Ok(json!({"files":[],"scan_summary":record}));
+        }
         // A single-object result (a FETCH record or a whole-class document) is returned
         // unchanged; only multi-line streams need the header/records/summary shape.
         return Ok(record);
