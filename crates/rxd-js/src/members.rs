@@ -26,7 +26,7 @@ pub struct Member {
 }
 
 impl Member {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             name: &'a JsString,
@@ -36,7 +36,6 @@ impl Member {
         crate::envelope::body(
             "member",
             rxd_core::envelope::RecordMeta {
-                source_id: Some(source_id),
                 parent_at: Some(&self.entity_id),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),

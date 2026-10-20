@@ -49,10 +49,14 @@ pub enum IdentifierRole {
 #[derive(Clone)]
 pub enum Query {
     Outline {
+        /// `functions`, `classes` or `methods`; `None` is the full `entities` catalog.
+        group: Option<&'static str>,
         within: Option<String>,
         depth: Option<usize>,
         kind: Option<String>,
         name: Option<String>,
+        /// Case-insensitive substring over the entity name or context label.
+        contains: Option<String>,
     },
     Find {
         string: String,
@@ -86,20 +90,69 @@ pub enum Query {
     },
 }
 
+/// Kind sets behind the grouped listing commands.
+///
+/// `entities` prints every kind, so these three views only partition the catalog; they
+/// never introduce a kind and never lose one from the full listing.
+pub const FUNCTION_KINDS: &[&str] = &[
+    "function_declaration",
+    "function_expression",
+    "arrow_function",
+];
+pub const CLASS_KINDS: &[&str] = &[
+    "class_declaration",
+    "class_expression",
+    "interface",
+    "enum",
+    "type_alias",
+    "namespace",
+    "external_module",
+];
+pub const METHOD_KINDS: &[&str] = &[
+    "class_method",
+    "constructor",
+    "getter",
+    "setter",
+    "object_method",
+    "method_signature",
+];
+
+pub fn group_kinds(group: &str) -> Option<&'static [&'static str]> {
+    match group {
+        "functions" => Some(FUNCTION_KINDS),
+        "classes" => Some(CLASS_KINDS),
+        "methods" => Some(METHOD_KINDS),
+        _ => None,
+    }
+}
+
 impl Query {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Outline { .. } => "outline",
+            Self::Outline { group, .. } => group.unwrap_or("entities"),
             Self::Find { .. } => "find",
             Self::Identifiers { .. } => "identifiers",
             Self::Calls { .. } => "calls",
             Self::Members { .. } => "members",
             Self::Locate { .. } => "locate",
-            Self::Refs { .. } => "refs",
+            Self::Refs { .. } => "xref",
             Self::Symbols { .. } => "symbols",
             Self::Get { .. } => "get",
         }
     }
+}
+
+/// Expand the copy-only `kind:start:end` a row prints into the content-bound id.
+///
+/// A caller copies `at` and passes it back; the schema prefix and the hash live in the
+/// stream header, so the library reattaches them instead of asking the caller to carry
+/// them. Anything already prefixed (or malformed) is passed through untouched and
+/// validated by the normal path.
+pub fn expand_short_id(source: &Source, id: &str) -> String {
+    if id.starts_with("rxd1:") || id.split(':').count() != 3 {
+        return id.to_owned();
+    }
+    format!("rxd1:js:{}:{id}", source.id)
 }
 
 /// Serialize into a bounded buffer before exposing any query result.
@@ -214,9 +267,92 @@ pub fn run_source(
     }
     let visit_start = perf.start_stage();
     let query_string = if let Query::Find { string, .. } = &query {
-        Some(string.as_str())
+        Some(string.clone())
     } else {
         None
+    };
+    // Echo the caller's spelling: a short coordinate stays short in `query` even though the
+    // library expands it for lookup.
+    let query_json = match &query {
+        Query::Outline {
+            group,
+            within,
+            depth,
+            kind,
+            name,
+            contains,
+        } => {
+            json!({"group":group,"within":within,"depth":depth,"kind":kind,"name":name,"contains":contains})
+        }
+        Query::Find {
+            string,
+            resolve_static,
+        } => json!({"string":string,"resolve_static":resolve_static}),
+        Query::Identifiers { name, role, within } => json!({
+            "name": name,
+            "within": within,
+            "role": match role {
+                IdentifierRole::All => "all",
+                IdentifierRole::Declaration => "declaration",
+                IdentifierRole::Reference => "reference",
+            }
+        }),
+        Query::Calls { name, within } => json!({"name":name,"within":within}),
+        Query::Members { name, within } => json!({"name":name,"within":within}),
+        Query::Refs { byte } | Query::Locate { byte } => json!({"byte":byte}),
+        Query::Symbols { within } => json!({"within":within}),
+        Query::Get { id, json } => json!({"id":id,"json":json}),
+    };
+    // Every id-shaped selector may arrive as the copy-only short coordinate a row prints
+    // (`kind:start:end`); expand it against the header identity exactly once here so the
+    // fragment, symbol and structure paths all see the content-bound form.
+    let query = match query {
+        Query::Get { id, json } => Query::Get {
+            id: expand_short_id(&source, &id),
+            json,
+        },
+        Query::Outline {
+            within: Some(id),
+            group,
+            depth,
+            kind,
+            name,
+            contains,
+        } => Query::Outline {
+            group,
+            within: Some(expand_short_id(&source, &id)),
+            depth,
+            kind,
+            name,
+            contains,
+        },
+        Query::Identifiers {
+            name,
+            role,
+            within: Some(id),
+        } => Query::Identifiers {
+            name,
+            role,
+            within: Some(expand_short_id(&source, &id)),
+        },
+        Query::Calls {
+            name,
+            within: Some(id),
+        } => Query::Calls {
+            name,
+            within: Some(expand_short_id(&source, &id)),
+        },
+        Query::Members {
+            name,
+            within: Some(id),
+        } => Query::Members {
+            name,
+            within: Some(expand_short_id(&source, &id)),
+        },
+        Query::Symbols { within: Some(id) } => Query::Symbols {
+            within: Some(expand_short_id(&source, &id)),
+        },
+        other => other,
     };
     let contexts = match &query {
         Query::Find { .. } | Query::Identifiers { .. } => {
@@ -240,7 +376,13 @@ pub fn run_source(
             ..
         }
     );
-    let mut collector = Collector::new(&source, limits, query_string, contexts, resolve_static);
+    let mut collector = Collector::new(
+        &source,
+        limits,
+        query_string.as_deref(),
+        contexts,
+        resolve_static,
+    );
     let visited = catch_unwind(AssertUnwindSafe(|| {
         collector.visit_program(&parsed.program)
     }));
@@ -265,43 +407,31 @@ pub fn run_source(
         limit: limits.output_bytes,
         exceeded: false,
     };
-    let query_json = match &query {
-        Query::Outline {
-            within,
-            depth,
-            kind,
-            name,
-        } => json!({"within":within,"depth":depth,"kind":kind,"name":name}),
-        Query::Find {
-            string,
-            resolve_static,
-        } => json!({"string":string,"resolve_static":resolve_static}),
-        Query::Identifiers { name, role, within } => json!({
-            "name": name,
-            "within": within,
-            "role": match role {
-                IdentifierRole::All => "all",
-                IdentifierRole::Declaration => "declaration",
-                IdentifierRole::Reference => "reference",
-            }
-        }),
-        Query::Calls { name, within } => json!({"name":name,"within":within}),
-        Query::Members { name, within } => json!({"name":name,"within":within}),
-        Query::Refs { byte } | Query::Locate { byte } => json!({"byte":byte}),
-        Query::Symbols { within } => json!({"within":within}),
-        Query::Get { id, json } => json!({"id":id,"json":json}),
-    };
-    let header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
-        json!({"path":source.path,"root_id":root.id,"source_type":final_mode,
+    let mut header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
+        json!({"path":source.path,"root_id":envelope::short(&root.id),"source_type":final_mode,
             "analysis":null,"syntax":syntax_info.syntax,"declaration_file":syntax_info.declaration_file,"origin":source.origin})
         .as_object().unwrap().clone());
+    // An id a caller can copy out of `detail` must be the same short coordinate a row
+    // prints, so it can be pasted straight back into `--at`.
+    if let Some(detail) = header.get_mut("detail") {
+        envelope::shorten_detail_ids(detail);
+    }
     match query {
         Query::Outline {
+            group,
             within,
             depth,
             kind,
             name,
+            contains,
         } => {
+            let group_kinds = match group {
+                None => None,
+                Some(group) => Some(
+                    group_kinds(group)
+                        .ok_or_else(|| Error::new("INVALID_QUERY", "unknown JS listing group"))?,
+                ),
+            };
             let selection = (|| -> Result<Vec<usize>> {
                 let selected_root = within
                     .as_deref()
@@ -339,6 +469,18 @@ pub fn run_source(
                         let kind_ok = kinds
                             .as_ref()
                             .is_none_or(|kinds| kinds.contains(&entity.kind));
+                        let group_ok = group_kinds.is_none_or(|kinds| kinds.contains(&entity.kind));
+                        let contains_ok = contains.as_ref().is_none_or(|needle| {
+                            let needle = needle.to_lowercase();
+                            entity
+                                .name
+                                .as_ref()
+                                .is_some_and(|value| value.contains_ci(&needle))
+                                || entity
+                                    .label
+                                    .as_ref()
+                                    .is_some_and(|value| value.contains_ci(&needle))
+                        });
                         let name_ok = name.as_deref().is_none_or(|n| {
                             entity
                                 .name
@@ -349,7 +491,7 @@ pub fn run_source(
                                     .as_ref()
                                     .is_some_and(|value| value.equals_str(n))
                         });
-                        belongs && depth_ok && kind_ok && name_ok
+                        group_ok && belongs && depth_ok && kind_ok && name_ok && contains_ok
                     })
                     .collect();
                 if indices.len() > limits.records {
@@ -491,11 +633,11 @@ pub fn run_source(
                 "locate",
                 RecordMeta {
                     at: Some(&entity.id),
-                    source_id: Some(&source.id),
                     parent_at: entity.parent_id.as_deref(),
                     context_at: context_id.as_deref(),
                     start: Some(entity.start as usize),
                     end: Some(entity.end as usize),
+                    ..RecordMeta::default()
                 },
                 Located {
                     complete: true,
@@ -522,7 +664,7 @@ pub fn run_source(
             let mut header = header;
             header["detail"]["analysis"] = json!("lexical");
             header["detail"]["resolution"] = json!(result.resolution);
-            header["detail"]["within_id"] = json!(result.within_id);
+            header["detail"]["within_id"] = json!(envelope::short(&result.within_id));
             let records = result.records.len();
             perf.counters.records = Some(records);
             perf.measure("serialize", || -> Result<()> {
@@ -592,7 +734,6 @@ pub fn run_source(
                         "fragment",
                         RecordMeta {
                             at: Some(&fragment.id),
-                            source_id: Some(&source.id),
                             parent_at: fragment.parent_id.as_deref(),
                             start: Some(fragment.start as usize),
                             end: Some(fragment.end as usize),
@@ -607,7 +748,6 @@ pub fn run_source(
                         "source",
                         RecordMeta {
                             at: Some(&fragment.id),
-                            source_id: Some(&source.id),
                             parent_at: fragment.parent_id.as_deref(),
                             start: Some(fragment.start as usize),
                             end: Some(fragment.end as usize),
@@ -647,7 +787,6 @@ pub fn run_source(
                         "source",
                         RecordMeta {
                             at: Some(&id),
-                            source_id: Some(&source.id),
                             parent_at: Some(&definition.symbol.location.entity_id),
                             start: Some(range.start as usize),
                             end: Some(range.end as usize),
@@ -684,7 +823,6 @@ pub fn run_source(
                     "source",
                     RecordMeta {
                         at: Some(&target.entity.id),
-                        source_id: Some(&source.id),
                         parent_at: target.entity.parent_id.as_deref(),
                         start: Some(target.entity.start as usize),
                         end: Some(target.entity.end as usize),

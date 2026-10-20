@@ -20,7 +20,7 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             name: &'a JsString,
@@ -31,7 +31,6 @@ impl Symbol {
             "binding",
             rxd_core::envelope::RecordMeta {
                 at: Some(&self.id),
-                source_id: Some(source_id),
                 parent_at: Some(&self.location.entity_id),
                 start: Some(self.location.start as usize),
                 end: Some(self.location.end as usize),

@@ -3,7 +3,8 @@
 Status: implemented.
 
 `rxd js` uses Rust and Oxc for compact bundles and ordinary JavaScript files without
-source maps. It provides `outline`, `find`, `identifiers`, `calls`, `members`,
+source maps. It provides `entities`/`functions`/`classes`/`methods`, `find`,
+`identifiers`, `calls`, `members`,
 `locate`, `get`, `xref --byte` and `symbols`. The backend maps literals, identifiers,
 call sites and static member names to content-bound AST structures, lexical
 relationships and original source ranges. It never executes input, performs
@@ -16,7 +17,8 @@ ASAR extraction is handled by `rxd asar`; see [ASAR](asar-design.md) and the
 ## Scope
 
 The backend handles local valid-UTF-8 JS, JSX, TS, TSX and TypeScript declaration
-files, both script and ESM. `outline`/`find` recurse into directories; files are
+files, both script and ESM. The four structure listings and `find` recurse into
+directories; files are
 analyzed independently and cross-file modules/bindings are not resolved. Original
 source retains type annotations, JSX, modifiers and declaration syntax; it is never
 compiled, transformed or type-checked as a project.
@@ -58,10 +60,13 @@ provides the closure context.
 ## Commands
 
 ```sh
-rxd js outline bundle.js --jsonl
-rxd js outline bundle.js --within '<entity-id>' --depth 1 --jsonl
-rxd js outline bundle.js --kind object_method --jsonl
-rxd js outline bundle.js --name checkFlag --jsonl
+rxd js entities bundle.js --jsonl
+rxd js functions bundle.js -f check --jsonl
+rxd js classes bundle.js --jsonl
+rxd js methods bundle.js --jsonl
+rxd js entities bundle.js --within '<entity-id>' --depth 1 --jsonl
+rxd js entities bundle.js --kind object_method --jsonl
+rxd js entities bundle.js --name checkFlag --jsonl
 rxd js find bundle.js --string '/api/login' --jsonl
 rxd js find bundle.js --string 'setInterval' --resolve-static --jsonl
 rxd js identifiers bundle.js --name '_0x4e3653' --jsonl
@@ -71,14 +76,17 @@ rxd js members bundle.js --name 'checkFlag' --jsonl
 rxd js locate bundle.js --byte 183240 --json
 rxd js xref bundle.js --byte 183240 --jsonl
 rxd js symbols bundle.js --within '<entity-id>' --jsonl
-rxd js get bundle.js --id '<entity-id>'
-rxd js get bundle.js --id '<symbol-id>' --json
-rxd js get bundle.js --id '<parent-id>' --json
+rxd js get bundle.js --at '<entity>'
+rxd js get bundle.js --at '<symbol>' --json
+rxd js get bundle.js --at '<parent>' --json
 ```
 
 | Command | Behavior | Default output |
 | --- | --- | --- |
-| `outline` | Structures, ranges, names and parent/child relations; filter by kind/name. | JSONL |
+| `entities` | Every structural entity, including the file root; ranges, names, parent relations, `-f` substring, exact `--kind`/`--name`. | JSONL |
+| `functions` | The same rows restricted to function declarations, expressions and arrows. | JSONL |
+| `classes` | The same rows restricted to classes, interfaces, enums, aliases and namespaces. | JSONL |
+| `methods` | The same rows restricted to class/object members: methods, constructors, getters, setters. | JSONL |
 | `find` | Case-sensitive literal substring match on decoded string values; returns containing structures. `--resolve-static` also matches bounded AST constant evaluation. | JSONL |
 | `identifiers` | Lexical identifier occurrences by exact name (declaration or reference). | JSONL |
 | `calls` | Call sites by callee name (direct, member or `new`). | JSONL |
@@ -88,7 +96,7 @@ rxd js get bundle.js --id '<parent-id>' --json
 | `xref --byte` | Single-file lexical binding and same-binding references at a byte position. | JSONL |
 | `symbols` | Lexical bindings and unresolved references in a file or selected structure. | JSONL |
 
-`outline` returns the program and all descendants by default. `--within` returns
+`entities` returns the program and all descendants by default. `--within` returns
 descendants but not the selected structure itself. `--depth 1` limits to direct
 children; no depth means all descendants; `--depth 0` returns none. Record `depth` is
 always absolute from program; filter depth is relative to the selected root. Filters
@@ -155,7 +163,7 @@ invocation is independent, with no implicit background service or persistent ind
 
 ## Recursive scan
 
-`rxd js outline DIR` and `find DIR --string TEXT` recursively scan regular
+`rxd js entities DIR` and `find DIR --string TEXT` recursively scan regular
 `.js/.mjs/.cjs/.jsx/.ts/.mts/.cts/.tsx` files (case-sensitive), do not follow symlinks,
 and do not apply ignore rules (hidden directories and `node_modules` are included). A
 symlinked directory entry is not scanned. Files sort by path; with multiple files each
@@ -212,7 +220,7 @@ unknown/invalid entities remain literal. Backslashes inside JSX quotes are not J
 escapes, and React text whitespace is not collapsed; original whitespace/newlines and
 spans are retained. JS strings inside JSX expression containers decode normally. JSX
 element/fragment/opening/closing/attribute/spread/expression/text nodes can be extracted
-via `context_id`; they are not outline function entities.
+via `context_at`; they are not structure entities.
 
 JSX component names and member-tag object bases use Oxc `IdentifierReference`; ordinary
 tags, attribute names and static member names are not lexical references. Paired
@@ -266,7 +274,7 @@ rxd1:js:<source-sha256>:<kind>:<start>:<end>
 ```
 
 IDs are valid for the same content and schema. They are not promised across builds and
-do not rely on potentially duplicate minified names. `get` and `outline --within`
+do not rely on potentially duplicate minified names. `get` and `entities --within`
 validate the source fingerprint, kind and real structure boundaries; a syntactically
 valid range without a matching entity is still an error. Paths are display metadata,
 not identity.
@@ -295,12 +303,12 @@ spans and never silently moves offsets.
 ## Structured output (schema_version=2)
 
 All structured output follows [ADR 0003](../adr/0003-output-envelope.md) and shared
-constructors, with no legacy flat shim. Single-file `outline/find/xref/symbols` JSONL
+constructors, with no legacy flat shim. Single-file structure/find/xref/symbols JSONL
 is header → zero or more records → summary. Success requires exit 0 and
 `summary.complete=true`; budget failures return no partial result.
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
-query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: outline
+query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: entities/functions/classes/methods
 `within, depth, kind, name`; find `string, resolve_static`; identifiers `name, role,
 within`; calls/members `name, within`; xref `byte`; symbols `within`.
 
@@ -308,7 +316,7 @@ Header detail fields:
 
 | Command | Fields |
 | --- | --- |
-| outline/find | `path, root_id, source_type, analysis, syntax, declaration_file, origin` |
+| entities/functions/classes/methods, find | `path, root_id, source_type, analysis, syntax, declaration_file, origin` |
 | xref | above plus `resolution, selected, declaration, declaration_ids` |
 | symbols | above plus `resolution, within_id` |
 
@@ -445,7 +453,7 @@ lexical query completed, not runtime reference completeness. Unused resolved
 declarations, unresolved and dynamic queries can all succeed with zero records.
 
 `xref`/`symbols` and get symbol paths enable the semantic pass as needed and return its
-diagnostics as `INVALID_INPUT`; outline/find/locate and get structure paths stay
+diagnostics as `INVALID_INPUT`; structure listings/find/locate and get structure paths stay
 parser-only. Structural traversal checks entity and AST-depth budgets first; semantic
 nodes above `--max-semantic-nodes` (default 1,000,000) return `RESOURCE_LIMIT` before
 index allocation. Reference records are budgeted before collecting positions; output
@@ -489,7 +497,7 @@ Symbol IDs are `rxd1:js:<source-sha256>:symbol:<canonical-start>:<canonical-end>
 Oxc internal ordinals. They are stable for the same content, parse options and schema
 across calls, paths and within selections, but not across incompatible versions or
 different source content. Structure and symbol IDs have different target semantics:
-outline/symbols `--within` reject symbol IDs; xref does not accept `--id`; get accepts
+structure/symbols `--within` reject symbol IDs; xref does not accept an id selector; get accepts
 symbol IDs and extracts the canonical declaration; get accepts parent_id for the
 containing structure. A symbol record's `start` can be passed directly to `xref --byte`.
 
@@ -602,7 +610,7 @@ Find/locate/get fragment paths keep only the current AST-depth context stack and
 requested fragment/match ID; no whole-file fragment table is created. Refs uses the
 built semantic node ancestors and the same selection rule; unresolved/dynamic selected
 results may still provide a syntactic fragment but do not claim a resolved binding.
-Fragments do not add outline entity records or change max-entities. Existing records,
+Fragments do not add structure entity records or change the entity ceiling. Existing records,
 output budgets, directory atomic failure and `-o` contracts remain; serializing
 `context_id` is charged to existing output budgets and release benchmarks.
 
@@ -704,9 +712,9 @@ lower task correctness is not acceptance.
 
 ## MCP projection
 
-`js_outline/find/identifiers/calls/members/locate/xref/symbols/get` reuse existing
+`js_entities/functions/classes/methods/find/identifiers/calls/members/locate/xref/symbols/get` reuse existing
 implementations. JSONL becomes header/records/summary; recursive directories keep
-`files` and `scan_summary` (only for directory-capable `outline`/`find`); get uses the
+`files` and `scan_summary` (only for directory-capable listings and `find`); get uses the
 original source record's `detail.source` with source/CRLF unchanged. Isolated UTF-16
 surrogate decoded values are represented losslessly as `{utf16_units: [...]}` in
 structuredContent, while ordinary strings stay strings; CLI JSON escaping is unchanged.

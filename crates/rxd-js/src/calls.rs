@@ -22,7 +22,7 @@ pub struct Call {
 }
 
 impl Call {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             callee: &'a Option<JsString>,
@@ -33,7 +33,6 @@ impl Call {
         crate::envelope::body(
             "call",
             rxd_core::envelope::RecordMeta {
-                source_id: Some(source_id),
                 parent_at: Some(&self.entity_id),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),

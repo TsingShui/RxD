@@ -104,6 +104,10 @@ pub struct Budget {
     pub records: usize,
     /// Bytes one command may print or write.
     pub output_bytes: usize,
+    /// AST nesting one syntax tree may reach, checked after parsing.
+    pub ast_depth: usize,
+    /// Semantic index nodes one query may allocate.
+    pub semantic_nodes: usize,
 }
 
 impl Default for Budget {
@@ -118,6 +122,8 @@ impl Default for Budget {
             work: MAX_WORK_UNITS,
             records: 100_000,
             output_bytes: MAX_OUTPUT_BYTES,
+            ast_depth: 512,
+            semantic_nodes: 1_000_000,
         }
     }
 }
@@ -137,14 +143,16 @@ pub struct Limits {
 }
 
 impl Default for Limits {
+    /// The budget table is the only place these numbers live.
     fn default() -> Self {
+        let budget = Budget::default();
         Self {
-            input_bytes: MAX_INPUT_BYTES,
-            entities: 100_000,
-            records: 100_000,
-            output_bytes: 32 * 1024 * 1024,
-            ast_depth: 512,
-            semantic_nodes: 1_000_000,
+            input_bytes: budget.input_bytes,
+            entities: budget.entities,
+            records: budget.records,
+            output_bytes: budget.output_bytes,
+            ast_depth: budget.ast_depth,
+            semantic_nodes: budget.semantic_nodes,
         }
     }
 }

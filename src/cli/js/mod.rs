@@ -25,22 +25,21 @@ pub(super) fn execute(command: Command) -> Result<()> {
         SyntaxArg::Ts => Syntax::Ts,
         SyntaxArg::Tsx => Syntax::Tsx,
     };
+    let budget = rxd_core::Budget::default();
     let limits = Limits {
-        input_bytes: super::input_limit(common.max_input_bytes),
-        entities: common.max_entities,
-        records: common.max_records,
-        output_bytes: common.max_output_bytes,
-        ast_depth: common.max_ast_depth,
-        semantic_nodes: command.semantic_nodes(),
+        input_bytes: budget.input_bytes,
+        entities: budget.entities,
+        records: budget.records,
+        output_bytes: budget.output_bytes,
+        ast_depth: budget.ast_depth,
+        semantic_nodes: budget.semantic_nodes,
     };
-    let scan = command
-        .scan()
-        .map(|s| (s.recursive, s.max_files, s.threads));
+    let scan = command.scan().map(|s| (s.recursive, s.threads));
     let mut perf = Perf::new(debug || emit_perf, "analysis", "js", command.name());
     perf.limits = Some(limits);
     let query = command.into_query();
     let result = (|| {
-        let bytes = if let Some((requested, max_files, threads)) = scan
+        let bytes = if let Some((requested, threads)) = scan
             && (requested || input.symlink_metadata().is_ok_and(|m| m.is_dir()))
         {
             recursive::run(
@@ -50,7 +49,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
                     syntax,
                     query,
                     limits,
-                    max_files,
+                    max_files: budget.entries,
                     threads,
                 },
                 &mut perf,

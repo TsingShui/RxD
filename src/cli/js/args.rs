@@ -1,6 +1,5 @@
-use super::super::{default_threads, input_bytes, positive};
+use super::super::{default_threads, positive};
 use clap::{Args, Subcommand, ValueEnum};
-use rxd_core::Limits;
 use rxd_js::Query;
 use std::path::PathBuf;
 #[derive(Clone, Copy, ValueEnum)]
@@ -44,18 +43,7 @@ pub(crate) struct Common {
     /// Emit versioned phase timings and counters as JSONL on stderr.
     #[arg(long)]
     pub(super) perf: bool,
-    /// Input byte cap in bytes (1 through 8589934592); 8 GiB when omitted.
-    #[arg(long, value_parser = input_bytes)]
-    pub(super) max_input_bytes: Option<usize>,
-    #[arg(long, default_value_t = 100_000, value_parser = positive)]
-    pub(super) max_entities: usize,
-    #[arg(long, default_value_t = 100_000, value_parser = positive)]
-    pub(super) max_records: usize,
-    #[arg(long, default_value_t = 32 * 1024 * 1024, value_parser = positive)]
-    pub(super) max_output_bytes: usize,
-    /// AST node nesting budget; checked after parsing.
-    #[arg(long, default_value_t = 512, value_parser = positive)]
-    pub(super) max_ast_depth: usize,
+    // Every ceiling comes from rxd_core::Budget; the CLI exposes no knob for one.
 }
 
 #[derive(Args)]
@@ -63,35 +51,69 @@ pub(crate) struct Scan {
     /// Compatibility flag: directories are scanned recursively by default.
     #[arg(short = 'r', long)]
     pub(super) recursive: bool,
-    /// Maximum JavaScript files in a recursive scan.
-    #[arg(long, default_value_t = 10_000, value_parser = positive)]
-    pub(super) max_files: usize,
     /// Workers for a directory scan; one parsed input per worker is held at a time.
     #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = positive)]
     pub(super) threads: usize,
 }
 
+/// Selectors shared by the grouped structure listings.
+#[derive(Args)]
+pub(crate) struct Outline {
+    #[arg(long, conflicts_with = "recursive")]
+    pub(super) within: Option<String>,
+    #[arg(long)]
+    pub(super) depth: Option<usize>,
+    /// Keep only entities of this exact structural kind (comma-separated list allowed).
+    #[arg(long)]
+    pub(super) kind: Option<String>,
+    /// Keep only entities whose name or context label equals this value.
+    #[arg(long)]
+    pub(super) name: Option<String>,
+    /// Case-insensitive substring over the entity name or context label.
+    #[arg(short, long)]
+    pub(super) filter: Option<String>,
+    /// Explicitly select the default JSONL format.
+    #[arg(long)]
+    pub(super) jsonl: bool,
+}
+
 #[derive(Subcommand)]
 pub(crate) enum Command {
-    /// List program, functions, classes, and methods (JSONL).
-    Outline {
+    /// List every structural entity except the program root (JSONL).
+    Entities {
         #[command(flatten)]
         common: Common,
         #[command(flatten)]
         scan: Scan,
-        #[arg(long, conflicts_with = "recursive")]
-        within: Option<String>,
-        #[arg(long)]
-        depth: Option<usize>,
-        /// Keep only entities of this exact structural kind.
-        #[arg(long)]
-        kind: Option<String>,
-        /// Keep only entities whose name or context label equals this value.
-        #[arg(long)]
-        name: Option<String>,
-        /// Explicitly select the default JSONL format.
-        #[arg(long)]
-        jsonl: bool,
+        #[command(flatten)]
+        outline: Outline,
+    },
+    /// List function declarations, expressions, and arrows (JSONL).
+    Functions {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
+        outline: Outline,
+    },
+    /// List classes, interfaces, enums, aliases, and namespaces (JSONL).
+    Classes {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
+        outline: Outline,
+    },
+    /// List class and object members: methods, constructors, getters, setters (JSONL).
+    Methods {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
+        outline: Outline,
     },
     /// Find case-sensitive substrings in decoded JS literals (JSONL).
     Find {
@@ -160,9 +182,6 @@ pub(crate) enum Command {
         common: Common,
         #[arg(long)]
         byte: u64,
-        /// Bound the semantic index before allocation.
-        #[arg(long, default_value_t = 1_000_000, value_parser = positive)]
-        max_semantic_nodes: usize,
         #[arg(long)]
         jsonl: bool,
     },
@@ -173,8 +192,6 @@ pub(crate) enum Command {
         /// Include declarations and dependencies in this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
-        #[arg(long, default_value_t = 1_000_000, value_parser = positive)]
-        max_semantic_nodes: usize,
         #[arg(long)]
         jsonl: bool,
     },
@@ -182,44 +199,49 @@ pub(crate) enum Command {
     Get {
         #[command(flatten)]
         common: Common,
+        /// The `at` a structure or symbol row prints.
         #[arg(long)]
-        id: String,
+        at: String,
         /// Bound semantic analysis for symbol IDs; structure IDs do not build it.
-        #[arg(long, default_value_t = 1_000_000, value_parser = positive)]
-        max_semantic_nodes: usize,
         #[arg(long)]
         json: bool,
     },
 }
 
 impl Command {
-    pub(super) fn semantic_nodes(&self) -> usize {
-        match self {
-            Self::Xref {
-                max_semantic_nodes, ..
-            }
-            | Self::Symbols {
-                max_semantic_nodes, ..
-            }
-            | Self::Get {
-                max_semantic_nodes, ..
-            } => *max_semantic_nodes,
-            _ => Limits::default().semantic_nodes,
-        }
-    }
     pub(super) fn into_query(self) -> Query {
         match self {
-            Self::Outline {
-                within,
-                depth,
-                kind,
-                name,
-                ..
-            } => Query::Outline {
-                within,
-                depth,
-                kind,
-                name,
+            Self::Entities { outline, .. } => Query::Outline {
+                group: None,
+                within: outline.within,
+                depth: outline.depth,
+                kind: outline.kind,
+                name: outline.name,
+                contains: outline.filter,
+            },
+            Self::Functions { outline, .. } => Query::Outline {
+                group: Some("functions"),
+                within: outline.within,
+                depth: outline.depth,
+                kind: outline.kind,
+                name: outline.name,
+                contains: outline.filter,
+            },
+            Self::Classes { outline, .. } => Query::Outline {
+                group: Some("classes"),
+                within: outline.within,
+                depth: outline.depth,
+                kind: outline.kind,
+                name: outline.name,
+                contains: outline.filter,
+            },
+            Self::Methods { outline, .. } => Query::Outline {
+                group: Some("methods"),
+                within: outline.within,
+                depth: outline.depth,
+                kind: outline.kind,
+                name: outline.name,
+                contains: outline.filter,
             },
             Self::Find {
                 string,
@@ -245,13 +267,16 @@ impl Command {
             Self::Locate { byte, .. } => Query::Locate { byte },
             Self::Xref { byte, .. } => Query::Refs { byte },
             Self::Symbols { within, .. } => Query::Symbols { within },
-            Self::Get { id, json, .. } => Query::Get { id, json },
+            Self::Get { at, json, .. } => Query::Get { id: at, json },
         }
     }
 
     pub(crate) fn name(&self) -> &'static str {
         match self {
-            Self::Outline { .. } => "outline",
+            Self::Entities { .. } => "entities",
+            Self::Functions { .. } => "functions",
+            Self::Classes { .. } => "classes",
+            Self::Methods { .. } => "methods",
             Self::Find { .. } => "find",
             Self::Identifiers { .. } => "identifiers",
             Self::Calls { .. } => "calls",
@@ -264,13 +289,20 @@ impl Command {
     }
     pub(super) fn scan(&self) -> Option<&Scan> {
         match self {
-            Self::Outline { scan, .. } | Self::Find { scan, .. } => Some(scan),
+            Self::Entities { scan, .. }
+            | Self::Functions { scan, .. }
+            | Self::Classes { scan, .. }
+            | Self::Methods { scan, .. }
+            | Self::Find { scan, .. } => Some(scan),
             _ => None,
         }
     }
     pub(super) fn common(&self) -> &Common {
         match self {
-            Self::Outline { common, .. }
+            Self::Entities { common, .. }
+            | Self::Functions { common, .. }
+            | Self::Classes { common, .. }
+            | Self::Methods { common, .. }
             | Self::Find { common, .. }
             | Self::Identifiers { common, .. }
             | Self::Calls { common, .. }

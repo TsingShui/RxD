@@ -5,7 +5,8 @@ executes input. It has nine commands:
 
 | Command | Purpose | Default output |
 | --- | --- | --- |
-| `outline` | List program/functions/classes/methods and containment; filter by kind/name | JSONL |
+| `entities` | Every structure with containment; `-f` substring and exact `--kind`/`--name` | JSONL |
+| `functions` / `classes` / `methods` | The same rows, one object kind group each | JSONL |
 | `find` | Search decoded string literals and static template fragments; `--resolve-static` also matches bounded AST constant evaluation | JSONL |
 | `identifiers` | Find lexical declarations/references by exact name | JSONL |
 | `calls` | Find direct/member/`new` call sites by callee name | JSONL |
@@ -15,7 +16,7 @@ executes input. It has nine commands:
 | `xref --byte` | Find the lexical binding, references and read/write roles at a byte position | JSONL |
 | `symbols` | Discover declarations, external bindings and unresolved references in a region | JSONL |
 
-`outline/find` accept a file or recursively scan a directory; `locate/get/xref/symbols/
+structure listings and `find` accept a file or recursively scan a directory; `locate/get/xref/symbols/
 identifiers/calls/members` accept one file. ASAR uses the separate
 [`rxd asar` entry](asar.md) to extract a file, then these commands analyze it; identical
 bytes and parse options keep the same content-bound IDs.
@@ -45,7 +46,7 @@ DEMO=target/demo/js
 mkdir -p "$DEMO"
 
 "$RXD" js --help
-"$RXD" js outline --help
+"$RXD" js entities --help
 "$RXD" js find --help
 "$RXD" js identifiers --help
 "$RXD" js calls --help
@@ -60,13 +61,13 @@ The fixture contains `request`, an anonymous async arrow `send` inside it, objec
 methods/getters/setters and a `Client` class. Offsets/counts below correspond to this
 fixed file; use actual query results for other inputs.
 
-## 1. outline
+## 1. entities
 
 ```sh
-"$RXD" js outline "$FILE" --jsonl -o "$DEMO/outline.jsonl"
+"$RXD" js entities "$FILE" --jsonl -o "$DEMO/entities.jsonl"
 
 jq 'select(.record == "entity") |
-    {kind: .detail.kind, name: .detail.name, label: .detail.label, start, end, depth: .detail.depth, flags: .detail.flags}' "$DEMO/outline.jsonl"
+    {kind: .detail.kind, name: .detail.name, label: .detail.label, start, end, depth: .detail.depth, flags: .detail.flags}' "$DEMO/entities.jsonl"
 ```
 
 `send` is an anonymous `arrow_function` with `label: "send"`, range `[66,129)`, absolute
@@ -98,11 +99,11 @@ objects are not separate entities; parent/child means code containment, not call
 
 ```sh
 # program and direct children; do not expand request/Client internals
-"$RXD" js outline "$FILE" --depth 1
+"$RXD" js entities "$FILE" --depth 1
 
 # Take request's real ID and show only its direct children
-REQUEST_ID=$(jq -r 'select(.record == "entity" and .detail.name == "request") | .id' "$DEMO/outline.jsonl")
-"$RXD" js outline "$FILE" --within "$REQUEST_ID" --depth 1
+REQUEST_ID=$(jq -r 'select(.record == "entity" and .detail.name == "request") | .at' "$DEMO/entities.jsonl")
+"$RXD" js entities "$FILE" --within "$REQUEST_ID" --depth 1
 ```
 
 The second query returns only `send`, not `request` itself. Record `depth` is still
@@ -141,9 +142,9 @@ structure wins; `detail.ancestors` is ordered inner to outer. A `rg --byte-offse
 ## 4. get
 
 ```sh
-"$RXD" js get "$FILE" --id "$REQUEST_ID"
-"$RXD" js get "$FILE" --id "$REQUEST_ID" --json
-"$RXD" js get "$FILE" --id "$REQUEST_ID" -o "$DEMO/request.js"
+"$RXD" js get "$FILE" --at "$REQUEST_ID"
+"$RXD" js get "$FILE" --at "$REQUEST_ID" --json
+"$RXD" js get "$FILE" --at "$REQUEST_ID" -o "$DEMO/request.js"
 ```
 
 Default output is exact original source bytes with no added newline or formatting.
@@ -182,9 +183,9 @@ different bindings stay separate; imports resolve only to the local binding.
 ### Extract a canonical declaration by symbol ID
 
 ```sh
-SYMBOL_ID=$(jq -r 'select(.record == "symbol" and .detail.name == "api") | .id' "$DEMO/symbols.jsonl")
-"$RXD" js get "$FILE" --id "$SYMBOL_ID"
-"$RXD" js get "$FILE" --id "$SYMBOL_ID" --json
+SYMBOL_ID=$(jq -r 'select(.record == "symbol" and .detail.name == "api") | .at' "$DEMO/symbols.jsonl")
+"$RXD" js get "$FILE" --at "$SYMBOL_ID"
+"$RXD" js get "$FILE" --at "$SYMBOL_ID" --json
 ```
 
 The raw output is only the canonical declaration, not later redeclarations/assignments.
@@ -203,7 +204,7 @@ methods are context boundaries; entering them reselects an inner fragment. Use
 
 ## Directories
 
-`outline DIR` and `find DIR --string TEXT` recurse into regular
+`entities DIR` (or `functions`/`classes`/`methods`) and `find DIR --string TEXT` recurse into regular
 `.js/.mjs/.cjs/.jsx/.ts/.mts/.cts/.tsx` files (case-sensitive), do not follow symlinks and
 include hidden directories/`node_modules`. Results concatenate per-file header/records/
 summary and end with `scan_summary` (detail `files`). Success needs exit 0 and the final
@@ -214,8 +215,8 @@ complete `scan_summary`; any file failure/resource overflow fails the whole call
 ## Budgets and performance
 
 Defaults: input bytes, entity count and AST depth are checked per file; records and output
-bytes cover the whole invocation. `--max-files` defaults to 10,000 and directory depth to
-256. `--max-semantic-nodes` defaults to 1,000,000 for xref/symbols/get-symbol. Syntax
+bytes cover the whole invocation. Directory scans, records, semantic index nodes and AST
+depth are bounded by `rxd_core::Budget`, which the CLI does not expose as flags. Syntax
 errors fail atomically; there is no permissive mode. Raw source stdout has no summary;
 exit status determines completeness. Ordinary representative queries follow the 150 ms
 fresh-process rule; `benches/cli.py` measures release fresh processes with per-workload

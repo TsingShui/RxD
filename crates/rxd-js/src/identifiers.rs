@@ -28,7 +28,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             name: &'a JsString,
@@ -38,7 +38,6 @@ impl Identifier {
         crate::envelope::body(
             "identifier",
             rxd_core::envelope::RecordMeta {
-                source_id: Some(source_id),
                 parent_at: Some(&self.entity_id),
                 context_at: self.context_id.as_deref(),
                 start: Some(self.start as usize),

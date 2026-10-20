@@ -418,6 +418,29 @@ fn invoke(command: &str, input: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+/// The full structural catalog: every kind except the program root. Grouped listing
+/// commands are views over exactly this stream, so assertions keep one entry point.
+fn outline_rows(input: &Path, args: &[&str]) -> Vec<Value> {
+    jsonl(&invoke("entities", input, args))
+}
+
+/// A budget flag no longer exists: the CLI refuses it (exit 2) without touching outputs.
+fn refused(output: Output) {
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout.is_empty());
+}
+
+/// A row prints a copy-only coordinate; a stale-input check needs the content-bound form,
+/// which a caller rebuilds from the header identity.
+fn js_full_id(header: &Value, at: &str) -> String {
+    format!("rxd1:js:{}:{at}", header["source_id"].as_str().unwrap())
+}
+
 fn success(output: &Output) {
     assert!(
         output.status.success(),
@@ -464,6 +487,7 @@ fn assert_js_record(row: &Value) {
     let mut outer = vec![
         "record",
         "at",
+        // Present but null on every record: identity lives in the header.
         "source_id",
         "parent_at",
         "context_at",
@@ -476,8 +500,13 @@ fn assert_js_record(row: &Value) {
         assert_eq!(row["backend"], "js");
         assert_eq!(row["schema_version"], 2);
     }
+    // Identity lives in the stream header; every other record leaves source_id null.
+    if row["record"] == "header" {
+        assert!(row["source_id"].is_string());
+    } else {
+        assert!(row["source_id"].is_null());
+    }
     assert_js_keys(row, &outer);
-    assert!(row["source_id"].is_string());
     assert!(row["start"].is_number());
     assert!(row["end"].is_number());
     let fields: &[&str] = match row["record"].as_str().unwrap() {
@@ -666,7 +695,7 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
     ] {
         let path = dir.path().join(name);
         fs::write(&path, source).unwrap();
-        let rows = jsonl(&invoke("outline", &path, &[]));
+        let rows = outline_rows(&path, &[]);
         assert_eq!(rows[0]["detail"]["syntax"].as_str(), syntax);
         assert_eq!(rows[0]["detail"]["source_type"], mode);
         assert_eq!(
@@ -678,7 +707,7 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
         success(&raw);
         assert_eq!(raw.stdout, source.as_bytes());
     }
-    let output = invoke("outline", dir.path(), &[]);
+    let output = invoke("entities", dir.path(), &[]);
     success(&output);
     let rows: Vec<Value> = String::from_utf8(output.stdout)
         .unwrap()
@@ -689,22 +718,22 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
     assert_eq!(rows.last().unwrap()["complete"], true);
     let path = dir.path().join("b.jsx");
     failure(
-        invoke("outline", &path, &["--syntax", "js"]),
+        invoke("entities", &path, &["--syntax", "js"]),
         1,
         "INVALID_INPUT",
     );
     let path = dir.path().join("c.ts");
     failure(
-        invoke("outline", &path, &["--syntax", "js"]),
+        invoke("entities", &path, &["--syntax", "js"]),
         1,
         "INVALID_INPUT",
     );
     let (_tmp, path) = fixture("const v=<div/>;", "opaque.txt");
-    failure(invoke("outline", &path, &[]), 1, "INVALID_INPUT");
-    success(&invoke("outline", &path, &["--syntax", "jsx"]));
-    success(&invoke("outline", &path, &["--syntax", "tsx"]));
+    failure(invoke("entities", &path, &[]), 1, "INVALID_INPUT");
+    success(&invoke("entities", &path, &["--syntax", "jsx"]));
+    success(&invoke("entities", &path, &["--syntax", "tsx"]));
     let (_tmp, path) = fixture("const id=<T,>(value:T):T=>value;", "generic.tsx");
-    let rows = jsonl(&invoke("outline", &path, &[]));
+    let rows = outline_rows(&path, &[]);
     assert_eq!(
         rows.iter()
             .find(|r| r["detail"]["kind"] == "arrow_function")
@@ -712,14 +741,14 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
         "id"
     );
     let (_tmp, path) = fixture("const v=<number>value;", "assertion.ts");
-    success(&invoke("outline", &path, &[]));
+    success(&invoke("entities", &path, &[]));
     failure(
-        invoke("outline", &path, &["--syntax", "tsx"]),
+        invoke("entities", &path, &["--syntax", "tsx"]),
         1,
         "INVALID_INPUT",
     );
     let (_tmp, path) = fixture("const f=(()=>1) satisfies (()=>number);", "wrapped.ts");
-    let rows = jsonl(&invoke("outline", &path, &[]));
+    let rows = outline_rows(&path, &[]);
     assert_eq!(
         rows.iter()
             .find(|r| r["detail"]["kind"] == "arrow_function")
@@ -875,7 +904,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
     let rows = jsonl(&invoke("xref", &path, &["--byte", &a["start"].to_string()]));
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[1]["detail"]["value_reference"], true);
-    let outlines = jsonl(&invoke("outline", &path, &[]));
+    let outlines = outline_rows(&path, &[]);
     let namespace = outlines
         .iter()
         .find(|r| r["detail"]["kind"] == "namespace")
@@ -892,15 +921,11 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
             .unwrap()["detail"]["relation"],
         "external"
     );
-    failure(
-        invoke(
-            "get",
-            &path,
-            &["--at", model["at"].as_str().unwrap(), "--max-records", "1"],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    refused(invoke(
+        "get",
+        &path,
+        &["--at", model["at"].as_str().unwrap(), "--max-records", "1"],
+    ));
     let source =
         "import type {Only} from 'lib'; type Missing=typeof missing; Only; let named:Only;";
     let (_tmp, path) = fixture(source, "imports.ts");
@@ -935,7 +960,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
 fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_bounded() {
     let source = "\u{feff}declare namespace SDK { interface Options { endpoint: '/api/login'; run<T>(value:T):T; } function send(value:Options):string; function send(value:string):string; }\r\ndeclare module 'legacy' { export type Value=string; }";
     let (dir, path) = fixture(source, "sdk.d.ts");
-    let outlines = jsonl(&invoke("outline", &path, &[]));
+    let outlines = outline_rows(&path, &[]);
     assert_eq!(outlines[0]["detail"]["declaration_file"], true);
     assert!(
         outlines
@@ -987,22 +1012,18 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     assert_eq!(output.stdout, b"endpoint: '/api/login';");
     let destination = dir.path().join("saved.jsonl");
     fs::write(&destination, "preserved").unwrap();
-    failure(
-        invoke(
-            "symbols",
-            &path,
-            &[
-                "--max-semantic-nodes",
-                "1",
-                "-o",
-                destination.to_str().unwrap(),
-            ],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    refused(invoke(
+        "symbols",
+        &path,
+        &[
+            "--max-semantic-nodes",
+            "1",
+            "-o",
+            destination.to_str().unwrap(),
+        ],
+    ));
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    let id = send["at"].as_str().unwrap().to_owned();
+    let id = js_full_id(&found[0], send["at"].as_str().unwrap());
     fs::write(&path, format!("{source}\n// changed")).unwrap();
     failure(invoke("get", &path, &["--at", &id]), 1, "SOURCE_MISMATCH");
     let (_tmp, path) = fixture("type Route=`/api/${'login'|'logout'}`;", "template.ts");
@@ -1033,7 +1054,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
         let path = root.join(case["file"].as_str().unwrap());
         let bytes = fs::read(&path).unwrap();
         assert_eq!(case["sha256"], format!("{:x}", Sha256::digest(&bytes)));
-        let outline = jsonl(&invoke("outline", &path, &[]));
+        let outline = outline_rows(&path, &[]);
         let entities = &outline[1..outline.len() - 1];
         assert_eq!(
             entities.len(),
@@ -1115,8 +1136,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
                 assert_eq!(
                     row["context_at"],
                     format!(
-                        "rxd1:js:{}:fragment.{}:{}:{}",
-                        case["sha256"].as_str().unwrap(),
+                        "fragment.{}:{}:{}",
                         c["kind"].as_str().unwrap(),
                         c["start"],
                         c["end"]
@@ -1135,8 +1155,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             }
             let context = &expected["context"];
             let expected_id = format!(
-                "rxd1:js:{}:fragment.{}:{}:{}",
-                case["sha256"].as_str().unwrap(),
+                "fragment.{}:{}:{}",
                 context["kind"].as_str().unwrap(),
                 context["start"],
                 context["end"]
@@ -1372,7 +1391,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
         rows[0]["detail"]["selected"]["context_at"]
             .as_str()
             .unwrap()
-            .contains(":fragment.variable_declarator:")
+            .contains("fragment.variable_declarator:")
     );
     let source = "host(value);";
     let (_dir, path) = fixture(source, "host.js");
@@ -1399,6 +1418,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let found = jsonl(&invoke("find", &path, &["--string", "/api/check"]));
     let id = found[1]["context_at"].as_str().unwrap();
     let fingerprint = found[0]["source_id"].as_str().unwrap();
+    let full_id = format!("rxd1:js:{fingerprint}:{id}");
     let destination = dir.path().join("context.js");
     let written = invoke(
         "get",
@@ -1408,48 +1428,37 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     success(&written);
     assert!(written.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), b"endpoint:'/api/check'");
-    for budget in [
-        ["--max-output-bytes", "1"],
-        ["--max-input-bytes", "1"],
-        ["--max-entities", "1"],
-        ["--max-ast-depth", "1"],
+    for flag in [
+        "--max-output-bytes",
+        "--max-input-bytes",
+        "--max-entities",
+        "--max-ast-depth",
     ] {
         fs::write(&destination, "preserved").unwrap();
-        failure(
-            invoke(
-                "get",
-                &path,
-                &[
-                    "--at",
-                    id,
-                    budget[0],
-                    budget[1],
-                    "-o",
-                    destination.to_str().unwrap(),
-                ],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
+        refused(invoke(
+            "get",
+            &path,
+            &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
+        ));
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
     for forged in [
-        id.replacen("rxd1", "rxd2", 1),
-        id.replace("fragment.object_property", "fragment.block_statement"),
-        format!("{id}:extra"),
+        full_id.replacen("rxd1", "rxd2", 1),
+        full_id.replace("fragment.object_property", "fragment.block_statement"),
+        format!("{full_id}:extra"),
         format!("rxd1:js:{fingerprint}:fragment.object_property:0:1"),
         format!("rxd1:js:{fingerprint}:fragment.object_property:011:32"),
         format!("rxd1:js:{fingerprint}:fragment.object_property:32:11"),
     ] {
         failure(invoke("get", &path, &["--at", &forged]), 1, "INVALID_ID");
     }
-    for command in ["outline", "symbols"] {
+    for command in ["entities", "symbols"] {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
     }
     for (command, args) in [
         ("find", vec!["--string", "/api/check"]),
         ("locate", vec!["--byte", "21"]),
-        ("get", vec!["--at", id, "--max-semantic-nodes", "1"]),
+        ("get", vec!["--at", id]),
     ] {
         let plain = invoke(command, &path, &args);
         success(&plain);
@@ -1470,8 +1479,13 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         invoke("get", &copy, &["--at", id]).stdout,
         b"endpoint:'/api/check'"
     );
+    let stale = js_full_id(&found[0], id);
     fs::write(&path, "const obj={changed:true};").unwrap();
-    failure(invoke("get", &path, &["--at", id]), 1, "SOURCE_MISMATCH");
+    failure(
+        invoke("get", &path, &["--at", &stale]),
+        1,
+        "SOURCE_MISMATCH",
+    );
     let path = dir.path().join("late.js");
     fs::write(&path, "const =;").unwrap();
     failure(
@@ -1561,8 +1575,7 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
             }
             let context = &expected["context"];
             let id = format!(
-                "rxd1:js:{}:fragment.{}:{}:{}",
-                case["source_id"].as_str().unwrap(),
+                "fragment.{}:{}:{}",
                 context["kind"].as_str().unwrap(),
                 context["start"],
                 context["end"]
@@ -1589,8 +1602,7 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
             } else {
                 let parent = &context["parent"];
                 let id = format!(
-                    "rxd1:js:{}:fragment.{}:{}:{}",
-                    case["source_id"].as_str().unwrap(),
+                    "fragment.{}:{}:{}",
                     parent["kind"].as_str().unwrap(),
                     parent["start"],
                     parent["end"]
@@ -1867,10 +1879,8 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
         let source = fs::read(&path).unwrap();
         assert_eq!(case["source_id"], format!("{:x}", Sha256::digest(&source)));
         let id = format!(
-            "rxd1:js:{}:symbol:{}:{}",
-            case["source_id"].as_str().unwrap(),
-            case["identifier"]["start"],
-            case["identifier"]["end"]
+            "symbol:{}:{}",
+            case["identifier"]["start"], case["identifier"]["end"]
         );
         let symbols = jsonl(&invoke("symbols", &path, &[]));
         let symbol = symbols.iter().find(|r| r["at"] == id).unwrap();
@@ -1923,6 +1933,9 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let symbol = &rows[1];
     let id = symbol["at"].as_str().unwrap();
     let fingerprint = rows[0]["source_id"].as_str().unwrap();
+    // Malformed-input cases need the content-bound spelling; a short coordinate has no
+    // schema prefix to corrupt.
+    let full = format!("rxd1:js:{fingerprint}:{id}");
     let expected = b"config={url:'/api/login'}";
     let destination = dir.path().join("definition.js");
     let written = invoke(
@@ -1933,30 +1946,19 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     success(&written);
     assert!(written.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), expected);
-    for budget in [
-        ["--max-semantic-nodes", "1"],
-        ["--max-output-bytes", "1"],
-        ["--max-input-bytes", "1"],
-        ["--max-entities", "1"],
-        ["--max-ast-depth", "1"],
+    for flag in [
+        "--max-semantic-nodes",
+        "--max-output-bytes",
+        "--max-input-bytes",
+        "--max-entities",
+        "--max-ast-depth",
     ] {
         fs::write(&destination, "preserved").unwrap();
-        failure(
-            invoke(
-                "get",
-                &path,
-                &[
-                    "--at",
-                    id,
-                    budget[0],
-                    budget[1],
-                    "-o",
-                    destination.to_str().unwrap(),
-                ],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
+        refused(invoke(
+            "get",
+            &path,
+            &["--at", id, flag, "1", "-o", destination.to_str().unwrap()],
+        ));
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
     for (a, b) in [
@@ -1980,15 +1982,15 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         );
     }
     for forged in [
-        id.replacen("rxd1", "rxd2", 1),
-        id.replace(":symbol:", ":variable:"),
-        format!("{id}:extra"),
+        full.replacen("rxd1", "rxd2", 1),
+        full.replace(":symbol:", ":variable:"),
+        format!("{full}:extra"),
         format!("rxd1:js:{fingerprint}:symbol:06:12"),
         format!("rxd1:js:{fingerprint}:symbol:12:6"),
     ] {
         failure(invoke("get", &path, &["--at", &forged]), 1, "INVALID_ID");
     }
-    for command in ["outline", "symbols"] {
+    for command in ["entities", "symbols"] {
         failure(invoke(command, &path, &["--within", id]), 1, "INVALID_ID");
     }
     let profile = invoke("get", &path, &["--at", id, "--perf"]);
@@ -1998,31 +2000,13 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     assert_eq!(reports.len(), 2);
     assert_eq!(reports[0]["counters"]["records"], 1);
     assert!(reports[0]["stages_ns"]["semantic"].as_u64().unwrap() > 0);
-    let nodes = reports[0]["counters"]["semantic_nodes"].as_u64().unwrap();
-    success(&invoke(
-        "get",
-        &path,
-        &["--at", id, "--max-semantic-nodes", &nodes.to_string()],
-    ));
-    failure(
-        invoke(
-            "get",
-            &path,
-            &["--at", id, "--max-semantic-nodes", &(nodes - 1).to_string()],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    // The semantic index is still built on demand and still counted; its ceiling is not a
+    // CLI knob, so the test asserts the reported work instead of tuning it.
+    assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     let legacy = invoke(
         "get",
         &path,
-        &[
-            "--at",
-            symbol["parent_at"].as_str().unwrap(),
-            "--max-semantic-nodes",
-            "1",
-            "--perf",
-        ],
+        &["--at", symbol["parent_at"].as_str().unwrap(), "--perf"],
     );
     success(&legacy);
     assert_eq!(legacy.stdout, source.as_bytes());
@@ -2034,8 +2018,13 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let copied = path.with_file_name("copy.js");
     fs::copy(&path, &copied).unwrap();
     assert_eq!(invoke("get", &copied, &["--at", id]).stdout, expected);
+    let stale = js_full_id(&rows[0], id);
     fs::write(&path, "const config={changed:true};").unwrap();
-    failure(invoke("get", &path, &["--at", id]), 1, "SOURCE_MISMATCH");
+    failure(
+        invoke("get", &path, &["--at", &stale]),
+        1,
+        "SOURCE_MISMATCH",
+    );
     // Syntax extraction remains available in a dynamic file; it claims no runtime value.
     let dynamic = "let x=1; eval('x=2');";
     fs::write(&path, dynamic).unwrap();
@@ -2099,15 +2088,7 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
         assert_eq!(row["detail"]["relation"], "declared");
         assert_eq!(row["start"], start);
         assert_eq!(row["end"], start + raw.len());
-        assert_eq!(
-            row["at"],
-            format!(
-                "rxd1:js:{}:symbol:{}:{}",
-                rows[0]["source_id"].as_str().unwrap(),
-                start,
-                start + raw.len()
-            )
-        );
+        assert_eq!(row["at"], format!("symbol:{start}:{}", start + raw.len()));
         assert!(ids.insert(row["at"].clone().to_string()));
         let refs = jsonl(&invoke("xref", &path, &["--byte", &start.to_string()]));
         assert_eq!(refs[0]["detail"]["selected"]["name"], name);
@@ -2142,7 +2123,7 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
 fn symbols_within_includes_nested_declarations_and_external_bindings_without_name_merging() {
     let source = "let x=0; let unused=1; function outer(x){const inner=()=>{let y=x; const nested=()=>x+y+host+host; return nested}; return inner;} const recur=()=>recur; var repeated; const redeclare=()=>{var repeated; return repeated}; function twice(){} function twice(){return twice};";
     let (_dir, path) = fixture(source, "closures.js");
-    let entities = jsonl(&invoke("outline", &path, &[]));
+    let entities = outline_rows(&path, &[]);
     let id = entities
         .iter()
         .find(|row| row["detail"]["label"] == "inner")
@@ -2226,33 +2207,29 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
     success(&written);
     assert!(written.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
-    for budget in [
-        ["--max-semantic-nodes", "1"],
-        ["--max-records", "3"],
-        ["--max-output-bytes", "1"],
-        ["--max-entities", "1"],
-        ["--max-ast-depth", "1"],
-        ["--max-input-bytes", "1"],
+    for flag in [
+        "--max-semantic-nodes",
+        "--max-records",
+        "--max-output-bytes",
+        "--max-entities",
+        "--max-ast-depth",
+        "--max-input-bytes",
     ] {
         fs::write(&destination, "preserved").unwrap();
-        failure(
-            invoke(
-                "symbols",
-                &path,
-                &[budget[0], budget[1], "-o", destination.to_str().unwrap()],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
+        refused(invoke(
+            "symbols",
+            &path,
+            &[flag, "1", "-o", destination.to_str().unwrap()],
+        ));
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
-    success(&invoke("symbols", &path, &["--max-records", "4"]));
     failure(invoke("symbols", dir.path(), &[]), 1, "INVALID_INPUT");
     failure(invoke("symbols", &path, &["-r"]), 2, "unexpected argument");
+    // A ceiling is not a CLI knob any more; the flag is simply unknown.
     failure(
         invoke("symbols", &path, &["--max-semantic-nodes", "0"]),
         2,
-        "expected an integer",
+        "unexpected argument",
     );
     for id in [
         "garbage".to_owned(),
@@ -2268,7 +2245,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
             "INVALID_ID",
         );
     }
-    let root = rows[0]["detail"]["root_id"].as_str().unwrap().to_owned();
+    let root = js_full_id(&rows[0], rows[0]["detail"]["root_id"].as_str().unwrap());
     fs::write(&path, "let changed=0;").unwrap();
     failure(
         invoke("symbols", &path, &["--within", &root]),
@@ -2287,21 +2264,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
     assert_eq!(reports[0]["command"], "symbols");
     assert_eq!(reports[0]["counters"]["records"], 1);
     assert_eq!(reports[0]["counters"]["semantic_symbols"], 1);
-    let nodes = reports[0]["counters"]["semantic_nodes"].as_u64().unwrap();
-    success(&invoke(
-        "symbols",
-        &path,
-        &["--max-semantic-nodes", &nodes.to_string()],
-    ));
-    failure(
-        invoke(
-            "symbols",
-            &path,
-            &["--max-semantic-nodes", &(nodes - 1).to_string()],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     for (source, error) in [
         ("let x; let x;", "INVALID_INPUT"),
         ("const =;", "INVALID_INPUT"),
@@ -2556,29 +2519,26 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     success(&saved);
     assert!(saved.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
-    for args in [
-        ["--max-semantic-nodes", "1"],
-        ["--max-records", "1"],
-        ["--max-output-bytes", "1"],
-        ["--max-input-bytes", "1"],
-        ["--max-ast-depth", "1"],
+    // No CLI ceiling exists; each flag is refused and the atomic output is untouched.
+    for flag in [
+        "--max-semantic-nodes",
+        "--max-records",
+        "--max-output-bytes",
+        "--max-input-bytes",
+        "--max-ast-depth",
     ] {
-        failure(
-            invoke(
-                "xref",
-                &path,
-                &[
-                    "--byte",
-                    "4",
-                    args[0],
-                    args[1],
-                    "-o",
-                    destination.to_str().unwrap(),
-                ],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
+        refused(invoke(
+            "xref",
+            &path,
+            &[
+                "--byte",
+                "4",
+                flag,
+                "1",
+                "-o",
+                destination.to_str().unwrap(),
+            ],
+        ));
         assert_eq!(fs::read(&destination).unwrap(), plain.stdout);
     }
     for byte in ["16", "999"] {
@@ -2599,10 +2559,11 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
         2,
         "unexpected argument",
     );
+    // A ceiling is not a CLI knob; the flag is simply unknown.
     failure(
         invoke("xref", &path, &["--byte", "4", "--max-semantic-nodes", "0"]),
         2,
-        "error:",
+        "unexpected argument",
     );
     let profiled = invoke("xref", &path, &["--byte", "4", "--perf"]);
     success(&profiled);
@@ -2613,27 +2574,8 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     assert_eq!(reports[0]["counters"]["semantic_references"], 2);
     assert_eq!(reports[0]["limits"]["semantic_nodes"], 1_000_000);
-    let nodes = reports[0]["counters"]["semantic_nodes"].as_u64().unwrap();
-    success(&invoke(
-        "xref",
-        &path,
-        &["--byte", "4", "--max-semantic-nodes", &nodes.to_string()],
-    ));
-    failure(
-        invoke(
-            "xref",
-            &path,
-            &[
-                "--byte",
-                "4",
-                "--max-semantic-nodes",
-                &(nodes - 1).to_string(),
-            ],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
-    let outlined = invoke("outline", &path, &["--perf"]);
+    assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
+    let outlined = invoke("entities", &path, &["--perf"]);
     success(&outlined);
     assert!(
         perf_reports(&outlined)[0]["stages_ns"]
@@ -2641,7 +2583,7 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
             .is_none()
     );
     let (_dir, invalid) = fixture("let x; let x;", "redeclaration.js");
-    success(&invoke("outline", &invalid, &[]));
+    success(&invoke("entities", &invalid, &[]));
     failure(
         invoke("xref", &invalid, &["--byte", "4"]),
         1,
@@ -2660,7 +2602,7 @@ fn recursive_queries_preserve_sorted_per_file_streams_and_content_ids() {
     fs::copy(corpus.join("application-rc4.js"), &b).unwrap();
     // Invalid non-JS inputs must not be parsed.
     fs::write(dir.path().join("ignored.txt"), b"not JavaScript {{{").unwrap();
-    for (command, args) in [("outline", vec![]), ("find", vec!["--string", "/api"])] {
+    for (command, args) in [("entities", vec![]), ("find", vec!["--string", "/api"])] {
         let mut expected = Vec::new();
         let mut count = 0;
         for path in [&a, &b] {
@@ -2705,7 +2647,7 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
     let script = dir.path().join("子目录").join("b.cjs");
     fs::write(&module, "export function 登录(){return '你好'}").unwrap();
     fs::write(&script, "function outer(){return ()=>1}").unwrap();
-    let output = invoke("outline", dir.path(), &["--depth", "0", "--perf"]);
+    let output = invoke("entities", dir.path(), &["--depth", "0", "--perf"]);
     success(&output);
     let rows: Vec<Value> = String::from_utf8(output.stdout.clone())
         .unwrap()
@@ -2757,7 +2699,7 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
 #[test]
 fn recursive_empty_scans_and_explicit_files_are_complete() {
     let dir = tempfile::tempdir().unwrap();
-    for command in ["outline", "find"] {
+    for command in ["entities", "find"] {
         let mut args = vec![];
         if command == "find" {
             args.extend(["--string", "absent"]);
@@ -2777,21 +2719,21 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
     );
     let file = dir.path().join("input.txt");
     fs::write(&file, "const x = 1").unwrap();
-    let single = jsonl(&invoke("outline", &file, &[]));
+    let single = outline_rows(&file, &[]);
     assert_eq!(single[0]["detail"]["path"], file.to_str().unwrap());
-    let output = invoke("outline", &file, &["-r"]);
+    let output = invoke("entities", &file, &["-r"]);
     success(&output);
     let summary: Value =
         serde_json::from_slice(output.stdout.split(|&b| b == b'\n').rev().nth(1).unwrap()).unwrap();
     assert_eq!(summary["detail"]["files"], 1);
     failure(
-        invoke("outline", dir.path(), &["--within", "dummy"]),
+        invoke("entities", dir.path(), &["--within", "dummy"]),
         2,
         "--within requires a single-file input",
     );
     fs::write(dir.path().join("valid.js"), "function f(){}").unwrap();
     failure(
-        invoke("outline", dir.path(), &["--within", "dummy"]),
+        invoke("entities", dir.path(), &["--within", "dummy"]),
         2,
         "--within requires a single-file input",
     );
@@ -2816,7 +2758,7 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         "unexpected argument",
     );
     failure(
-        invoke("outline", dir.path(), &["-r", "--within", "dummy"]),
+        invoke("entities", dir.path(), &["-r", "--within", "dummy"]),
         2,
         "cannot be used",
     );
@@ -2828,39 +2770,33 @@ fn recursive_budgets_and_late_errors_leave_output_untouched() {
     fs::write(dir.path().join("a.js"), "const x = 'needle'").unwrap();
     let last = dir.path().join("b.js");
     fs::write(&last, "const y = 'needle'").unwrap();
-    for (command, args) in [
-        ("outline", vec!["--max-files", "1"]),
-        ("outline", vec!["--max-records", "1"]),
-        ("find", vec!["--string", "needle", "--max-records", "1"]),
-        ("outline", vec!["--max-input-bytes", "1"]),
+    for (command, flag) in [
+        ("entities", "--max-files"),
+        ("entities", "--max-records"),
+        ("find", "--max-records"),
+        ("entities", "--max-input-bytes"),
     ] {
-        failure(invoke(command, dir.path(), &args), 1, "RESOURCE_LIMIT");
-        let mut explicit = args;
+        let args: Vec<&str> = match command {
+            "find" => vec!["--string", "needle", flag, "1"],
+            _ => vec![flag, "1"],
+        };
+        refused(invoke(command, dir.path(), &args));
+        let mut explicit = args.clone();
         explicit.push("-r");
-        failure(invoke(command, dir.path(), &explicit), 1, "RESOURCE_LIMIT");
+        refused(invoke(command, dir.path(), &explicit));
     }
-    let first_bytes = invoke("outline", &dir.path().join("a.js"), &[])
+    let first_bytes = invoke("entities", &dir.path().join("a.js"), &[])
         .stdout
         .len();
-    let total_bytes = first_bytes + invoke("outline", &last, &[]).stdout.len();
-    // Fail both during the second file and when appending scan_summary.
-    for budget in [first_bytes + 1, total_bytes] {
-        failure(
-            invoke(
-                "outline",
-                dir.path(),
-                &["--max-output-bytes", &budget.to_string()],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
-    }
+    let total_bytes = first_bytes + invoke("entities", &last, &[]).stdout.len();
+    // The byte ceiling is internal now, so the recursive stream is measured, not limited.
+    assert!(total_bytes > first_bytes);
     let destination = dir.path().join("output.jsonl");
     fs::write(&destination, "keep me").unwrap();
     fs::write(&last, "function broken( {").unwrap();
     failure(
         invoke(
-            "outline",
+            "entities",
             dir.path(),
             &["-o", destination.to_str().unwrap()],
         ),
@@ -2869,7 +2805,7 @@ fn recursive_budgets_and_late_errors_leave_output_untouched() {
     );
     assert_eq!(fs::read(destination).unwrap(), b"keep me");
     failure(
-        invoke("outline", &dir.path().join("missing"), &["-r"]),
+        invoke("entities", &dir.path().join("missing"), &["-r"]),
         1,
         "IO_ERROR",
     );
@@ -2887,11 +2823,11 @@ fn recursive_scans_are_deterministic_across_worker_counts() {
     }
     // Discovery sorts by path and parallel workers restore that order, so the stream must not
     // depend on the worker count.
-    let single = invoke("outline", dir.path(), &["--threads", "1"]);
+    let single = invoke("entities", dir.path(), &["--threads", "1"]);
     success(&single);
     assert!(!single.stdout.is_empty());
     for threads in ["2", "8", "16"] {
-        let parallel = invoke("outline", dir.path(), &["--threads", threads]);
+        let parallel = invoke("entities", dir.path(), &["--threads", threads]);
         success(&parallel);
         assert_eq!(
             parallel.stdout, single.stdout,
@@ -2918,21 +2854,17 @@ fn recursive_scans_are_deterministic_across_worker_counts() {
     }
     // Aggregate budgets and error attribution stay per-path, whatever the worker count.
     for threads in ["1", "16"] {
-        failure(
-            invoke(
-                "outline",
-                dir.path(),
-                &["--max-records", "1", "--threads", threads],
-            ),
-            1,
-            "RESOURCE_LIMIT",
-        );
+        refused(invoke(
+            "entities",
+            dir.path(),
+            &["--max-records", "1", "--threads", threads],
+        ));
     }
     let broken = dir.path().join("d.js");
     fs::write(&broken, "function broken( {").unwrap();
     for threads in ["1", "16"] {
         failure(
-            invoke("outline", dir.path(), &["--threads", threads]),
+            invoke("entities", dir.path(), &["--threads", threads]),
             1,
             "d.js",
         );
@@ -2940,12 +2872,12 @@ fn recursive_scans_are_deterministic_across_worker_counts() {
     // The worker count is validated like every other positive budget, and a single-file query
     // accepts and ignores it.
     failure(
-        invoke("outline", dir.path(), &["--threads", "0"]),
+        invoke("entities", dir.path(), &["--threads", "0"]),
         2,
         "expected an integer",
     );
     success(&invoke(
-        "outline",
+        "entities",
         &dir.path().join("a.js"),
         &["--threads", "16"],
     ));
@@ -2982,12 +2914,12 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
     assert_eq!(rows[3]["detail"]["files"], 1);
     assert_eq!(rows[3]["records"], 1);
     failure(
-        invoke("outline", &dir.path().join("cycle"), &[]),
+        invoke("entities", &dir.path().join("cycle"), &[]),
         1,
         "INVALID_INPUT",
     );
     failure(
-        invoke("outline", &dir.path().join("cycle"), &["-r"]),
+        invoke("entities", &dir.path().join("cycle"), &["-r"]),
         1,
         "INVALID_INPUT",
     );
@@ -3033,7 +2965,7 @@ fn search_then_extract_and_locate_complete_function() {
 fn outline_entities_have_exact_spans_and_no_duplicate_methods() {
     let path = example();
     let source = fs::read(&path).unwrap();
-    let output = invoke("outline", &path, &[]);
+    let output = invoke("entities", &path, &[]);
     let records = jsonl(&output);
     assert!(output.stderr.is_empty());
     assert_eq!(
@@ -3041,6 +2973,7 @@ fn outline_entities_have_exact_spans_and_no_duplicate_methods() {
         format!("{:x}", Sha256::digest(&source))
     );
     let entities = &records[1..records.len() - 1];
+    // The full catalog includes the file root; the grouped commands do not.
     assert_eq!(entities.len(), 11);
     assert_eq!(
         entities
@@ -3097,19 +3030,19 @@ fn filtering_preserves_absolute_depth_and_parent_ids() {
         "function outer(){function inner(){return ()=>1} return inner}",
         "bundle.js",
     );
-    let all = jsonl(&invoke("outline", &path, &[]));
+    let all = outline_rows(&path, &[]);
     let outer = all.iter().find(|e| e["detail"]["name"] == "outer").unwrap();
     let id = outer["at"].as_str().unwrap();
-    let filtered = jsonl(&invoke("outline", &path, &["--within", id, "--depth", "1"]));
+    let filtered = outline_rows(&path, &["--within", id, "--depth", "1"]);
     assert_eq!(filtered.len(), 3);
     assert_eq!(filtered[1]["detail"]["name"], "inner");
     assert_eq!(filtered[1]["detail"]["depth"], 2);
     assert_eq!(filtered[1]["parent_at"], id);
     assert_eq!(
-        jsonl(&invoke("outline", &path, &["--within", id, "--depth", "0"])).len(),
+        outline_rows(&path, &["--within", id, "--depth", "0"]).len(),
         2
     );
-    let root_only = jsonl(&invoke("outline", &path, &["--depth", "0"]));
+    let root_only = outline_rows(&path, &["--depth", "0"]);
     assert_eq!(root_only.len(), 3);
     assert_eq!(root_only[1]["detail"]["kind"], "program");
 }
@@ -3118,7 +3051,7 @@ fn filtering_preserves_absolute_depth_and_parent_ids() {
 fn get_json_preserves_original_source_for_functions_arrows_classes_and_members() {
     let path = example();
     let bytes = fs::read(&path).unwrap();
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     for entity in &records[1..records.len() - 1] {
         let output = invoke(
             "get",
@@ -3151,7 +3084,7 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     let located = invoke("locate", &path, &["--byte", &position.to_string()]);
     success(&located);
     assert_eq!(js_object(&located.stdout)["detail"]["entity"]["at"], id);
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     assert_eq!(records[1]["start"], 0);
     assert_eq!(records[1]["end"], source.len());
     assert_eq!(
@@ -3187,10 +3120,10 @@ fn identifiers_find_lexical_occurrences_without_static_property_names() {
     assert!(
         identifiers[2]["context_at"]
             .as_str()
-            .is_some_and(|id| id.contains(":fragment."))
+            .is_some_and(|id| id.starts_with("fragment."))
     );
     // --within restricts occurrences to one structure and its descendants.
-    let outline = jsonl(&invoke("outline", &path, &["--name", "f"]));
+    let outline = outline_rows(&path, &["--name", "f"]);
     let function_id = outline.iter().find(|r| r["detail"]["name"] == "f").unwrap()["at"]
         .as_str()
         .unwrap()
@@ -3208,17 +3141,17 @@ fn outline_filters_by_exact_kind_and_name() {
     let source = "function alpha(){} const beta=()=>1; class Gamma{ delta(){} }";
     let (_dir, path) = fixture(source, "filter.js");
     let functions = jsonl(&invoke(
-        "outline",
+        "entities",
         &path,
         &["--kind", "function_declaration"],
     ));
     let entities: Vec<_> = functions[1..functions.len() - 1].to_vec();
     assert_eq!(entities.len(), 1);
     assert_eq!(entities[0]["detail"]["name"], "alpha");
-    let named = jsonl(&invoke("outline", &path, &["--name", "beta"]));
+    let named = outline_rows(&path, &["--name", "beta"]);
     assert_eq!(named.last().unwrap()["records"], 1);
     assert_eq!(named[1]["detail"]["label"], "beta");
-    let method = jsonl(&invoke("outline", &path, &["--name", "delta"]));
+    let method = outline_rows(&path, &["--name", "delta"]);
     assert_eq!(method.last().unwrap()["records"], 1);
     assert_eq!(method[1]["detail"]["kind"], "class_method");
 }
@@ -3300,7 +3233,7 @@ fn outline_kind_accepts_a_comma_separated_exact_kind_list() {
     let (_dir, path) = fixture(source, "kinds.js");
 
     let kinds = |args: &[&str]| {
-        jsonl(&invoke("outline", &path, args))
+        outline_rows(&path, args)
             .into_iter()
             .filter(|row| row["record"] == "entity")
             .map(|row| row["detail"]["kind"].as_str().unwrap().to_owned())
@@ -3329,7 +3262,7 @@ fn outline_kind_accepts_a_comma_separated_exact_kind_list() {
         "class_method,,arrow_function",
         "",
     ] {
-        let output = invoke("outline", &path, &["--kind", bad]);
+        let output = invoke("entities", &path, &["--kind", bad]);
         assert!(!output.status.success(), "{bad:?} was accepted");
         assert!(
             String::from_utf8_lossy(&output.stderr).contains("INVALID_QUERY"),
@@ -3448,8 +3381,10 @@ fn lone_surrogates_are_preserved_and_do_not_match_replacement_characters() {
     let header: Value = serde_json::from_str(lines[0]).unwrap();
     assert_eq!(header["schema_version"], 2);
     assert!(lines[1].contains("\"detail\":{\"literal_kind\":\"string\",\"value\":\"\\u0070\\u0072\\u0065\\u0066\\u0069\\u0078\\ud800\\ufffd\\u0073\\u0075\\u0066\\u0066\\u0069\\u0078\""));
-    assert!(lines[1].contains("\"id\":null"));
-    assert!(lines[1].contains("\"parent_id\":\"rxd1:js:"));
+    // A literal has no navigable identity of its own: `at` is null and the enclosing
+    // structure is the copy-only short coordinate.
+    assert!(lines[1].contains("\"at\":null"));
+    assert!(lines[1].contains("\"parent_at\":\""));
     let summary: Value = serde_json::from_str(lines[2]).unwrap();
     assert_eq!(summary["records"], 1);
     assert_eq!(summary["complete"], true);
@@ -3473,7 +3408,7 @@ fn computed_members_private_names_and_context_labels_are_explicit() {
         "const f=(function named(){}); const C=class {#private(){} [key](){return 'needle'} field=()=>1}; const o={a:()=>2,['needle'](){}}; assigned=()=>3;",
         "bundle.js",
     );
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     assert!(records.iter().any(|e| e["detail"]["name"] == "#private"));
     assert!(
         records
@@ -3511,20 +3446,25 @@ fn computed_members_private_names_and_context_labels_are_explicit() {
 #[test]
 fn same_content_has_same_identity_and_changed_content_rejects_old_ids() {
     let (dir, path) = fixture("function a(){}", "one.js");
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     let id = records[2]["at"].as_str().unwrap();
     let other = dir.path().join("two.js");
     fs::copy(&path, &other).unwrap();
-    let copied = jsonl(&invoke("outline", &other, &[]));
+    let copied = outline_rows(&other, &[]);
     assert_eq!(records[2]["at"], copied[2]["at"]);
+    let stale = js_full_id(&records[0], id);
     fs::write(&path, "function b(){}").unwrap();
-    failure(invoke("get", &path, &["--at", id]), 1, "SOURCE_MISMATCH");
+    failure(
+        invoke("get", &path, &["--at", &stale]),
+        1,
+        "SOURCE_MISMATCH",
+    );
 }
 
 #[test]
 fn forged_entity_bounds_kinds_and_versions_are_rejected() {
     let (_dir, path) = fixture("function a(){}", "bundle.js");
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     let source_id = records[0]["source_id"].as_str().unwrap();
     for id in [
         format!("rxd1:js:{source_id}:function_declaration:0:3"),
@@ -3534,7 +3474,7 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
     ] {
         failure(invoke("get", &path, &["--at", &id]), 1, "INVALID_ID");
         failure(
-            invoke("outline", &path, &["--within", &id]),
+            invoke("entities", &path, &["--within", &id]),
             1,
             "INVALID_ID",
         );
@@ -3545,27 +3485,27 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
 fn auto_and_explicit_source_modes_handle_esm_without_accepting_top_level_return() {
     let (_dir, path) = fixture("export const f=()=>1;", "bundle.js");
     assert_eq!(
-        jsonl(&invoke("outline", &path, &[]))[0]["detail"]["source_type"],
+        outline_rows(&path, &[])[0]["detail"]["source_type"],
         "module"
     );
     failure(
-        invoke("outline", &path, &["--source-type", "script"]),
+        invoke("entities", &path, &["--source-type", "script"]),
         1,
         "INVALID_INPUT",
     );
     let (_dir, cjs) = fixture("export const f=()=>1;", "bundle.cjs");
-    failure(invoke("outline", &cjs, &[]), 1, "INVALID_INPUT");
+    failure(invoke("entities", &cjs, &[]), 1, "INVALID_INPUT");
     assert_eq!(
-        jsonl(&invoke("outline", &cjs, &["--source-type", "module"]))[0]["detail"]["source_type"],
+        outline_rows(&cjs, &["--source-type", "module"])[0]["detail"]["source_type"],
         "module"
     );
     let (_dir, mjs) = fixture("const f=()=>1;", "bundle.mjs");
     assert_eq!(
-        jsonl(&invoke("outline", &mjs, &[]))[0]["detail"]["source_type"],
+        outline_rows(&mjs, &[])[0]["detail"]["source_type"],
         "module"
     );
     let (_dir, invalid) = fixture("return 1;", "bundle.js");
-    failure(invoke("outline", &invalid, &[]), 1, "INVALID_INPUT");
+    failure(invoke("entities", &invalid, &[]), 1, "INVALID_INPUT");
 }
 
 #[test]
@@ -3576,14 +3516,14 @@ fn malformed_utf8_syntax_and_unsupported_jsx_fail_atomically() {
         &[0xff, 0xfe][..],
     ] {
         let (_dir, path) = fixture(source, "bundle.js");
-        failure(invoke("outline", &path, &[]), 1, "INVALID_INPUT");
+        failure(invoke("entities", &path, &[]), 1, "INVALID_INPUT");
     }
 }
 
 #[test]
 fn empty_files_zero_matches_and_invalid_offsets_have_distinct_results() {
     let (_dir, path) = fixture("", "bundle.js");
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     assert_eq!(records.len(), 3);
     assert_eq!(records[1]["start"], 0);
     assert_eq!(records[1]["end"], 0);
@@ -3622,7 +3562,7 @@ fn cli_argument_errors_exit_with_two() {
         &["--source-type", "typescript"][..],
         &["--unknown"][..],
     ] {
-        failure(invoke("outline", &example(), args), 2, "error:");
+        failure(invoke("entities", &example(), args), 2, "error:");
     }
     failure(invoke("get", &example(), &[]), 2, "error:");
     let dir = tempfile::tempdir().unwrap();
@@ -3652,37 +3592,30 @@ fn cli_argument_errors_exit_with_two() {
 
 #[test]
 fn budgets_reject_results_without_partial_output() {
-    for args in [
-        &["--max-input-bytes", "1"][..],
-        &["--max-entities", "1"][..],
-        &["--max-records", "1"][..],
-        &["--max-output-bytes", "1"][..],
-        &["--max-ast-depth", "2"][..],
+    // Ceilings live in rxd_core::Budget: there is no CLI knob and no partial stdout.
+    for flag in [
+        "--max-input-bytes",
+        "--max-entities",
+        "--max-records",
+        "--max-output-bytes",
+        "--max-ast-depth",
     ] {
-        failure(invoke("outline", &example(), args), 1, "RESOURCE_LIMIT");
+        refused(invoke("entities", &example(), &[flag, "1"]));
     }
-    failure(
-        invoke(
-            "find",
-            &example(),
-            &["--string", "guest", "--max-records", "1"],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    refused(invoke(
+        "find",
+        &example(),
+        &["--string", "guest", "--max-records", "1"],
+    ));
 }
 
 #[test]
 fn deep_and_wide_inputs_are_controlled_failures() {
     let source = format!("{}1{};", "(".repeat(800), ")".repeat(800));
     let (_dir, path) = fixture(source, "deep.js");
-    failure(invoke("outline", &path, &[]), 1, "RESOURCE_LIMIT");
+    failure(invoke("entities", &path, &[]), 1, "RESOURCE_LIMIT");
     let (_dir, wide) = fixture("(()=>1);".repeat(200), "wide.js");
-    failure(
-        invoke("outline", &wide, &["--max-entities", "100"]),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    refused(invoke("entities", &wide, &["--max-entities", "100"]));
 }
 
 #[test]
@@ -3690,29 +3623,25 @@ fn output_files_match_stdout_and_keep_previous_contents_on_failure() {
     let (dir, path) = fixture("function a(){return 'needle'}", "bundle.js");
     let destination = dir.path().join("result.jsonl");
     fs::write(&destination, "old contents").unwrap();
-    failure(
-        invoke(
-            "outline",
-            &path,
-            &[
-                "-o",
-                destination.to_str().unwrap(),
-                "--max-output-bytes",
-                "1",
-            ],
-        ),
-        1,
-        "RESOURCE_LIMIT",
-    );
+    refused(invoke(
+        "entities",
+        &path,
+        &[
+            "-o",
+            destination.to_str().unwrap(),
+            "--max-output-bytes",
+            "1",
+        ],
+    ));
     assert_eq!(fs::read(&destination).unwrap(), b"old contents");
-    let stdout = invoke("outline", &path, &[]);
+    let stdout = invoke("entities", &path, &[]);
     success(&stdout);
-    let saved = invoke("outline", &path, &["-o", destination.to_str().unwrap()]);
+    let saved = invoke("entities", &path, &["-o", destination.to_str().unwrap()]);
     success(&saved);
     assert!(saved.stdout.is_empty());
     assert_eq!(fs::read(&destination).unwrap(), stdout.stdout);
     failure(
-        invoke("outline", &path, &["-o", dir.path().to_str().unwrap()]),
+        invoke("entities", &path, &["-o", dir.path().to_str().unwrap()]),
         1,
         "IO_ERROR",
     );
@@ -3725,8 +3654,8 @@ fn output_files_match_stdout_and_keep_previous_contents_on_failure() {
 
 #[test]
 fn output_order_is_deterministic_and_debug_stays_on_stderr() {
-    let plain = invoke("outline", &example(), &[]);
-    let debug = invoke("outline", &example(), &["--debug"]);
+    let plain = invoke("entities", &example(), &[]);
+    let debug = invoke("entities", &example(), &["--debug"]);
     success(&plain);
     success(&debug);
     assert_eq!(plain.stdout, debug.stdout);
@@ -3746,14 +3675,14 @@ fn input_code_is_never_executed() {
         ),
     )
     .unwrap();
-    jsonl(&invoke("outline", &path, &[]));
+    outline_rows(&path, &[]);
     assert!(!marker.exists());
 }
 
 #[test]
 fn raw_get_output_file_matches_stdout_without_an_added_newline() {
     let (dir, path) = fixture("const f=()=>42;", "bundle.js");
-    let records = jsonl(&invoke("outline", &path, &[]));
+    let records = outline_rows(&path, &[]);
     let id = records[2]["at"].as_str().unwrap();
     let destination = dir.path().join("fragment.js");
     let saved = invoke(
@@ -3787,7 +3716,7 @@ fn tagged_templates_and_surrogates_do_not_invent_decoded_matches() {
 fn missing_files_and_single_file_commands_produce_input_diagnostics() {
     let dir = tempfile::tempdir().unwrap();
     failure(
-        invoke("outline", &dir.path().join("missing.js"), &[]),
+        invoke("entities", &dir.path().join("missing.js"), &[]),
         1,
         "IO_ERROR",
     );
@@ -3810,7 +3739,7 @@ fn fifo_inputs_are_rejected_without_blocking() {
             .unwrap()
             .success()
     );
-    failure(invoke("outline", &fifo, &[]), 1, "INVALID_INPUT");
+    failure(invoke("entities", &fifo, &[]), 1, "INVALID_INPUT");
 }
 
 fn perf_reports(output: &Output) -> Vec<Value> {
@@ -3824,7 +3753,7 @@ fn perf_reports(output: &Output) -> Vec<Value> {
 #[test]
 fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
     let path = example();
-    let entities = jsonl(&invoke("outline", &path, &[]));
+    let entities = outline_rows(&path, &[]);
     let id = entities
         .iter()
         .find(|e| e["detail"]["label"] == "send")
@@ -3832,7 +3761,7 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
         .as_str()
         .unwrap();
     for (command, arguments) in [
-        ("outline", vec![]),
+        ("entities", vec![]),
         ("find", vec!["--string", "/api/login"]),
         ("locate", vec!["--byte", "100"]),
         ("get", vec!["--at", id]),
@@ -3889,26 +3818,16 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
 
 #[test]
 fn perf_reports_failed_stages_without_partial_stdout() {
+    // Ceilings are internal, so the failures a caller can still provoke are query failures;
+    // each must still report its stage twice (analysis + write) with no partial stdout.
     for (command, arguments, error, stage) in [
-        (
-            "outline",
-            vec!["--max-output-bytes", "1"],
-            "RESOURCE_LIMIT",
-            "serialize",
-        ),
-        (
-            "outline",
-            vec!["--max-input-bytes", "1"],
-            "RESOURCE_LIMIT",
-            "read",
-        ),
-        (
-            "outline",
-            vec!["--max-entities", "1"],
-            "RESOURCE_LIMIT",
-            "visit",
-        ),
         ("get", vec!["--at", "invalid"], "INVALID_ID", "query"),
+        (
+            "locate",
+            vec!["--byte", "999999"],
+            "INVALID_OFFSET",
+            "query",
+        ),
     ] {
         let mut arguments = arguments;
         arguments.push("--perf");
@@ -3929,7 +3848,7 @@ fn perf_tracks_file_writes_and_can_coexist_with_debug() {
     let dir = tempfile::tempdir().unwrap();
     let destination = dir.path().join("result.jsonl");
     let output = invoke(
-        "outline",
+        "entities",
         &example(),
         &["-o", destination.to_str().unwrap(), "--perf", "--debug"],
     );
@@ -4024,36 +3943,31 @@ fn benchmark_runs_actual_cli_and_produces_reproducible_artifacts() {
 }
 
 #[test]
-fn benchmark_saves_failed_budget_results_and_returns_nonzero() {
+fn benchmark_saves_failed_results_and_returns_nonzero() {
     let dir = tempfile::tempdir().unwrap();
+    // A ceiling is internal now, so the failure this test preserves is an unparsable input:
+    // the benchmark must still persist the report and exit nonzero.
+    let bad = dir.path().join("bad.js");
+    fs::write(&bad, "const =;").unwrap();
     let output = Command::new("python3")
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("benches/cli.py"))
-        .args([
-            "--binary",
-            env!("CARGO_BIN_EXE_rxd"),
-            "--sizes",
-            "0.02",
-            "--samples",
-            "1",
-            "--max-output-bytes",
-            "1",
-            "--output",
-        ])
-        .arg(dir.path())
+        .args(["--binary", env!("CARGO_BIN_EXE_rxd"), "--input"])
+        .arg(&bad)
+        .args(["--samples", "1", "--output"])
+        .arg(dir.path().join("report"))
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     let report: Value =
-        serde_json::from_slice(&fs::read(dir.path().join("results.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dir.path().join("report/results.json")).unwrap()).unwrap();
     assert_eq!(report["status"], "failed");
-    assert_eq!(report["fixtures"][0]["failed_sample"]["exit_code"], 1);
     assert!(
         report["fixtures"][0]["error"]
             .as_str()
             .unwrap()
-            .contains("RESOURCE_LIMIT")
+            .contains("command failed")
     );
-    assert!(dir.path().join("results.md").exists());
+    assert!(dir.path().join("report/results.md").exists());
 }
 
 fn entity_reference(entity: &Value) -> Value {
@@ -4070,8 +3984,7 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
         let source_id = format!("{:x}", Sha256::digest(fs::read(&path).unwrap()));
         assert_eq!(case["source_id"], source_id);
         let entity_id = format!(
-            "rxd1:js:{}:{}:{}:{}",
-            source_id,
+            "{}:{}:{}",
             case["entity"]["kind"].as_str().unwrap(),
             case["entity"]["start"],
             case["entity"]["end"]
@@ -4094,8 +4007,8 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
             assert_eq!(
                 symbol["at"],
                 format!(
-                    "rxd1:js:{}:symbol:{}:{}",
-                    source_id, case["declaration"]["start"], case["declaration"]["end"]
+                    "symbol:{}:{}",
+                    case["declaration"]["start"], case["declaration"]["end"]
                 )
             );
             let keys: Vec<_> = rows[1..rows.len() - 1]
@@ -4145,9 +4058,9 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             rows[0]["detail"]["selected"]["end"],
             case["declaration"]["end"]
         );
+        // Detail coordinates are the same copy-only form as row coordinates.
         let entity_id = format!(
-            "rxd1:js:{}:{}:{}:{}",
-            case["source_id"].as_str().unwrap(),
+            "{}:{}:{}",
             case["entity"]["kind"].as_str().unwrap(),
             case["entity"]["start"],
             case["entity"]["end"]
@@ -4205,7 +4118,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
             case["name"]
         );
         assert_eq!(case["input_bytes"], bytes.len());
-        let outline = jsonl(&invoke("outline", &path, &[]));
+        let outline = outline_rows(&path, &[]);
         let entities = &outline[1..outline.len() - 1];
         assert_eq!(
             entities.len(),
@@ -4410,7 +4323,7 @@ fn asar_namespace_exposes_container_operations_without_electron_or_js_forwarding
     success(&output);
     let help = String::from_utf8(output.stdout).unwrap();
     assert!(help.contains("entries") && help.contains("extract"));
-    assert!(!help.contains("outline") && !help.contains("symbols"));
+    assert!(!help.contains("entities") && !help.contains("symbols"));
     let root = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .arg("--help")
         .output()
@@ -4586,12 +4499,16 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
     );
     success(&extracted);
     let receipt: Value = js_object(&extracted.stdout);
-    let rows = jsonl(&invoke("outline", &destination, &[]));
+    let rows = outline_rows(&destination, &[]);
     assert_eq!(rows[0]["source_id"], receipt["source_id"]);
     let id = rows.iter().find(|r| r["detail"]["name"] == "run").unwrap()["at"]
         .as_str()
-        .unwrap();
-    let get = invoke("get", &destination, &["--at", id]);
+        .unwrap()
+        .to_owned();
+    // The short coordinate a row prints is content-agnostic; a stale-input check needs the
+    // content-bound form, which the header identity lets a caller rebuild.
+    let id_full = format!("rxd1:js:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let get = invoke("get", &destination, &["--at", &id]);
     success(&get);
     assert_eq!(
         get.stdout,
@@ -4626,7 +4543,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     ));
     failure(
-        invoke("get", &destination, &["--at", id]),
+        invoke("get", &destination, &["--at", &id_full]),
         1,
         "SOURCE_MISMATCH",
     );
@@ -4872,7 +4789,7 @@ fn asar_extracted_production_sources_match_independent_acorn_expectations() {
             &["--at", "bundle.js", "-o", destination.to_str().unwrap()],
         ));
         assert_eq!(fs::read(&destination).unwrap(), source);
-        let rows = jsonl(&invoke("outline", &destination, &[]));
+        let rows = outline_rows(&destination, &[]);
         assert_eq!(
             rows.last().unwrap()["records"],
             case["expected"]["entity_count"]

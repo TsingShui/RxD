@@ -105,11 +105,11 @@ target untouched.
 ## Continue with JavaScript
 
 ```sh
-"$RXD" js outline "$DEMO/inline.js"
+"$RXD" js entities "$DEMO/inline.js"
 ```
 
 The extracted file is a new source unit; JS offsets refer to its UTF-8 bytes.
-`js outline`'s `source_id` matches the artifact receipt. There is no container-to-JS
+`js entities`'s `source_id` matches the artifact receipt. There is no container-to-JS
 offset translation; the receipt links the original page to the output. JSON and TS are
 selected by the Agent's syntax; arbitrary script content is not promised to parse as JS.
 

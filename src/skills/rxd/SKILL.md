@@ -104,7 +104,7 @@ hits are `literal_kind: static_expression` with `detail.raw` and
 ```sh
 rxd asar list app.asar
 rxd asar extract app.asar --file main.js -o extracted-main.js
-rxd js outline extracted-main.js
+rxd js entities extracted-main.js
 ```
 
 ASAR extract requires an output file and returns a receipt; it never runs the
@@ -121,7 +121,7 @@ offsets — never apply container offsets to the extracted file.
 rxd html list page.html
 rxd html list page.html --tag script --attr type=module
 rxd html extract page.html --id "$SCRIPT_ID" --content -o inline.js
-rxd js outline inline.js
+rxd js entities inline.js
 ```
 
 ## Android and JVM: string → caller → selected Java

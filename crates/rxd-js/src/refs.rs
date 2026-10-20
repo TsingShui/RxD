@@ -18,6 +18,7 @@ pub struct Selected {
     role: &'static str,
     #[serde(flatten)]
     location: Location,
+    #[serde(serialize_with = "crate::envelope::serialize_short_option")]
     context_at: Option<String>,
     type_reference: Option<bool>,
     value_reference: Option<bool>,
@@ -34,7 +35,7 @@ pub struct Reference {
 }
 
 impl Reference {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail {
             read: bool,
@@ -46,7 +47,6 @@ impl Reference {
         crate::envelope::body(
             "reference",
             rxd_core::envelope::RecordMeta {
-                source_id: Some(source_id),
                 parent_at: Some(&self.location.entity_id),
                 context_at: self.context_at.as_deref(),
                 start: Some(self.location.start as usize),

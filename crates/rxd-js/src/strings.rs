@@ -44,6 +44,26 @@ impl JsString {
     pub fn equals_str(&self, other: &str) -> bool {
         self.0.iter().copied().eq(other.encode_utf16())
     }
+    /// Case-insensitive substring test over the exact UTF-16 units, so a filter never
+    /// needs a lossy UTF-8 round trip through the decoded value.
+    pub fn contains_ci(&self, needle: &str) -> bool {
+        let needle: Vec<u16> = needle.to_lowercase().encode_utf16().collect();
+        if needle.is_empty() {
+            return true;
+        }
+        let haystack: Vec<u16> = self
+            .0
+            .iter()
+            .map(|unit| {
+                char::from_u32(u32::from(*unit))
+                    .map(|c| c.to_lowercase().next().unwrap_or(c))
+                    .map_or(*unit, |c| c as u16)
+            })
+            .collect();
+        haystack
+            .windows(needle.len())
+            .any(|window| window == needle.as_slice())
+    }
 }
 
 impl From<&str> for JsString {

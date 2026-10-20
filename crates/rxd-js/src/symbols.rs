@@ -42,7 +42,7 @@ impl Record {
         }
     }
 
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         #[serde(untagged)]
         enum Detail<'a> {
@@ -84,7 +84,6 @@ impl Record {
             kind,
             rxd_core::envelope::RecordMeta {
                 at,
-                source_id: Some(source_id),
                 parent_at: Some(&location.entity_id),
                 start: Some(location.start as usize),
                 end: Some(location.end as usize),
@@ -121,7 +120,7 @@ pub fn run(
         if lexical::is_dynamic(&semantic) {
             return Ok(Symbols {
                 resolution: "dynamic",
-                within_id: region.id.clone(),
+                within_id: crate::envelope::short(&region.id),
                 records: Vec::new(),
             });
         }
@@ -228,7 +227,7 @@ pub fn run(
         });
         Ok(Symbols {
             resolution: "static",
-            within_id: region.id.clone(),
+            within_id: crate::envelope::short(&region.id),
             records,
         })
     })

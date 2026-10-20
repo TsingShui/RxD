@@ -206,8 +206,10 @@ impl Contexts {
             kind: selection.key.kind,
             start: selection.key.span.start,
             end: selection.key.span.end,
-            parent_id: selection.parent.map(|key| key.id(source)),
-            entity_id: collector.entities[selection.entity].entity.id.clone(),
+            parent_id: selection
+                .parent
+                .map(|key| crate::envelope::short(&key.id(source))),
+            entity_id: crate::envelope::short(&collector.entities[selection.entity].entity.id),
         })
     }
 }

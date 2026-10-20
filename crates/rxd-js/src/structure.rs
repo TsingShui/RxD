@@ -56,7 +56,7 @@ pub struct Match {
 }
 
 impl Entity {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             kind: &'a str,
@@ -71,7 +71,6 @@ impl Entity {
             "entity",
             rxd_core::envelope::RecordMeta {
                 at: Some(&self.id),
-                source_id: Some(source_id),
                 parent_at: self.parent_id.as_deref(),
                 start: Some(self.start as usize),
                 end: Some(self.end as usize),
@@ -91,7 +90,7 @@ impl Entity {
 }
 
 impl Match {
-    pub fn envelope(&self, source_id: &str) -> impl Serialize {
+    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             literal_kind: &'a str,
@@ -103,7 +102,6 @@ impl Match {
         crate::envelope::body(
             "match",
             rxd_core::envelope::RecordMeta {
-                source_id: Some(source_id),
                 parent_at: Some(&self.entity_id),
                 context_at: self.context_id.as_deref(),
                 start: Some(self.start as usize),
@@ -287,6 +285,8 @@ impl<'s> Collector<'s> {
     }
 
     pub fn by_id(&self, id: &str) -> Result<usize> {
+        let expanded = crate::expand_short_id(self.source, id);
+        let id = expanded.as_str();
         let parts: Vec<_> = id.split(':').collect();
         if parts.len() != 6
             || parts[0] != "rxd1"
