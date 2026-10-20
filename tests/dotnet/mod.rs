@@ -664,7 +664,7 @@ fn dotnet_records_explain_why_a_unit_is_not_csharp() {
     let ty = outline
         .iter()
         .find(|row| {
-            row["record"] == "type" && row["at"].is_string() && row["detail"]["token"] != 33554433
+            row["record"] == "class" && row["at"].is_string() && row["detail"]["token"] != 33554433
         })
         .unwrap()["at"]
         .as_str()

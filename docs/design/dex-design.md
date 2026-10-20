@@ -138,6 +138,12 @@ references within one member are listed once; ordering is preserved.
 instance-first runtime slot, `field_index` is the DEX `field_ids` index, and
 `method_index` is the DEX `method_ids` index.
 
+A `classes` row prints `super` only when the class does not inherit from
+`java/lang/Object`, and `interfaces` is not printed at all: the superclass index is a
+`type_ids` read the descriptor already amortizes, while an interface list lives in the
+DEX data section that the class-index fast path deliberately never inflates. A caller
+that needs interfaces reads `get-class`, whose Java source carries `implements`.
+
 Access flags are not repeated on `methods`/`fields` rows: `get-class --at` renders the
 whole class as Java (`public abstract class`, `private static final` field, `public static
 final` method) and `get-method --at` renders one member's modifiers, so a per-row integer

@@ -905,8 +905,32 @@ fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value
     let mut fields = detail(serde_json::to_value(ty)?);
     fields.remove("id");
     shorten_detail_ids(&mut fields);
+    // A base type and an interface are tokens; a reader navigates by name. Both stay,
+    // because the token is the identity `get-class --at` takes back and a name is not
+    // unique across assemblies. An omitted default keeps the row at its old size.
+    if let Some(token) = ty.extends_token
+        && let Some(name) = input.type_display(token)
+        && name != "System.Object"
+    {
+        fields.insert("super".to_owned(), Value::from(name));
+    }
+    if !ty.interfaces.is_empty() {
+        let names: Vec<Value> = ty
+            .interfaces
+            .iter()
+            .filter_map(|token| input.type_display(*token))
+            .map(Value::from)
+            .collect();
+        let tokens: Vec<Value> = ty.interfaces.iter().map(|t| Value::from(*t)).collect();
+        // Names are a projection of the tokens; print them only for the whole list so the
+        // two arrays always line up.
+        if names.len() == ty.interfaces.len() {
+            fields.insert("interfaces".to_owned(), Value::Array(names));
+        }
+        fields.insert("interface_tokens".to_owned(), Value::Array(tokens));
+    }
     Ok(envelope::record(
-        "type",
+        "class",
         RecordMeta {
             at: Some(&ty.id),
             parent_at: ty.declaring_type_id.as_deref(),

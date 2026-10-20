@@ -73,6 +73,9 @@ impl crate::archive::BytesSource for Archive {
 #[derive(Clone, Debug)]
 pub struct ClassEntry {
     pub descriptor: String,
+    /// The superclass descriptor, or `None` when it is `java/lang/Object` or absent.
+    /// Only a class that departs from the root carries the bytes for it.
+    pub super_descriptor: Option<String>,
     /// The DEX entry the class was found in, shared by every class of that entry.
     ///
     /// A class index is hundreds of thousands of rows on a real APK and they all repeat
@@ -108,10 +111,15 @@ fn descriptor_key(descriptor: &str) -> u64 {
 }
 
 impl ClassEntry {
-    pub fn new(descriptor: String, dex_name: std::sync::Arc<str>) -> Self {
+    pub fn new(
+        descriptor: String,
+        super_descriptor: Option<String>,
+        dex_name: std::sync::Arc<str>,
+    ) -> Self {
         let key = descriptor_key(&descriptor);
         Self {
             descriptor,
+            super_descriptor,
             dex_name,
             key,
         }
@@ -541,8 +549,12 @@ pub fn list_classes_with_policy(
             }
             let mut classes = Vec::new();
             for logical in dex::container::logical_dexes(&inflated.entry.name, inflated.data()?)? {
-                for descriptor in dex::class_names(&logical.data)? {
-                    classes.push(ClassEntry::new(descriptor, logical.name.as_str().into()));
+                for (descriptor, super_descriptor) in dex::class_names(&logical.data)? {
+                    classes.push(ClassEntry::new(
+                        descriptor,
+                        super_descriptor,
+                        logical.name.as_str().into(),
+                    ));
                 }
             }
             Ok(classes)
@@ -668,7 +680,13 @@ fn prefix_class_entries(
     Ok(Some(
         names
             .into_iter()
-            .map(|descriptor| ClassEntry::new(descriptor, std::sync::Arc::clone(&dex_name)))
+            .map(|(descriptor, super_descriptor)| {
+                ClassEntry::new(
+                    descriptor,
+                    super_descriptor,
+                    std::sync::Arc::clone(&dex_name),
+                )
+            })
             .collect(),
     ))
 }

@@ -102,7 +102,7 @@ pub fn decode_string(bytes: &[u8]) -> String {
     mutf8::decode_owned(bytes)
 }
 
-pub fn class_names(data: &[u8]) -> Result<Vec<String>> {
+pub fn class_names(data: &[u8]) -> Result<Vec<ClassName>> {
     use crate::profile::{Counter, Stage, count, measure};
     count(Counter::DexFiles, 1);
     count(Counter::Bytes, data.len() as u64);
@@ -110,14 +110,21 @@ pub fn class_names(data: &[u8]) -> Result<Vec<String>> {
     count(Counter::Classes, names.len() as u64);
     Ok(names
         .into_iter()
-        .map(|definition| definition.descriptor)
+        .map(|definition| (definition.descriptor, definition.super_descriptor))
         .collect())
 }
+
+/// One class name and where it inherits from: a `None` superclass is the root
+/// (`java/lang/Object`) or an absent one, which no row prints.
+pub type ClassName = (String, Option<String>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ClassDefinition {
     pub(crate) class_def_idx: usize,
     pub(crate) descriptor: String,
+    /// The superclass descriptor, or `None` for the root (`java/lang/Object` or no
+    /// superclass). A default parent is not evidence, so it never reaches a row.
+    pub(crate) super_descriptor: Option<String>,
 }
 
 /// A bounded slice of the class definition table, preserving its exact row identity.
@@ -149,12 +156,34 @@ pub(crate) fn for_each_class_definition(
         let definition = ClassDefinition {
             class_def_idx: index,
             descriptor: dex.type_name(dex.u32(class_def)? as usize)?,
+            super_descriptor: super_descriptor(&dex, class_def)?,
         };
         if !visit(definition)? {
             break;
         }
     }
     Ok(())
+}
+
+/// The superclass of one class definition, resolved through `type_ids`.
+///
+/// `superclass_idx` is a `type_ids` index like `class_idx`, so this costs one table read
+/// and one string decode the descriptor already amortizes. `java/lang/Object` and a
+/// missing superclass both answer `None`: the row omits a default instead of printing it.
+fn super_descriptor(dex: &Dex<'_>, class_def: usize) -> Result<Option<String>> {
+    const NO_INDEX: u32 = u32::MAX;
+    let index = dex.u32(class_def + 8)?;
+    if index == NO_INDEX {
+        return Ok(None);
+    }
+    // A descriptor is the identity; the row prints the internal name the JVM backend also
+    // prints, so the same class looks the same in both backends' output.
+    let name = dex.type_name(index as usize)?;
+    let internal = name
+        .strip_prefix('L')
+        .and_then(|name| name.strip_suffix(';'))
+        .unwrap_or(name.as_str());
+    Ok((internal != "java/lang/Object").then(|| internal.to_owned()))
 }
 
 /// One scan hit: the referencing method's index and one target index it references.

@@ -8,7 +8,7 @@ fn sugar_input() -> PathBuf {
 fn type_id(path: &Path, name: &str) -> String {
     outline(path, &["--class", name])
         .into_iter()
-        .find(|row| row["record"] == "type" && row["detail"]["full_name"] == name)
+        .find(|row| row["record"] == "class" && row["detail"]["full_name"] == name)
         .unwrap_or_else(|| panic!("missing type {name}"))["at"]
         .as_str()
         .expect("type must have a FETCH ID")
@@ -21,7 +21,7 @@ fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_a
     let outline = outline(&path, &[]);
     let root = outline
         .iter()
-        .find(|row| row["record"] == "type" && row["detail"]["full_name"] == "Rxd.Sugar.Probe")
+        .find(|row| row["record"] == "class" && row["detail"]["full_name"] == "Rxd.Sugar.Probe")
         .unwrap();
     let id = root["at"].as_str().expect("type must have a FETCH ID");
     let output = run("get-class", &path, &["--at", id, "--raw"]);

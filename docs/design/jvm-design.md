@@ -160,6 +160,12 @@ representation` is always `bytecode`; `complete` is true. Outer `start/end` repl
 the old `file_range` and points at the actual class-file Code range (half-open), not
 compressed container bytes.
 
+A `classes` row omits `super` when it is `java/lang/Object` and omits `interfaces`
+when the list is empty, so a default costs no bytes on a large class index. A
+`methods` row prints only what the coordinate cannot: `signature` (the erased generic
+form) and `exceptions`; `proto` is already inside `at`, and `has_code` is one
+`get-method` away.
+
 Each bytecode instruction has `byte_offset, opcode, mnemonic, bytes, operands, targets,
 constant_index, reference`; each exception-table entry has `start, end, target,
 catch_type`. These are typed detail content, not independent FETCH records; offsets are

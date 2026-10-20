@@ -185,6 +185,12 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   and no lossy replacement. Empty strings, NUL and supplementary Unicode are
   preserved. `-f/--filter` matches UTF-16 subsequences (empty needle matches all) with a
   bounded linear algorithm.
+- A `classes` row is `record: class` like every other backend, and prints a base type or
+  interface twice on purpose: `super`/`interfaces` are the names a reader navigates by,
+  `extends_token`/`interface_tokens` are the metadata identities `get-class --at` takes
+  back. A name is not unique across assemblies, so it cannot replace the token. `super`
+  is omitted when it is `System.Object`, and a generic instantiation prints its
+  constructed form (`IContract`1<!0>`), because a constructed type has no single name.
 - `xref -f/--filter PATTERN --kind string` matches UTF-16 values containing the pattern,
   case-sensitively, across every heap entry and its original `ldstr` sites, ordered by
   method token then IL offset. The search face is a substring on every backend, so a

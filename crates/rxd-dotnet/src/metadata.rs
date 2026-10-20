@@ -356,6 +356,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
     input.calls = calls;
     input.member_kinds = member_kinds;
     input.type_kinds = type_kinds;
+    input.type_names = names;
     load_relationships(input, &mut work)?;
     input.metadata_work = work.used();
     Ok(())

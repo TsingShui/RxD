@@ -16,7 +16,7 @@ const TYPE_ID_ITEM: usize = 4;
 const CLASS_DEF_ITEM: usize = 32;
 
 /// Class descriptors of `prefix`, or `None` when it is too short to hold them all.
-pub(crate) fn class_names(prefix: &[u8]) -> Result<Option<Vec<String>>> {
+pub(crate) fn class_names(prefix: &[u8]) -> Result<Option<Vec<super::ClassName>>> {
     if prefix.len() < HEADER_SIZE || prefix.get(..4) != Some(b"dex\n") {
         return Ok(None);
     }
@@ -53,7 +53,32 @@ pub(crate) fn class_names(prefix: &[u8]) -> Result<Option<Vec<String>>> {
         let Some(bytes) = string_at(prefix, data_off) else {
             return Ok(None);
         };
-        names.push(super::mutf8::decode_owned(bytes));
+        // `superclass_idx` is one more `type_ids` index, and the descriptor path already
+        // proves both tables and the string data are inside the prefix.
+        let super_idx = read_u32(prefix, classes_off + index * CLASS_DEF_ITEM + 8)?;
+        let super_name = if super_idx == u32::MAX {
+            None
+        } else {
+            let super_idx = super_idx as usize;
+            if super_idx >= types_size {
+                return Ok(None);
+            }
+            let string_idx = read_u32(prefix, types_off + super_idx * TYPE_ID_ITEM)? as usize;
+            if string_idx >= strings_size {
+                return Ok(None);
+            }
+            let data_off = read_u32(prefix, strings_off + string_idx * STRING_ID_ITEM)? as usize;
+            let Some(bytes) = string_at(prefix, data_off) else {
+                return Ok(None);
+            };
+            let name = super::mutf8::decode_owned(bytes);
+            let internal = name
+                .strip_prefix('L')
+                .and_then(|name| name.strip_suffix(';'))
+                .unwrap_or(name.as_str());
+            (internal != "java/lang/Object").then(|| internal.to_owned())
+        };
+        names.push((super::mutf8::decode_owned(bytes), super_name));
     }
     Ok(Some(names))
 }

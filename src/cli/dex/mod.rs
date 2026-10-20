@@ -246,7 +246,19 @@ fn run_command(
                                 continue;
                             }
                         }
-                        push_record_at(&mut payload, "class", Some(&entry.descriptor), &[])?;
+                        // Only a class that departs from the root carries a `super`, so
+                        // the default costs nothing on an index of hundreds of thousands.
+                        match entry.super_descriptor.as_deref() {
+                            Some(name) => push_record_at(
+                                &mut payload,
+                                "class",
+                                Some(&entry.descriptor),
+                                &[("super", Field::Text(name))],
+                            )?,
+                            None => {
+                                push_record_at(&mut payload, "class", Some(&entry.descriptor), &[])?
+                            }
+                        }
                         records += 1;
                     }
                     Ok((payload, records))

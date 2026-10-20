@@ -8,7 +8,7 @@ fn closure_input() -> PathBuf {
 fn type_id(path: &Path, name: &str) -> String {
     outline(path, &["--class", name])
         .into_iter()
-        .find(|row| row["record"] == "type")
+        .find(|row| row["record"] == "class")
         .unwrap()["at"]
         .as_str()
         .unwrap()
@@ -201,7 +201,7 @@ fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_dire
     let generated = outline(&sugar, &[])
         .into_iter()
         .find(|row| {
-            row["record"] == "type"
+            row["record"] == "class"
                 && row["detail"]["name"]
                     .as_str()
                     .unwrap()

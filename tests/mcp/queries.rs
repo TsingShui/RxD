@@ -964,7 +964,7 @@ fn mcp_jvm_navigation_preserves_original_instruction_fetch() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|record| record["record"] == "method" && record["detail"]["has_code"] == true)
+        .find(|record| record["record"] == "method")
         .unwrap();
     for (name, extra) in [
         ("jar_entries", json!({})),

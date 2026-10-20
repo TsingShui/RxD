@@ -13,7 +13,8 @@ fields.
 ## Context
 
 JSONL output had three inconsistent styles: JS/JVM records were flat, WASM/.NET used a
-same-name record subobject (`{"record":"type","type":{...}}`), and header field names
+same-name record subobject (then `{"record":"type","type":{...}}`; `.NET` rows are
+`record: "class"` now, like every other backend's), and header field names
 differed (`file_bytes`/`path` in JS vs `input_bytes` elsewhere; `analysis` was sometimes
 absent).
 

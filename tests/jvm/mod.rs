@@ -55,20 +55,43 @@ fn assert_record(row: &Value) {
         assert!(row["source_id"].is_null());
     }
     assert!(row["parent_at"].is_null());
+    // `super`/`interfaces` are omitted when they are the default, so a class row is a
+    // subset of the full shape; they are checked where a fixture actually has them.
     let fields: &[&str] = match row["record"].as_str().unwrap() {
-        "class" => &[
-            "super",
-            "interfaces",
-            "major",
-            "minor",
-            "access_flags",
-            "signature",
-            "source_file",
-            "fields",
-            "methods",
-        ],
+        "class" => {
+            let detail = row["detail"].as_object().unwrap();
+            for key in detail.keys() {
+                assert!(
+                    matches!(
+                        key.as_str(),
+                        "super"
+                            | "interfaces"
+                            | "major"
+                            | "minor"
+                            | "access_flags"
+                            | "signature"
+                            | "source_file"
+                            | "fields"
+                            | "methods"
+                    ),
+                    "unexpected class detail key: {key}"
+                );
+            }
+            for key in [
+                "major",
+                "minor",
+                "access_flags",
+                "signature",
+                "source_file",
+                "fields",
+                "methods",
+            ] {
+                assert!(detail.contains_key(key), "missing class detail key: {key}");
+            }
+            &[]
+        }
         "field" => &["proto", "signature", "constant_index"],
-        "method" => &["proto", "signature", "exceptions", "has_code"],
+        "method" => &["signature", "exceptions"],
         "string" => &["class", "index", "value", "utf16"],
         "reference" => &["byte_offset", "mnemonic", "target"],
         "method_body" => &[
@@ -84,7 +107,9 @@ fn assert_record(row: &Value) {
         "class_body" => &["representation", "decompiled", "complete", "code"],
         other => panic!("unexpected JVM record: {other}"),
     };
-    assert_keys(&row["detail"], fields);
+    if !fields.is_empty() {
+        assert_keys(&row["detail"], fields);
+    }
     match row["record"].as_str().unwrap() {
         "method" | "method_body" | "class_body" => {
             assert!(row["at"].as_str().unwrap().starts_with('L'))

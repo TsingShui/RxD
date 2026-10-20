@@ -21,6 +21,9 @@ pub struct Input {
     pub(crate) calls: BTreeMap<u32, CallSignature>,
     pub(crate) member_kinds: BTreeMap<u32, bool>,
     pub(crate) type_kinds: BTreeMap<u32, bool>,
+    /// Metadata token to full type name, for the tokens a row can point at but not show:
+    /// a base type or an interface is a token, and a name is what a reader navigates by.
+    pub(crate) type_names: BTreeMap<u32, String>,
 }
 
 impl Input {
@@ -115,6 +118,7 @@ impl Input {
             calls: BTreeMap::new(),
             member_kinds: BTreeMap::new(),
             type_kinds: BTreeMap::new(),
+            type_names: BTreeMap::new(),
         };
         crate::metadata::load(&mut input)?;
         Ok(input)
@@ -424,6 +428,59 @@ impl Input {
             "RESOURCE_LIMIT: metadata name bytes"
         );
         Ok(name)
+    }
+
+    /// The full name a metadata token points at, when this assembly knows it.
+    pub fn type_name(&self, token: u32) -> Option<&str> {
+        self.type_names.get(&token).map(String::as_str)
+    }
+
+    /// A printable type for any token a row can name: a definition, a reference, or a
+    /// generic instantiation. A row prints the token as its identity and this as the name
+    /// a reader navigates by, so a TypeSpec must resolve too, not just fall through null.
+    pub fn type_display(&self, token: u32) -> Option<String> {
+        if let Some(name) = self.type_name(token) {
+            return Some(name.to_owned());
+        }
+        if token >> 24 == 27 {
+            let mut work = Work::new(self.limits.work);
+            let text = self.type_signature_with_work(token, &mut work).ok()?;
+            return Some(self.name_tokens(&text));
+        }
+        None
+    }
+
+    /// A signature spells a named type as `class(0x02000002)`; a row that prints a name
+    /// replaces those with the names, keeping the surrounding constructed-type shape.
+    fn name_tokens(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        loop {
+            let hit = ["class(0x", "valuetype(0x"]
+                .iter()
+                .filter_map(|prefix| rest.find(prefix).map(|at| (at, prefix.len())))
+                .min();
+            let Some((at, prefix_len)) = hit else {
+                out.push_str(rest);
+                return out;
+            };
+            out.push_str(&rest[..at]);
+            let digits = &rest[at + prefix_len..];
+            let end = digits.find(')');
+            let named = end
+                .and_then(|end| u32::from_str_radix(&digits[..end], 16).ok())
+                .and_then(|token| self.type_name(token));
+            match (end, named) {
+                (Some(end), Some(name)) => {
+                    out.push_str(name);
+                    rest = &digits[end + 1..];
+                }
+                _ => {
+                    out.push_str(&rest[at..at + prefix_len]);
+                    rest = digits;
+                }
+            }
+        }
     }
 
     pub(crate) fn id(&self, kind: &str, token: u32) -> String {

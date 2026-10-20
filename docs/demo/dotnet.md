@@ -125,7 +125,7 @@ the handle itself. Outline/xref follow the header/records/summary completeness c
 
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
-type_at=$($rxd dotnet methods "$closure" --class 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="type"))')
+type_at=$($rxd dotnet methods "$closure" --class 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="class"))')
 $rxd dotnet get-class "$closure" --at "$type_at" --raw
 $rxd dotnet get-class "$closure" --at "$type_at" --raw -o target/closure-il.json --perf
 $rxd dotnet get-class "$closure" --at "$type_at"

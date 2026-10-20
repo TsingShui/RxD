@@ -805,10 +805,11 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                                 ..RecordMeta::default()
                             },
                             json!({
-                                "proto":method.descriptor,
+                                // `at` already carries `name(proto)ret`, and `has_code`
+                                // is one `get-method` away, so a member row prints only
+                                // what the coordinate cannot: erased signature, `throws`.
                                 "signature":method.signature,
                                 "exceptions":method.exceptions,
-                                "has_code":method.code.is_some(),
                             })
                             .as_object()
                             .unwrap()
@@ -829,8 +830,10 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                         ..RecordMeta::default()
                     },
                     json!({
-                        "super":class.super_name,
-                        "interfaces":class.interfaces,
+                        // A default parent or an empty interface list is not evidence, and
+                        // printing it would put the same two bytes on most of a class index.
+                        "super":class.super_name.as_deref().filter(|name| *name != "java/lang/Object"),
+                        "interfaces":(!class.interfaces.is_empty()).then_some(&class.interfaces),
                         "major":class.major,
                         "minor":class.minor,
                         "access_flags":class.access,
@@ -864,10 +867,11 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                             ..RecordMeta::default()
                         },
                         json!({
-                            "proto":method.descriptor,
+                            // `at` already carries `name(proto)ret`, and `has_code` is one
+                            // `get-method` away, so a member row prints only what the
+                            // coordinate cannot: the erased generic signature and `throws`.
                             "signature":method.signature,
                             "exceptions":method.exceptions,
-                            "has_code":method.code.is_some(),
                         })
                         .as_object()
                         .unwrap()
