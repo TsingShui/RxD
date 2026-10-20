@@ -344,8 +344,10 @@ entries. `major`/`minor`/`source_file` and per-class `fields`/`methods` totals a
 facts that .NET metadata does not keep.
 
 Property detail: `token, name, signature, signature_hex, access_flags, accessors`; event
-detail: `token, name, event_type_token, access_flags, accessors`. Their owner is
-`context_at`, so neither repeats it. Both have null `at`/start/
+detail: `token, name, event_type_token, access_flags, accessors`. Neither has an `at`,
+because no command takes a `0x17`/`0x14` token: a property or event is reached through its
+accessor methods, so printing a coordinate that `--at` rejects would promise a round trip
+that fails. Their owner is `parent_at`, so `context_at` stays null. Both have null start/
 end and `parent_at`/`context_at` set to the declaring type. Accessors retain
 `method_token, method_id` and original MethodSemantics `semantics`, ordered by method
 token and semantics; every nested `*_id` is the same copy-only coordinate as the outer

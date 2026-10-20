@@ -363,13 +363,27 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             .properties
             .iter()
             .map(|property| {
-                relationship_record(&input, "property", &property.declaring_type_id, *property)
+                relationship_record(
+                    &input,
+                    "property",
+                    &property.declaring_type_id,
+                    property.token,
+                    *property,
+                )
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         let events = class
             .events
             .iter()
-            .map(|event| relationship_record(&input, "event", &event.declaring_type_id, *event))
+            .map(|event| {
+                relationship_record(
+                    &input,
+                    "event",
+                    &event.declaring_type_id,
+                    event.token,
+                    *event,
+                )
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
         let methods = class
             .methods
@@ -977,13 +991,19 @@ fn relationship_record<T: serde::Serialize>(
     input: &Input,
     kind: &str,
     owner: &str,
+    token: u32,
     relationship: &T,
 ) -> anyhow::Result<Value> {
+    // A property or event is not a fetchable unit: no command takes its 0x17/0x14 token,
+    // and a caller reaches the behaviour through the accessor methods. So the row prints
+    // no `at` - an `at` that no `--at` accepts would promise a round trip that fails - and
+    // keeps the token as evidence. The owner is `parent_at`; `context_at` stays null
+    // because it would repeat the same owner.
+    let _ = token;
     Ok(envelope::record(
         kind,
         RecordMeta {
             parent_at: Some(owner),
-            context_at: Some(owner),
             ..metadata(input)
         },
         {

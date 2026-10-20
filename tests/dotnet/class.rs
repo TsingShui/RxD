@@ -184,13 +184,9 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
             let got = row["detail"][category].as_array().unwrap();
             assert_eq!(got.len(), selected.len());
             for (token, expected) in selected {
-                let token = u32::from_str_radix(token.trim_start_matches("0x"), 16).unwrap();
-                let got = got
-                    .iter()
-                    .find(|got| got["detail"]["token"] == token)
-                    .unwrap();
+                let got = got.iter().find(|got| got["at"] == *token).unwrap();
                 assert_eq!(got["detail"]["name"], expected["name"]);
-                assert_eq!(got["context_at"], expected["owner_token"]);
+                assert_eq!(got["parent_at"], expected["owner_token"]);
                 for accessor in expected["accessors"].as_array().unwrap() {
                     let found = got["detail"]["accessors"]
                         .as_array()
