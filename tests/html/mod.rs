@@ -184,7 +184,7 @@ fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
         "rxd1:html:{}:{other_short}",
         other_rows[0]["source_id"].as_str().unwrap()
     );
-    let hash = all[0]["source_id"].as_str().unwrap();
+    let _hash = all[0]["source_id"].as_str().unwrap();
     for candidate in [
         "not-an-id".to_owned(),
         id.replace(":0:", ":00:"),
@@ -397,7 +397,7 @@ fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
     fs::write(&path, b"<div><p>hi</p></div>").unwrap();
     let catalog = rows(&run(&path, &[]));
     let id = catalog[1]["at"].as_str().unwrap();
-    let hash = catalog[0]["source_id"].as_str().unwrap();
+    let _hash = catalog[0]["source_id"].as_str().unwrap();
     let destination = dir.path().join("artifact");
     let other = dir.path().join("other.html");
     fs::write(&other, b"<div><p>other</p></div>").unwrap();

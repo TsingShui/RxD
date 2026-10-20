@@ -335,7 +335,7 @@ pub(super) fn render_class(
                     .instructions
                     .binary_search_by_key(&site.il_offset, |instruction| instruction.offset)
                     .is_ok())
-            .then(|| (item, token))
+            .then_some((item, token))
         });
         match resolved {
             Some((item, token)) => mapping.push(ClassSourceMap {

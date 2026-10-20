@@ -63,11 +63,9 @@ fn assert_record(row: &Value) {
         ],
         "field" if row["detail"].get("access_flags").is_some() => &["access_flags"],
         "field" => &[],
-        "field" => &[],
         // `methods` prints one descriptor row per definition; `get-class --members` prints
         // its member table as text, so this is the only `method` record shape.
         "method" if row["detail"].get("access_flags").is_some() => &["access_flags"],
-        "method" => &[],
         "method" => &[],
 
         other => panic!("unexpected dex record {other}"),
@@ -116,7 +114,7 @@ fn dex_records(output: &Output) -> Vec<Value> {
 fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     let dex = const_string_dex(3);
     let (dir, bare) = fixture(&dex, "input.dex");
-    let expected_classes: Vec<_> = (0..3).map(|i| json!({})).collect();
+    let expected_classes: Vec<_> = (0..3).map(|_| json!({})).collect();
     // A hit is the caller's coordinate plus the target it references.
     let expected_refs: Vec<(String, String)> = (0..3)
         .map(|i| (format!("LFixture{i};->m{i}()V"), "Authorization".to_owned()))

@@ -610,6 +610,6 @@ mod json_writer {
             json!({"entry":"classes|\"\n.dex", "descriptor":"La/a$a;", "index":7}),
         );
         assert_eq!(row, expected);
-        assert_eq!(out.ends_with("}\n"), true);
+        assert!(out.ends_with("}\n"));
     }
 }

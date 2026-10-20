@@ -908,13 +908,12 @@ fn shorten_ids(value: &mut Value) {
     match value {
         Value::Object(fields) => {
             for (key, child) in fields.iter_mut() {
-                if key == "id" || key.ends_with("_id") {
-                    if let Value::String(text) = child {
-                        if text.starts_with("rxd1:") {
-                            *text = envelope::at_of(text).into_owned();
-                            continue;
-                        }
-                    }
+                if let Value::String(text) = child
+                    && (key == "id" || key.ends_with("_id"))
+                    && text.starts_with("rxd1:")
+                {
+                    *text = envelope::at_of(text).into_owned();
+                    continue;
                 }
                 shorten_ids(child);
             }

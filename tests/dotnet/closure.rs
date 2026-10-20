@@ -176,7 +176,7 @@ fn dotnet_navigation_rejects_late_fetch_failures_without_partial_output() {
     let type_id = hit["detail"]["declaring_type_id"].as_str().unwrap();
     success(&run("get-method", &copied, &["--at", method_id, "--raw"]));
     let destination = directory.path().join("fetch.json");
-    for (command, id) in [("get-method", method_id), ("get-class", type_id)] {
+    for (command, _id) in [("get-method", method_id), ("get-class", type_id)] {
         fs::write(&destination, b"previous complete result").unwrap();
         // An unusable coordinate is refused, and a refused fetch leaves the previous
         // result in place; budgets are internal floors, not CLI knobs.
