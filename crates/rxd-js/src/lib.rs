@@ -163,19 +163,6 @@ impl Query {
     }
 }
 
-/// Expand the copy-only `kind:start:end` a row prints into the content-bound id.
-///
-/// A caller copies `at` and passes it back; the schema prefix and the hash live in the
-/// stream header, so the library reattaches them instead of asking the caller to carry
-/// them. Anything already prefixed (or malformed) is passed through untouched and
-/// validated by the normal path.
-pub fn expand_short_id(source: &Source, id: &str) -> String {
-    if id.starts_with("rxd1:") || id.split(':').count() != 3 {
-        return id.to_owned();
-    }
-    format!("rxd1:js:{}:{id}", source.id)
-}
-
 /// The byte an occurrence coordinate starts at.
 ///
 /// `xref` anchors on a *name occurrence*, so the accepted coordinates are the ones that
@@ -184,28 +171,15 @@ pub fn expand_short_id(source: &Source, id: &str) -> String {
 /// here rather than silently resolving to whatever identifier happens to start at the same
 /// byte.
 fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
-    let expanded = expand_short_id(source, at);
-    let parts: Vec<&str> = expanded.split(':').collect();
-    if parts.len() != 6
-        || parts[0] != "rxd1"
-        || parts[1] != "js"
-        || parts[2].len() != 64
-        || !parts[2]
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
+    let _ = source;
+    let parts: Vec<&str> = at.split(':').collect();
+    if parts.len() != 3 {
         return Err(Error::new(
             "INVALID_QUERY",
             format!("{at} is not a `<kind>:<start>:<end>` coordinate"),
         ));
     }
-    if parts[2] != source.id {
-        return Err(Error::new(
-            "SOURCE_MISMATCH",
-            "coordinate belongs to different source content",
-        ));
-    }
-    let kind = parts[3];
+    let kind = parts[0];
     if kind != "symbol" && kind != "identifier" {
         return Err(Error::new(
             "INVALID_QUERY",
@@ -215,7 +189,7 @@ fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
             ),
         ));
     }
-    let start = parts[4]
+    let start = parts[1]
         .parse::<u64>()
         .map_err(|_| Error::new("INVALID_QUERY", format!("{at} has no byte offset")))?;
     Ok(start)
@@ -379,10 +353,7 @@ pub fn run_source(
     // (`kind:start:end`); expand it against the header identity exactly once here so the
     // fragment, symbol and structure paths all see the content-bound form.
     let query = match query {
-        Query::Slice { id, json } => Query::Slice {
-            id: expand_short_id(&source, &id),
-            json,
-        },
+        Query::Slice { id, json } => Query::Slice { id, json },
         Query::Outline {
             within: Some(id),
             group,
@@ -393,7 +364,7 @@ pub fn run_source(
             contains_case_sensitive,
         } => Query::Outline {
             group,
-            within: Some(expand_short_id(&source, &id)),
+            within: Some(id),
             depth,
             kind,
             name,
@@ -407,32 +378,25 @@ pub fn run_source(
         } => Query::Identifiers {
             name,
             role,
-            within: Some(expand_short_id(&source, &id)),
+            within: Some(id),
         },
         Query::Calls {
             name,
             within: Some(id),
         } => Query::Calls {
             name,
-            within: Some(expand_short_id(&source, &id)),
+            within: Some(id),
         },
         Query::Members {
             name,
             within: Some(id),
         } => Query::Members {
             name,
-            within: Some(expand_short_id(&source, &id)),
+            within: Some(id),
         },
-        Query::Symbols { within: Some(id) } => Query::Symbols {
-            within: Some(expand_short_id(&source, &id)),
-        },
+        Query::Symbols { within: Some(id) } => Query::Symbols { within: Some(id) },
         // The xref anchor is a coordinate too: expand it here so every id-shaped selector
         // goes through this one normalisation, not through the call sites behind it.
-        Query::Refs {
-            target: RefsTarget::Coordinate(at),
-        } => Query::Refs {
-            target: RefsTarget::Coordinate(expand_short_id(&source, &at)),
-        },
         other => other,
     };
     let contexts = match &query {
@@ -443,7 +407,7 @@ pub fn run_source(
         Query::Slice { id, .. }
             if id
                 .split(':')
-                .nth(3)
+                .next()
                 .is_some_and(|kind| kind.starts_with("fragment.")) =>
         {
             Some(fragment::Contexts::new(fragment::Target::Id(id.clone())))
@@ -485,15 +449,10 @@ pub fn run_source(
         "script"
     };
     let mut output = Output { bytes: Vec::new() };
-    let mut header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
-        json!({"path":source.path,"root_id":envelope::short(&root.id),"source_type":final_mode,
+    let header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
+        json!({"path":source.path,"root_id":root.id.clone(),"source_type":final_mode,
             "analysis":null,"syntax":syntax_info.syntax,"declaration_file":syntax_info.declaration_file,"origin":source.origin})
         .as_object().unwrap().clone());
-    // An id a caller can copy out of `detail` must be the same short coordinate a row
-    // prints, so it can be pasted straight back into `--at`.
-    if let Some(detail) = header.get_mut("detail") {
-        envelope::shorten_detail_ids(detail);
-    }
     match query {
         Query::Outline {
             group,
@@ -729,7 +688,7 @@ pub fn run_source(
             let mut header = header;
             header["detail"]["analysis"] = json!("lexical");
             header["detail"]["resolution"] = json!(result.resolution);
-            header["detail"]["within_id"] = json!(envelope::short(&result.within_id));
+            header["detail"]["within_id"] = json!(result.within_id.clone());
             let records = result.records.len();
             perf.counters.records = Some(records);
             perf.measure("serialize", || -> Result<()> {
@@ -899,7 +858,7 @@ pub fn run_source(
                 perf.counters.output_bytes = Some(output.bytes.len());
                 return Ok(output.bytes);
             }
-            if id.split(':').nth(3) == Some("symbol") {
+            if id.split(':').next() == Some("symbol") {
                 perf.record("query", query_start);
                 let definition =
                     definition::run(&parsed.program, &source, &collector, &id, limits, perf)?;

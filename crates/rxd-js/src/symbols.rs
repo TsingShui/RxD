@@ -119,7 +119,7 @@ pub fn run(
         if lexical::is_dynamic(&semantic) {
             return Ok(Symbols {
                 resolution: "dynamic",
-                within_id: crate::envelope::short(&region.id),
+                within_id: region.id.clone(),
                 records: Vec::new(),
             });
         }
@@ -204,7 +204,7 @@ pub fn run(
         });
         Ok(Symbols {
             resolution: "static",
-            within_id: crate::envelope::short(&region.id),
+            within_id: region.id.clone(),
             records,
         })
     })

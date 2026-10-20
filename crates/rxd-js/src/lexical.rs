@@ -114,7 +114,6 @@ pub fn declaration_ids(
 pub struct Location {
     pub start: u32,
     pub end: u32,
-    #[serde(serialize_with = "crate::envelope::serialize_short")]
     pub entity_id: String,
 }
 

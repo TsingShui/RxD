@@ -287,30 +287,16 @@ impl<'s> Collector<'s> {
     }
 
     pub fn by_id(&self, id: &str) -> Result<usize> {
-        let expanded = crate::expand_short_id(self.source, id);
-        let id = expanded.as_str();
         let parts: Vec<_> = id.split(':').collect();
-        if parts.len() != 6
-            || parts[0] != "rxd1"
-            || parts[1] != "js"
-            || parts[2].len() != 64
-            || !parts[2]
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-            || parts[4].parse::<u32>().is_err()
-            || parts[5].parse::<u32>().is_err()
+        if parts.len() != 3 || parts[1].parse::<u32>().is_err() || parts[2].parse::<u32>().is_err()
         {
             return Err(Error::new(
                 "INVALID_QUERY",
                 "malformed or unsupported coordinate",
             ));
         }
-        if parts[2] != self.source.id {
-            return Err(Error::new(
-                "SOURCE_MISMATCH",
-                "entity coordinate belongs to different source content",
-            ));
-        }
+        // A coordinate does not name its input any more: the stream header carries the
+        // identity, and `--from` compares it there.
         self.entities
             .iter()
             .position(|e| e.entity.id == id)

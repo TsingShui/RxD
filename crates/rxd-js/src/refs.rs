@@ -19,7 +19,6 @@ pub struct Selected {
     role: &'static str,
     #[serde(flatten)]
     location: Location,
-    #[serde(serialize_with = "crate::envelope::serialize_short_option")]
     context_at: Option<String>,
     type_reference: Option<bool>,
     value_reference: Option<bool>,
@@ -42,7 +41,6 @@ impl Reference {
         #[derive(Serialize)]
         struct Detail<'a> {
             /// The shared skeleton every xref row carries: what this row refers to.
-            #[serde(serialize_with = "crate::envelope::serialize_short")]
             target: &'a str,
             read: bool,
             write: bool,

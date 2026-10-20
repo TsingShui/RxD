@@ -355,7 +355,11 @@ impl Source {
         })
     }
 
+    /// The coordinate of a span: `<kind>:<start>:<end>`.
+    ///
+    /// The input identity is the stream header's `source_id`, so an id does not repeat it;
+    /// a coordinate is what a row prints and what `--at` takes back, unchanged.
     pub fn entity_id(&self, kind: &str, start: u32, end: u32) -> String {
-        format!("rxd1:js:{}:{kind}:{start}:{end}", self.id)
+        format!("{kind}:{start}:{end}")
     }
 }

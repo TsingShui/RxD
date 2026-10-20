@@ -82,29 +82,15 @@ fn validate_id(source: &Source, id: &str) -> Result<Span> {
             "malformed or unsupported symbol coordinate",
         )
     };
-    if parts.len() != 6
-        || parts[0] != "rxd1"
-        || parts[1] != "js"
-        || parts[3] != "symbol"
-        || parts[2].len() != 64
-        || !parts[2]
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
+    if parts.len() != 3 || parts[0] != "symbol" {
         return Err(invalid());
     }
     let span = Span::new(
-        parts[4].parse().map_err(|_| invalid())?,
-        parts[5].parse().map_err(|_| invalid())?,
+        parts[1].parse().map_err(|_| invalid())?,
+        parts[2].parse().map_err(|_| invalid())?,
     );
     if span.start >= span.end {
         return Err(invalid());
-    }
-    if parts[2] != source.id {
-        return Err(Error::new(
-            "SOURCE_MISMATCH",
-            "symbol coordinate belongs to different source content",
-        ));
     }
     if source.entity_id("symbol", span.start, span.end) != id {
         return Err(invalid());

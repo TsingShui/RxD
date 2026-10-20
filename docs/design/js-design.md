@@ -267,17 +267,20 @@ identity are out of scope.
 Each invocation first obtains one fixed source buffer; parsing, searching and
 extraction all use it. It never parses one version and reopens another for extraction.
 
-`source_id` is the original file SHA-256. Entity IDs are:
+`source_id` is the original file SHA-256, and it lives in the stream header only.
+An entity coordinate is the span and its kind:
 
 ```text
-rxd1:js:<source-sha256>:<kind>:<start>:<end>
+<kind>:<start>:<end>          e.g. function_declaration:26:149
 ```
 
-IDs are valid for the same content and schema. They are not promised across builds and
-do not rely on potentially duplicate minified names. `slice` and `entities --within`
-validate the source fingerprint, kind and real structure boundaries; a syntactically
-valid range without a matching entity is still an error. Paths are display metadata,
-not identity.
+The hash is not repeated inside ids: a coordinate names a range, not a file, so the same
+coordinate means the same range in any input while the header says which input the rows
+describe. That is also why there is no stale-coordinate error on a rewritten file -
+identity is enforced where it can be, on a `--from` stream, whose header carries the
+`source_id` and is compared with the file being fetched. `slice` and `entities --within`
+validate kind and real structure boundaries; a syntactically valid range without a
+matching entity is still an error. Paths are display metadata, not identity.
 
 Object/class method ranges cover the complete member (modifiers, key, body); function
 expressions cover the expression; function declarations cover the declaration node;
@@ -499,8 +502,8 @@ Two record kinds:
   `this` and implicit bindings have no declaration record; shorthand/computed real
   bindings/references are handled normally.
 
-Symbol IDs are `rxd1:js:<source-sha256>:symbol:<canonical-start>:<canonical-end>`, not
-Oxc internal ordinals. They are stable for the same content, parse options and schema
+Symbol coordinates are `symbol:<canonical-start>:<canonical-end>`, not Oxc internal
+ordinals. They are stable for the same content, parse options and schema
 across calls, paths and within selections, but not across incompatible versions or
 different source content. Structure and symbol IDs have different target semantics:
 structure/symbols `--within` reject symbol IDs; xref does not accept an id selector; slice accepts
@@ -519,10 +522,9 @@ unchanged. Perf adds the semantic phase/counts only for xref/symbols/slice-symbo
 
 `slice FILE --at SYMBOL_AT [--json]` accepts a canonical symbol ID. On the same fixed
 buffer, after entity/depth checks, it builds a node-budgeted semantic index and
-validates version, backend, content fingerprint, symbol kind, exact canonical
-identifier range and real binding. Reference, later redeclaration, non-canonical
-numeric encoding and arbitrary valid slices return `INVALID_QUERY`; different source
-content returns `SOURCE_MISMATCH`. Structure IDs keep the existing parser-only path.
+validates symbol kind, exact canonical identifier range and real binding. Reference,
+later redeclaration, non-canonical numeric encoding and arbitrary valid slices return
+`INVALID_QUERY`. Structure coordinates keep the existing parser-only path.
 
 The original extraction range is chosen from the canonical declaration identifier's
 AST ancestors:
@@ -573,8 +575,8 @@ ranges/order keep their meaning. Refs `declaration` still means the canonical bi
 identifier; `context_at` is the selected/reference location and never replaces binding
 identity. Symbols output is unchanged.
 
-`context_at` is `rxd1:js:<source-sha256>:fragment.<kind>:<start>:<end>`, a real
-content-bound AST fragment identity, not an arbitrary byte slice. The nearest
+`context_at` is `fragment.<kind>:<start>:<end>`, a real AST fragment identity, not an
+arbitrary byte slice. The nearest
 supported syntactic node is selected:
 
 - variable declaration/declarator; assignment/update expression; ordinary data object
@@ -592,9 +594,8 @@ Control-statement conditions/discriminants may associate the whole statement. Fr
 are not promised small or complete runtime context.
 
 `slice FILE --at CONTEXT_AT [--json]` re-parses the same fixed input, checks entity/AST
-depth budgets and validates version, backend, content identity, kind and real AST
-range. Missing nodes, wrong kinds, forged ranges and non-canonical numeric encoding
-return `INVALID_QUERY`; changed content returns `SOURCE_MISMATCH`. It uses parser
+depth budgets and validates kind and real AST range. Missing nodes, wrong kinds, forged
+ranges and non-canonical numeric encoding return `INVALID_QUERY`. It uses parser
 traversal only, no semantic index; the semantic-node ceiling does not apply.
 Outline/symbols `--within` still accept only structure IDs. Symbol IDs remain separate.
 
@@ -680,7 +681,7 @@ isolation exists. `slice` is subject to the same parse depth and output checks.
 | `INVALID_QUERY` | Malformed coordinate, byte position out of range, contradictory flags |
 | `NOT_FOUND` | A well-formed coordinate that names no structure, fragment or binding |
 | `INVALID_INPUT` | Invalid UTF-8, unsupported input mode, parser error or semantic diagnostic |
-| `SOURCE_MISMATCH` | Coordinate content fingerprint differs from this input |
+| `SOURCE_MISMATCH` | A `--from` stream describes a different input |
 | `RESOURCE_LIMIT` | Input/index/output budget exceeded |
 | `IO_ERROR` | Read or write failure |
 

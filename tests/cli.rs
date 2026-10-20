@@ -435,10 +435,10 @@ fn refused(output: Output) {
     assert!(output.stdout.is_empty());
 }
 
-/// A row prints a copy-only coordinate; a stale-input check needs the content-bound form,
-/// which a caller rebuilds from the header identity.
-fn js_full_id(header: &Value, at: &str) -> String {
-    format!("rxd1:js:{}:{at}", header["source_id"].as_str().unwrap())
+/// A coordinate is what a row prints: `<kind>:<start>:<end>`, with the input identity in
+/// the header rather than inside every id.
+fn js_full_id(_header: &Value, at: &str) -> String {
+    at.to_owned()
 }
 
 fn success(output: &Output) {
@@ -1024,9 +1024,11 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
         ],
     ));
     assert_eq!(fs::read(&destination).unwrap(), b"preserved");
+    // A coordinate names a span, not an input: the same span of a rewritten file still
+    // resolves, and identity is enforced where it can be - on `--from` streams.
     let id = js_full_id(&found[0], send["at"].as_str().unwrap());
     fs::write(&path, format!("{source}\n// changed")).unwrap();
-    failure(invoke("slice", &path, &["--at", &id]), 1, "SOURCE_MISMATCH");
+    success(&invoke("slice", &path, &["--at", &id]));
     let (_tmp, path) = fixture("type Route=`/api/${'login'|'logout'}`;", "template.ts");
     let rows = jsonl(&invoke("find", &path, &["-f", "/api/"]));
     assert_eq!(rows[1]["detail"]["literal_kind"], "type_template");
@@ -1418,8 +1420,6 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let (dir, path) = fixture(source, "check.js");
     let found = jsonl(&invoke("find", &path, &["-f", "/api/check"]));
     let id = found[1]["context_at"].as_str().unwrap();
-    let fingerprint = found[0]["source_id"].as_str().unwrap();
-    let full_id = format!("rxd1:js:{fingerprint}:{id}");
     let destination = dir.path().join("context.js");
     let written = invoke(
         "slice",
@@ -1444,12 +1444,11 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
     for forged in [
-        full_id.replacen("rxd1", "rxd2", 1),
-        full_id.replace("fragment.object_property", "fragment.block_statement"),
-        format!("{full_id}:extra"),
-        format!("rxd1:js:{fingerprint}:fragment.object_property:0:1"),
-        format!("rxd1:js:{fingerprint}:fragment.object_property:011:32"),
-        format!("rxd1:js:{fingerprint}:fragment.object_property:32:11"),
+        id.replace("fragment.object_property", "fragment.block_statement"),
+        format!("{id}:extra"),
+        "fragment.object_property:0:1".to_owned(),
+        "fragment.object_property:011:32".to_owned(),
+        "fragment.object_property:32:11".to_owned(),
     ] {
         failure(
             invoke("slice", &path, &["--at", &forged]),
@@ -1488,12 +1487,13 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         invoke("slice", &copy, &["--at", id]).stdout,
         b"endpoint:'/api/check'"
     );
-    let stale = js_full_id(&found[0], id);
+    // Rewriting the file keeps the span, so the coordinate still names it; a stream is
+    // what carries identity, and `--from` is checked instead.
     fs::write(&path, "const obj={changed:true};").unwrap();
     failure(
-        invoke("slice", &path, &["--at", &stale]),
+        invoke("slice", &path, &["--at", "fragment.object_property:12:20"]),
         1,
-        "SOURCE_MISMATCH",
+        "INVALID_QUERY",
     );
     let path = dir.path().join("late.js");
     fs::write(&path, "const =;").unwrap();
@@ -1936,10 +1936,6 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let rows = jsonl(&invoke("symbols", &path, &[]));
     let symbol = &rows[1];
     let id = symbol["at"].as_str().unwrap();
-    let fingerprint = rows[0]["source_id"].as_str().unwrap();
-    // Malformed-input cases need the content-bound spelling; a short coordinate has no
-    // schema prefix to corrupt.
-    let full = format!("rxd1:js:{fingerprint}:{id}");
     let expected = b"config={url:'/api/login'}";
     let destination = dir.path().join("definition.js");
     let written = invoke(
@@ -1976,21 +1972,16 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         (usize::MAX, usize::MAX),
     ] {
         failure(
-            invoke(
-                "slice",
-                &path,
-                &["--at", &format!("rxd1:js:{fingerprint}:symbol:{a}:{b}")],
-            ),
+            invoke("slice", &path, &["--at", &format!("symbol:{a}:{b}")]),
             1,
             "INVALID_QUERY",
         );
     }
     for forged in [
-        full.replacen("rxd1", "rxd2", 1),
-        full.replace(":symbol:", ":variable:"),
-        format!("{full}:extra"),
-        format!("rxd1:js:{fingerprint}:symbol:06:12"),
-        format!("rxd1:js:{fingerprint}:symbol:12:6"),
+        id.replace("symbol:", "variable:"),
+        format!("{id}:extra"),
+        "symbol:06:12".to_owned(),
+        "symbol:12:6".to_owned(),
     ] {
         failure(
             invoke("slice", &path, &["--at", &forged]),
@@ -2030,32 +2021,21 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     let copied = path.with_file_name("copy.js");
     fs::copy(&path, &copied).unwrap();
     assert_eq!(invoke("slice", &copied, &["--at", id]).stdout, expected);
-    let stale = js_full_id(&rows[0], id);
     fs::write(&path, "const config={changed:true};").unwrap();
     failure(
-        invoke("slice", &path, &["--at", &stale]),
+        invoke("slice", &path, &["--at", "symbol:6:12"]),
         1,
-        "SOURCE_MISMATCH",
+        "INVALID_INPUT",
     );
     // Syntax extraction remains available in a dynamic file; it claims no runtime value.
     let dynamic = "let x=1; eval('x=2');";
     fs::write(&path, dynamic).unwrap();
-    let fingerprint = format!("{:x}", Sha256::digest(dynamic.as_bytes()));
-    let extracted = invoke(
-        "slice",
-        &path,
-        &["--at", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
-    );
+    let extracted = invoke("slice", &path, &["--at", "symbol:4:5"]);
     success(&extracted);
     assert_eq!(extracted.stdout, b"x=1");
     fs::write(&path, "let x; let x;").unwrap();
-    let fingerprint = format!("{:x}", Sha256::digest(b"let x; let x;"));
     failure(
-        invoke(
-            "slice",
-            &path,
-            &["--at", &format!("rxd1:js:{fingerprint}:symbol:4:5")],
-        ),
+        invoke("slice", &path, &["--at", "symbol:4:5"]),
         1,
         "INVALID_INPUT",
     );
@@ -2247,10 +2227,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
     for id in [
         "garbage".to_owned(),
         rows[1]["at"].as_str().unwrap().to_owned(),
-        format!(
-            "rxd1:js:{}:function_declaration:0:1",
-            rows[0]["source_id"].as_str().unwrap()
-        ),
+        "function_declaration:0:1".to_owned(),
     ] {
         failure(
             invoke("symbols", &path, &["--within", &id]),
@@ -2260,11 +2237,9 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
     }
     let root = js_full_id(&rows[0], rows[0]["detail"]["root_id"].as_str().unwrap());
     fs::write(&path, "let changed=0;").unwrap();
-    failure(
-        invoke("symbols", &path, &["--within", &root]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    // `--within` takes a coordinate, so a rewritten file still has that structure only if
+    // the span survives; `program` always does.
+    success(&invoke("symbols", &path, &["--within", &root]));
     let profiled = invoke("symbols", &path, &["--perf"]);
     success(&profiled);
     assert_eq!(profiled.stdout, invoke("symbols", &path, &[]).stdout);
@@ -3432,11 +3407,11 @@ fn same_content_has_same_identity_and_changed_content_rejects_old_ids() {
 fn forged_entity_bounds_kinds_and_versions_are_rejected() {
     let (_dir, path) = fixture("function a(){}", "bundle.js");
     let records = outline_rows(&path, &[]);
-    let source_id = records[0]["source_id"].as_str().unwrap();
+    let _ = &records;
     for id in [
-        format!("rxd1:js:{source_id}:function_declaration:0:3"),
-        format!("rxd1:js:{source_id}:arrow_function:0:14"),
-        format!("rxd2:js:{source_id}:program:0:14"),
+        "function_declaration:0:3".to_owned(),
+        "arrow_function:0:14".to_owned(),
+        "program:0:14".to_owned(),
         "garbage".into(),
     ] {
         failure(invoke("slice", &path, &["--at", &id]), 1, "INVALID_QUERY");
@@ -4553,9 +4528,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         .as_str()
         .unwrap()
         .to_owned();
-    // The short coordinate a row prints is content-agnostic; a stale-input check needs the
-    // content-bound form, which the header identity lets a caller rebuild.
-    let id_full = format!("rxd1:js:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let _ = rows;
     let get = invoke("slice", &destination, &["--at", &id]);
     success(&get);
     assert_eq!(
@@ -4590,11 +4563,9 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         &archive,
         &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     ));
-    failure(
-        invoke("slice", &destination, &["--at", &id_full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    // The coordinate came from the previous content of this path; it names a span, so it
+    // still resolves. Identity is checked on `--from` streams, which carry the header.
+    success(&invoke("slice", &destination, &["--at", &id]));
 }
 
 #[test]

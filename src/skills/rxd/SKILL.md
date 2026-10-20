@@ -50,9 +50,10 @@ and binwalk integration are planned, not available commands.
   copy-only coordinate a row prints and the value `--at` accepts; `source_id` is
   set only on the stream header. Not every row has a usable coordinate or range.
   Parse actual responses, never manufacture coordinates.
-- A coordinate is scoped to the input you are querying: reuse it with the same
-  bytes and interpretation options. Changed input invalidates it (a full
-  `rxd1:<backend>:<sha256>:...` id still fails closed with `SOURCE_MISMATCH`).
+- A coordinate names a range in the input you are querying, not the file itself: reuse
+  it with the same bytes and interpretation options. Identity is checked where it can be
+  - a `--from` stream whose header describes another input fails with
+  `SOURCE_MISMATCH`.
   CLI inputs must remain fixed for the entire call. JS offsets are UTF-8 byte offsets, not characters or lines. Other offsets
   retain their backend meaning: JVM instruction offsets, .NET metadata tokens,
   DEX member indices/code units, WASM code-body offsets, PYC code-relative bytes,

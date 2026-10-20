@@ -138,10 +138,10 @@ impl Contexts {
         // Proper identity validation happens after the bounded traversal, like structure get.
         let wanted = if let Target::Id(id) = &target {
             let parts: Vec<_> = id.split(':').collect();
-            if parts.len() == 6 {
-                parts[3].strip_prefix("fragment.").and_then(|kind| {
-                    let start = parts[4].parse().ok()?;
-                    let end = parts[5].parse().ok()?;
+            if parts.len() == 3 {
+                parts[0].strip_prefix("fragment.").and_then(|kind| {
+                    let start = parts[1].parse().ok()?;
+                    let end = parts[2].parse().ok()?;
                     (start < end).then(|| (kind.to_owned(), Span::new(start, end)))
                 })
             } else {
@@ -206,37 +206,24 @@ impl Contexts {
             kind: selection.key.kind,
             start: selection.key.span.start,
             end: selection.key.span.end,
-            parent_id: selection
-                .parent
-                .map(|key| crate::envelope::short(&key.id(source))),
-            entity_id: crate::envelope::short(&collector.entities[selection.entity].entity.id),
+            parent_id: selection.parent.map(|key| key.id(source)),
+            entity_id: collector.entities[selection.entity].entity.id.clone(),
         })
     }
 }
 
 pub fn validate_id(source: &Source, id: &str) -> Result<()> {
     let parts: Vec<_> = id.split(':').collect();
-    if parts.len() != 6
-        || parts[0] != "rxd1"
-        || parts[1] != "js"
-        || !parts[3].starts_with("fragment.")
-        || parts[2].len() != 64
-        || !parts[2]
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        || parts[4].parse::<u32>().is_err()
-        || parts[5].parse::<u32>().is_err()
+    if parts.len() != 3
+        || !parts[0].starts_with("fragment.")
+        || parts[1].parse::<u32>().is_err()
+        || parts[2].parse::<u32>().is_err()
     {
         return Err(Error::new(
             "INVALID_QUERY",
             "malformed or unsupported fragment ID",
         ));
     }
-    if parts[2] != source.id {
-        return Err(Error::new(
-            "SOURCE_MISMATCH",
-            "fragment ID belongs to different source content",
-        ));
-    }
+    let _ = source;
     Ok(())
 }
