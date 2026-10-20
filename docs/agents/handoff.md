@@ -1,168 +1,78 @@
 # Contract Unification: Handoff
 
-State when this note was last updated: `dotnet:: 68 passed`, `dex:: 11 passed`,
-`jvm:: 11 passed`, `html:: 16 passed`, `asar 6/7` (the seventh asserts the not-yet-migrated
-js `get --at`). The rules are in `AGENTS.md` (`## Query Surface`), the budget table
-is `rxd_core::Budget`, and no backend exposes `--max-*`.
+State: every backend's CLI surface is unified and green. `cargo test --test cli` reports
+`374 passed / 35 failed`, and all 35 failures are `mcp::` (the MCP tool surface is being
+migrated in a separate lane; it is the only work item left). The rules are in
+`AGENTS.md` (`## Query Surface`), the budget table is `rxd_core::Budget`, and no backend
+exposes `--max-*`.
 
-## Done
+## The contract, as implemented
 
-- `dotnet`/`jar`/`dex` record shape: `{record, at, context_at, detail}`; identity in
-  `at`, extras in `detail`, no per-row `source_id`.
-- `jar`: `outline` split into `classes`/`methods`/`fields` + `entries`; coordinates
-  `Lx;->f(I)V`; `--bytecode` renamed `--raw`; budget flags dropped.
-- `dex`: `fields`/`methods`/`classes` rows carry `at`; `get-method`/`get-class` take
-  `--at`; `xref` rows are `context_at` + `detail.target` with the full caller
-  prototype.
-- `-f/--filter` on every listing command of dex and jar; `--raw` is the one flag for
-  original instructions.
+1. **One command, one object kind.** No listing command mixes kinds. js has
+   `entities` (the full catalogue, file root included) plus `functions`/`classes`/`methods`;
+   wasm has one command per kind (`types`, `imports`, `exports`, `functions`, `tables`,
+   `memories`, `globals`, `data`, `elements`, `strings`, `xref`); html/asar have
+   `entries`; pyc has `codes`; evm has `blocks` and `interface` (the content-bound function
+   listing), and the old `outline` is gone everywhere.
+2. **Listing selectors.** Every listing command takes `-f/--filter` (case-insensitive
+   substring) plus its own exact selectors (`--kind`, `--name`, `--class`, `--func`,
+   `--selector`, ...). Single-object analysis commands (`manifest`, `decompile`,
+   `analyze`, `storage`, `metadata`, `cfg`, `disassemble`, `extract`) take no filter.
+3. **`--at` selects a row.** Every fetch/extract command takes `--at` with the coordinate a
+   row prints; the short form expands against the header identity inside the backend
+   library. A full `rxd1:<backend>:<sha256>:...` id is still accepted and still fails with
+   `SOURCE_MISMATCH` when the hash differs. Positional ids and `--id` are gone.
+4. **`--raw` is the only spelling** for the original instructions/bytes view of a fetch
+   (`get-method`, `get-function`, `get-code`). Backends with no second representation
+   (dex, pyc) have no `--raw` because there is nothing to switch away from.
+5. **Record shape.** Identity in `at`, caller in `context_at`, extras in `detail`, and no
+   per-record `source_id` (the header carries it; the shared envelope still serializes
+   `source_id: null`). Ids nested inside `detail` are the same copy-only coordinate, so any
+   coordinate a caller copies is one `--at` accepts.
+6. **`strings` rows carry `{value,index}`** plus the platform fields. `index` is the
+   backend's own identifier for that string: DEX `string_ids`, JVM constant pool, pyc
+   constant slot, .NET literal inventory position, wasm/evm inventory position.
+7. **`xref` rows are `context_at` + `detail.target`** plus the backend's own evidence
+   (offsets, opcodes, resolution status, generic arguments, ...). Nothing was dropped.
+8. **Budgets** live only in `rxd_core::Budget` (input, entry, metadata, entries, entities,
+   instructions, work, records, output, AST depth, semantic nodes) and every backend
+   projects it into its own `Limits`. The CLI exposes no ceiling flag; a `--max-*` argument
+   is an unknown argument (exit 2). Tests that used to trip a ceiling from the CLI now
+   assert either the refusal or the backend-internal failure path.
 
-- `html` (`f48f4c5`): `list` → `entries`, `extract --at` (short `kind:start:end` expands
-  against the header hash; only a full id can report `SOURCE_MISMATCH`), `-f/--filter`
-  over tag/content, five `--max-*` flags dropped, per-row `source_id` dropped.
-- `asar` (`dedf385`): `list` → `entries`, every file row prints its archive-relative
-  path in `at`, `extract --at`, `-f/--filter` over paths, five `--max-*` flags dropped.
+## Commits
 
-## Deferred: pyc (blocked on a budget-semantics decision)
+- `f48f4c5` html, `dedf385` asar — `entries`, `--at`, `-f`, per-row `source_id` dropped.
+- `994023c` js — `entities`/`functions`/`classes`/`methods`, `get --at`, nested ids short,
+  `ast_depth`/`semantic_nodes` moved into `Budget`.
+- `2f0e4e9`/`d088666`/`794e8c4` wasm / pyc / evm — each backend's command surface, rows,
+  coordinates, budgets, tests and docs.
+- `069ac54` `strings.index` everywhere + nested detail ids short.
+- `706f125` docs/skill/site synchronisation.
 
-`pyc outline` → `codes` and the flag removal were implemented and then reverted, because
-`tests/pyc/boundaries.rs` asserts **exact** work accounting: `--max-work` defaults to
-16,777,216 while `rxd_core::Budget::work` is 1,000,000, so moving the ceiling into the
-table changes the reported counter and breaks five exact-value tests (plus
-`--max-ast-depth` 128 has no `Budget` field at all). Finishing pyc needs one of:
+## Remaining: the MCP surface (35 tests)
 
-1. raise `Budget::work` to 16,777,216 and add an `ast_depth` field so the shared table
-   reproduces today's numbers, or
-2. accept the smaller shared ceilings and rewrite the boundary tests around them.
+The tool catalogue is derived from the clap tree, so it followed the renames, but
+`src/query/catalog.rs` still appends `--max-*` argv to worker commands and classifies some
+renamed commands from a stale list; `tests/mcp/**` and `benches/mcp.py` still use
+`js_outline`, `{"id": ...}` and the old row keys. A lane is working in
+`/Users/bytedance/zhome/rxd-mcp` (branch `lane/mcp`) on exactly that, with the rule that
+the reflection stays the single source of truth and MCP results must still equal CLI
+results. Merge it when `cargo test ... --test cli mcp::` is 0 failures.
 
-That is a product decision about how tight the shared default may be, so it is recorded
-here instead of guessed. `--contains`/`--contains-hex` on `pyc strings` are also not yet
-`-f/--filter`/`--filter-hex`.
+## Rebuilding the prebuilt bundles
 
-## Baseline: the uncommitted test changes are the target contract
+`prebuilt/linux-arm64`, `prebuilt/linux-x64` and `prebuilt/android-ilspy/aarch64-linux-android`
+predate every one of these surface changes and must be rebuilt from the final commit
+(`prebuilt/README.md` has the manifest/licence contract).
 
-The working tree carries a scripted `id→at` migration in `tests/{evm,html,mcp,pyc,wasm}`
-plus tests/cli.rs. Full suite: 203 passed, 202 failed, grouped as evm 61, mcp 45, root
-40 (mostly js), pyc 33, wasm 12, html 8, wasm_wabt 4.
+## Notes for future work
 
-Decision: **keep them**. They already encode the target contract - short `at`
-coordinates, `--at` selectors, `--max-*` gone - while the backends they exercise have
-not moved yet. Each failure group maps onto a pending step below, so the migration is
-finished by making the backend conform, not by reverting the tests:
-
-- `unexpected argument '--at'` (js get/locate, wasm get-function): the command still
-  takes a positional id or `--id`.
-- `INVALID_ID` / `expected canonical content-bound ... ID` (evm): validation still wants
-  the long id while records print the short coordinate.
-- `starts_with("rxd1:js:...")` (js, wasm, identifiers): assertions still expect the
-  content-hash prefix that `at_of` strips.
-- js header key set gained `declaration`/`declaration_ids`/`resolution`/`selected`:
-  either the header or the assertion is stale - decide when js is touched.
-- mcp timeouts and the two benchmark failures: to be diagnosed with those steps.
-
-Nothing is reverted; the tree stays red only until each backend step lands.
-
-## What the js attempt taught us (read this before retrying)
-
-The split was implemented and reverted: `entities` (every structural kind except the
-program record) plus `functions`/`classes`/`methods` grouped commands, driven by
-`Query::Outline { group: Option<&'static str>, contains: Option<String> }` in
-`crates/rxd-js`, with `group_kinds()` owning the closed kind sets and
-`JsString::contains_ci` for the filter. `normalize_id(source, id)` prefixes a short
-`kind:start:end` coordinate with `rxd1:js:<source id>:` so `get --at` and `--within`
-accept what a row prints, and a `program` id means "whole file" (`is_program_id`).
-
-Three test-side obstacles made it far more than a rename:
-
-1. **Budget-driven tests.** 17 functions in `tests/cli.rs` pass `--max-*` and assert an
-   exit-1 `RESOURCE_LIMIT`: `budgets_reject_results_without_partial_output`,
-   `deep_and_wide_inputs_are_controlled_failures`,
-   `get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_structure_get`,
-   `symbols_is_bounded_atomic_single_file_and_rejects_invalid_*`,
-   `refs_is_single_file_bounded_atomic_and_semantic_only_on_demand`,
-   `recursive_budgets_and_late_errors_leave_output_untouched`,
-   `local_context_ids_are_content_bound_parser_only_bounded_and_atomic`,
-   `perf_reports_failed_stages_without_partial_stdout`,
-   `benchmark_saves_failed_budget_results_and_returns_nonzero`,
-   `asar_selected_reads_survive_bloat_and_preserve_atomic_outputs`, plus single-flag
-   assertions in the ts/typed/recursive tests. They must become "the flag is unknown
-   (exit 2)" or lose the budget half of the test; the atomicity half can use a failing
-   selector instead.
-2. **The program record.** Ten assertions count entities or index rows assuming the
-   program record is present (for example `outline_entities_have_exact_spans`,
-   `empty_files_zero_matches_and_invalid_offsets`, `filtering_preserves_absolute_depth`,
-   `asar_extracted_production_sources_match_independent_acorn`). Each needs one less.
-3. **Command naming.** `Query::Refs` reports `name() == "refs"` while the CLI command is
-   `xref`; `assert_js_stream` only extended the header keys for `"xref"`, so refs streams
-   failed the key assertion. Accept both names (or fix `name()` to `xref`).
-
-## asar and html
-
-Both `extract` take a positional `id` (`src/cli/html/args.rs:54`), while their rows print
-a short `at` such as `doctype:0:15`; the tests already pass `--at` and the short value, so
-the failures are "unexpected argument '--at'" plus `INVALID_ID: malformed HTML record ID`.
-Give both a `--at` selector that accepts the short coordinate (prefix the input's content
-id, exactly like `normalize_id` in js), rename `list` to `entries`, and add `-f/--filter`.
-
-## pyc
-
-`outline` becomes `codes`. `strings` still exposes `--contains` (pyc-specific) and
-`--contains-hex`; rename the former to `-f/--filter`, keep the hex form. The 33 pyc
-failures are the unmigrated `id→at` assertions plus `--contains`.
-
-## evm
-
-61 failures, all `INVALID_ID: expected a canonical content-bound EVM block ID`: the CLI
-still validates the long id while rows print the short coordinate. Do the walk before the
-rename: accept the short form, then `--id` → `--at`, drop `outline` (duplicate of
-`basic-blocks`), and add `-f/--filter`.
-
-## mcp
-
-45 timeouts, not assertion failures: the MCP server stops answering. Diagnose with a
-single `mcp::` test after the backend surfaces settle - the server forwards CLI argv, so a
-removed flag can make a tool fail before it answers.
-
-## Pending, in order
-
-1. **dotnet split** (code was written and reverted to keep the tree green): replace
-   `outline` with `classes`/`fields`/`methods`, add `-f/--filter`, rename `--il` to
-   `--raw`, drop the `--max-*` flags. Then migrate `tests/dotnet/**`; 44 call sites
-   use `outline` and 12 assertions expect the old per-row keys. A test helper that
-   concatenates the three listings into the old mixed view keeps most assertions
-   usable; the rest need their keys updated.
-2. **js split**: `outline` -> `functions` (`function_declaration`,
-   `function_expression`, `arrow_function`), `classes` (`class_declaration`),
-   `methods` (`constructor`, `class_method`, `getter`, `setter`, `object_method`).
-   The `program` entity disappears: its metadata already sits in the header and its
-   span is `0..input_bytes`. Sub-kind stays in `detail.kind`. 38 call sites in
-   `tests/cli.rs`.
-3. **wasm split**: `outline` -> `types`/`imports`/`exports`/`functions`/`globals`/`data`.
-   21 call sites in `tests/wasm/**`.
-4. **pyc**: rename `outline` -> `codes` (single record kind).
-5. **evm**: delete `outline` (it duplicates `basic-blocks`), `--id` -> `--at`, add
-   `-f/--filter`, fold `disassemble` into `--raw`.
-6. **asar/html**: `list` -> `entries`, `extract --id` -> `extract --at`, add
-   `-f/--filter`.
-7. **Cross-backend keys**: `strings` rows become `{value, index}` plus platform
-   extras (dotnet keeps `token`/`status`/`context_at`; jar keeps `utf16`); dotnet
-   `xref` rows become `context_at` + `detail.target` (drop `il_offset`/`opcode`,
-   keep the resolution fields); `--from <JSONL>` is promoted to dex and jar.
-
-## Decisions still open
-
-- **dotnet coordinate**: tokens stay (`0x06000001`). A name-based coordinate
-  (`Namespace.Type::Method(System.Int32)`) would be uniform with dex/jar but needs
-  the ILSpy signature-rendering cost measured first; only adopt it if `methods` does
-  not visibly regress.
-- **evm `outline` vs `basic-blocks`**: delete `outline` as planned, unless its record
-  shape carries something `basic-blocks` does not.
-- **`entries` for dotnet (PE sections/resources)**: not started. PE sections are not
-  analysis units, so it is only worth it if embedded resources or single-file
-  bundles turn out to matter.
-
-## Process
-
-Each backend is its own change: code, focused `cargo test --test cli <backend>::`,
-commit. Nothing is committed red, which is why the dotnet split is not in the tree
-right now.
+- `--from <jsonl|->` exists for content-bound re-reads on the backends that have it; the
+  unified surface makes it optional rather than required, because `at` is file-scoped and
+  the header carries the identity.
+- Directory scans, semantic index sizes and AST depth are bounded by the shared budget, so
+  a caller cannot tighten them per invocation any more. If that becomes necessary, add the
+  ceiling to `Budget` (one table) rather than a CLI flag.
+- `benches/cli.py` no longer accepts or forwards budget flags; it reports the shared
+  budget instead of an override.
