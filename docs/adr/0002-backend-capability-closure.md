@@ -29,7 +29,7 @@ explicit exemption in the backend design.
 List the format's top-level structures and assign each a **content-bound ID**. This is
 the navigation entry point; without usable IDs, later FETCH cannot locate anything.
 Examples: JS `outline`, JVM `outline`, DEX `classes`, .NET `outline`, WASM
-`outline`, ASAR `list`.
+`entities`, ASAR `entries`.
 
 ### 2. SEARCH
 

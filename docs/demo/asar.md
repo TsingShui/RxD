@@ -1,7 +1,7 @@
 # ASAR examples
 
 `rxd asar` lists an ASAR index and extracts original bytes on demand. It never starts
-the application or executes/interprets entry contents. Only `list` and `extract` exist;
+the application or executes/interprets entry contents. Only `entries` and `extract` exist;
 extracted JavaScript is passed to `rxd js`. See the [ASAR design](../design/asar-design.md).
 
 ## Setup
@@ -79,17 +79,17 @@ and bad targets are never silently skipped.
 ## Continue with JavaScript
 
 ```sh
-"$RXD" js entities "$DEMO/main.cjs" -o "$DEMO/outline.jsonl"
+"$RXD" js entities "$DEMO/main.cjs" -o "$DEMO/entities.jsonl"
 "$RXD" js find "$DEMO/main.cjs" --string '/api/login' -o "$DEMO/find.jsonl"
-ID=$(jq -r 'select(.record == "match" and (.parent_id | contains(":arrow_function:"))) | .parent_id' "$DEMO/find.jsonl" | head -n 1)
-"$RXD" js get "$DEMO/main.cjs" --id "$ID" -o "$DEMO/function.js"
+AT=$(jq -r 'select(.record == "match" and (.parent_at | contains("arrow_function:"))) | .parent_at' "$DEMO/find.jsonl" | head -n 1)
+"$RXD" js get "$DEMO/main.cjs" --at "$AT" -o "$DEMO/function.js"
 "$RXD" js symbols "$DEMO/main.cjs" -o "$DEMO/symbols.jsonl"
 "$RXD" js xref "$DEMO/main.cjs" --byte 43 -o "$DEMO/xref.jsonl"
 "$RXD" js locate "$DEMO/main.cjs" --byte 100 -o "$DEMO/locate.json"
 ```
 
 Keep the original extension and parse options. Identical bytes under identical parse
-options keep the same JS content-bound IDs; offsets refer to the extracted file. The
+options keep the same JS coordinates; offsets refer to the extracted file. The
 receipt is the link to the original archive; ordinary JS queries do not add ASAR origin.
 
 ## Budgets and performance

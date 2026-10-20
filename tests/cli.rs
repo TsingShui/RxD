@@ -524,6 +524,7 @@ fn assert_js_record(row: &Value) {
         "call" => &["callee", "call_kind", "optional", "argument_count"],
         "member" => &["name", "member_kind", "key_resolution"],
         "reference" => &[
+            "target",
             "read",
             "write",
             "member_write",

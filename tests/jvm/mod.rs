@@ -71,7 +71,7 @@ fn assert_record(row: &Value) {
             "has_code",
         ],
         "string" => &["class", "index", "value", "utf16"],
-        "reference" => &["target"],
+        "reference" => &["byte_offset", "mnemonic", "target"],
         "bytecode" => &[
             "representation",
             "class",
@@ -592,7 +592,7 @@ fn jvm_pinned_production_gson_queries_do_not_require_java_or_d8() {
 #[test]
 fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly() {
     let path = input("flow-deflated.jar");
-    let whole = run(&["get-class", "fixture.FlowFixture"], &path);
+    let whole = run(&["get-class", "--at", "fixture.FlowFixture"], &path);
     success(&whole);
     let source = String::from_utf8_lossy(&whole.stdout);
     // One source file with the class header, its field, and multiple method bodies.
@@ -601,11 +601,11 @@ fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly
     assert!(source.contains("public static int add(int left, int right)\n    {"));
     assert!(source.contains("public static int sum(int count)\n    {"));
     // Descriptor form selects the same class.
-    let by_descriptor = run(&["get-class", "Lfixture/FlowFixture;"], &path);
+    let by_descriptor = run(&["get-class", "--at", "Lfixture/FlowFixture;"], &path);
     success(&by_descriptor);
     assert_eq!(whole.stdout, by_descriptor.stdout);
     // A missing class is an INVALID_QUERY with no partial stdout.
-    let missing = run(&["get-class", "fixture.Absent"], &path);
+    let missing = run(&["get-class", "--at", "fixture.Absent"], &path);
     failure(missing.clone(), 2, "INVALID_QUERY");
     assert!(missing.stdout.is_empty());
     // -o writes the source atomically and keeps stdout empty.
@@ -614,6 +614,7 @@ fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly
     let written = run(
         &[
             "get-class",
+            "--at",
             "fixture.FlowFixture",
             "-o",
             destination.to_str().unwrap(),
@@ -627,7 +628,7 @@ fn jvm_get_class_assembles_whole_class_and_degrades_undecodable_members_honestly
     // A method whose body cannot be decoded degrades to a throwing stub rather
     // than failing the whole class or emitting guessed Java.
     let degraded = run(
-        &["get-class", "Lfixture/InterfaceSuperFixture;"],
+        &["get-class", "--at", "Lfixture/InterfaceSuperFixture;"],
         &input("fixture/InterfaceSuperFixture.class"),
     );
     success(&degraded);
@@ -701,8 +702,9 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         .filter(|v| v["record"] == "reference")
         .collect();
     assert_eq!(refs.len(), 1);
-    // One coordinate and one target: the caller is not re-spelled inside detail.
-    assert_keys(&refs[0]["detail"], &["target"]);
+    // Shared skeleton (the caller coordinate plus the matched target) and the reference
+    // site's own evidence; the caller is not re-spelled inside detail.
+    assert_keys(&refs[0]["detail"], &["byte_offset", "mnemonic", "target"]);
     assert_eq!(refs[0]["context_at"], method(&path, "text"));
     success(&run(
         &[

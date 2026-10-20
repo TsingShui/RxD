@@ -71,9 +71,8 @@ pub enum Command {
     GetClass {
         input: PathBuf,
         /// `Lx/y;` or `x.y`: the `at` a `classes` row prints.
-        #[arg(long, conflicts_with = "class")]
-        at: Option<String>,
-        class: Option<String>,
+        #[arg(long)]
+        at: String,
         #[command(flatten)]
         options: Options,
     },
@@ -210,14 +209,10 @@ pub fn execute(command: Command) -> Result<()> {
 fn execute_inner(command: Command) -> anyhow::Result<()> {
     if let Command::GetClass {
         input,
-        class,
-        at,
+        at: coordinate,
         options,
     } = command
     {
-        let coordinate = at.or(class).ok_or_else(|| {
-            anyhow::anyhow!("a class coordinate is required: pass it positionally or with --at")
-        })?;
         let limits = options.limits();
         let input = Input::read(&input, limits, options.release)?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
@@ -363,7 +358,12 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                         ..RecordMeta::default()
                     },
                     json!({
-                        "target":hit.target,
+                        "target": hit.target,
+                        // The reference site itself: bytecode position and the instruction
+                        // that performs it. pyc keeps offset/opcode, dotnet keeps
+                        // il_offset/opcode, evm keeps instruction_offset, so jar keeps these.
+                        "byte_offset": hit.byte_offset,
+                        "mnemonic": hit.mnemonic,
                     })
                     .as_object()
                     .unwrap()

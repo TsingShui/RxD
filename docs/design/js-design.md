@@ -588,7 +588,7 @@ are not promised small or complete runtime context.
 depth budgets and validates version, backend, content identity, kind and real AST
 range. Missing nodes, wrong kinds, forged ranges and non-canonical numeric encoding
 return `INVALID_ID`; changed content returns `SOURCE_MISMATCH`. It uses parser
-traversal only, no semantic index; `--max-semantic-nodes` does not apply.
+traversal only, no semantic index; the semantic-node ceiling does not apply.
 Outline/symbols `--within` still accept only structure IDs. Symbol IDs remain separate.
 
 Default get emits raw fragment bytes without prefix/parentheses/newline. A variable

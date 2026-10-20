@@ -99,36 +99,36 @@ ordinary queries on 64–126 MB APKs take 1.9–62 ms.
 | Backend | Command | Input | Median | P95 | Mean |
 | --- | --- | ---: | ---: | ---: | ---: |
 | `dex` | `manifest` | 64 MB | 1.9 | 2.3 | 2.0 |
-| `asar` | `list` | 9 MB | 3.2 | 3.5 | 3.3 |
+| `asar` | `entries` | 9 MB | 3.2 | 3.5 | 3.3 |
 | `evm` | `analyze` | 51 B | 3.2 | 3.6 | 3.3 |
 | `evm` | `disassemble` | 51 B | 3.2 | 3.5 | 3.2 |
-| `wasm` | `outline` | 225 B | 3.2 | 3.7 | 3.3 |
+| `wasm` | `functions` | 225 B | 3.2 | 3.7 | 3.3 |
 | `wasm` | `get-function` | 225 B | 3.2 | 3.6 | 3.3 |
-| `asar` | `list` | 804 B | 3.3 | 3.6 | 3.3 |
-| `wasm` | `outline` | 786 B | 3.3 | 3.5 | 3.3 |
-| `pyc` | `outline` | 10.4 KB | 3.5 | 3.9 | 3.7 |
+| `asar` | `entries` | 804 B | 3.3 | 3.6 | 3.3 |
+| `wasm` | `functions` | 786 B | 3.3 | 3.5 | 3.3 |
+| `pyc` | `codes` | 10.4 KB | 3.5 | 3.9 | 3.7 |
 | `pyc` | `decompile` | 1.3 KB | 3.5 | 3.9 | 3.6 |
 | `pyc` | `decompile` | 10.4 KB | 3.9 | 4.3 | 3.9 |
 | `kuna` | `catalog` | — | 4.9 | 5.4 | 5.0 |
-| `dotnet` | `outline` | 4.1 KB | 5.4 | 5.7 | 5.4 |
+| `dotnet` | `methods` | 4.1 KB | 5.4 | 5.7 | 5.4 |
 | `dotnet` | `get-method` | 4.1 KB | 5.4 | 5.6 | 5.4 |
 | `js` | `find` | 78.7 KB | 6.1 | 6.4 | 6.1 |
 | `dotnet` | `get-class` | 4.1 KB | 6.3 | 6.6 | 6.3 |
-| `js` | `outline` | 78.7 KB | 6.7 | 7.2 | 6.8 |
-| `js` | `outline` | 73.2 KB | 7.0 | 7.6 | 7.1 |
+| `js` | `entities` | 78.7 KB | 6.7 | 7.2 | 6.8 |
+| `js` | `entities` | 73.2 KB | 7.0 | 7.6 | 7.1 |
 | `jar` | `strings` | 298.4 KB | 10.2 | 10.6 | 10.3 |
-| `js` | `outline` | 168.3 KB | 10.5 | 10.9 | 10.6 |
+| `js` | `entities` | 168.3 KB | 10.5 | 10.9 | 10.6 |
 | `jar` | `get-method` | 298.4 KB | 11.0 | 11.4 | 11.1 |
 | `dex` | `xref` | 64 MB | 12.3 | 13.1 | 12.5 |
 | `asar` | `extract` | 9 MB | 12.5 | 14.0 | 12.8 |
 | `dex` | `strings` | 64 MB | 12.5 | 12.8 | 12.5 |
 | `jar` | `xref` | 298.4 KB | 14.2 | 14.7 | 14.2 |
-| `jar` | `outline` | 298.4 KB | 14.5 | 15.1 | 14.5 |
+| `jar` | `methods` | 298.4 KB | 14.5 | 15.1 | 14.5 |
 | `dex` | `classes` | 64 MB | 22.2 | 24.5 | 22.3 |
 | `dex` | `strings` | 126 MB | 24.5 | 25.2 | 24.5 |
 | `jar` | `get-class` | 298.4 KB | 26.4 | 27.2 | 27.0 |
 | `kuna` | `functions` | 23.6 KB ELF | 55.6 | 58.7 | 55.9 |
-| `jar` | `outline` | 1 MB | 56.1 | 58.2 | 55.9 |
+| `jar` | `methods` | 1 MB | 56.1 | 58.2 | 55.9 |
 | `kuna` | `decompile` | 23.6 KB ELF | 59.0 | 59.5 | 59.0 |
 | `dex` | `get-class` | 64 MB | 61.5 | 98.7 | 64.9 |
 | `dex` | `classes` | 126 MB | 62.1 | 71.1 | 61.0 |

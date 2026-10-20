@@ -79,7 +79,7 @@ pub(crate) struct Outline {
 
 #[derive(Subcommand)]
 pub(crate) enum Command {
-    /// List every structural entity except the program root (JSONL).
+    /// List every structural entity, including the file root (JSONL).
     Entities {
         #[command(flatten)]
         common: Common,

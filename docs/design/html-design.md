@@ -23,7 +23,7 @@ scans; HTML files are always handled by `rxd html`.
 
 | Command | Output and behavior |
 | --- | --- |
-| `html entries FILE [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: list`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
+| `html entries FILE [-f TEXT] [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: entries`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
 | `html extract FILE --at AT -o OUTPUT [--content]` | `--at` and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
@@ -243,8 +243,8 @@ does not copy by default. The child target owns extracted bytes and artifact sou
 independently of the parent; target-origin retains container/node/range and the parent
 handle when available.
 
-CLI budgets map to MCP: `--max-input-bytes→input_bytes`, `--max-records→records`,
-`--max-output-bytes→output_bytes`, `--max-depth→ast_depth` (HTML lexical nesting,
+Shared budgets map to MCP: `Budget::input_bytes→input_bytes`, `Budget::records→records`,
+`Budget::output_bytes→output_bytes`, `Budget::ast_depth→ast_depth` (HTML lexical nesting,
 distinct from selection depth); lower-only server caps still apply. No caller-supplied
 host write path is used. Shared snapshot, quota, cancellation and complete-response
 rules are in the [MCP design](mcp-design.md); the decision is

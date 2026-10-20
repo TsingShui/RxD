@@ -16,9 +16,9 @@ piped straight into the FETCH command, which validates that it came from this in
 ```sh
 at=$($rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method Add | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --il
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --raw
 $rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method Add | $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --from -
-$rxd dotnet strings tests/fixtures/dotnet/Fixture.dll --contains hello
+$rxd dotnet strings tests/fixtures/dotnet/Fixture.dll -f hello
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --perf
 ```
@@ -31,7 +31,7 @@ embedded metadata from `detail.method.detail`.
 
 ```sh
 caller=$($rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x70000001 | python3 -c 'import json,sys; print(next(r["context_at"] for r in map(json.loads,sys.stdin) if r["record"]=="reference"))')
-$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$caller" --il
+$rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$caller" --raw
 ```
 
 String hits already carry method/class coordinates; no heap token needs to be constructed.
@@ -39,11 +39,11 @@ Check the complete summary, then route the hit contexts:
 
 ```sh
 fixture=tests/fixtures/dotnet/Fixture.dll
-$rxd dotnet strings "$fixture" --contains hello -o target/string-hits.jsonl
+$rxd dotnet strings "$fixture" -f hello -o target/string-hits.jsonl
 caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["context_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
 owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["detail"]["declaring_type_id"] for r in rows if r["record"]=="string" and r["context_at"]))')
-$rxd dotnet get-method "$fixture" --at "$caller" --il
-$rxd dotnet get-class "$fixture" --at "$owner" --il
+$rxd dotnet get-method "$fixture" --at "$caller" --raw
+$rxd dotnet get-class "$fixture" --at "$owner" --raw
 $rxd dotnet xref "$fixture" --string $'hello\nlambda'
 ```
 
@@ -53,7 +53,7 @@ separate. Unreferenced inventory has explicit status and empty navigation:
 
 ```sh
 python3 tests/fixtures/dotnet/strings/generate.py
-$rxd dotnet strings tests/fixtures/dotnet/strings/Strings.dll --contains unused
+$rxd dotnet strings tests/fixtures/dotnet/strings/Strings.dll -f unused
 ```
 
 The unreferenced entry has `status: unreferenced`; context_at, parent_at, method_token
@@ -69,7 +69,7 @@ at=$($rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --method NestedFinall
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 ```
 
-Original IL `leave` crosses two finally handlers; `get --il` preserves original
+Original IL `leave` crosses two finally handlers; `get --raw` preserves original
 instructions and the ordered EH table.
 
 ## Enable C# and syntax sugar
@@ -97,7 +97,7 @@ sugar=tests/fixtures/dotnet/sugar/Sugar.dll
 for method in AsyncAwait Iterator ClosureAndLocalFunction Linq Initializers Using Lock NullPropagation Interpolation; do
   at=$($rxd dotnet methods "$sugar" --type Rxd.Sugar.Probe --method "$method" | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
   $rxd dotnet get-method "$sugar" --at "$at"
-  $rxd dotnet get-method "$sugar" --at "$at" --il
+  $rxd dotnet get-method "$sugar" --at "$at" --raw
 done
 ```
 
@@ -110,7 +110,7 @@ not semantic equivalence or a recompilation proof.
 prebuilt engine, success returns `csharp`, `decompiled: true`, code and an IL→line
 mapping; a default build or missing runtime library returns complete `il`,
 `decompiled: false`, `code: null`, `engine_unavailable` and a `reason_detail` explaining
-the state. `representation: il` with `reason: null` means IL was requested with `--il`,
+the state. `representation: il` with `reason: null` means IL was requested with `--raw`,
 not that reconstruction failed. See [the engine guide](../../benches/ilspy/README.md).
 
 Coordinates are file-scoped: `0x0600000b` names metadata row 11 in *this* input, so
@@ -123,8 +123,8 @@ the handle itself. Outline/xref follow the header/records/summary completeness c
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
 type_at=$($rxd dotnet methods "$closure" --type 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="type"))')
-$rxd dotnet get-class "$closure" --at "$type_at" --il
-$rxd dotnet get-class "$closure" --at "$type_at" --il -o target/closure-il.json --perf
+$rxd dotnet get-class "$closure" --at "$type_at" --raw
+$rxd dotnet get-class "$closure" --at "$type_at" --raw -o target/closure-il.json --perf
 $rxd dotnet get-class "$closure" --at "$type_at"
 $rxd dotnet get-class "$closure" --at "$type_at" -o target/closure-csharp.json --perf
 ```
@@ -139,7 +139,7 @@ $rxd dotnet get-method app.exe --at 0x06000003 | jq '.detail | {decompiled, warn
 ```
 
 The type and its members bind the same assembly bytes; a member's `parent_at` can be
-passed directly to `get-class`. `--il` bypasses the C# engine and preserves complete
+passed directly to `get-class`. `--raw` bypasses the C# engine and preserves complete
 original bodies/EH.
 
 ## Method, field and type XREF

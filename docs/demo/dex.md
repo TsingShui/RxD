@@ -13,7 +13,7 @@ target/release/rxd dex xref /path/to/app.apk string Authorization
 target/release/rxd dex xref /path/to/app.apk type Gson
 target/release/rxd dex xref /path/to/app.apk method onCreate --class com.example.Main
 target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example --fuzzy-class
-target/release/rxd dex get-class /path/to/app.apk com.example.Main
+target/release/rxd dex get-class /path/to/app.apk --at com.example.Main
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
 target/release/rxd dex classes /path/to/classes.dex --threads 2
 ```
@@ -43,14 +43,14 @@ The old rasc MCP transport is not imported; the shared stdio entry is in the
 ## Consuming schema v2
 
 JSONL even for zero results; success requires exit 0 and `summary.complete=true`.
-Navigation fields are always present but null; FETCH IDs are never constructed from
-indices. Route from `xref.detail.class` or `classes.detail.descriptor` to
-`get-class`:
+Navigation fields are always present but null; FETCH coordinates are never constructed
+from indices. Route from `classes` rows (their `at` is `Lx/y;`) or from a `methods` row's
+`context_at`/`at` into `get-class`/`get-method`:
 
 ```sh
 target/release/rxd dex xref /path/to/app.apk string Authorization > target/dex-xref.jsonl
-jq -r 'select(.record == "reference") | .detail.class' target/dex-xref.jsonl
-target/release/rxd dex get-class /path/to/app.apk 'Lcom/example/Main;' > target/Main.java
+jq -r 'select(.record == "reference") | .context_at' target/dex-xref.jsonl
+target/release/rxd dex get-class /path/to/app.apk --at 'Lcom/example/Main;' > target/Main.java
 ```
 
 `strings.detail.value/index` use the global DEX string table; `detail.class` is always

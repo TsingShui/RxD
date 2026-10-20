@@ -26,6 +26,8 @@ pub struct Selected {
 
 pub struct Reference {
     location: Location,
+    /// The binding these references belong to, as the coordinate `get --at` accepts.
+    target: String,
     read: bool,
     write: bool,
     member_write: bool,
@@ -37,7 +39,10 @@ pub struct Reference {
 impl Reference {
     pub fn envelope(&self, _source_id: &str) -> impl Serialize {
         #[derive(Serialize)]
-        struct Detail {
+        struct Detail<'a> {
+            /// The shared skeleton every xref row carries: what this row refers to.
+            #[serde(serialize_with = "crate::envelope::serialize_short")]
+            target: &'a str,
             read: bool,
             write: bool,
             member_write: bool,
@@ -54,6 +59,7 @@ impl Reference {
                 ..Default::default()
             },
             Detail {
+                target: &self.target,
                 read: self.read,
                 write: self.write,
                 member_write: self.member_write,
@@ -178,11 +184,14 @@ pub fn run(
                 "output record budget exceeded",
             ));
         }
-        let declaration = Some(location(scoping.symbol_span(symbol)));
+        let declaration_location = location(scoping.symbol_span(symbol));
+        let target = declaration_location.entity_id.clone();
+        let declaration = Some(declaration_location);
         let mut references: Vec<_> = semantic
             .symbol_references(symbol)
             .map(|reference| Reference {
                 location: location(semantic.reference_span(reference)),
+                target: target.clone(),
                 read: reference.is_read(),
                 write: reference.is_write(),
                 member_write: reference.flags().is_member_write_target(),

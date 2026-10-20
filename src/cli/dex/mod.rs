@@ -10,7 +10,7 @@ use output::{emit, emit_rows};
 use rxd_core::envelope::{header, summary};
 use serde_json::{Map, Value, json};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 pub(crate) use args::Command;
 use rayon::prelude::*;
 use rxd_dex::{apk, manifest, query};
@@ -138,7 +138,7 @@ fn run_command(
                 args.query_json(),
             )?;
             for hit in &hits {
-                push_reference(&mut payload, &hit.member, &hit.matched)?;
+                push_reference(&mut payload, &hit.dex_name, &hit.member, &hit.matched)?;
             }
             finish_stream(&mut payload, hits.len())?;
             if args.debug {
@@ -380,12 +380,7 @@ fn run_command(
             emit(&xml, args.output.as_deref())?;
         }
         Command::Getclass(args) => {
-            let coordinate = args
-                .at
-                .as_deref()
-                .or(args.dalvik_class.as_deref())
-                .context("a class coordinate is required: pass it positionally or with --at")?;
-            let class_name = query::format_class_name(coordinate)?;
+            let class_name = query::format_class_name(&args.at)?;
             if status == 0 {
                 let hit = apk::decompile_class_with_policy(
                     &args.apk_path,
@@ -426,11 +421,15 @@ enum Field<'a> {
 ///
 /// An offset and a mnemonic were considered and dropped: nothing that consumes a hit
 /// acts on the instruction itself, only on which method references what.
-fn push_reference(payload: &mut String, caller: &str, matched: &str) -> Result<()> {
+fn push_reference(payload: &mut String, entry: &str, caller: &str, matched: &str) -> Result<()> {
     payload.push_str("{\"record\":\"reference\",\"context_at\":");
     push_json_string(payload, caller);
     payload.push_str(",\"detail\":{\"target\":");
     push_json_string(payload, matched);
+    // Which DEX the hit lives in is the one fact the row coordinate cannot express; an
+    // APK can hold the same class name twice across DEX files.
+    payload.push_str(",\"entry\":");
+    push_json_string(payload, entry);
     payload.push_str("}}\n");
     #[cfg(feature = "mcp")]
     if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {

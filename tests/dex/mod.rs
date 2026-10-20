@@ -54,7 +54,7 @@ fn assert_record(row: &Value) {
     let fields: &[&str] = match row["record"].as_str().unwrap() {
         "class" => &[],
         "string" => &["entry", "index", "value"],
-        "reference" => &["target"],
+        "reference" => &["entry", "target"],
         "entry" => &[
             "name",
             "compression",
@@ -359,7 +359,7 @@ fn dex_getclass_preserves_source_debug_and_missing_class_status() {
     let (dir, bare) = fixture(&dex, "input.dex");
     let wrapped = dir.path().join("app.apk");
     fs::write(&wrapped, deflated_zip(&[("classes.dex", &dex)])).unwrap();
-    let original = query("get-class", &bare, &["Fixture1"]);
+    let original = query("get-class", &bare, &["--at", "Fixture1"]);
     success(&original);
     assert!(text(&original).contains("class Fixture1"));
     assert!(text(&original).contains("m1("));
@@ -368,13 +368,19 @@ fn dex_getclass_preserves_source_debug_and_missing_class_status() {
     let wrapped_out = query(
         "get-class",
         &wrapped,
-        &["LFixture1;", "--debug", "-o", output_file.to_str().unwrap()],
+        &[
+            "--at",
+            "LFixture1;",
+            "--debug",
+            "-o",
+            output_file.to_str().unwrap(),
+        ],
     );
     success(&wrapped_out);
     assert_eq!(wrapped_out.stdout, original.stdout);
     assert_eq!(fs::read(output_file).unwrap(), original.stdout);
     assert!(String::from_utf8_lossy(&wrapped_out.stderr).contains("Hit DEX: classes.dex"));
-    let missing = query("get-class", &bare, &["Absent"]);
+    let missing = query("get-class", &bare, &["--at", "Absent"]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(missing.stdout.is_empty());
     assert!(String::from_utf8_lossy(&missing.stderr).contains("Class LAbsent; not found in APK."));
@@ -478,7 +484,7 @@ fn dex_malformed_inputs_return_diagnostics_without_success_output() {
         let (_dir, path) = fixture(bytes, "malformed.bin");
         for command in ["classes", "strings", "get-class"] {
             let args: &[&str] = if command == "get-class" {
-                &["Fixture0"]
+                &["--at", "Fixture0"]
             } else {
                 &[]
             };

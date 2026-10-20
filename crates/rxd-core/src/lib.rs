@@ -59,7 +59,7 @@ impl From<std::io::Error> for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Default and hard ceiling for one input file: 8 GiB. Every supported rxd target
-/// is 64-bit, and `--max-input-bytes` may only lower this value.
+/// is 64-bit. No CLI flag can raise or lower it; `Budget` is the only source.
 pub const MAX_INPUT_BYTES: usize = 8 << 30;
 
 /// One archive entry: 256 MiB. DEX applies this to a single inflated entry and the JVM

@@ -32,7 +32,7 @@ contract.
 `bundled-ilspy` implies `csharp-decompiler`. The first C# FETCH validates and atomically
 extracts `<cache-base>/rxd-ilspy/<archive-sha256>/` through `rxd-core::bundle`, then
 loads and validates the library on demand with `libloading`. Metadata queries and
-`--il` do not extract it. Kuna shares the cache implementation under a separate
+`--raw` do not extract it. Kuna shares the cache implementation under a separate
 namespace. Corrupt caches fail; a mismatched library is never executed. The optional
 `rxd_set_reference_directory` ABI supplies the cached reference metadata path without
 changing process environment or probing input directories. Explicit
@@ -90,8 +90,8 @@ silently ignore corrupt data.
 ```sh
 rxd dotnet methods app.dll --type Example.Worker --method Run
 rxd dotnet get-method app.dll --at 0x06000001
-rxd dotnet get-method app.dll --at 0x06000001 --il
-rxd dotnet get-class app.dll --at 0x02000002 --il
+rxd dotnet get-method app.dll --at 0x06000001 --raw
+rxd dotnet get-class app.dll --at 0x02000002 --raw
 rxd dotnet strings app.dll --contains 'example'
 rxd dotnet xref app.dll --at 0x0a000001
 rxd dotnet xref app.dll --string 'example'
@@ -106,7 +106,8 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
   bounded to 64 KiB and a mismatched `source_id` is `INVALID_QUERY`. The analyzed
   input itself remains a regular file: only the selector stream may be piped.
 
-- `outline` emits header, type/field/method and summary JSONL. Header echoes filters;
+- `classes`/`fields`/`methods` each emit a header, their own records and a summary JSONL
+  (one object kind per command). Header echoes filters;
   order follows metadata tokens. `--type` matches the full type name exactly;
   `--method` matches a method name exactly and preserves overloads.
 - `get-method` emits one JSON record with method, source_id, raw `il_hex`, instructions,
@@ -124,7 +125,7 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
   without the class header, usings or type context. `get-method` is the FETCH unit the
   navigation records point at (`context_at`, `at`); `get-class` is the unit for type
   shape and whole-class C#.
-- `get-method --il` returns `representation: il`. Default `get-method` attempts
+- `get-method --raw` returns `representation: il`. Default `get-method` attempts
   reconstruction. Success returns `representation: csharp`, `decompiled: true`,
   structured C# code and a mapping from output lines to real IL offsets. After async/
   iterator recovery, MoveNext's independent offset domain is not used as the entry
@@ -156,7 +157,7 @@ rxd dotnet methods app.dll --method Run | rxd dotnet get-method app.dll --from -
   whole-class C# body names no culprit member either (the engine reports one failure for
   the selected scope), so `reason_detail` routes the Agent to `get-method --at <at>` per
   member instead of guessing which one blocked the class.
-- `get-class INPUT TYPE_ID --il` returns the selected TypeDef and recursively nested
+- `get-class INPUT --at TYPE_ID --raw` returns the selected TypeDef and recursively nested
   types under explicit NestedClass ownership, including generated types; sibling and
   inherited definitions are excluded, and `<Module>` is rejected. Types retain
   class/interface/struct/enum kind, base token, interfaces, generic parameters and
@@ -272,7 +273,7 @@ method/method_body `parent_at` is the declaring type. `reference.at` is null;
 `context_at` is the caller method coordinate, directly usable by get-method, while its
 original token and IL offset live in detail. `reference.parent_at` and
 `reference.detail.declaring_type_id` are the caller's declaring type, usable for
-whole-class FETCH; other outline records have `context_at: null`.
+whole-class FETCH; other listing records have `context_at: null`.
 
 `string.parent_at` is the using declaring type and `context_at` the using method; an
 unreferenced inventory record has both and detail method/type IDs null. Its start/end
@@ -299,7 +300,7 @@ semantic query still keeps the descriptor.
 `get-method` returns one `method_body` record without header/summary; the top-level
 FETCH envelope carries `backend="dotnet"`, `command="get-method"`,
 `schema_version=2`. `detail.complete` states completeness; `detail.method` is the same
-full method envelope as outline. Outer start/end is the original PE code range
+full method envelope as the `methods` listing. Outer start/end is the original PE code range
 `[code_offset, code_offset + code_size)`, excluding method header and EH table;
 `reference.start/end` is the original PE byte range of that IL instruction.
 Outline/string use null when no such range exists. `detail.file_offset` is the method
@@ -315,7 +316,7 @@ sorted/deduplicated by token/offset/line. Each must fall on real instruction bou
 and C# output lines; bodyless methods cannot have mappings. Points that cannot be
 proven after async/iterator recovery are omitted; empty mapping is not reconstruction
 failure. `type` is the root type envelope; `types` contains all selected types ordered
-by token; `fields`/`types` use outline envelopes; `methods` are method_body envelopes
+by token; `fields`/`types` use listing envelopes; `methods` are method_body envelopes
 identical to single FETCH, with `body_present` distinguishing declarations from
 readable bodies and null body fields when absent. Nested method representation is
 always `il/false/null code`; `class_body` owns whole-class reconstruction state.
@@ -400,7 +401,7 @@ generated members remain indexable, queryable and extractable.
 
 Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
 4 GiB), entities 100,000, work 16,777,216, instructions per method 100,000, records
-100,000, output 32 MiB. Each has a positive `--max-*` override. Entities count types,
+100,000, output 32 MiB. All of them live in `rxd_core::Budget`; the CLI has no override flag. Entities count types,
 fields and methods; work bounds parsing stages; xref charge actual decode, signature,
 string and EH work. Full xref/strings scans share one fixed `#US` heap validation and
 reuse entry boundaries; FETCH shares instruction/token-kind/locals/parameter/branch/

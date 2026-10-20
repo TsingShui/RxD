@@ -19,13 +19,15 @@ preserved; argument positions and exit-code semantics are.
 | --- | --- |
 | `entries INPUT` | Archive entries in central-directory order with compression and sizes; duplicate names are preserved. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
-| `xref INPUT string\|type VALUE` | Literal string or type references, with referring member and matched target. |
-| `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required. |
+| `xref INPUT string\|type VALUE` | Literal string or type references: `context_at` is the referring member, `detail.target` the match, `detail.entry` the DEX it lives in. |
+| `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required; rows carry `detail.entry`. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`, `--with-flags`. |
 
-APK/DEX commands keep their original argument positions, `--threads` / `--thread`
+`get-class` selects by `--at` only (the `Lx/y;` a `classes` row prints); the positional
+Dalvik-name form was removed so every FETCH has one selector spelling. APK/DEX commands
+keep `--threads` / `--thread`
 alias and supported range. The default thread count comes from
 `available_parallelism`; zero threads is an error. `xref -o` sits in the
 string/type/method/field subcommand arguments. All diagnostics go to stderr. `--debug`

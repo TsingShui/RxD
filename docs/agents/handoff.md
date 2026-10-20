@@ -74,6 +74,44 @@ The tool catalogue follows the CLI by renovation, not by list maintenance:
   (`--internal-mcp-worker`, JSON over stdio, deadline + cancellation + RSS monitor) and the
   worker calls the same `query::execute` the CLI uses, so results cannot drift.
 
+## Per-backend gates (final run on this commit)
+
+| Filter | Result |
+| --- | --- |
+| `--test cli dex::` | 11 passed, 0 failed |
+| `--test cli jvm::` | 11 passed, 0 failed |
+| `--test cli dotnet::` | 68 passed, 0 failed |
+| `--test cli wasm::` | 19 passed, 0 failed |
+| `--test cli wasm_wabt::` | 4 passed, 0 failed |
+| `--test cli pyc::` | 70 passed, 0 failed |
+| `--test cli evm::` | 71 passed, 0 failed |
+| `--test cli html::` | 16 passed, 0 failed |
+| `--test cli mcp::` | 60 passed, 0 failed |
+| full `--test cli` | 410 passed, 0 failed |
+
+`js` and `asar` have no test module: their tests live at the crate root in `tests/cli.rs`
+(`js`/`asar`/`refs_*`/`symbols_*`/`local_contexts_*`/`outline_*`/`recursive_*`/`corpus_*`
+and the `asar_*` families), so the whole-suite run is their gate — `-- js` matches 14 of
+them by name, which is why the module filter is not used as evidence for those two.
+
+## Decisions still open
+
+1. **pyc work ceiling.** pyc's decompile work accounting used `--max-work` default
+   16,777,216; the shared `Budget::work` is 1,000,000. The exact-work boundary tests in
+   `tests/pyc/boundaries.rs` were converted to call the `rxd_pyc` library directly with
+   explicit `Limits`, so the invariant is still covered without a CLI knob. Whether pyc
+   should get its own larger line in `Budget` (or the shared default should rise) is a
+   product call; today pyc runs on the shared 1,000,000.
+2. **Access flags: `--with-flags` asymmetry.** jar `methods`/`fields` rows always carry
+   `access_flags`; dex rows leave `detail` empty unless `--with-flags` is passed (5.19M
+   methods on a real corpus would otherwise add ~100 MB). Same question, two spellings.
+   Options: keep it as a documented, size-driven exception (current state), or always emit
+   flags on dex and accept the size. Not decided.
+3. **dex instruction offsets.** dex `xref` rows carry `entry` but no instruction offset or
+   mnemonic; jar/dotnet/pyc/evm all keep theirs. Adding them means threading the offset
+   through the dex scan path, which is the performance-critical one. User decision: do not
+   add.
+
 ## Known follow-ups (not in this goal)
 
 - `benches/evm.py` was migrated to `interface`/`blocks`/`xref`/`--at` and `[at]` keys and

@@ -9,7 +9,7 @@ Java, JADX, D8 or dx process is invoked. JADX is a development reference only; v
 and license are in `crates/rxd-jvm/REFERENCE.md`.
 
 The capability set follows [ADR 0002](../adr/0002-backend-capability-closure.md):
-ENUMERATE=`outline`, SEARCH=`strings`, XREF=`xref`, FETCH=`get-method` (unit) and
+ENUMERATE=`classes`/`methods`/`fields`/`entries`, SEARCH=`strings`, XREF=`xref`, FETCH=`get-method` (unit) and
 `get-class` (class aggregate).
 
 ## Backend boundary
@@ -30,14 +30,14 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | Command | Output |
 | --- | --- |
 | `jar classes|methods|fields INPUT [--class CLASS] [--method NAME] [-o FILE]` | header/match/summary JSONL, one object kind per command, `detail.analysis: metadata` |
-| `jar get-method INPUT METHOD_ID [-o FILE]` | Decompiled Java declaration for one method |
-| `jar get-method INPUT METHOD_ID --bytecode [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
-| `jar get-class INPUT CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
+| `jar get-method INPUT --at METHOD_ID [-o FILE]` | Decompiled Java declaration for one method |
+| `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
+| `jar get-class INPUT --at CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
 | `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
-| `jar xref INPUT {string VALUE \| type NAME \| method NAME [--class C] \| field NAME [--class C]}` | header/reference/summary JSONL; cross-class references to strings/types/methods/fields with owner class/method, byte_offset, mnemonic and target |
+| `jar xref INPUT {string VALUE \| type NAME \| method NAME [--class C] \| field NAME [--class C]}` | header/reference/summary JSONL; `context_at` is the caller, `detail.target` the match, `detail.byte_offset`/`detail.mnemonic` the reference site |
 
-`outline` filters classes exactly by internal name, dotted name or descriptor, and
-methods exactly by name while retaining all overloads; a method filter omits field
+`classes`/`methods`/`fields` filter exactly by internal name, dotted name or descriptor,
+and methods exactly by name while retaining all overloads; a method filter omits field
 records. `header.query` records conditions; summary completeness applies only to the
 selected query.
 
@@ -60,7 +60,7 @@ class-byte SHA-256. JAR records retain the physical entry. A method ID is
 validates the complete ID against the fixed input; wrong, stale or foreign IDs return
 `INVALID_QUERY`.
 
-`--bytecode` outer `start/end` point at Code bytes inside the class file, not the
+`--raw` outer `start/end` point at Code bytes inside the class file, not the
 compressed JAR. `byte_offset` is the original JVM byte offset within the method; bytes
 concatenated in order reproduce the original body. One JVM instruction may expand to
 several IR instructions whose addresses are `byte_offset * 32 + subinstruction index`,
@@ -71,7 +71,7 @@ Success plus final `summary.complete: true` means the selected metadata enumerat
 complete. It does not mean every method decompiles, that unknown attributes were
 semantically analyzed, or that the JVM verified the class. `get` Java is a decompiled
 representation, not original source. Abstract/native methods without Code can be
-enumerated but have no method body to fetch. `--bytecode` does not decompile and can
+enumerated but have no method body to fetch. `--raw` does not decompile and can
 inspect modern dynamic instructions. `get-class` builds one
 `radguard::backend::ClassSpec` (class header, fields, each body); undecodable methods
 become `UnsupportedOperationException` stubs (the same honest degradation as DEX
@@ -113,13 +113,13 @@ errors exit 2; other failures exit 1. Diagnostics go to stderr.
 ## Envelope (schema_version=2)
 
 All structured output uses the shared [ADR 0003](../adr/0003-output-envelope.md)
-constructors. `outline`, `strings` and `xref` return header → zero or more
+constructors. The listings, `strings` and `xref` return header → zero or more
 records → summary, with no legacy flat-field shim.
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
 query, detail`. Streaming commands set `header.detail` to `analysis, release` with
 `analysis: metadata`. `query` echoes command conditions. Summary contains `record,
-records, complete, detail`; `outline` sets `summary.detail.classes`, while
+records, complete, detail`; `classes` sets `summary.detail.classes`, while
 strings/xref use `{}`.
 
 Data records contain `record, id, source_id, parent_id, context_id, start, end,
@@ -146,7 +146,7 @@ pool index. `entry` is null for standalone class input. Signature/super/source_f
 constant_index/utf16 may be null. `fields`/`methods` are class-table totals. `utf16` is
 null when decoding is lossless, otherwise an array of raw UTF-16 code units.
 
-`get-method --bytecode` is one `record="bytecode"` FETCH record without header/summary;
+`get-method --raw` is one `record="bytecode"` FETCH record without header/summary;
 it adds `backend="jvm"`, `command="get-method"`, `schema_version=2` outside. `detail.
 representation` is always `bytecode`; `complete` is true. Outer `start/end` replaces
 the old `file_range` and points at the actual class-file Code range (half-open), not
