@@ -544,6 +544,9 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 let uses = perf.measure("strings", || input.string_uses(filter.as_deref()))?;
                 for group in &uses.groups {
                     let literal = &uses.literals[group.literal_index];
+                    // `index` is the backend's own identifier for this string in its
+                    // inventory: here, its position among the assembly's literals.
+                    let index = group.literal_index;
                     let method = group.method_token.map(|token| {
                         &input.methods[input
                             .methods
@@ -562,7 +565,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                                 ..metadata(&input)
                             },
                             detail(
-                                json!({"offset":literal.offset,"token":0x70000000u32 | literal.offset,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"declaring_type_id":method.map(|method| envelope::at_of(&method.declaring_type_id)),"il_offsets":group.il_offsets}),
+                                json!({"index":index,"offset":literal.offset,"token":0x70000000u32 | literal.offset,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"method_token":group.method_token,"declaring_type_id":method.map(|method| envelope::at_of(&method.declaring_type_id)),"il_offsets":group.il_offsets}),
                             ),
                         ),
                     )?;

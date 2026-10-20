@@ -33,7 +33,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | `jar get-method INPUT METHOD_ID [-o FILE]` | Decompiled Java declaration for one method |
 | `jar get-method INPUT METHOD_ID --bytecode [-o FILE]` | Raw JVM instruction JSON with opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT CLASS [-o FILE]` | Whole-class Java source (fields, constructors, all method bodies) by internal/dotted/descriptor name |
-| `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class, source_id and pool index |
+| `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
 | `jar xref INPUT {string VALUE \| type NAME \| method NAME [--class C] \| field NAME [--class C]}` | header/reference/summary JSONL; cross-class references to strings/types/methods/fields with owner class/method, byte_offset, mnemonic and target |
 
 `outline` filters classes exactly by internal name, dotted name or descriptor, and
@@ -137,7 +137,7 @@ Fixed detail fields:
 | class | `entry, name, super, interfaces, major, minor, access, signature, source_file, fields, methods` |
 | field | `entry, class, name, descriptor, access, signature, constant_index` |
 | method | `entry, class, name, descriptor, access, signature, exceptions, has_code` |
-| string | `entry, class, index, value, utf16` |
+| string | `class, index, value, utf16` (`index` = constant-pool index) |
 | reference | `entry, class, method, method_descriptor, byte_offset, mnemonic, target` |
 | bytecode | `representation, entry, class, name, descriptor, max_stack, max_locals, handlers, instructions, complete` |
 

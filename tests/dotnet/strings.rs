@@ -87,6 +87,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
                 [
                     "declaring_type_id",
                     "il_offsets",
+                    "index",
                     "method_token",
                     "offset",
                     "status",

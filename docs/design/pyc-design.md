@@ -273,7 +273,9 @@ instruction_validation, with `not_scanned`.
 String meta: record/at/source_id/parent_at/context_at/start/end/detail; `at` is the
 short const coordinate, source_id null (the header carries it), and context_at/parent_at
 are the owner `code:<index>`. Detail keys:
-code_index/constant_slot/constant_path/kind/value/raw_bytes; definition_start/
+code_index/index/constant_slot/constant_path/kind/value/raw_bytes (`index` is the
+constant's slot in its code object, the same value as constant_slot);
+definition_start/
 definition_end/payload_start/payload_end; occurrence_start/occurrence_end/reference/
 aliases. All spans are real half-open file bytes (PYC includes its 16-byte header; raw
 marshal starts at 0). definition_* is the original literal object definition including

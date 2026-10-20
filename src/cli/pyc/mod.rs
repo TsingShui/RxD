@@ -12,6 +12,14 @@ use rxd_core::{Budget, Error, Result};
 use rxd_pyc::Limits;
 use serde_json::json;
 
+/// Serialize an id nested in `detail` as the same copy-only coordinate a row prints.
+pub(super) fn short_id<S: serde::Serializer>(
+    value: &str,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.serialize_str(&rxd_core::envelope::at_of(value))
+}
+
 #[derive(Subcommand)]
 pub enum Command {
     /// Find explicit name or constant-occurrence references, with enclosing code IDs.

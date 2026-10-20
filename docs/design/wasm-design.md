@@ -145,7 +145,7 @@ Fixed detail fields:
 | `global` | `index, value_type, mutable, name` |
 | `data` | `index, kind, memory_index, offset_expr, byte_length` |
 | `element` | `index, kind, count` |
-| `string` | `origin, segment_index, offset, value, bytes` |
+| `string` | `index, origin, segment_index, offset, value, bytes` (`index` = position in the decoded string inventory) |
 | `reference` | `target, caller_index, caller_name, offset, opcode, target_index` |
 | `function_view` | `representation, decompiled, reason, code, func, body_file_offset, body_size, locals, instructions, mapping, bytecode_hex, complete` |
 

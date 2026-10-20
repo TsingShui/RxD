@@ -46,7 +46,7 @@ Fixed outer keys:
 | --- | --- | --- |
 | `record` | Record discriminator | Always |
 | `id` | Content-bound ID usable by FETCH | Always; `null` when none |
-| `source_id` | SHA-256 of the owning content unit | Always |
+| `source_id` | SHA-256 of the owning content unit | Header only (null on records) |
 | `parent_id` | Parent record ID for tree structures | Always; `null` when none |
 | `context_id` | Nearest FETCH context for a hit record | Always; `null` when not applicable |
 | `start` / `end` | Original byte range for location/slicing | Always; `null` when none |
@@ -70,7 +70,7 @@ change.
 | `record` | Always `"header"` | Always |
 | `backend` | Backend ID | Always |
 | `command` | Subcommand | Always |
-| `source_id` | Input file SHA-256 | Always |
+| `source_id` | Input file SHA-256 | Header only (null on records) |
 | `input_bytes` | Input byte count (replaces JS `file_bytes`) | Always |
 | `schema_version` | Envelope version | Always |
 | `query` | Query argument echo | Always |
@@ -120,7 +120,7 @@ for (const m of methods) {
 
 The same glue works for JS/JVM/.NET/WASM outline; only `detail` differs.
 
-## Amendment: the FETCH handle is a coordinate, not a hash (in progress)
+## Amendment: the FETCH handle is a coordinate, not a hash
 
 The `id` key is being replaced by `at`, and `parent_id`/`context_id` by
 `parent_at`/`context_at`. Values are the backend's own coordinate
@@ -136,15 +136,19 @@ Rationale: an Agent had to copy 80-103 character handles in which about 70% of t
 bytes were a hash repeated 1-4 times per record. Measured on a 168 KB production
 bundle, `id`/`source_id`/`parent_id`/`context_id` were 49% of an `outline` stream.
 
-Content binding moves to the paths where it can still fail closed: records keep
-`source_id`, and FETCH commands accept `--from <jsonl|->`, which re-reads the
-coordinate from the producing stream and rejects a mismatched `source_id`. The removed
-guarantee is that a handle alone identifies its input; a coordinate is deliberately
-file-scoped so the same coordinate can address the same metadata row in two versions
-of an input.
+Content binding moves to the paths where it can still fail closed: the header carries
+`source_id`, and FETCH commands accept `--from <jsonl|->`, which re-reads the coordinate
+from the producing stream and rejects a mismatched `source_id`. The removed guarantee is
+that a handle alone identifies its input; a coordinate is deliberately file-scoped so the
+same coordinate can address the same metadata row in two versions of an input. A
+content-bound `rxd1:<backend>:<sha256>:...` spelling is still accepted and still fails
+with `SOURCE_MISMATCH` when the hash differs, so a caller who keeps the full form keeps
+the old guarantee.
 
-`dotnet` is migrated (see `docs/design/dotnet-design.md`); JS/JVM/WASM/PYC/EVM/HTML and
-their tests still emit `id` until the same change lands there.
+Every backend is migrated: dex, jar, dotnet, js, wasm, pyc, evm, html and asar print
+`at`/`parent_at`/`context_at` as coordinates and never repeat `source_id` on a record.
+An id nested inside `detail` (a caller id, a symbol or owner id, a reference target) uses
+the same copy-only coordinate, so any coordinate a caller can copy is one `--at` accepts.
 
 ## Consequences
 

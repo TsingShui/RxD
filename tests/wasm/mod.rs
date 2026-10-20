@@ -59,7 +59,14 @@ fn assert_record(row: &Value) {
             "byte_length",
         ],
         "element" => &["index", "kind", "count"],
-        "string" => &["origin", "segment_index", "offset", "value", "bytes"],
+        "string" => &[
+            "index",
+            "origin",
+            "segment_index",
+            "offset",
+            "value",
+            "bytes",
+        ],
         "reference" => &[
             "target",
             "caller_index",

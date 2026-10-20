@@ -17,6 +17,7 @@ struct Alias<'a> {
 #[derive(Serialize)]
 struct Detail<'a> {
     code_index: usize,
+    index: usize,
     constant_slot: usize,
     constant_path: &'a [usize],
     kind: &'static str,
@@ -107,6 +108,8 @@ fn record<'a>(
         end: actual_payload.map(|span| span.end),
         detail: Detail {
             code_index: literal.owner,
+            // The backend's own identifier for this string: its constant slot.
+            index: literal.path[0],
             constant_slot: literal.path[0],
             constant_path: &literal.path,
             kind: literal.kind,

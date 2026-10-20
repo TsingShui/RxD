@@ -37,8 +37,18 @@ pub struct Prefix {
 pub struct Target {
     pub table: &'static str,
     pub index: usize,
+    /// Copy-only coordinate, the same form a row prints, so `--at` accepts it.
+    #[serde(serialize_with = "short_id")]
     pub id: String,
+    #[serde(serialize_with = "short_id")]
     pub value_id: String,
+}
+
+fn short_id<S: serde::Serializer>(
+    value: &str,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.serialize_str(&rxd_core::envelope::at_of(value))
 }
 #[derive(Serialize)]
 pub struct Unit {
@@ -64,7 +74,9 @@ pub struct Unit {
 #[derive(Serialize)]
 pub struct Entry {
     pub index: usize,
+    #[serde(serialize_with = "short_id")]
     pub id: String,
+    #[serde(serialize_with = "short_id")]
     pub value_id: String,
     pub start: Option<usize>,
     pub end: Option<usize>,
@@ -85,6 +97,7 @@ pub struct Table {
 #[derive(Serialize)]
 pub struct ValueChild {
     pub index: usize,
+    #[serde(serialize_with = "short_id")]
     pub value_id: String,
     pub start: usize,
     pub end: usize,
@@ -92,6 +105,7 @@ pub struct ValueChild {
 }
 #[derive(Serialize)]
 pub struct Value {
+    #[serde(serialize_with = "short_id")]
     pub id: String,
     pub tag: u8,
     pub kind: &'static str,

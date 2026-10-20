@@ -716,7 +716,8 @@ fn element_rows(module: &Module) -> Vec<Row> {
 fn string_rows(strings: &[rxd_wasm::StringRecord]) -> Vec<Row> {
     strings
         .iter()
-        .map(|string| Row {
+        .enumerate()
+        .map(|(index, string)| Row {
             kind: "string",
             // A string has no index space of its own, so its row carries no coordinate.
             at: None,
@@ -728,6 +729,8 @@ fn string_rows(strings: &[rxd_wasm::StringRecord]) -> Vec<Row> {
                 (None, None) => String::new(),
             },
             detail: json!({
+                // The backend's own identifier for this string in its inventory.
+                "index": index,
                 "origin": string.origin,
                 "segment_index": string.segment_index,
                 "offset": string.offset,

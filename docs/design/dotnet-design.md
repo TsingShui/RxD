@@ -262,7 +262,7 @@ Fixed detail fields:
 | `type` | `token, name, namespace, full_name, flags, kind, declaring_type_token, declaring_type_id, extends_token, interfaces, generic_parameters` |
 | `field` | `token, declaring_type_token, declaring_type_id, declaring_type, name, signature, flags` |
 | `method` | `token, declaring_type, declaring_type_token, declaring_type_is_value_type, name, signature, parameters, signature_flags, return_type, has_this, has_body, rva, flags, impl_flags, declaring_type_id, generic_parameters` |
-| `string` | `offset, token, value, utf16_units, status, method_token, declaring_type_id, il_offsets` |
+| `string` | `index, offset, token, value, utf16_units, status, method_token, declaring_type_id, il_offsets` (`index` = position in the assembly literal inventory) |
 | `reference` | `method_token, declaring_type, declaring_type_id, name, il_offset, opcode, target_token, target_kind, canonical_target_id, canonical_target_token, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments` |
 | `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
 

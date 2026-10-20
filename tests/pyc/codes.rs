@@ -249,8 +249,8 @@ fn pyc_codes_marks_code_containment_through_aliased_const_tables_without_false_s
     assert_eq!(edges.len(), 2);
     let alias = &edges[1];
     assert_eq!(all[3]["at"], "code:2");
-    let hash = format!("{:x}", Sha256::digest(&bytes));
-    assert_eq!(alias["owner_id"], format!("rxd1:pyc:{hash}:code:2"));
+    // Ids nested in `detail` are the same copy-only coordinate as `at`.
+    assert_eq!(alias["owner_id"], all[3]["at"]);
     assert!(alias["start"].is_null());
     assert!(alias["end"].is_null());
     let start = alias["alias_start"].as_u64().unwrap() as usize;

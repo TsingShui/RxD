@@ -43,6 +43,7 @@ struct Field {
 }
 #[derive(Serialize)]
 struct Incoming<'a> {
+    #[serde(serialize_with = "crate::cli::pyc::short_id")]
     owner_id: String,
     constant_path: &'a [usize],
     start: Option<usize>,

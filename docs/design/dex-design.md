@@ -117,7 +117,7 @@ Fixed detail fields:
 | class | classes | `at` = the class descriptor |
 | field | fields | `at` = `Lclass;->name:type`; `access_flags` with `--with-flags` |
 | method | methods | `at` = `Lclass;->name(proto)`; `access_flags` with `--with-flags` |
-| string | strings | `entry, index, value, class` |
+| string | strings | `entry, index, value` (`index` = DEX `string_ids` index) |
 Ordering: records follow the archive central-directory order, and inside one entry the
 `class_defs` (classes) or code-item (xref) order. No backend sorts by identity, so a class
 list is comparable with `js`/`jar` output and never depends on a global sort. A descriptor

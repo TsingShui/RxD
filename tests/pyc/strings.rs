@@ -398,6 +398,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
                 "occurrence_end",
                 "reference",
                 "aliases",
+                "index",
             ],
         );
         for alias in row["detail"]["aliases"].as_array().unwrap() {
