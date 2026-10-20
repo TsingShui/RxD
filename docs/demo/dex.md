@@ -12,7 +12,7 @@ target/release/rxd dex strings /path/to/app.apk --filter Authorization --offset 
 target/release/rxd dex xref /path/to/app.apk string Authorization
 target/release/rxd dex xref /path/to/app.apk type Gson
 target/release/rxd dex xref /path/to/app.apk method onCreate --class com.example.Main
-target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example --fuzzy-class
+target/release/rxd dex xref /path/to/app.apk field INSTANCE --class example
 target/release/rxd dex get-class /path/to/app.apk --at com.example.Main
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
 target/release/rxd dex classes /path/to/classes.dex --threads 2

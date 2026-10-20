@@ -20,7 +20,7 @@ preserved; argument positions and exit-code semantics are.
 | `entries INPUT` | Archive entries in central-directory order with compression and sizes; duplicate names are preserved. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
 | `xref INPUT string\|type VALUE` | Literal string or type references: `context_at` is the referring member, `detail.target` the match, `detail.entry` the DEX it lives in. |
-| `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class; keeps `--fuzzy-class`; at least one of name/class is required; rows carry `detail.entry`. |
+| `xref INPUT method\|field [NAME] --class CLASS` | Member name and declaring class, both case-sensitive substrings (dots in `--class` are separators); at least one of name/class is required; rows carry `detail.entry`. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `-f/--filter` is case-insensitive over the dotted name. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `-f/--filter`. |
@@ -94,7 +94,7 @@ The header contains `record, backend, command, source_id, input_bytes, schema_ve
 query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}`.
 `input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
 `query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
-`xref` string/type=`kind, value`, method/field=`kind, name, class, fuzzy_class`;
+`xref` string/type=`kind, value`, method/field=`kind, name, class`;
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 

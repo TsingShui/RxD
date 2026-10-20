@@ -23,12 +23,15 @@ pub struct MemberQuery {
 }
 
 /// How a member query constrains the defining class.
+///
+/// One rule for every member lookup: a case-sensitive substring of the descriptor, with
+/// dots accepted as separators. An exact-descriptor mode used to exist beside it and made
+/// `--class` mean two things across backends; `get-class`/`get-method` remain the exact,
+/// coordinate-addressed path.
 #[derive(Clone, Debug)]
-pub enum ClassQuery {
-    /// A full `Lpkg/Name;` descriptor.
-    Exact(String),
+pub struct ClassQuery {
     /// A literal substring of the descriptor, in `pkg/Name` form.
-    Fuzzy(String),
+    pub pattern: String,
 }
 
 /// Normalizes a class name to the `Lpkg/Name;` descriptor form that `findrefs`
@@ -68,20 +71,14 @@ pub fn fuzzy_class_pattern(pattern: &str) -> String {
 }
 
 impl Query {
-    /// Whether the query names one member class by its full descriptor.
+    /// Whether the query is bounded to one member class.
     ///
-    /// This is what makes a query selective on a per-entry basis: every member it can
-    /// match belongs to that one class, and a DEX that does not carry the descriptor
-    /// cannot produce a row at all. The other query shapes have no such bound - a name
-    /// match (`method onCreate`) hits most entries of a real APK, and a fuzzy class
-    /// pattern is a content match whose reach is unknown - so they are scanned in full.
+    /// A name match and a class substring are both content matches whose reach is unknown,
+    /// so no query shape is selective per entry and every scan is a full scan.
     pub fn names_one_class(&self) -> bool {
-        match self {
-            Query::Method(query) | Query::Field(query) => {
-                matches!(query.class, Some(ClassQuery::Exact(_)))
-            }
-            Query::String(_) | Query::Type(_) => false,
-        }
+        // A substring pattern never bounds the query to one entry, so the per-entry
+        // prefix pre-check is not worth its read; every query scans in full.
+        false
     }
 }
 

@@ -16,7 +16,7 @@ mod opcodes;
 pub(crate) mod prefix;
 
 use crate::bytes::{read_u16, read_u32};
-use crate::query::{ClassQuery, MemberQuery, Query};
+use crate::query::{MemberQuery, Query};
 use anyhow::{Context, Result, bail};
 use filter::Targets;
 use memchr::memmem::Finder;
@@ -584,10 +584,10 @@ impl<'a> Dex<'a> {
             .name
             .as_deref()
             .map(|pattern| Finder::new(pattern.as_bytes()));
-        let class_finder = match &query.class {
-            Some(ClassQuery::Fuzzy(pattern)) => Some(Finder::new(pattern.as_bytes())),
-            _ => None,
-        };
+        let class_finder = query
+            .class
+            .as_ref()
+            .map(|class| Finder::new(class.pattern.as_bytes()));
         let mut out = Vec::new();
         for index in 0..size {
             let member = self.member(base, size, index)?;
@@ -602,12 +602,9 @@ impl<'a> Dex<'a> {
             }
             let class_name_idx = self.type_string_idx(member.class_idx as usize)?;
             let class_bytes = self.string_bytes(class_name_idx)?;
-            let class_matches = match &query.class {
+            let class_matches = match &class_finder {
+                Some(finder) => finder.find(class_bytes).is_some(),
                 None => true,
-                Some(ClassQuery::Exact(name)) => class_bytes == name.as_bytes(),
-                Some(ClassQuery::Fuzzy(_)) => class_finder
-                    .as_ref()
-                    .is_some_and(|finder| finder.find(class_bytes).is_some()),
             };
             if class_matches {
                 if out.len() == max_targets {

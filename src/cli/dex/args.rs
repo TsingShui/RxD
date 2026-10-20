@@ -1,7 +1,7 @@
 use super::super::default_threads;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
-use rxd_dex::query::{ClassQuery, MemberQuery, Query, format_class_name, fuzzy_class_pattern};
+use rxd_dex::query::{ClassQuery, MemberQuery, Query, fuzzy_class_pattern};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Subcommand)]
@@ -218,10 +218,10 @@ impl XrefArgs {
             FindKind::String(q) => json!({"kind":"string", "value":q.value}),
             FindKind::Type(q) => json!({"kind":"type", "value":q.value}),
             FindKind::Method(q) => {
-                json!({"kind":"method", "name":q.name, "class":q.class_name, "fuzzy_class":q.fuzzy_class})
+                json!({"kind":"method", "name":q.name, "class":q.class_name})
             }
             FindKind::Field(q) => {
-                json!({"kind":"field", "name":q.name, "class":q.class_name, "fuzzy_class":q.fuzzy_class})
+                json!({"kind":"field", "name":q.name, "class":q.class_name})
             }
         }
     }
@@ -258,14 +258,12 @@ pub struct ValueQuery {
 pub struct MemberArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    /// Member name to search for (case-sensitive exact match).
+    /// Member name substring to search for (case-sensitive).
     pub name: Option<String>,
-    /// Owner class, as `Lcom/foo/Bar;` or `com.foo.Bar` (exact unless `--fuzzy-class`).
+    /// Owner class substring, as `com/foo/Bar` or `Lcom/foo/Bar;` (case-sensitive; dots
+    /// are accepted as separators).
     #[arg(long = "class")]
     pub class_name: Option<String>,
-    /// Treat `--class` as a case-sensitive substring instead of an exact name.
-    #[arg(long)]
-    pub fuzzy_class: bool,
 }
 
 impl MemberArgs {
@@ -275,11 +273,13 @@ impl MemberArgs {
             .as_deref()
             .filter(|s| !s.is_empty())
             .map(str::to_owned);
-        let class = match self.class_name.as_deref().filter(|name| !name.is_empty()) {
-            None => None,
-            Some(name) if self.fuzzy_class => Some(ClassQuery::Fuzzy(fuzzy_class_pattern(name))),
-            Some(name) => Some(ClassQuery::Exact(format_class_name(name)?)),
-        };
+        let class = self
+            .class_name
+            .as_deref()
+            .filter(|name| !name.is_empty())
+            .map(|name| ClassQuery {
+                pattern: fuzzy_class_pattern(name),
+            });
         if name.is_none() && class.is_none() {
             bail!("{kind} query needs at least one of class or {kind} name");
         }

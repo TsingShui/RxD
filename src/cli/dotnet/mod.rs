@@ -964,6 +964,8 @@ fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value
 fn field_record(input: &Input, field: &rxd_dotnet::Field) -> anyhow::Result<Value> {
     let mut fields = detail(serde_json::to_value(field)?);
     fields.remove("id");
+    // Nested references are copy-only coordinates, exactly as in `methods`/`classes`.
+    shorten_detail_ids(&mut fields);
     Ok(envelope::record(
         "field",
         RecordMeta {
@@ -1022,7 +1024,12 @@ fn relationship_record<T: serde::Serialize>(
             context_at: Some(owner),
             ..metadata(input)
         },
-        detail(serde_json::to_value(relationship)?),
+        {
+            // Nested references are copy-only coordinates, as in every other listing.
+            let mut fields = detail(serde_json::to_value(relationship)?);
+            shorten_detail_ids(&mut fields);
+            fields
+        },
     ))
 }
 
