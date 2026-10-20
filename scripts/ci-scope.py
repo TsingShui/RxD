@@ -25,13 +25,10 @@ def git(root, *args):
 
 def plan(paths):
     scopes, reasons = set(), {}
-    full, tools, arxd = False, False, False
+    full, tools = False, False
     for path in paths:
-        if path in ("apps/arxd/AGENTS.md", "apps/arxd/README.md"):
-            reasons[path] = "Arxd project documentation only"
-        elif path.startswith(("apps/arxd/", "third_party/termux-exec/")) or path == ".github/workflows/arxd.yml":
-            arxd = True
-            reasons[path] = "Arxd application and host-adapter checks"
+        if path.startswith(("apps/arxd/", "third_party/termux-exec/")):
+            reasons[path] = "archived Arxd app; no product checks"
         elif path in FULL_FILES or path.startswith((
             ".cargo/", ".github/workflows/", "crates/rxd-dotnet/native/", "prebuilt/", "devtools/android-ilspy/",
             "crates/rxd-kuna-cli/", "third_party/kuna", "src/cli/kuna/",
@@ -73,7 +70,7 @@ def plan(paths):
                 scopes.add("shared")
                 reasons[path] = "shared, unnamespaced, or unknown input; conservative full default gates"
     return {
-        "paths": paths, "reasons": reasons, "tools": tools, "full": full, "arxd": arxd,
+        "paths": paths, "reasons": reasons, "tools": tools, "full": full,
         "rust": bool(scopes),
         "matrix": {"include": [{"scope": scope} for scope in sorted(scopes)]},
     }
@@ -97,11 +94,11 @@ def main():
         if args.full:
             scopes = {row["scope"] for row in report["matrix"]["include"]}
             scopes.add("shared")
-            report.update(full=True, tools=True, rust=True, arxd=True,
+            report.update(full=True, tools=True, rust=True,
                           matrix={"include": [{"scope": scope} for scope in sorted(scopes)]})
         if args.github_output:
             with args.github_output.open("a") as output:
-                for key in ("tools", "rust", "full", "arxd", "matrix"):
+                for key in ("tools", "rust", "full", "matrix"):
                     output.write(key + "=" + json.dumps(report[key], separators=(",", ":")) + "\n")
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0

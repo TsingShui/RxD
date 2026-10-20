@@ -97,28 +97,18 @@ class ScopeCli(unittest.TestCase):
         report, _ = self.discover("--full")
         self.assertEqual(self.scopes(report), ["dex", "dotnet", "jvm", "shared"])
 
-    def test_arxd_has_its_own_checks_without_full_rust_gates(self):
+    def test_archived_arxd_has_no_product_checks(self):
         self.put("apps/arxd/README.md")
         self.put("apps/arxd/AGENTS.md")
-        report, _ = self.discover()
-        self.assertFalse(report["arxd"])
-        self.assertFalse(report["rust"])
         self.put("third_party/termux-exec/ExecIntercept.c")
-        report, _ = self.discover()
-        self.assertTrue(report["arxd"])
-        self.assertFalse(report["rust"])
-        self.assertFalse(report["full"])
         self.put("apps/arxd/src/agent/poc.ts")
-        self.put(".github/workflows/arxd.yml")
         report, outputs = self.discover()
-        self.assertTrue(report["arxd"])
-        self.assertIn("arxd=true\n", outputs)
         self.assertFalse(report["rust"])
         self.assertFalse(report["full"])
-        self.put("Cargo.toml")
-        report, _ = self.discover()
-        self.assertTrue(report["arxd"])
-        self.assertTrue(report["full"])
+        self.assertFalse(report["tools"])
+        self.assertNotIn("apps/arxd/README.md", [row["scope"] for row in report["matrix"]["include"]])
+        self.assertTrue(all("archived Arxd" in value for value in report["reasons"].values()))
+        self.assertNotIn("arxd=", outputs)
 
     def test_deletions_renames_and_explicit_head_do_not_lose_inputs(self):
         (self.root / "docs").mkdir(exist_ok=True)
