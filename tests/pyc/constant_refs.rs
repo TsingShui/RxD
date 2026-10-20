@@ -365,28 +365,26 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     assert_eq!(excluded[1]["complete"], true);
     assert_eq!(excluded[1]["detail"]["scanned_code_count"], 0);
     assert_eq!(excluded[1]["detail"]["instructions"], 0);
-    let full = format!("rxd1:pyc:{digest}:{id}");
+    let _ = &digest;
+    // A coordinate is `const:<owner>:<path>`; there is no hash to forge or strip.
     for invalid in [
-        full.replace(":pyc:", ":wasm:"),
-        full.replace(":const:", ":code:"),
+        id.replace(":const:", ":code:"),
         format!("{id}:0"),
-        format!("rxd1:pyc:0:{id}"),
-        format!("{full}:0"),
-        format!("rxd1:pyc:{digest}:const:01:0"),
-        format!("rxd1:pyc:{digest}:const:99:0"),
-        format!("rxd1:pyc:{digest}:const:0:"),
-        format!("rxd1:pyc:{digest}:const:0:00"),
-        format!("rxd1:pyc:{digest}:const:0:2.01"),
-        format!("rxd1:pyc:{digest}:const:0:2."),
-        format!("rxd1:pyc:{digest}:const:0:2..0"),
-        format!("rxd1:pyc:{digest}:const:0:+0"),
-        format!("rxd1:pyc:{digest}:const:0:０"),
-        format!("rxd1:pyc:{digest}:const:0:99999999999999999999999"),
-        format!("rxd1:pyc:{digest}:const:0:99"),
-        format!("rxd1:pyc:{digest}:const:0:2.9"),
-        format!("rxd1:pyc:{digest}:const:0:0.0"),
-        format!("rxd1:pyc:{digest}:const:0:2"),
-        format!("rxd1:pyc:{digest}:const:0:6"),
+        "const:01:0".to_owned(),
+        "const:99:0".to_owned(),
+        "const:0:".to_owned(),
+        "const:0:00".to_owned(),
+        "const:0:2.01".to_owned(),
+        "const:0:2.".to_owned(),
+        "const:0:2..0".to_owned(),
+        "const:0:+0".to_owned(),
+        "const:0:０".to_owned(),
+        "const:0:99999999999999999999999".to_owned(),
+        "const:0:99".to_owned(),
+        "const:0:2.9".to_owned(),
+        "const:0:0.0".to_owned(),
+        "const:0:2".to_owned(),
+        "const:0:6".to_owned(),
     ] {
         failure(
             invoke("xref", &path, &["--version", "3.12", "--at", &invalid]),
@@ -403,12 +401,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         2,
         "INVALID_QUERY",
     );
-    let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
-    failure(
-        invoke("xref", &path, &["--version", "3.12", "--at", &foreign]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+
     for args in [
         vec!["--version", "3.12"],
         vec!["--version", "3.12", "--at", id, "--name", "x"],
@@ -430,15 +423,13 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         .unwrap();
     changed[pos] = b'F';
     fs::write(&copied, &changed).unwrap();
+    // A coordinate names a slot in whatever input is queried; rewriting a string keeps the
+    // slot, so the same coordinate still resolves.
     success(&invoke("xref", &copied, &["--version", "3.12", "--at", id]));
-    failure(
-        invoke("xref", &copied, &["--version", "3.12", "--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    success(&invoke("xref", &copied, &["--version", "3.12", "--at", id]));
     let mutable = module(&[121, 0], b")\x01[\x01\0\0\0z\x01x");
     fs::write(&copied, &mutable).unwrap();
-    let forged = format!("rxd1:pyc:{:x}:const:0:0.0", Sha256::digest(&mutable));
+    let forged = "const:0:0.0".to_owned();
     failure(
         invoke("xref", &copied, &["--version", "3.12", "--at", &forged]),
         2,

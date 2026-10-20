@@ -34,7 +34,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
             rxd_asar::Query::Extract {
                 at: selector
                     .resolve(&["file"], Expect::Bytes(bytes))
-                    .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?,
+                    .map_err(super::classify)?,
             }
         }
     };

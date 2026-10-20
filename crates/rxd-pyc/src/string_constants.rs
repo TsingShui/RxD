@@ -28,8 +28,8 @@ pub enum Query<'a> {
     },
     Hex(&'a [u8]),
 }
-pub fn constant_id(analysis: &Analysis, owner: usize, path: &[usize]) -> String {
-    let mut id = format!("rxd1:pyc:{}:const:{owner}:", analysis.source_id);
+pub fn constant_id(_analysis: &Analysis, owner: usize, path: &[usize]) -> String {
+    let mut id = format!("const:{owner}:");
     for (position, index) in path.iter().enumerate() {
         if position != 0 {
             id.push('.');

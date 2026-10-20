@@ -67,7 +67,7 @@ pub(super) fn execute(command: Command) -> Result<()> {
                     &["element", "text", "comment", "doctype"],
                     Expect::Bytes(bytes),
                 )
-                .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
+                .map_err(super::classify)?;
             let response =
                 rxd_html::extract(&common.input, &at, content, destination, limits, &mut perf)?;
             perf.measure("write", || {

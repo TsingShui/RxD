@@ -122,11 +122,10 @@ larger version set.
 The code index uses the same bounded fixed input and one marshal reader. Root index 0;
 `co_consts` serialization order, depth-first preorder; code directly inside tuple/list/
 set/frozenset/slice participates; dict uses alternating key/value positions. A distinct
-code object is indexed once; its content-bound ID is
-`rxd1:pyc:<full-input-sha256>:code:<decimal-index>` and each codes row prints the
-copy-only coordinate `code:<decimal-index>`. `get-code --at` and `xref --within` expand
-that short coordinate against the stream header's source identity; a full form still
-binds the digest, so a foreign digest is `SOURCE_MISMATCH`. Rename/new process/filtering
+code object is indexed once; its coordinate is `code:<decimal-index>`, and the input
+identity lives in the stream header's `source_id` rather than inside the id. `get-code
+--at` and `xref --within` take that coordinate as printed; a `--from` stream is what
+carries identity, so a stream describing another input is `SOURCE_MISMATCH`. Rename/new process/filtering
 does not change the ID or renumber. The first discovery containment determines
 `parent_at`; this does not prove unique runtime ownership. `kind` is always `unknown`;
 name/compile mode/flags are not inferred as class/function identity.
@@ -238,7 +237,7 @@ order. Mutable list/dict/set/slice do not expand, and dynamic expressions, runti
 concatenation or f-strings are not evaluated.
 
 Constant ID:
-`rxd1:pyc:<full-input-sha256>:const:<code-index>:<dot-separated-index-path>`; each row
+`const:<code-index>:<dot-separated-index-path>`; each row
 prints the copy-only coordinate `const:<code-index>:<path>`, which `xref --at`
 expands against the header identity. Different owner/slot/path is a different ID; equal
 text or shared objects do not deduplicate. Tuple/frozenset and whole-`co_consts` shared
@@ -321,11 +320,9 @@ rxd pyc get-code raw.marshal --at code:0 --version 3.12
 
 `get-code` is the final name (no `get` alias or selected-code source rebuild). It accepts
 any enumerated module root, class body, function, lambda or comprehension code; a class
-body is code evidence, not a complete runtime class definition. `--at` takes the short
-`code:<index>` a codes row prints, expanded against the input header identity; the
-full `rxd1:pyc:<digest>:code:<index>` form is also accepted, and a digest that differs
-from the input is `SOURCE_MISMATCH`. Malformed/out-of-range selectors are `INVALID_QUERY`
-(exit 2). Missing readable body is `INVALID_INPUT`; readable empty bytecode differs from
+body is code evidence, not a complete runtime class definition. `--at` takes the
+`code:<index>` a codes row prints; nothing is expanded, and an index past the table is
+`INVALID_QUERY` (exit 2). A `--from` stream from another input is `SOURCE_MISMATCH`. Missing readable body is `INVALID_INPUT`; readable empty bytecode differs from
 unavailable.
 
 Default output is one schema-2 `code_view` JSON envelope without header/summary. Outer
@@ -379,9 +376,8 @@ tables with index/span/alias, kind=null; localsplus present=false, ranges null, 
 empty. 3.11+ derived tables filter raw localsplus kind 0x20/0x80/0x40, keep original
 indices, allow local|cell overlap and do not renumber. Entries have index/id/value_id/
 start/end/alias_start/alias_end/reference/kind. Const IDs use
-`rxd1:pyc:<digest>:const:<owner>:<slot>`; other table entries use
-`rxd1:pyc:<digest>:table:<owner>:<table>:<index>`; value_id uses
-`rxd1:pyc:<digest>:value:<parser-definition-ordinal>`. The latter two are navigation keys,
+`const:<owner>:<slot>`; other table entries use
+`table:<owner>:<table>:<index>`; a value uses `value:<parser-definition-ordinal>`. The latter two are navigation keys,
 not FETCH arguments. Aliased nested occurrences without contiguous bytes use start/end
 null; alias_start/end preserves the container reference; reference says whether the
 serialized leaf itself is a ref.
@@ -439,9 +435,9 @@ rxd pyc xref graph.marshal --version 3.12 --name cell -o target/xref.jsonl
 selection matches the original name payload against query UTF-8 bytes exactly, without
 substring, case-fold, Unicode normalization or replacement-character comparison. Empty
 names are allowed; ordinary zero hits exit 0 with header/summary records=0. The same
-format matrix is used. `--within` accepts the short `code:<index>` coordinate (expanded
-against the header identity) or the full content-bound id; a foreign digest is
-`SOURCE_MISMATCH`, while malformed/out-of-range selectors are `INVALID_QUERY` (exit 2).
+format matrix is used. `--within` accepts the `code:<index>` coordinate a row prints;
+malformed or out-of-range selectors are `INVALID_QUERY` (exit 2), and a `--from` stream
+from another input is `SOURCE_MISMATCH`.
 With it, only that code body is scanned; without it, all
 distinct codes are scanned by global index and shared aliases are not rescanned. Same-name
 owners and multiple real instructions in one owner are retained, ordered by code index then

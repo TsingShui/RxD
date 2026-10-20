@@ -227,7 +227,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 from.as_deref(),
                 &input.source_id,
             )
-            .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?,
+            .map_err(super::classify)?,
         )
     } else {
         None

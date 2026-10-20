@@ -64,7 +64,7 @@ pub fn fetch(
             &["code"],
             super::super::xref::Expect::Content(&analysis.source_id),
         )
-        .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
+        .map_err(super::super::classify)?;
     let selected = perf.measure("query", || analysis.parse_code_id(&at));
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;

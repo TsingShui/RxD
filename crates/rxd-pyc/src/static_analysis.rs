@@ -130,36 +130,13 @@ impl Analysis {
     pub fn parse_code_id(&mut self, id: &str) -> Result<usize> {
         self.charge_work(id.len())?;
         let invalid = || Error::new("INVALID_QUERY", "malformed or stale PYC code coordinate");
-        // A row prints the copy-only `code:<index>`; identity lives in the header, so the
-        // short form is expanded here instead of making a caller reassemble the hash.
-        let (digest, ordinal) = match id.strip_prefix("code:") {
-            Some(ordinal) if !ordinal.contains(':') => (None, ordinal),
-            Some(_) => return Err(invalid()),
-            None => {
-                let mut pieces = id.split(':');
-                let backend = pieces.next() == Some("rxd1") && pieces.next() == Some("pyc");
-                let digest = pieces.next().unwrap_or("");
-                let kind = pieces.next();
-                let ordinal = pieces.next().unwrap_or("");
-                if !backend
-                    || digest.len() != 64
-                    || !digest
-                        .bytes()
-                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-                    || kind != Some("code")
-                    || pieces.next().is_some()
-                {
-                    return Err(invalid());
-                }
-                (Some(digest), ordinal)
-            }
+        // A row prints `code:<index>`; the header carries the input identity, so nothing is
+        // expanded here and no coordinate is compared against a fingerprint.
+        let ordinals: Vec<&str> = id.split(':').collect();
+        let ordinal = match ordinals.as_slice() {
+            ["code", ordinal] => *ordinal,
+            _ => return Err(invalid()),
         };
-        if digest.is_some_and(|digest| digest != self.source_id.as_str()) {
-            return Err(Error::new(
-                "SOURCE_MISMATCH",
-                "code ID belongs to different source content",
-            ));
-        }
         if ordinal.is_empty()
             || (ordinal.len() > 1 && ordinal.starts_with('0'))
             || !ordinal.bytes().all(|b| b.is_ascii_digit())
@@ -170,7 +147,11 @@ impl Analysis {
             .parse::<usize>()
             .map_err(|_| Error::new("INVALID_QUERY", "invalid PYC code index"))?;
         if index >= self.codes.len() {
-            return Err(Error::new("INVALID_QUERY", "code index does not exist"));
+            // Well formed and absent: absence, not a bad query (ADR 0015).
+            return Err(rxd_core::Error::failure(
+                rxd_core::Failure::NotFound,
+                format!("no code:{} in this input", index),
+            ));
         }
         Ok(index)
     }
@@ -221,7 +202,7 @@ impl Analysis {
         self.code_indexes.get(&definition).copied()
     }
     pub fn code_id(&self, index: usize) -> String {
-        format!("rxd1:pyc:{}:code:{index}", self.source_id)
+        format!("code:{index}")
     }
     pub fn field_occurrence(&self, index: usize, name: &str) -> Option<usize> {
         self.evidence.occurrences[self.codes[index].definition]

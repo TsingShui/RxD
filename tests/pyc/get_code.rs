@@ -109,8 +109,6 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     ] {
         failure(fetch(&original, &bad, &[]), 2, "INVALID_QUERY");
     }
-    let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
-    failure(fetch(&original, &foreign, &[]), 1, "SOURCE_MISMATCH");
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("keep.json");
     let nested_start = oracle["marshal_ranges"]["code_ranges"][11]["pyc_bytecode_start"]
@@ -136,9 +134,9 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     );
     assert_eq!(fs::read(&dest).unwrap(), b"keep");
     assert_eq!(fs::read(&damaged).unwrap(), broken);
-    let original_id = format!("rxd1:pyc:{:x}:{id}", Sha256::digest(&bytes));
-    failure(fetch(&damaged, &original_id, &[]), 1, "SOURCE_MISMATCH");
-    success(&fetch(&damaged, id, &[])); // A short coordinate is source-agnostic.
+    // A coordinate names a code object, not a file: it resolves in whatever input holds
+    // that index. Identity is checked on `--from` streams instead.
+    success(&fetch(&damaged, id, &[]));
     // Every corruption is inside evidence from one independently produced code object.
     for (code, field, offset, value) in [
         (10, "code", 19, 255),
@@ -252,7 +250,7 @@ fn pyc_get_code_matches_extended_operands_tables_locations_and_file_spans() {
         let oracle: Value =
             serde_json::from_slice(&fs::read(corpus(&format!("{label}.oracle.json"))).unwrap())
                 .unwrap();
-        let hash = format!("{:x}", Sha256::digest(&input));
+        let _hash = format!("{:x}", Sha256::digest(&input));
         let ids = code_ids(&path, &[]);
         for (index, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
             let output = fetch(&path, ids[index]["at"].as_str().unwrap(), &[]);
@@ -351,10 +349,7 @@ fn pyc_get_code_matches_extended_operands_tables_locations_and_file_spans() {
                 }
                 if expected["type"] == "code" {
                     let index = expected["index"].as_u64().unwrap() as usize;
-                    assert_eq!(
-                        value["code_id"],
-                        format!("rxd1:pyc:{hash}:{}", ids[index]["at"].as_str().unwrap())
-                    );
+                    assert_eq!(value["code_id"], ids[index]["at"]);
                 }
                 for range in [
                     ("definition_start", "definition_end"),

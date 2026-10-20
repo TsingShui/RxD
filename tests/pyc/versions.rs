@@ -966,17 +966,21 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         let mut changed = data.clone();
         changed[8] ^= 1;
         fs::write(&path, &changed).unwrap();
-        // The short coordinate a row prints is source-agnostic; the full id still binds
-        // the original content hash.
+        // A coordinate names a code object in the input being queried; the header carries
+        // identity, so a rewritten file still resolves the same index.
         success(&command("get-code", &path, &["--at", id]));
-        let stale = format!("rxd1:pyc:{:x}:code:0", Sha256::digest(&data));
+        let stale = id.to_owned();
         failure(
-            command("get-code", &path, &["--at", &stale]),
-            1,
-            "SOURCE_MISMATCH",
+            command("get-code", &path, &["--at", &format!("{stale}:extra")]),
+            2,
+            "INVALID_QUERY",
         );
         failure(
-            command("xref", &path, &["--name", "arg", "--within", &stale]),
+            command(
+                "xref",
+                &path,
+                &["--name", "arg", "--within", &format!("{stale}:extra")],
+            ),
             1,
             "SOURCE_MISMATCH",
         );

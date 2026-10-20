@@ -333,7 +333,7 @@ pub fn execute(command: Command) -> Result<()> {
                             &["basic_block"],
                             Expect::Content(&navigation.carrier.source_id),
                         )
-                        .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))?;
+                        .map_err(super::classify)?;
                     navigation.block_json(&at, &mut perf)
                 }
                 Command::GetFunction(function) => {

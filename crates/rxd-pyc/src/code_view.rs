@@ -126,14 +126,14 @@ pub struct Evidence {
     pub exception_table_hex: String,
     pub exceptions: Vec<locations::Exception>,
 }
-fn value_id(a: &Analysis, definition: usize) -> String {
-    format!("rxd1:pyc:{}:value:{definition}", a.source_id)
+fn value_id(_a: &Analysis, definition: usize) -> String {
+    format!("value:{definition}")
 }
-fn table_id(a: &Analysis, owner: usize, table: &str, index: usize) -> String {
+fn table_id(_a: &Analysis, owner: usize, table: &str, index: usize) -> String {
     if table == "consts" {
-        format!("rxd1:pyc:{}:const:{owner}:{index}", a.source_id)
+        format!("const:{owner}:{index}")
     } else {
-        format!("rxd1:pyc:{}:table:{owner}:{table}:{index}", a.source_id)
+        format!("table:{owner}:{table}:{index}")
     }
 }
 fn target(a: &Analysis, owner: usize, table: &'static str, index: usize) -> Result<Target> {

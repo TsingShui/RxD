@@ -370,12 +370,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             "INVALID_QUERY",
         );
     }
-    let foreign = format!("rxd1:pyc:{}:{id}", "a".repeat(64));
-    failure(
-        refs(&path, "value", &["--within", &foreign]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+
     let (_dir, changed) = fixture(
         fs::read(&path)
             .unwrap()
@@ -386,15 +381,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         "changed.pyc",
     );
     success(&refs(&changed, "value", &["--within", id]));
-    let original = format!(
-        "rxd1:pyc:{:x}:{id}",
-        Sha256::digest(fs::read(&path).unwrap())
-    );
-    failure(
-        refs(&changed, "value", &["--within", &original]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+
     let raw = corpus("graph.marshal");
     let raw_id = code_rows(&raw, &["--version", "3.12"])[4]["at"]
         .as_str()

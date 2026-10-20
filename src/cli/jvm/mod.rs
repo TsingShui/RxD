@@ -424,10 +424,8 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
                     &["method", "field", "type"],
                     Expect::Content(&input.source_id),
                 )?)
-                .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?,
-            None => target
-                .resolve()
-                .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?,
+                .map_err(super::classify)?,
+            None => target.resolve().map_err(super::classify)?,
         };
         let mut names = Normalized { owned: Vec::new() };
         let query = ref_query(&target, &mut names);
