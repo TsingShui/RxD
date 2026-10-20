@@ -55,17 +55,46 @@ pub fn resolve_id(analysis: &mut Analysis, id: &str) -> Result<SelectedConstant>
         value.parse().map_err(|_| invalid())
     }
     analysis.charge_work(id.len())?;
-    let mut parts = id.split(':');
-    if parts.next() != Some("rxd1")
-        || parts.next() != Some("pyc")
-        || parts.next() != Some(analysis.source_id.as_str())
-        || parts.next() != Some("const")
-    {
-        return Err(invalid());
+    // A row prints the copy-only `const:<owner>:<path>`; identity lives in the header, so
+    // the short form is expanded here instead of making a caller reassemble the hash.
+    let (digest, owner, encoded_path) = match id.strip_prefix("const:") {
+        Some(rest) => {
+            let (owner, encoded_path) = rest.split_once(':').ok_or_else(invalid)?;
+            if encoded_path.contains(':') {
+                return Err(invalid());
+            }
+            (None, owner, encoded_path)
+        }
+        None => {
+            let mut parts = id.split(':');
+            if parts.next() != Some("rxd1") || parts.next() != Some("pyc") {
+                return Err(invalid());
+            }
+            let digest = parts.next().unwrap_or("");
+            if digest.len() != 64
+                || !digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                || parts.next() != Some("const")
+            {
+                return Err(invalid());
+            }
+            let owner = parts.next().unwrap_or("");
+            let encoded_path = parts.next().ok_or_else(invalid)?;
+            if parts.next().is_some() {
+                return Err(invalid());
+            }
+            (Some(digest), owner, encoded_path)
+        }
+    };
+    if digest.is_some_and(|digest| digest != analysis.source_id.as_str()) {
+        return Err(Error::new(
+            "SOURCE_MISMATCH",
+            "constant ID belongs to different source content",
+        ));
     }
-    let owner = index(parts.next().unwrap_or(""))?;
-    let encoded_path = parts.next().ok_or_else(invalid)?;
-    if parts.next().is_some() || owner >= analysis.codes.len() {
+    let owner = index(owner)?;
+    if owner >= analysis.codes.len() {
         return Err(invalid());
     }
     let mut definition = analysis
@@ -156,21 +185,25 @@ fn visit(
         let payload = analysis.evidence.occurrences[definition].payload.unwrap();
         // Strict UTF-8 validation and raw matching read the fixed literal payload.
         analysis.charge_work(payload.end - payload.start)?;
-        let needle = match query {
-            Query::All => None,
+        let matched = match query {
+            Query::All => true,
             Query::Text(text) => {
-                if kind == "str"
-                    && std::str::from_utf8(analysis.payload(definition).unwrap()).is_err()
-                {
-                    return Ok(());
+                if kind == "str" {
+                    let Ok(value) = std::str::from_utf8(analysis.payload(definition).unwrap())
+                        .map(str::to_owned)
+                    else {
+                        return Ok(());
+                    };
+                    // Listing filters are case-insensitive; charge the folded comparisons.
+                    analysis.charge_work(value.len().saturating_add(text.len()))?;
+                    value.to_lowercase().contains(&text.to_lowercase())
+                } else {
+                    contains(analysis, payload, text.as_bytes())?
                 }
-                Some(text.as_bytes())
             }
-            Query::Hex(bytes) => Some(*bytes),
+            Query::Hex(bytes) => contains(analysis, payload, bytes)?,
         };
-        if let Some(needle) = needle
-            && !contains(analysis, payload, needle)?
-        {
+        if !matched {
             return Ok(());
         }
         if literals.len() >= analysis.limits.records {

@@ -127,7 +127,7 @@ fn pyc_enforces_exact_raw_and_json_output_budgets_with_perf_stages() {
     let text = "世界\u{1}".repeat(50);
     constant.extend_from_slice(&(text.len() as u32).to_le_bytes());
     constant.extend_from_slice(text.as_bytes());
-    let (dir, path) = fixture(
+    let (_dir, path) = fixture(
         raw_module(&[151, 0, 100, 1, 90, 0, 121, 0], &constant),
         "unicode.marshal",
     );
@@ -142,22 +142,16 @@ fn pyc_enforces_exact_raw_and_json_output_budgets_with_perf_stages() {
         row["detail"]["source"].as_str().unwrap().as_bytes(),
         raw.stdout
     );
-    for (args, length) in [
-        (vec!["--version", "3.12"], raw.stdout.len()),
-        (vec!["--version", "3.12", "--json"], json.stdout.len()),
-    ] {
-        let exact = length.to_string();
-        let less = (length - 1).to_string();
-        let mut ok = args.clone();
-        ok.extend(["--max-output-bytes", &exact]);
-        success(&run(&path, &ok));
-        let dest = dir.path().join("keep.py");
-        fs::write(&dest, b"keep").unwrap();
-        let mut fail = args;
-        fail.extend(["--max-output-bytes", &less, "-o", dest.to_str().unwrap()]);
-        failure(run(&path, &fail), 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(dest).unwrap(), b"keep");
-    }
+    // The shared table is the only ceiling; the library enforces exact raw output.
+    let mut limits = shared_decompile_limits();
+    limits.output_bytes = raw.stdout.len();
+    let (_, result) = decompile_library(&path, Some((3, 12)), limits);
+    assert_eq!(result.unwrap().source.as_bytes(), raw.stdout);
+    let mut limits = shared_decompile_limits();
+    limits.output_bytes = raw.stdout.len() - 1;
+    let (_, result) = decompile_library(&path, Some((3, 12)), limits);
+    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+    assert_no_budget_flags(&path, "decompile");
     let records: Vec<Value> = String::from_utf8(json.stderr)
         .unwrap()
         .lines()
@@ -450,50 +444,42 @@ fn pyc_requires_exactly_one_complete_code_root_in_header_and_raw_modes() {
 fn pyc_decompile_work_budget_is_exact_shared_and_reported() {
     let bytes = raw_module(&[151, 0, 100, 1, 90, 0, 121, 0], b"i\x2a\0\0\0");
     let (dir, path) = fixture(&bytes, "work.marshal");
+    let budget = rxd_core::Budget::default();
+    let base = shared_decompile_limits();
+    let (perf, result) = decompile_library(&path, Some((3, 12)), base);
+    let result = result.unwrap();
+    assert!(result.complete);
+    let perf = perf_value(&perf);
+    let work = perf["counters"]["work"].as_u64().unwrap();
+    assert!(work > 1);
+    assert_eq!(perf["resource_limits"]["work"], Value::from(budget.work));
+    assert_eq!(
+        perf["resource_limits"]["ast_depth"],
+        Value::from(rxd_core::Limits::default().ast_depth)
+    );
+    assert_no_budget_flags(&path, "decompile");
+    let mut exact = base;
+    exact.work = work as usize;
+    let (_, result) = decompile_library(&path, Some((3, 12)), exact);
+    assert!(result.is_ok());
+    let mut less = exact;
+    less.work = work as usize - 1;
+    let (perf, result) = decompile_library(&path, Some((3, 12)), less);
+    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+    let perf = perf_value(&perf);
+    assert!(perf["counters"]["work"].as_u64().unwrap() < work);
+    assert!(perf["stages_ns"]["generate"].as_u64().unwrap() > 0);
+    // A rejected input never replaces an existing output file.
     let dest = dir.path().join("keep.py");
     fs::write(&dest, b"keep").unwrap();
-    let output = run(&path, &["--version", "3.12", "--json", "--perf"]);
-    success(&output);
-    let analysis = perf_reports(&output)
-        .into_iter()
-        .find(|r| r["scope"] == "analysis")
-        .unwrap();
-    let work = analysis["counters"]["work"].as_u64().unwrap();
-    assert!(work > 1);
-    assert_eq!(analysis["resource_limits"]["max_work"], 16_777_216);
-    assert_eq!(analysis["resource_limits"]["max_ast_depth"], 128);
-    for json in [false, true] {
-        let below = (work - 1).to_string();
-        let mut args = vec![
-            "--version",
-            "3.12",
-            "--max-work",
-            &below,
-            "--perf",
-            "-o",
-            dest.to_str().unwrap(),
-        ];
-        if json {
-            args.push("--json");
-        }
-        let failed = run(&path, &args);
-        let analysis = perf_reports(&failed)
-            .into_iter()
-            .find(|r| r["scope"] == "analysis")
-            .unwrap();
-        assert_eq!(analysis["error_code"], "RESOURCE_LIMIT");
-        assert!(analysis["counters"]["work"].as_u64().unwrap() < work);
-        assert!(analysis["stages_ns"]["generate"].as_u64().unwrap() > 0);
-        failure(failed, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-    }
-    let exact = work.to_string();
-    success(&run(
-        &path,
-        &["--version", "3.12", "--json", "--max-work", &exact],
-    ));
-    failure(run(&path, &["--version", "3.12", "--max-work", "0"]), 2, "");
+    let (_bad_dir, bad) = fixture(b"not a pyc", "bad.pyc");
+    failure(
+        run(&bad, &["-o", dest.to_str().unwrap()]),
+        1,
+        "INVALID_INPUT",
+    );
+    assert_eq!(fs::read(&dest).unwrap(), b"keep");
+    assert_eq!(fs::read(&path).unwrap(), bytes);
 }
 
 #[test]
@@ -502,50 +488,32 @@ fn pyc_bounds_instruction_built_depth_with_shallow_marshal() {
     code.extend_from_slice(&[11, 0].repeat(7));
     code.extend_from_slice(&[90, 0, 121, 0]);
     let bytes = raw_module(&code, b"i\x2a\0\0\0");
-    let (dir, path) = fixture(&bytes, "depth.marshal");
-    success(&run(&path, &["--version", "3.12", "--max-ast-depth", "9"]));
-    let dest = dir.path().join("keep.py");
-    fs::write(&dest, b"keep").unwrap();
-    for json in [false, true] {
-        let mut args = vec![
-            "--version",
-            "3.12",
-            "--max-ast-depth",
-            "8",
-            "--perf",
-            "-o",
-            dest.to_str().unwrap(),
-        ];
-        if json {
-            args.push("--json");
-        }
-        let output = run(&path, &args);
-        let analysis = perf_reports(&output)
-            .into_iter()
-            .find(|r| r["scope"] == "analysis")
-            .unwrap();
-        assert_eq!(analysis["resource_limits"]["max_ast_depth"], 8);
-        assert_eq!(analysis["counters"]["ast_depth"], 8);
-        assert!(!String::from_utf8_lossy(&output.stderr).contains("panicked"));
-        failure(output, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-    }
-    for invalid in ["0", "129"] {
-        failure(
-            run(&path, &["--version", "3.12", "--max-ast-depth", invalid]),
-            2,
-            "",
-        );
-    }
+    let (_dir, path) = fixture(&bytes, "depth.marshal");
+    assert_no_budget_flags(&path, "decompile");
+    let mut exact = shared_decompile_limits();
+    exact.ast_depth = 9;
+    assert!(decompile_library(&path, Some((3, 12)), exact).1.is_ok());
+    let mut shallow = exact;
+    shallow.ast_depth = 8;
+    let (perf, result) = decompile_library(&path, Some((3, 12)), shallow);
+    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+    let perf = perf_value(&perf);
+    assert_eq!(perf["resource_limits"]["ast_depth"], 8);
+    assert_eq!(perf["counters"]["ast_depth"], 8);
+    // Deep instruction-built nesting is still bounded even though marshal stays shallow.
     let mut deep = vec![151, 0, 100, 1];
     deep.extend_from_slice(&[11, 0].repeat(160));
     deep.extend_from_slice(&[90, 0, 121, 0]);
     fs::write(&path, raw_module(&deep, b"N")).unwrap();
-    failure(
-        run(&path, &["--version", "3.12", "--json"]),
-        1,
-        "RESOURCE_LIMIT",
+    let mut bounded = shared_decompile_limits();
+    bounded.ast_depth = 128;
+    assert_eq!(
+        decompile_library(&path, Some((3, 12)), bounded)
+            .1
+            .err()
+            .unwrap()
+            .code,
+        "RESOURCE_LIMIT"
     );
 }
 
@@ -565,7 +533,7 @@ fn pyc_shares_work_across_repeated_nested_code_references() {
         );
         raw
     };
-    let (dir, path) = fixture(shared(once), "shared.marshal");
+    let (_dir, path) = fixture(shared(once), "shared.marshal");
     let output = run(&path, &["--version", "3.12", "--json", "--perf"]);
     success(&output);
     let once_work = perf_reports(&output)
@@ -573,8 +541,7 @@ fn pyc_shares_work_across_repeated_nested_code_references() {
         .find(|r| r["scope"] == "analysis")
         .unwrap()["counters"]["work"]
         .as_u64()
-        .unwrap()
-        .to_string();
+        .unwrap() as usize;
     fs::write(&path, shared(twice)).unwrap();
     let output = run(&path, &["--version", "3.12", "--json", "--perf"]);
     success(&output);
@@ -588,23 +555,17 @@ fn pyc_shares_work_across_repeated_nested_code_references() {
             .count(),
         2
     );
-    let dest = dir.path().join("keep.py");
-    fs::write(&dest, b"keep").unwrap();
-    for json in [false, true] {
-        let mut args = vec![
-            "--version",
-            "3.12",
-            "--max-work",
-            &once_work,
-            "-o",
-            dest.to_str().unwrap(),
-        ];
-        if json {
-            args.push("--json");
-        }
-        failure(run(&path, &args), 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-    }
+    assert_no_budget_flags(&path, "decompile");
+    let mut limits = shared_decompile_limits();
+    limits.work = once_work;
+    assert_eq!(
+        decompile_library(&path, Some((3, 12)), limits)
+            .1
+            .err()
+            .unwrap()
+            .code,
+        "RESOURCE_LIMIT"
+    );
 }
 
 #[test]
@@ -617,39 +578,20 @@ fn pyc_rejects_operand_driven_expansion_before_allocation() {
         ],
         b"N",
     );
-    let (dir, path) = fixture(&bytes, "expand.marshal");
-    let dest = dir.path().join("keep.py");
-    fs::write(&dest, b"keep").unwrap();
-    for json in [false, true] {
-        let mut args = vec![
-            "--version",
-            "3.12",
-            "--max-work",
-            "256",
-            "--perf",
-            "-o",
-            dest.to_str().unwrap(),
-        ];
-        if json {
-            args.push("--json");
-        }
-        let output = run(&path, &args);
-        let analysis = perf_reports(&output)
-            .into_iter()
-            .find(|r| r["scope"] == "analysis")
-            .unwrap();
-        assert_eq!(analysis["error_code"], "RESOURCE_LIMIT");
-        assert!(analysis["counters"]["work"].as_u64().unwrap() <= 256);
-        failure(output, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-    }
+    let (_dir, path) = fixture(&bytes, "expand.marshal");
+    assert_no_budget_flags(&path, "decompile");
+    let mut limits = shared_decompile_limits();
+    limits.work = 256;
+    let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
+    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+    let perf = perf_value(&perf);
+    assert!(perf["counters"]["work"].as_u64().unwrap() <= 256);
+    assert_eq!(fs::read(&path).unwrap(), bytes);
     let small = raw_module(&[151, 0, 100, 1, 102, 1, 90, 0, 121, 0], b"N");
     fs::write(&path, small).unwrap();
-    success(&run(
-        &path,
-        &["--version", "3.12", "--json", "--max-work", "4096"],
-    ));
+    let mut ok = shared_decompile_limits();
+    ok.work = 4096;
+    assert!(decompile_library(&path, Some((3, 12)), ok).1.is_ok());
 }
 
 #[test]
@@ -665,37 +607,22 @@ fn pyc_charges_borrowed_name_copies_before_generation() {
     names.extend_from_slice(&[b'a'; 16_384]);
     names.extend_from_slice(b"s\x01\0\0\0\x80");
     bytes.splice(start..start + marker.len(), names);
-    let (dir, path) = fixture(&bytes, "name-copy.marshal");
-    let dest = dir.path().join("keep.py");
-    fs::write(&dest, b"keep").unwrap();
-    for json in [false, true] {
-        let mut args = vec![
-            "--version",
-            "3.12",
-            "--max-work",
-            "8192",
-            "--perf",
-            "-o",
-            dest.to_str().unwrap(),
-        ];
-        if json {
-            args.push("--json");
-        }
-        let output = run(&path, &args);
-        let analysis = perf_reports(&output)
-            .into_iter()
-            .find(|r| r["scope"] == "analysis")
-            .unwrap();
-        assert_eq!(analysis["error_code"], "RESOURCE_LIMIT");
-        assert_eq!(analysis["stages_ns"]["generate"].as_u64().unwrap_or(0), 0);
-        failure(output, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-    }
-    success(&run(
-        &path,
-        &["--version", "3.12", "--json", "--max-work", "200000"],
-    ));
+    let (_dir, path) = fixture(&bytes, "name-copy.marshal");
+    assert_no_budget_flags(&path, "decompile");
+    let mut limits = shared_decompile_limits();
+    limits.work = 8_192;
+    let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
+    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+    assert_eq!(
+        perf_value(&perf)["stages_ns"]["generate"]
+            .as_u64()
+            .unwrap_or(0),
+        0
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    let mut ok = shared_decompile_limits();
+    ok.work = 200_000;
+    assert!(decompile_library(&path, Some((3, 12)), ok).1.is_ok());
 }
 
 #[test]
@@ -713,37 +640,22 @@ fn pyc_charges_ast_signature_copies_before_generation() {
     names.extend_from_slice(b"s\x01\0\0\0\x20");
     nested.splice(start..start + marker.len(), names);
     let bytes = raw_module(&[151, 0, 100, 1, 132, 0, 90, 0, 121, 0], &nested);
-    let (dir, path) = fixture(&bytes, "signature-copy.marshal");
-    let dest = dir.path().join("keep.py");
-    fs::write(&dest, b"keep").unwrap();
-    for json in [false, true] {
-        let mut args = vec![
-            "--version",
-            "3.12",
-            "--max-work",
-            "50000",
-            "--perf",
-            "-o",
-            dest.to_str().unwrap(),
-        ];
-        if json {
-            args.push("--json");
-        }
-        let output = run(&path, &args);
-        let analysis = perf_reports(&output)
-            .into_iter()
-            .find(|r| r["scope"] == "analysis")
-            .unwrap();
-        assert_eq!(analysis["error_code"], "RESOURCE_LIMIT");
-        assert_eq!(analysis["stages_ns"]["generate"].as_u64().unwrap_or(0), 0);
-        failure(output, 1, "RESOURCE_LIMIT");
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-    }
-    success(&run(
-        &path,
-        &["--version", "3.12", "--json", "--max-work", "1000000"],
-    ));
+    let (_dir, path) = fixture(&bytes, "signature-copy.marshal");
+    assert_no_budget_flags(&path, "decompile");
+    let mut limits = shared_decompile_limits();
+    limits.work = 50_000;
+    let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
+    assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+    assert_eq!(
+        perf_value(&perf)["stages_ns"]["generate"]
+            .as_u64()
+            .unwrap_or(0),
+        0
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    let mut ok = shared_decompile_limits();
+    ok.work = 1_000_000;
+    assert!(decompile_library(&path, Some((3, 12)), ok).1.is_ok());
 }
 
 #[test]
@@ -758,39 +670,21 @@ fn pyc_charges_reused_format_spec_copies_before_recovery_allocation() {
         }
         code.extend_from_slice(&[102, 16, 90, 0, 121, 0]);
         let bytes = raw_module(&code, &constant);
-        let (dir, path) = fixture(&bytes, "reused-format-spec.marshal");
-        let destination = dir.path().join("keep.py");
-        fs::write(&destination, b"keep").unwrap();
-        for json in [false, true] {
-            let mut args = vec![
-                "--version",
-                "3.12",
-                "--max-work",
-                "100000",
-                "--perf",
-                "-o",
-                destination.to_str().unwrap(),
-            ];
-            if json {
-                args.push("--json");
-            }
-            let output = run(&path, &args);
-            let analysis = perf_reports(&output)
-                .into_iter()
-                .find(|r| r["scope"] == "analysis")
-                .unwrap();
-            assert_eq!(analysis["error_code"], "RESOURCE_LIMIT");
-            assert!(analysis["stages_ns"]["decompile"].as_u64().unwrap() > 0);
-            assert_eq!(
-                analysis["stages_ns"]["generate"].as_u64().unwrap_or(0),
-                0,
-                "format-spec bytes must be charged before recovery copies them"
-            );
-            assert!(analysis["counters"]["work"].as_u64().unwrap() < 100000);
-            failure(output, 1, "RESOURCE_LIMIT");
-            assert_eq!(fs::read(&destination).unwrap(), b"keep");
-            assert!(fs::read(&path).unwrap() == bytes);
-        }
+        let (_dir, path) = fixture(&bytes, "reused-format-spec.marshal");
+        assert_no_budget_flags(&path, "decompile");
+        let mut limits = shared_decompile_limits();
+        limits.work = 100_000;
+        let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
+        assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
+        let perf = perf_value(&perf);
+        assert!(perf["stages_ns"]["decompile"].as_u64().unwrap() > 0);
+        assert_eq!(
+            perf["stages_ns"]["generate"].as_u64().unwrap_or(0),
+            0,
+            "format-spec bytes must be charged before recovery copies them"
+        );
+        assert!(perf["counters"]["work"].as_u64().unwrap() < 100_000);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
     }
     let mut constant = b"u".to_vec();
     constant.extend_from_slice(&4_u32.to_le_bytes());
@@ -799,17 +693,9 @@ fn pyc_charges_reused_format_spec_copies_before_recovery_allocation() {
         raw_module(&[151, 0, 100, 0, 100, 1, 155, 4, 90, 0, 121, 0], &constant),
         "small-format-spec.marshal",
     );
-    let output = run(
-        &path,
-        &["--version", "3.12", "--json", "--max-work", "8192"],
-    );
-    success(&output);
-    let row: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(row["detail"]["complete"], true);
-    assert!(
-        row["detail"]["source"]
-            .as_str()
-            .unwrap()
-            .contains("{None:04.2}")
-    );
+    let mut limits = shared_decompile_limits();
+    limits.work = 8_192;
+    let result = decompile_library(&path, Some((3, 12)), limits).1.unwrap();
+    assert!(result.complete);
+    assert!(result.source.contains("{None:04.2}"));
 }

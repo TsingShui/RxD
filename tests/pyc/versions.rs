@@ -56,10 +56,9 @@ fn pyc_final_versions_enumerate_the_independent_graph_in_every_header_mode() {
             } else {
                 Vec::new()
             };
-            let output = command("outline", &path, &args);
+            let output = command("codes", &path, &args);
             let all = rows(&output);
             let codes = &all[1..all.len() - 1];
-            let hash = format!("{:x}", Sha256::digest(fs::read(&path).unwrap()));
             assert_eq!(codes.len(), expected["codes"].as_array().unwrap().len());
             assert_eq!(all.last().unwrap()["complete"], true);
             for (index, (actual, code)) in codes
@@ -67,7 +66,7 @@ fn pyc_final_versions_enumerate_the_independent_graph_in_every_header_mode() {
                 .zip(expected["codes"].as_array().unwrap())
                 .enumerate()
             {
-                assert_eq!(actual["id"], format!("rxd1:pyc:{hash}:code:{index}"));
+                assert_eq!(actual["at"], format!("code:{index}"));
                 assert_eq!(actual["detail"]["name"], code["name"]);
                 assert_js_keys(
                     &actual["detail"]["fields"],
@@ -137,7 +136,7 @@ fn pyc_final_versions_enumerate_the_independent_graph_in_every_header_mode() {
 
 fn code_rows(version: &str, label: &str) -> Vec<Value> {
     rows(&command(
-        "outline",
+        "codes",
         &corpus(version, &format!("{label}.timestamp.pyc")),
         &[],
     ))
@@ -145,8 +144,8 @@ fn code_rows(version: &str, label: &str) -> Vec<Value> {
     .filter(|r| r["record"] == "code")
     .collect()
 }
-fn view(path: &Path, id: &str) -> Value {
-    let output = command("get-code", path, &[id]);
+fn view(path: &Path, at: &str) -> Value {
+    let output = command("get-code", path, &["--at", at]);
     success(&output);
     serde_json::from_slice(&output.stdout).unwrap()
 }
@@ -162,7 +161,7 @@ fn pyc_final_versions_fetch_original_operands_tables_lines_exceptions_and_cache_
                 .zip(expected["codes"].as_array().unwrap())
                 .enumerate()
             {
-                let actual = view(&path, row["id"].as_str().unwrap());
+                let actual = view(&path, row["at"].as_str().unwrap());
                 let d = &actual["detail"];
                 assert_eq!(
                     d["bytecode_hex"], code["code_hex"],
@@ -408,8 +407,8 @@ fn pyc_final_versions_trace_every_explicit_name_and_packed_target_to_fetch() {
                     assert_eq!(hit["detail"]["operation"], operation);
                     let fetched = fetched
                         .entry(owner)
-                        .or_insert_with(|| view(&path, hit["context_id"].as_str().unwrap()));
-                    assert_eq!(fetched["id"], hit["context_id"]);
+                        .or_insert_with(|| view(&path, hit["context_at"].as_str().unwrap()));
+                    assert_eq!(fetched["at"], hit["context_at"]);
                     let unit = fetched["detail"]["instructions"]
                         .as_array()
                         .unwrap()
@@ -472,7 +471,7 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
             assert!(named.last().unwrap()["records"].as_u64().unwrap() > 0);
             let hit = &named[1];
             let owner = hit["detail"]["code_index"].as_u64().unwrap() as usize;
-            let mut fetch_args = vec![hit["context_id"].as_str().unwrap()];
+            let mut fetch_args = vec!["--at", hit["context_at"].as_str().unwrap()];
             fetch_args.extend(&base_args);
             let output = command("get-code", &path, &fetch_args);
             success(&output);
@@ -516,7 +515,7 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                 }
             }
             for literal in &literals {
-                assert!(identities.insert(literal["id"].as_str().unwrap()));
+                assert!(identities.insert(literal["at"].as_str().unwrap()));
                 let d = &literal["detail"];
                 let start = d["payload_start"].as_u64().unwrap() as usize;
                 let end = d["payload_end"].as_u64().unwrap() as usize;
@@ -537,11 +536,9 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                     .map(|i| i.as_u64().unwrap().to_string())
                     .collect::<Vec<_>>()
                     .join(".");
-                assert!(
-                    literal["id"]
-                        .as_str()
-                        .unwrap()
-                        .ends_with(&format!(":const:{}:{path_string}", d["code_index"]))
+                assert_eq!(
+                    literal["at"],
+                    format!("const:{}:{path_string}", d["code_index"])
                 );
                 // Every timestamp occurrence exercises XREF, including aliases,
                 // containing tuples and an unreferenced singleton frozenset. Other
@@ -550,9 +547,9 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                     continue;
                 }
                 let mut args = base_args.clone();
-                args.extend(["--const-id", literal["id"].as_str().unwrap()]);
+                args.extend(["--const-id", literal["at"].as_str().unwrap()]);
                 let refs = rows(&command("xref", &path, &args));
-                assert_eq!(refs[0]["query"]["const_id"], literal["id"]);
+                assert_eq!(refs[0]["query"]["const_id"], literal["at"]);
                 assert_eq!(refs.last().unwrap()["complete"], true);
                 let owner = d["code_index"].as_u64().unwrap() as usize;
                 let wanted: Vec<_> = expected["codes"][owner]["dis_instructions"]
@@ -569,10 +566,10 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                 let hits: Vec<_> = refs.iter().filter(|r| r["record"] == "reference").collect();
                 assert_eq!(hits.len(), wanted.len());
                 for (hit, ins) in hits.iter().zip(wanted) {
-                    assert_eq!(hit["context_id"], literal["context_id"]);
+                    assert_eq!(hit["context_at"], literal["context_at"]);
                     assert_eq!(hit["detail"]["offset"], ins["offset"]);
                     assert_eq!(hit["detail"]["constant_path"], d["constant_path"]);
-                    let mut args = vec![hit["context_id"].as_str().unwrap()];
+                    let mut args = vec!["--at", hit["context_at"].as_str().unwrap()];
                     args.extend(&base_args);
                     let output = command("get-code", &path, &args);
                     success(&output);
@@ -690,7 +687,7 @@ fn pyc_final_versions_use_original_frozenset_child_order_for_occurrence_ids() {
                     "--version",
                     minor,
                     "--const-id",
-                    literal["id"].as_str().unwrap(),
+                    literal["at"].as_str().unwrap(),
                 ],
             ));
             assert_eq!(refs.last().unwrap()["records"], 1);
@@ -702,7 +699,12 @@ fn pyc_final_versions_use_original_frozenset_child_order_for_occurrence_ids() {
             success(&command(
                 "get-code",
                 &path,
-                &[refs[1]["context_id"].as_str().unwrap(), "--version", minor],
+                &[
+                    "--at",
+                    refs[1]["context_at"].as_str().unwrap(),
+                    "--version",
+                    minor,
+                ],
             ));
         }
     }
@@ -835,13 +837,14 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
             let data = raw_code(number, &body, &consts, &names, &lines, &exceptions);
             fs::write(&path, &data).unwrap();
             fs::write(&dest, b"keep").unwrap();
-            let codes = rows(&command("outline", &path, &["--version", minor]));
+            let codes = rows(&command("codes", &path, &["--version", minor]));
             failure(
                 command(
                     "get-code",
                     &path,
                     &[
-                        codes[1]["id"].as_str().unwrap(),
+                        "--at",
+                        codes[1]["at"].as_str().unwrap(),
                         "--version",
                         minor,
                         "-o",
@@ -885,11 +888,11 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
             .unwrap() as u8;
         let data = raw_code(number, &[unknown, 255], b")\0", b")\0", &[], &[]);
         fs::write(&path, &data).unwrap();
-        let codes = rows(&command("outline", &path, &["--version", minor]));
+        let codes = rows(&command("codes", &path, &["--version", minor]));
         let output = command(
             "get-code",
             &path,
-            &[codes[1]["id"].as_str().unwrap(), "--version", minor],
+            &["--at", codes[1]["at"].as_str().unwrap(), "--version", minor],
         );
         success(&output);
         let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -914,7 +917,7 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         let original = corpus(version, "graph.timestamp.pyc");
         let data = fs::read(&original).unwrap();
         let codes = code_rows(version, "graph");
-        let id = codes[0]["id"].as_str().unwrap();
+        let id = codes[0]["at"].as_str().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("input.pyc");
         let dest = dir.path().join("keep.json");
@@ -942,10 +945,10 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
             fs::write(&path, &variant).unwrap();
             fs::write(&dest, b"keep").unwrap();
             for (cmd, args) in [
-                ("outline", vec![]),
+                ("codes", vec![]),
                 ("strings", vec![]),
                 ("xref", vec!["--name", "none"]),
-                ("get-code", vec![id]),
+                ("get-code", vec!["--at", id]),
             ] {
                 let mut args = args;
                 args.extend(["-o", dest.to_str().unwrap()]);
@@ -957,7 +960,7 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         for unsupported in ["2.7", "3.7", "3.14"] {
             failure(
                 command(
-                    "outline",
+                    "codes",
                     &corpus(version, "graph.marshal"),
                     &["--version", unsupported],
                 ),
@@ -968,11 +971,19 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         let mut changed = data.clone();
         changed[8] ^= 1;
         fs::write(&path, &changed).unwrap();
-        failure(command("get-code", &path, &[id]), 2, "INVALID_QUERY");
+        // The short coordinate a row prints is source-agnostic; the full id still binds
+        // the original content hash.
+        success(&command("get-code", &path, &["--at", id]));
+        let stale = format!("rxd1:pyc:{:x}:code:0", Sha256::digest(&data));
         failure(
-            command("xref", &path, &["--name", "arg", "--within", id]),
-            2,
-            "INVALID_QUERY",
+            command("get-code", &path, &["--at", &stale]),
+            1,
+            "SOURCE_MISMATCH",
+        );
+        failure(
+            command("xref", &path, &["--name", "arg", "--within", &stale]),
+            1,
+            "SOURCE_MISMATCH",
         );
         let zero = rows(&command(
             "xref",
@@ -984,12 +995,12 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         let zero = rows(&command(
             "strings",
             &original,
-            &["--contains", "no-literal-matches"],
+            &["--filter", "no-literal-matches"],
         ));
         assert_eq!(zero.last().unwrap()["records"], 0);
         assert_eq!(zero.last().unwrap()["complete"], true);
         let raw = rows(&command(
-            "outline",
+            "codes",
             &corpus(version, "graph.marshal"),
             &["--version", minor],
         ));
@@ -1006,83 +1017,144 @@ fn analysis_perf(output: &Output) -> Value {
 }
 #[test]
 fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomically() {
+    let budget = rxd_core::Budget::default();
+    let probe = corpus(VERSIONS[0].0, "graph.timestamp.pyc");
+    for cmd in ["codes", "strings", "xref", "get-code"] {
+        assert_no_budget_flags(&probe, cmd);
+    }
     for &(version, _) in VERSIONS {
         let path = corpus(version, "graph.timestamp.pyc");
         let data = fs::read(&path).unwrap();
         let codes = code_rows(version, "graph");
-        let id = codes[0]["id"].as_str().unwrap();
+        let at = codes[0]["at"].as_str().unwrap();
+        let units = codes[0]["detail"]["bytecode_bytes"].as_u64().unwrap() as usize / 2;
+        let max_units = codes
+            .iter()
+            .map(|c| c["detail"]["bytecode_bytes"].as_u64().unwrap() as usize / 2)
+            .max()
+            .unwrap();
+        let mut base = shared_static_limits();
+        base.input_bytes = data.len();
+        let work_of = |perf: &Value| perf["counters"]["work"].as_u64().unwrap() as usize;
+
+        // codes
+        let (perf, selected) = codes_library(&path, None, None, None, None, base);
+        assert!(selected.is_ok(), "{version}/codes");
+        let work = work_of(&perf_value(&perf));
+        let mut less = base;
+        less.work = work - 1;
+        assert_eq!(
+            codes_library(&path, None, None, None, None, less)
+                .1
+                .err()
+                .unwrap()
+                .code,
+            "RESOURCE_LIMIT",
+            "{version}/codes"
+        );
+
+        // strings
+        let (perf, literals) = strings_library(&path, None, None, None, base);
+        assert!(literals.is_ok(), "{version}/strings");
+        let work = work_of(&perf_value(&perf));
+        let mut less = base;
+        less.work = work - 1;
+        assert_eq!(
+            strings_library(&path, None, None, None, less)
+                .1
+                .err()
+                .unwrap()
+                .code,
+            "RESOURCE_LIMIT",
+            "{version}/strings"
+        );
+
+        // xref, including the per-code instruction ceiling
+        let (perf, scan) = xref_name_library(&path, None, "arg", None, base, max_units);
+        assert!(scan.is_ok(), "{version}/xref");
+        let work = work_of(&perf_value(&perf));
+        let mut less = base;
+        less.work = work - 1;
+        assert_eq!(
+            xref_name_library(&path, None, "arg", None, less, max_units)
+                .1
+                .err()
+                .unwrap()
+                .code,
+            "RESOURCE_LIMIT",
+            "{version}/xref"
+        );
+        assert_eq!(
+            xref_name_library(&path, None, "arg", None, base, max_units - 1)
+                .1
+                .err()
+                .unwrap()
+                .code,
+            "RESOURCE_LIMIT",
+            "{version}/xref instructions"
+        );
+
+        // get-code
+        let (perf, evidence) = get_code_library(&path, None, at, base, units);
+        assert!(evidence.is_ok(), "{version}/get-code");
+        let work = work_of(&perf_value(&perf));
+        let mut less = base;
+        less.work = work - 1;
+        assert_eq!(
+            get_code_library(&path, None, at, less, units)
+                .1
+                .err()
+                .unwrap()
+                .code,
+            "RESOURCE_LIMIT",
+            "{version}/get-code"
+        );
+        assert_eq!(
+            get_code_library(&path, None, at, base, units - 1)
+                .1
+                .err()
+                .unwrap()
+                .code,
+            "RESOURCE_LIMIT",
+            "{version}/get-code instructions"
+        );
+
+        // The CLI still projects the one shared table for every command.
         for (cmd, args) in [
-            ("outline", vec![]),
+            ("codes", vec![]),
             ("strings", vec![]),
             ("xref", vec!["--name", "arg"]),
-            ("get-code", vec![id]),
+            ("get-code", vec!["--at", at]),
         ] {
-            let mut instrumented = args.clone();
+            let mut instrumented = args;
             instrumented.push("--perf");
             let output = command(cmd, &path, &instrumented);
             success(&output);
             let perf = analysis_perf(&output);
-            let mut limits = vec![
-                ("--max-input-bytes", data.len()),
-                ("--max-output-bytes", output.stdout.len()),
-                (
-                    "--max-entities",
-                    perf["counters"]["entities"].as_u64().unwrap() as usize,
-                ),
-                (
-                    "--max-work",
-                    perf["counters"]["work"].as_u64().unwrap() as usize,
-                ),
-            ];
-            if cmd != "get-code" {
-                limits.push((
-                    "--max-records",
-                    rows(&output).last().unwrap()["records"].as_u64().unwrap() as usize,
-                ));
-            }
-            if cmd == "get-code" {
-                limits.push((
-                    "--max-instructions",
-                    codes[0]["detail"]["bytecode_bytes"].as_u64().unwrap() as usize / 2,
-                ));
-            }
-            if cmd == "xref" {
-                limits.push((
-                    "--max-instructions",
-                    codes
-                        .iter()
-                        .map(|c| c["detail"]["bytecode_bytes"].as_u64().unwrap() as usize / 2)
-                        .max()
-                        .unwrap(),
-                ));
-            }
-            for (flag, amount) in limits {
-                let exact = amount.to_string();
-                let less = (amount - 1).to_string();
-                let mut valid = args.clone();
-                valid.extend([flag, &exact]);
-                let complete = command(cmd, &path, &valid);
-                success(&complete);
-                assert_eq!(complete.stdout, output.stdout, "{version}/{cmd}/{flag}");
-                let dir = tempfile::tempdir().unwrap();
-                let dest = dir.path().join("keep.json");
-                fs::write(&dest, b"keep").unwrap();
-                let mut limited = args.clone();
-                limited.extend([flag, &less, "--perf", "-o", dest.to_str().unwrap()]);
-                let failed = command(cmd, &path, &limited);
-                let counters = analysis_perf(&failed);
-                failure(failed, 1, "RESOURCE_LIMIT");
-                assert_eq!(fs::read(&dest).unwrap(), b"keep");
-                assert_eq!(fs::read(&path).unwrap(), data);
-                assert!(
-                    counters["counters"]["work"].is_null()
-                        || counters["counters"]["work"].as_u64().unwrap()
-                            <= counters["resource_limits"]["work"].as_u64().unwrap()
-                );
-            }
+            assert_eq!(
+                perf["resource_limits"]["work"],
+                Value::from(budget.work),
+                "{version}/{cmd}"
+            );
         }
+
+        // A rejected selector leaves an existing output file untouched.
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("keep.json");
+        fs::write(&dest, b"keep").unwrap();
+        failure(
+            command(
+                "get-code",
+                &path,
+                &["--at", "code:99999", "-o", dest.to_str().unwrap()],
+            ),
+            2,
+            "INVALID_QUERY",
+        );
+        assert_eq!(fs::read(&dest).unwrap(), b"keep");
     }
 }
+
 #[test]
 fn pyc_old_jump_units_and_pep626_zero_length_no_line_intervals_are_exact() {
     for &(version, minor) in &VERSIONS[..3] {
@@ -1097,11 +1169,11 @@ fn pyc_old_jump_units_and_pep626_zero_length_no_line_intervals_are_exact() {
                 raw_code(number, &[jump, arg, nop, 0], b")\0", b")\0", &[], &[]),
                 "jump.marshal",
             );
-            let codes = rows(&command("outline", &path, &["--version", minor]));
+            let codes = rows(&command("codes", &path, &["--version", minor]));
             let output = command(
                 "get-code",
                 &path,
-                &[codes[1]["id"].as_str().unwrap(), "--version", minor],
+                &["--at", codes[1]["at"].as_str().unwrap(), "--version", minor],
             );
             if accepted {
                 success(&output);
@@ -1123,11 +1195,16 @@ fn pyc_old_jump_units_and_pep626_zero_length_no_line_intervals_are_exact() {
         ),
         "line.marshal",
     );
-    let codes = rows(&command("outline", &path, &["--version", "3.10"]));
+    let codes = rows(&command("codes", &path, &["--version", "3.10"]));
     let output = command(
         "get-code",
         &path,
-        &[codes[1]["id"].as_str().unwrap(), "--version", "3.10"],
+        &[
+            "--at",
+            codes[1]["at"].as_str().unwrap(),
+            "--version",
+            "3.10",
+        ],
     );
     success(&output);
     let v: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -1167,26 +1244,26 @@ fn pyc_final_versions_navigate_pinned_actual_email_policy_modules_offline() {
         assert_eq!(refs.last().unwrap()["complete"], true);
         let hit = &refs[1];
         let owner = hit["detail"]["code_index"].as_u64().unwrap() as usize;
-        let fetched = view(&path, hit["context_id"].as_str().unwrap());
+        let fetched = view(&path, hit["context_at"].as_str().unwrap());
         assert_eq!(
             fetched["detail"]["bytecode_hex"],
             expected["codes"][owner]["code_hex"]
         );
-        let strings = rows(&command("strings", &path, &["--contains", "header"]));
+        let strings = rows(&command("strings", &path, &["--filter", "header"]));
         assert!(strings.last().unwrap()["records"].as_u64().unwrap() > 0);
         for literal in strings.iter().filter(|r| r["record"] == "string") {
             let refs = rows(&command(
                 "xref",
                 &path,
-                &["--const-id", literal["id"].as_str().unwrap()],
+                &["--const-id", literal["at"].as_str().unwrap()],
             ));
             assert_eq!(refs.last().unwrap()["complete"], true);
             for hit in refs.iter().filter(|r| r["record"] == "reference") {
-                assert_eq!(hit["context_id"], literal["context_id"]);
+                assert_eq!(hit["context_at"], literal["context_at"]);
                 success(&command(
                     "get-code",
                     &path,
-                    &[hit["context_id"].as_str().unwrap()],
+                    &["--at", hit["context_at"].as_str().unwrap()],
                 ));
             }
         }

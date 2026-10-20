@@ -14,14 +14,12 @@ use std::path::PathBuf;
 pub struct RefsOptions {
     #[command(flatten)]
     pub common: static_commands::Options,
-    #[arg(long, default_value_t = 1_000_000, value_parser = crate::cli::positive)]
-    max_instructions: usize,
 }
 #[derive(Serialize)]
 struct Record<'a> {
     record: &'static str,
     at: Option<&'a str>,
-    source_id: &'a str,
+    source_id: Option<&'a str>,
     parent_at: Option<&'a str>,
     context_at: String,
     start: usize,
@@ -48,7 +46,7 @@ pub fn run(
     perf.resource_limits
         .as_mut()
         .unwrap()
-        .insert("instructions", options.max_instructions);
+        .insert("instructions", super::budget().instructions);
     let mut analysis = loaded?;
     let mut scan = Scan::default();
     let result = perf.measure("query", || -> Result<()> {
@@ -84,7 +82,7 @@ pub fn run(
             &mut analysis,
             &query,
             selected,
-            options.max_instructions,
+            super::budget().instructions,
             &mut scan,
         )
     });
@@ -112,7 +110,7 @@ pub fn run(
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
-            append(&mut out, &Record {record:"reference", at:None, source_id:&analysis.source_id, parent_at:None,
+            append(&mut out, &Record {record:"reference", at:None, source_id:None, parent_at:None,
                 context_at:envelope::at_of(&analysis.code_id(hit.code_index)).into_owned(), start:hit.start, end:hit.end, detail:hit})?;
         }
         analysis.charge_work(scan.unsupported.len())?;
