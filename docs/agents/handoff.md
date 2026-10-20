@@ -1,7 +1,8 @@
 # Contract Unification: Handoff
 
-State when this note was written: `dotnet:: 68 passed`, `dex:: 11 passed`,
-`jvm:: 11 passed`. The rules are in `AGENTS.md` (`## Query Surface`), the budget table
+State when this note was last updated: `dotnet:: 68 passed`, `dex:: 11 passed`,
+`jvm:: 11 passed`, `html:: 16 passed`, `asar 6/7` (the seventh asserts the not-yet-migrated
+js `get --at`). The rules are in `AGENTS.md` (`## Query Surface`), the budget table
 is `rxd_core::Budget`, and no backend exposes `--max-*`.
 
 ## Done
@@ -16,6 +17,28 @@ is `rxd_core::Budget`, and no backend exposes `--max-*`.
 - `-f/--filter` on every listing command of dex and jar; `--raw` is the one flag for
   original instructions.
 
+- `html` (`f48f4c5`): `list` → `entries`, `extract --at` (short `kind:start:end` expands
+  against the header hash; only a full id can report `SOURCE_MISMATCH`), `-f/--filter`
+  over tag/content, five `--max-*` flags dropped, per-row `source_id` dropped.
+- `asar` (`dedf385`): `list` → `entries`, every file row prints its archive-relative
+  path in `at`, `extract --at`, `-f/--filter` over paths, five `--max-*` flags dropped.
+
+## Deferred: pyc (blocked on a budget-semantics decision)
+
+`pyc outline` → `codes` and the flag removal were implemented and then reverted, because
+`tests/pyc/boundaries.rs` asserts **exact** work accounting: `--max-work` defaults to
+16,777,216 while `rxd_core::Budget::work` is 1,000,000, so moving the ceiling into the
+table changes the reported counter and breaks five exact-value tests (plus
+`--max-ast-depth` 128 has no `Budget` field at all). Finishing pyc needs one of:
+
+1. raise `Budget::work` to 16,777,216 and add an `ast_depth` field so the shared table
+   reproduces today's numbers, or
+2. accept the smaller shared ceilings and rewrite the boundary tests around them.
+
+That is a product decision about how tight the shared default may be, so it is recorded
+here instead of guessed. `--contains`/`--contains-hex` on `pyc strings` are also not yet
+`-f/--filter`/`--filter-hex`.
+
 ## Baseline: the uncommitted test changes are the target contract
 
 The working tree carries a scripted `id→at` migration in `tests/{evm,html,mcp,pyc,wasm}`
@@ -27,8 +50,8 @@ coordinates, `--at` selectors, `--max-*` gone - while the backends they exercise
 not moved yet. Each failure group maps onto a pending step below, so the migration is
 finished by making the backend conform, not by reverting the tests:
 
-- `unexpected argument '--at'` (js get/locate, asar/html extract, wasm get-function):
-  the command still takes a positional id or `--id`.
+- `unexpected argument '--at'` (js get/locate, wasm get-function): the command still
+  takes a positional id or `--id`.
 - `INVALID_ID` / `expected canonical content-bound ... ID` (evm): validation still wants
   the long id while records print the short coordinate.
 - `starts_with("rxd1:js:...")` (js, wasm, identifiers): assertions still expect the
