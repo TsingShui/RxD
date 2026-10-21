@@ -374,60 +374,61 @@ fn execute_inner(
                 rxd_dotnet::render_class(&input, &class, limits)
             })?
         };
-        let types = class
-            .types
-            .iter()
-            .map(|ty| type_record(&input, ty))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let fields = class
-            .fields
-            .iter()
-            .map(|field| field_record(&input, field))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let properties = class
-            .properties
-            .iter()
-            .map(|property| {
-                relationship_record(
-                    &input,
-                    "property",
-                    &property.declaring_type_id,
-                    property.token,
-                    *property,
-                )
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let events = class
-            .events
-            .iter()
-            .map(|event| {
-                relationship_record(
-                    &input,
-                    "event",
-                    &event.declaring_type_id,
-                    event.token,
-                    *event,
-                )
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let methods = class
-            .methods
-            .iter()
-            .map(|item| class_method_record(&input, item, *raw))
-            .collect::<anyhow::Result<Vec<_>>>()?;
         let mut payload = detail(
-            json!({"type":type_record(&input, class.root)?,"work_used":class.work_used,"representation":rendered.representation,"decompiled":rendered.decompiled,"reason":rendered.reason,"reason_detail":rendered.reason.as_deref().map(|reason| describe_class_reason(reason, class.methods.len())),"warnings":rendered.warnings,"code":rendered.code,"mapping":rendered.mapping,"complete":true}),
+            json!({"work_used":class.work_used,"representation":rendered.representation,"decompiled":rendered.decompiled,"reason":rendered.reason,"reason_detail":rendered.reason.as_deref().map(|reason| describe_class_reason(reason, class.methods.len())),"warnings":rendered.warnings,"code":rendered.code,"mapping":rendered.mapping,"complete":true}),
         );
-        // The inventories are already bounded JSON records. Move them into the
-        // aggregate rather than serializing and duplicating every original body.
-        for (key, records) in [
-            ("types", types),
-            ("fields", fields),
-            ("properties", properties),
-            ("events", events),
-            ("methods", methods),
-        ] {
-            payload.insert(key.into(), Value::Array(records));
+        if *raw {
+            let types = class
+                .types
+                .iter()
+                .map(|ty| type_record(&input, ty))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let fields = class
+                .fields
+                .iter()
+                .map(|field| field_record(&input, field))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let properties = class
+                .properties
+                .iter()
+                .map(|property| {
+                    relationship_record(
+                        &input,
+                        "property",
+                        &property.declaring_type_id,
+                        property.token,
+                        *property,
+                    )
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let events = class
+                .events
+                .iter()
+                .map(|event| {
+                    relationship_record(
+                        &input,
+                        "event",
+                        &event.declaring_type_id,
+                        event.token,
+                        *event,
+                    )
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let methods = class
+                .methods
+                .iter()
+                .map(|item| class_method_record(&input, item, *raw))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            payload.insert("type".into(), type_record(&input, class.root)?);
+            for (key, records) in [
+                ("types", types),
+                ("fields", fields),
+                ("properties", properties),
+                ("events", events),
+                ("methods", methods),
+            ] {
+                payload.insert(key.into(), Value::Array(records));
+            }
         }
         // Nested inventories carry the same entity references as the top level.
         shorten_detail_ids(&mut payload);

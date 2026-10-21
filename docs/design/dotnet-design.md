@@ -180,10 +180,11 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   engine diagnostics, empty when reconstruction was clean. A whole-class body prefixes
   each warning with the member it belongs to, so one class fetch names the members that
   were reconstructed with caveats without probing them one by one.
-- Member records nested inside `class_body` carry method identity, ranges and
-  `reason: member_inventory`; their original IL follows `--raw`, exactly as for
-  `get-method`, so the default C# answer does not duplicate the IL of every member.
-  The `reason` states that this is the schema, not a failure. A rejected
+- Default whole-class output is the reconstructed C# plus class-level `mapping`
+  (`line`, `method_id`, `il_offset`), warnings and work; it does not repeat the
+  type/field/property/event/method inventories, which `get-method`, `fields` and
+  `methods` return on demand. Those inventories, the member records with
+  `reason: member_inventory` and their original IL live under `--raw`. A rejected
   whole-class C# body names no culprit member either (the engine reports one failure for
   the selected scope), so `reason_detail` routes the Agent to `get-method --at <at>` per
   member instead of guessing which one blocked the class.
@@ -193,8 +194,8 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   class/interface/struct/enum kind, base token, interfaces, generic parameters and
   constraints; member inventory retains fields, constructors, methods, properties and
   event accessor relationships. Abstract, PInvoke and other declarations without
-  ordinary IL keep `body_present: false` and null body fields. Every readable method
-  includes the file range, and with `--raw` complete original IL, instructions,
+  ordinary IL keep `body_present: false` and null body fields. With `--raw` every
+  readable method includes its file range and complete original IL, instructions,
   locals and ordered EH.
   Default whole-class invocation selects the TypeDef directly in the pinned ILSpy
   NativeAOT engine and returns whole-class `representation: csharp`, `decompiled:
