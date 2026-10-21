@@ -400,9 +400,8 @@ The production path produces structured, source-like C# by calling the pinned IL
    pass the same fixed buffer and validated MethodDef/TypeDef token to the marshal
    layer.
 2. **C ABI marshal layer**: export `rxd_decompile_method(buf_ptr, buf_len, token,
-   out_len)`, optional `rxd_decompile_class(buf_ptr, buf_len, type_token, out_len)`,
-   `rxd_decompile_assembly(buf_ptr, buf_len, out_len)` and `rxd_free`. Input is a fixed
-   memory buffer and token; output is a UTF-8 byte buffer. Rich objects never cross the
+   out_len)`, optional `rxd_decompile_class(buf_ptr, buf_len, type_token, out_len)`, and
+   `rxd_free`. Input is a fixed memory buffer and token; output is a UTF-8 byte buffer. Rich objects never cross the
    boundary. `UniversalAssemblyResolver` uses explicit search paths; cross-assembly
    resolution is out of scope.
 3. **ILSpy engine**: `CSharpDecompiler` performs IL→ILAst→C#, recovering loops,

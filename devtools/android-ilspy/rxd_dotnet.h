@@ -11,8 +11,6 @@ uint8_t *rxd_decompile_method(const uint8_t *module, int32_t module_length,
                               int32_t method_token, int32_t *output_length);
 uint8_t *rxd_decompile_class(const uint8_t *module, int32_t module_length,
                              int32_t type_token, int32_t *output_length);
-uint8_t *rxd_decompile_assembly(const uint8_t *module, int32_t module_length,
-                                int32_t *output_length);
 void rxd_free(uint8_t *output);
 #ifdef __cplusplus
 }

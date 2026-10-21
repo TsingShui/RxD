@@ -48,10 +48,6 @@ public static unsafe class Exports
     public static byte* DecompileClass(byte* module, int moduleLen, int metadataToken, int* outLen)
         => Decompile(module, moduleLen, metadataToken, true, outLen);
 
-    [UnmanagedCallersOnly(EntryPoint = "rxd_decompile_assembly", CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static byte* DecompileAssembly(byte* module, int moduleLen, int* outLen)
-        => Decompile(module, moduleLen, null, false, outLen);
-
     [UnmanagedCallersOnly(EntryPoint = "rxd_free", CallConvs = new[] { typeof(CallConvCdecl) })]
     public static void Free(byte* buffer) => NativeMemory.Free(buffer);
 

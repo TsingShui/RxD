@@ -127,7 +127,6 @@ uint8_t *rxd_decompile_method(const uint8_t *module, int module_len,
                              int metadata_token, int *out_len);
 uint8_t *rxd_decompile_class(const uint8_t *module, int module_len,
                             int type_definition_token, int *out_len);
-uint8_t *rxd_decompile_assembly(const uint8_t *module, int module_len, int *out_len);
 void rxd_free(uint8_t *buffer);
 ```
 
