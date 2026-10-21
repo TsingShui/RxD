@@ -359,6 +359,9 @@ fn execute_inner(
             crate::cli::xref::Expect::Content(&input.source_id),
         )?;
         let root = perf.measure("prepare", || input.prepare_class(&at))?;
+        if *raw {
+            input.prepare_class_fields(root)?;
+        }
         let class = perf.measure("decode", || input.class_body(root))?;
         let rendered = if *raw {
             rxd_dotnet::ClassDecompilation {

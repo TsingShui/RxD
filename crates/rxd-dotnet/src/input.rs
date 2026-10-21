@@ -253,6 +253,10 @@ impl Input {
         Ok(token)
     }
 
+    pub fn prepare_class_fields(&mut self, root_token: u32) -> Result<()> {
+        crate::class::prepare_fields(self, root_token)
+    }
+
     pub fn class_body(&self, root_token: u32) -> Result<crate::ClassBody<'_>> {
         crate::class::build(self, root_token)
     }

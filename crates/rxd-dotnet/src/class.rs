@@ -32,14 +32,23 @@ pub(crate) fn prepare(input: &mut Input, root_token: u32) -> Result<()> {
     for index in owned {
         input.resolve_method(index)?;
     }
-    let mut owned_fields = Vec::new();
+    Ok(())
+}
+
+/// Field signatures are only needed when the caller emits the member inventory
+/// (`--raw`); the default C# answer never reads them.
+pub(crate) fn prepare_fields(input: &mut Input, root_token: u32) -> Result<()> {
+    let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
+    work.charge(input.metadata_work)?;
+    let selected = selected_types(input, root_token, &mut work)?;
+    let mut owned = Vec::new();
     for (index, field) in input.fields.iter().enumerate() {
         work.charge(1)?;
         if selected.contains(&field.declaring_type_token) {
-            owned_fields.push(index);
+            owned.push(index);
         }
     }
-    for index in owned_fields {
+    for index in owned {
         input.resolve_field(index)?;
     }
     Ok(())
