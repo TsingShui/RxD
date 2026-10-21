@@ -9,6 +9,31 @@ remain independent and unchanged.
 The examples use the repository's independently rebuildable handwritten WASM fixture;
 modules are never instantiated.
 
+## What the backend covers
+
+| Command | Answer |
+| --- | --- |
+| `types` / `imports` / `exports` | Signatures, imports and exports with their canonical targets |
+| `functions` / `tables` / `memories` / `globals` | Module-defined entities, ranges and signatures |
+| `data` / `elements` | Active, passive and declarative segments |
+| `strings` | UTF-8 literals from data segments and the name section |
+| `xref` | Instructions that explicitly reference a target function |
+| `get-function` | One function: structured C-like source, or the instruction view |
+
+Every listing takes `-f/--filter` (folded unless `--case sensitive`); `get-function`
+and `xref` take `--at func:N` or `--from` a previous stream whose `source_id` is
+checked against the current input. `-o` writes the stream atomically and `--perf`
+reports stages and resource use. Rows carry content-bound IDs so a coordinate can
+never silently address a different module.
+
+Decompilation is per requested function, never a whole-module pass: listings do
+not enter the decompiler. `get-function` emits C-like code with a line-to-byte
+mapping; an unsupported construct (SIMD, atomics, GC, tail calls, exceptions,
+block parameters) returns `representation: wasm` with an explicit `UNSUPPORTED_*`
+reason and the decoded instructions instead of guessed source. `--raw` asks for
+that instruction view directly. Modules are parsed statically and never
+instantiated or executed.
+
 ```sh
 cargo build --release
 # Rebuild the fixture deterministically from committed WAT (including names).
