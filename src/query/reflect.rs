@@ -14,6 +14,10 @@ const BACKENDS: &[&str] = &[
     "js", "asar", "html", "dex", "jar", "dotnet", "evm", "wasm", "pyc",
 ];
 
+/// CLI commands with no typed MCP projection: `dex_extract` writes caller paths and
+/// supports batch output, which the one-artifact tool contract cannot express.
+const CLI_ONLY: &[&str] = &["dex_extract"];
+
 /// CLI flags that describe where a result goes or how a local process runs, not what
 /// to analyze. They never appear in a tool schema.
 const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug"];
@@ -155,7 +159,11 @@ pub(super) fn tools() -> Vec<ToolSpec> {
             if command.get_name() == "help" {
                 continue;
             }
-            tools.push(tool(backend.get_name(), command));
+            let spec = tool(backend.get_name(), command);
+            if CLI_ONLY.contains(&spec.name.as_str()) {
+                continue;
+            }
+            tools.push(spec);
         }
     }
     tools

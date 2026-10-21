@@ -87,12 +87,13 @@ fn object_schema<T: JsonSchema>() -> Value {
 
 pub fn catalog() -> Vec<ToolDefinition> {
     let version = rxd_kuna_cli::engine_version();
+    let revision = rxd_kuna_cli::engine_revision();
     vec![
         ToolDefinition {
             name: "kuna_functions".into(),
             backend: "kuna".into(),
             description: format!(
-                "Enumerate all native Kuna function entries with aliases, addresses and object locations. Linked Kuna {version} (pinned a219af9); native JSON, no content-bound entity IDs. Use returned address_hex or a unique name for kuna_decompile. Adapter coverage: full enumeration and single-function JSON only; no search/xref/export/external engines."
+                "Enumerate all native Kuna function entries with aliases, addresses and object locations. Linked Kuna {version} ({revision}); native JSON, no content-bound entity IDs. Use returned address_hex or a unique name for kuna_decompile. Adapter coverage: full enumeration and single-function JSON only; no search/xref/export/external engines."
             ),
             input_schema: object_schema::<FunctionsArgs>(),
             output_schema: object_schema::<NativeOutput<FunctionInventory>>(),
@@ -102,7 +103,7 @@ pub fn catalog() -> Vec<ToolDefinition> {
             name: "kuna_decompile".into(),
             backend: "kuna".into(),
             description: format!(
-                "Fetch one native Kuna function as declared native JSON with code, language, errors, quality, line mappings, variables and types. Linked Kuna {version} (pinned a219af9). Select exactly one unique name or returned address_hex. Names containing commas, surrounding whitespace, a leading '-' or native 0x address syntax require the hex address selector. Instruction budget failures are explicit, never successful truncated source."
+                "Fetch one native Kuna function as declared native JSON with code, language, errors, quality, line mappings, variables and types. Linked Kuna {version} ({revision}). Select exactly one unique name or returned address_hex. Names containing commas, surrounding whitespace, a leading '-' or native 0x address syntax require the hex address selector. Instruction budget failures are explicit, never successful truncated source."
             ),
             input_schema: object_schema::<DecompileArgs>(),
             output_schema: object_schema::<NativeOutput<Decompilation>>(),

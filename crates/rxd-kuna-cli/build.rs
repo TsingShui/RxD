@@ -80,6 +80,7 @@ fn main() {
         &["rev-list", "--count", &format!("{bump}..HEAD")],
     );
     println!("cargo:rustc-env=KUNA_VERSION={}.{}", major.trim(), minor);
+    println!("cargo:rustc-env=KUNA_REVISION={revision}");
 
     let mut jobs = fs::read_to_string(source.join("jobs.rs")).unwrap();
     replace_once(

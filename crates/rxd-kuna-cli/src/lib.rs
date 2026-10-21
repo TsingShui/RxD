@@ -83,6 +83,11 @@ pub fn run_captured_bounded(args: Vec<String>, limit: usize) -> std::io::Result<
 pub fn engine_version() -> &'static str {
     env!("KUNA_VERSION")
 }
+
+/// The pinned upstream commit, so tool descriptions cannot go stale.
+pub fn engine_revision() -> &'static str {
+    env!("KUNA_REVISION")
+}
 /// Use the linked engine's metadata instead of a separate catalog helper.
 pub fn catalog_json() -> String {
     use kuna_decomp::kuna_phases::{kuna_num_settables, kuna_settable_by_index};

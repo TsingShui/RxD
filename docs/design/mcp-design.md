@@ -131,7 +131,8 @@ cannot be called. Startup and catalog discovery do not load ILSpy or unpack Kuna
 **The CLI is the single contract source.** A tool is exactly one analysis command:
 `<backend>_<command>`, and its schema and argv are reflected from the `clap` tree at
 runtime (`src/query/reflect.rs`), so a renamed or added flag cannot leave one surface
-behind. The names are the shared CLI vocabulary: `entities`, `functions`, `classes`,
+behind. `rxd dex extract` is deliberately CLI-only: it writes caller-chosen paths and
+supports batch output, while a tool call returns one artifact. The names are the shared CLI vocabulary: `entities`, `functions`, `classes`,
 `methods`, `fields`, `entries`, `types`, `codes`, `blocks`, `interface`. Only three
 things are MCP-specific: the path positional becomes `input` (`inputs` for `--apk` list
 commands), `-o/--output` becomes the artifact channel, and `--perf` is
