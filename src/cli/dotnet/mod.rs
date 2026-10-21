@@ -309,7 +309,11 @@ fn execute_inner(
         };
         // Each metadata-token operand carries the resolved member it denotes, so a
         // fallback to IL does not require a separate --token --semantic round trip.
-        let instructions = annotate_operands(&input, &body.instructions)?;
+        let instructions = if *raw {
+            annotate_operands(&input, &body.instructions)?
+        } else {
+            Value::Null
+        };
         let reason_detail = decompilation.reason.as_deref().map(|reason| {
             describe_method_reason(
                 reason,
@@ -328,9 +332,25 @@ fn execute_inner(
                 end: Some(body.code_offset + body.code_size),
                 ..RecordMeta::default()
             },
-            detail(
-                json!({"method":method_record(&input, method)?,"body_present":true,"representation":decompilation.representation,"decompiled":decompilation.decompiled,"reason":decompilation.reason,"reason_detail":reason_detail,"warnings":decompilation.warnings,"code":decompilation.code,"mapping":decompilation.mapping,"file_offset":body.file_offset,"code_offset":body.code_offset,"code_size":body.code_size,"work_used":body.work_used,"max_stack":body.max_stack,"init_locals":body.init_locals,"locals":body.locals,"local_signature_token":body.local_signature_token,"instructions":instructions,"handlers":body.handlers,"il_hex":body.il_hex,"complete":true}),
-            ),
+            {
+                let mut out = json!({"method":method_record(&input, method)?,"body_present":true,"representation":decompilation.representation,"decompiled":decompilation.decompiled,"reason":decompilation.reason,"reason_detail":reason_detail,"warnings":decompilation.warnings,"code":decompilation.code,"mapping":decompilation.mapping,"file_offset":body.file_offset,"code_offset":body.code_offset,"code_size":body.code_size,"work_used":body.work_used,"complete":true})
+                    .as_object()
+                    .unwrap()
+                    .clone();
+                if *raw {
+                    out.insert("max_stack".into(), json!(body.max_stack));
+                    out.insert("init_locals".into(), json!(body.init_locals));
+                    out.insert(
+                        "local_signature_token".into(),
+                        json!(body.local_signature_token),
+                    );
+                    out.insert("locals".into(), serde_json::to_value(&body.locals)?);
+                    out.insert("instructions".into(), instructions);
+                    out.insert("handlers".into(), serde_json::to_value(&body.handlers)?);
+                    out.insert("il_hex".into(), json!(body.il_hex));
+                }
+                out
+            },
         );
         append(&mut output, &value)?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
@@ -393,7 +413,7 @@ fn execute_inner(
         let methods = class
             .methods
             .iter()
-            .map(|item| class_method_record(&input, item))
+            .map(|item| class_method_record(&input, item, *raw))
             .collect::<anyhow::Result<Vec<_>>>()?;
         let mut payload = detail(
             json!({"type":type_record(&input, class.root)?,"work_used":class.work_used,"representation":rendered.representation,"decompiled":rendered.decompiled,"reason":rendered.reason,"reason_detail":rendered.reason.as_deref().map(|reason| describe_class_reason(reason, class.methods.len())),"warnings":rendered.warnings,"code":rendered.code,"mapping":rendered.mapping,"complete":true}),
@@ -885,14 +905,26 @@ fn field_record(input: &Input, field: &rxd_dotnet::Field) -> anyhow::Result<Valu
     ))
 }
 
-fn class_method_record(input: &Input, item: &rxd_dotnet::ClassMethod<'_>) -> anyhow::Result<Value> {
+fn class_method_record(
+    input: &Input,
+    item: &rxd_dotnet::ClassMethod<'_>,
+    raw: bool,
+) -> anyhow::Result<Value> {
     let body = item.body.as_ref();
-    let mut fields = if let Some(body) = body {
-        detail(serde_json::to_value(body)?)
-    } else {
-        detail(
+    let mut fields = match (body, raw) {
+        (Some(body), true) => detail(serde_json::to_value(body)?),
+        (Some(body), false) => detail(json!({
+            "work_used": body.work_used,
+            "file_offset": body.file_offset,
+            "code_offset": body.code_offset,
+            "code_size": body.code_size,
+        })),
+        (None, true) => detail(
             json!({"work_used":null,"file_offset":null,"code_offset":null,"code_size":null,"max_stack":null,"init_locals":null,"local_signature_token":null,"locals":null,"instructions":null,"handlers":null,"il_hex":null}),
-        )
+        ),
+        (None, false) => {
+            detail(json!({"work_used":null,"file_offset":null,"code_offset":null,"code_size":null}))
+        }
     };
     fields.insert("method".into(), method_record(input, item.method)?);
     fields.insert("body_present".into(), json!(body.is_some()));
@@ -900,10 +932,6 @@ fn class_method_record(input: &Input, item: &rxd_dotnet::ClassMethod<'_>) -> any
     fields.insert("representation".into(), json!("il"));
     fields.insert("decompiled".into(), json!(false));
     fields.insert("reason".into(), json!("member_inventory"));
-    fields.insert(
-        "reason_detail".into(),
-        json!("whole-class C# lives in `class_body.code`; a member record carries original IL only. Use `get-method --at <method:token>` for one member's C#."),
-    );
     fields.insert("code".into(), Value::Null);
     fields.insert("mapping".into(), json!([]));
     Ok(envelope::record(

@@ -32,6 +32,16 @@ pub(crate) fn prepare(input: &mut Input, root_token: u32) -> Result<()> {
     for index in owned {
         input.resolve_method(index)?;
     }
+    let mut owned_fields = Vec::new();
+    for (index, field) in input.fields.iter().enumerate() {
+        work.charge(1)?;
+        if selected.contains(&field.declaring_type_token) {
+            owned_fields.push(index);
+        }
+    }
+    for index in owned_fields {
+        input.resolve_field(index)?;
+    }
     Ok(())
 }
 

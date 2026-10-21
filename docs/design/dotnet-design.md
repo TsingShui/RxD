@@ -136,8 +136,9 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   (one object kind per command). Header echoes filters;
   order follows metadata tokens. `--class` matches the full type name exactly;
   `--name` matches a method name exactly and preserves overloads.
-- `get-method` emits one JSON record with method, source_id, raw `il_hex`, instructions,
-  exception handlers, locals and original file range. Instruction `offset` is the IL
+- `get-method` emits one JSON record with method, source_id, representation, reconstructed
+  C#, line mapping and the original file range. Original IL evidence (`il_hex`,
+  `instructions`, exception handlers, locals) is returned only with `--raw`. Instruction `offset` is the IL
   byte offset within the method code; file offsets are separate and never mixed.
   Every metadata-token operand additionally carries `owner`, `name`, `status`,
   `scope` and (for members of this input) `target_at`, so a method that falls back to
@@ -151,13 +152,15 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   without the class header, usings or type context. `get-method` is the FETCH unit the
   navigation records point at (`context_at`, `at`); `get-class` is the unit for type
   shape and whole-class C#.
-- `get-method --raw` returns `representation: il`. Default `get-method` attempts
-  reconstruction. Success returns `representation: csharp`, `decompiled: true`,
+- `get-method --raw` returns `representation: il` with complete original IL evidence.
+  Default `get-method` attempts reconstruction and does not repeat that evidence.
+  Success returns `representation: csharp`, `decompiled: true`,
   structured C# code and a mapping from output lines to real IL offsets. After async/
   iterator recovery, MoveNext's independent offset domain is not used as the entry
   method mapping; mapping may be empty.
 - An unsupported method returns `representation: il`, `decompiled: false`, an explicit
-  reason, `reason_detail`, `code: null`, and all original IL/EH. `complete: true` means
+  reason, `reason_detail`, `code: null`, and the original file range; request `--raw`
+  for its IL/EH. `complete: true` means
   the record is complete, not that reconstruction succeeded. Partial guessed code is
   never returned.
 - `reason` is a stable machine code and `reason_detail` explains it in words, so an
@@ -177,9 +180,10 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   engine diagnostics, empty when reconstruction was clean. A whole-class body prefixes
   each warning with the member it belongs to, so one class fetch names the members that
   were reconstructed with caveats without probing them one by one.
-- Member records nested inside `class_body` always carry original IL. Their
-  `reason: member_inventory` with a `reason_detail` pointing at `class_body.code` and
-  `get-method --at <token>` states that this is the schema, not a failure. A rejected
+- Member records nested inside `class_body` carry method identity, ranges and
+  `reason: member_inventory`; their original IL follows `--raw`, exactly as for
+  `get-method`, so the default C# answer does not duplicate the IL of every member.
+  The `reason` states that this is the schema, not a failure. A rejected
   whole-class C# body names no culprit member either (the engine reports one failure for
   the selected scope), so `reason_detail` routes the Agent to `get-method --at <at>` per
   member instead of guessing which one blocked the class.
@@ -190,7 +194,8 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   constraints; member inventory retains fields, constructors, methods, properties and
   event accessor relationships. Abstract, PInvoke and other declarations without
   ordinary IL keep `body_present: false` and null body fields. Every readable method
-  includes complete original IL, instructions, locals, file range and ordered EH.
+  includes the file range, and with `--raw` complete original IL, instructions,
+  locals and ordered EH.
   Default whole-class invocation selects the TypeDef directly in the pinned ILSpy
   NativeAOT engine and returns whole-class `representation: csharp`, `decompiled:
   true` and complete C#; properties/events/generated members may use C# syntax sugar,
@@ -302,7 +307,7 @@ Fixed detail fields:
 | `method` | `declaring_type, declaring_type_is_value_type, name, signature, parameters, return_type, has_this, has_body, rva, access_flags, impl_flags, generic_parameters` |
 | `string` | `index, value, utf16_units, status, il_offsets`; the `#US` token is the row's `at`, the owning type is `parent_at` and the loading method is `context_at`, so none of them is repeated in `detail` (`index` = position in the assembly literal inventory) |
 | `reference` | `target, target_token, target_kind, declaring_type, name, il_offset, opcode, resolution_status, scope, owner_token, original_owner_token, owner_name, target_name, signature, type_signature, owner_arguments, method_arguments`; the caller is `context_at` and its resolving type is `parent_at`, so neither is repeated |
-| `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex, complete` |
+| `method_body` | `method, body_present, representation, decompiled, reason, reason_detail, code, mapping, file_offset, code_offset, code_size, work_used, complete`; `--raw` adds `max_stack, init_locals, locals, local_signature_token, instructions, handlers, il_hex` |
 
 Type/field/method coordinates live in outer `at`; string `at` is null. A top-level
 type has no `parent_at`; nested types use the direct owning type coordinate. Field/
