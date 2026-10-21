@@ -81,8 +81,9 @@ stripped module with no name section. Export names do not become function names.
 - `get-function` emits one JSON `function_view` record. It first tries structured
   decompilation: on success it returns `representation: clike`, `decompiled: true`,
   language-neutral C-like code, a `mapping` from output lines to code-body byte
-  offsets, and the `func`, `bytecode_hex`, locals, and original file
-  range. Unsupported or failed reconstruction returns `representation: wasm`,
+  offsets, `func`, locals and the original file range. Original bytecode
+  (`instructions`, `bytecode_hex`) follows `--raw`; the instruction fallback
+  retains it because instructions are then the only representation. Unsupported or failed reconstruction returns `representation: wasm`,
   `decompiled: false`, an explicit `reason`, `code: null`, and the original
   instruction view. Each instruction's `offset` is relative to the function code
   body; file offsets are separate and must not be mixed. Instructions retain opcode
@@ -171,7 +172,7 @@ Fixed detail fields:
 | `element` | `index, kind, count` |
 | `string` | `index, origin, segment_index, offset, value, bytes` (`index` = position in the decoded string inventory) |
 | `reference` | `target, caller_index, caller_name, offset, opcode, target_index` |
-| `function_view` | `representation, decompiled, reason, code, func, body_file_offset, body_size, locals, instructions, mapping, bytecode_hex, complete` |
+| `function_view` | `representation, decompiled, reason, code, func, body_file_offset, body_size, locals, mapping, complete`; `instructions` and `bytecode_hex` are present with `--raw` and in the instruction fallback |
 
 `get-function` (default reconstruction or `--raw`) is a single
 `record="function_view"` FETCH record without header/summary; it additionally carries
@@ -183,7 +184,8 @@ typed object with `func_index, type_index, name, params, results`. Instructions 
 `[line, code-body-offset]`. Operand keeps the kind-specific immediate object (memarg:
 `align, offset, memory`). These embedded objects are not independent FETCH records.
 Names, import indices, maximum, global names, data memory/offset and string values
-may be `null` when absent. `bytecode_hex` preserves the complete original code body.
+may be `null` when absent. `bytecode_hex` preserves the complete original code
+body in the raw and fallback views.
 
 ## Structured C-like decompilation
 

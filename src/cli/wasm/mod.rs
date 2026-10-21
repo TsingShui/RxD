@@ -327,29 +327,37 @@ fn execute_inner(
                 end: Some(view.body_file_offset + view.body_size),
                 ..RecordMeta::default()
             },
-            json!({
-                "representation": view.representation,
-                "decompiled": view.decompiled,
-                "reason": view.reason,
-                "code": view.code,
-                "func": {
-                    "func_index": view.func_index,
-                    "type_index": view.type_index,
-                    "name": view.name,
-                    "params": view.params,
-                    "results": view.results
-                },
-                "body_file_offset": view.body_file_offset,
-                "body_size": view.body_size,
-                "locals": view.locals,
-                "instructions": view.instructions,
-                "mapping": view.mapping,
-                "bytecode_hex": view.bytecode_hex,
-                "complete": true,
-            })
-            .as_object()
-            .unwrap()
-            .clone(),
+            {
+                let mut fields = json!({
+                    "representation": view.representation,
+                    "decompiled": view.decompiled,
+                    "reason": view.reason,
+                    "code": view.code,
+                    "func": {
+                        "func_index": view.func_index,
+                        "type_index": view.type_index,
+                        "name": view.name,
+                        "params": view.params,
+                        "results": view.results
+                    },
+                    "body_file_offset": view.body_file_offset,
+                    "body_size": view.body_size,
+                    "locals": view.locals,
+                    "mapping": view.mapping,
+                    "complete": true,
+                })
+                .as_object()
+                .unwrap()
+                .clone();
+                // Original bytecode is evidence, not part of the reconstructed
+                // answer: it follows `--raw`, and stays in the fallback view where
+                // instructions are the only representation.
+                if *raw || !view.decompiled {
+                    fields.insert("instructions".into(), json!(view.instructions));
+                    fields.insert("bytecode_hex".into(), json!(view.bytecode_hex));
+                }
+                fields
+            },
         );
         attach_protocol(&mut value, "wasm", command.name());
         append(&mut output, &value)?;

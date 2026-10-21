@@ -98,9 +98,48 @@ fn assert_record(row: &Value) {
         ],
         other => panic!("unexpected wasm record: {other}"),
     };
-    assert_keys(&row["detail"], fields);
     if row["record"] == "function_view" {
-        for instruction in row["detail"]["instructions"].as_array().unwrap() {
+        // The original bytecode view follows `--raw` (and stays in the
+        // instruction fallback); a decompiled answer does not repeat it.
+        let required = [
+            "representation",
+            "decompiled",
+            "reason",
+            "code",
+            "func",
+            "body_file_offset",
+            "body_size",
+            "locals",
+            "mapping",
+            "complete",
+        ];
+        let optional = ["instructions", "bytecode_hex"];
+        let keys: Vec<&str> = row["detail"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        for key in required {
+            assert!(keys.contains(&key), "missing {key} in {:?}", row["detail"]);
+        }
+        for key in &keys {
+            assert!(
+                required.contains(key) || optional.contains(key),
+                "unexpected {key} in {:?}",
+                row["detail"]
+            );
+        }
+    } else {
+        assert_keys(&row["detail"], fields);
+    }
+    if row["record"] == "function_view" {
+        for instruction in row["detail"]
+            .get("instructions")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+        {
             assert_keys(instruction, &["offset", "opcode", "operand"]);
         }
     }
@@ -316,8 +355,8 @@ fn wasm_get_decompiles_structured_control_flow_by_default() {
     assert!(code.contains("return c;") || code.contains("return "));
     // Line -> code-body offset mapping is present.
     assert!(!row["detail"]["mapping"].as_array().unwrap().is_empty());
-    // Instruction list is empty on the decompiled path.
-    assert!(row["detail"]["instructions"].as_array().unwrap().is_empty());
+    // Original instructions follow `--raw`; the decompiled path does not repeat them.
+    assert!(row["detail"].get("instructions").is_none());
 }
 
 #[test]
