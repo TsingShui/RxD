@@ -6,6 +6,11 @@ use dotscope::{CilAssemblyView, ValidationConfig};
 
 use crate::{CallSignature, Field, Limits, Method, MethodBody, StringRecord, TypeInfo};
 
+/// Inputs up to this size may duplicate their buffer for concurrent structural
+/// validation and metadata loading. Larger inputs keep a single copy and run the
+/// two read-only passes sequentially.
+const PARALLEL_VALIDATION_BYTES: usize = 64 << 20;
+
 pub struct Input {
     pub source_id: String,
     pub file_bytes: usize,
@@ -65,6 +70,12 @@ impl Input {
             }
             source_id
         });
+        // Whole-module structural validation and metadata loading are independent
+        // reads of the same immutable snapshot. For inputs below the duplication
+        // threshold, build a second view over an owned copy so both can run
+        // concurrently; larger inputs stay sequential rather than doubling the buffer.
+        // The parallel path does not skip or weaken either check.
+        let twin = (bytes.len() <= PARALLEL_VALIDATION_BYTES).then(|| bytes.clone());
         let parsed_file = dotscope::File::from_mem(bytes).context("INVALID_INPUT: PE parsing")?;
         ensure!(
             parsed_file.repairs().is_empty(),
@@ -96,8 +107,6 @@ impl Input {
                 .context("RESOURCE_LIMIT: row count")?;
         }
         ensure!(total <= limits.work, "RESOURCE_LIMIT: metadata work");
-        crate::validation::validate(&view, validation)
-            .context("INVALID_INPUT: metadata structure and references")?;
         let mut input = Self {
             source_id,
             file_bytes,
@@ -114,7 +123,35 @@ impl Input {
             type_kinds: BTreeMap::new(),
             type_names: BTreeMap::new(),
         };
-        crate::metadata::load(&mut input)?;
+        let validation_failed = |error: dotscope::Error| {
+            anyhow::Error::new(error).context("INVALID_INPUT: metadata structure and references")
+        };
+        match twin {
+            Some(twin) => {
+                let twin = dotscope::File::from_mem(twin).context("INVALID_INPUT: PE parsing")?;
+                ensure!(
+                    twin.repairs().is_empty(),
+                    "INVALID_INPUT: automatic PE repair is unsupported"
+                );
+                let twin = CilAssemblyView::from_dotscope_file_with_validation(twin, deferred)
+                    .context("INVALID_INPUT: metadata structure and references")?;
+                let (validated, loaded) = std::thread::scope(|scope| {
+                    let structural = scope.spawn(|| crate::validation::validate(&twin, validation));
+                    let loaded = crate::metadata::load(&mut input);
+                    let validated = structural
+                        .join()
+                        .map_err(|_| anyhow::anyhow!("INTERNAL_ERROR: validation worker panicked"));
+                    (validated, loaded)
+                });
+                let validated = validated?;
+                validated.map_err(validation_failed)?;
+                loaded?;
+            }
+            None => {
+                crate::validation::validate(&input.view, validation).map_err(validation_failed)?;
+                crate::metadata::load(&mut input)?;
+            }
+        }
         Ok(input)
     }
 

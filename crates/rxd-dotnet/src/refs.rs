@@ -58,6 +58,11 @@ pub struct SemanticTarget {
     pub method_arguments: Vec<TypeSignature>,
 }
 
+/// Candidate member rows keyed by (declaring type token, name).
+type MemberIndex = BTreeMap<(u32, String), Vec<u32>>;
+/// Candidate local type rows keyed by (nested parent, namespace, name).
+type TypeIndex = BTreeMap<(Option<u32>, String, String), Vec<u32>>;
+
 #[derive(Clone)]
 struct Owner {
     token: u32,
@@ -73,12 +78,15 @@ pub(crate) struct Resolver<'a> {
     methods: BTreeMap<u32, Rc<SemanticTarget>>,
     fields: BTreeMap<u32, Rc<SemanticTarget>>,
     type_targets: BTreeMap<u32, Rc<SemanticTarget>>,
-    field_candidates: BTreeMap<(u32, String), Vec<u32>>,
     owners: BTreeMap<u32, Owner>,
     active: BTreeSet<u32>,
     named: BTreeMap<(ScopeIdentity, String, String), u32>,
-    candidates: BTreeMap<(u32, String), Vec<u32>>,
-    types: BTreeMap<(Option<u32>, String, String), Vec<u32>>,
+    // Candidate indices are only needed to resolve MemberRef/TypeRef identities. A
+    // MethodDef/FieldDef operand resolves directly, so building three whole-module
+    // indices before answering one FETCH record was wasted work.
+    method_index: Option<MemberIndex>,
+    field_index: Option<MemberIndex>,
+    type_index: Option<TypeIndex>,
 }
 
 impl Input {
@@ -136,48 +144,95 @@ impl<'a> Resolver<'a> {
     pub(crate) fn new(input: &'a Input, used: usize) -> Result<Self> {
         let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
         work.charge(used)?;
-        let mut candidates: BTreeMap<_, Vec<_>> = BTreeMap::new();
-        for method in &input.methods {
-            work.charge(1 + method.name.len())?;
-            candidates
-                .entry((method.declaring_type_token, method.name.clone()))
-                .or_default()
-                .push(method.token);
-        }
-        let mut field_candidates: BTreeMap<_, Vec<_>> = BTreeMap::new();
-        for field in &input.fields {
-            work.charge(1 + field.name.len())?;
-            field_candidates
-                .entry((field.declaring_type_token, field.name.clone()))
-                .or_default()
-                .push(field.token);
-        }
-        let mut types: BTreeMap<_, Vec<_>> = BTreeMap::new();
-        for ty in &input.types {
-            work.charge(1 + ty.name.len() + ty.namespace.len())?;
-            types
-                .entry((
-                    ty.declaring_type_token,
-                    ty.namespace.clone(),
-                    ty.name.clone(),
-                ))
-                .or_default()
-                .push(ty.token);
-        }
         Ok(Self {
             input,
             work,
             methods: BTreeMap::new(),
             fields: BTreeMap::new(),
             type_targets: BTreeMap::new(),
-            field_candidates,
             owners: BTreeMap::new(),
             active: BTreeSet::new(),
             named: BTreeMap::new(),
-            candidates,
-            types,
+            method_index: None,
+            field_index: None,
+            type_index: None,
         })
     }
+    /// Candidate methods for one (owner, name), built from the module only on first use.
+    fn method_candidates(&mut self, owner: u32, name: &str) -> Result<Vec<u32>> {
+        if self.method_index.is_none() {
+            let mut index = MemberIndex::new();
+            for method in &self.input.methods {
+                self.work.charge(1 + method.name.len())?;
+                index
+                    .entry((method.declaring_type_token, method.name.clone()))
+                    .or_default()
+                    .push(method.token);
+            }
+            self.method_index = Some(index);
+        }
+        Ok(self
+            .method_index
+            .as_ref()
+            .expect("built above")
+            .get(&(owner, name.to_owned()))
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Candidate fields for one (owner, name), built from the module only on first use.
+    fn field_candidates(&mut self, owner: u32, name: &str) -> Result<Vec<u32>> {
+        if self.field_index.is_none() {
+            let mut index = MemberIndex::new();
+            for field in &self.input.fields {
+                self.work.charge(1 + field.name.len())?;
+                index
+                    .entry((field.declaring_type_token, field.name.clone()))
+                    .or_default()
+                    .push(field.token);
+            }
+            self.field_index = Some(index);
+        }
+        Ok(self
+            .field_index
+            .as_ref()
+            .expect("built above")
+            .get(&(owner, name.to_owned()))
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Candidate local types for one (declaring type, namespace, name), built on demand.
+    fn type_candidates(
+        &mut self,
+        declaring: Option<u32>,
+        namespace: &str,
+        name: &str,
+    ) -> Result<Vec<u32>> {
+        if self.type_index.is_none() {
+            let mut index = TypeIndex::new();
+            for ty in &self.input.types {
+                self.work.charge(1 + ty.name.len() + ty.namespace.len())?;
+                index
+                    .entry((
+                        ty.declaring_type_token,
+                        ty.namespace.clone(),
+                        ty.name.clone(),
+                    ))
+                    .or_default()
+                    .push(ty.token);
+            }
+            self.type_index = Some(index);
+        }
+        Ok(self
+            .type_index
+            .as_ref()
+            .expect("built above")
+            .get(&(declaring, namespace.to_owned(), name.to_owned()))
+            .cloned()
+            .unwrap_or_default())
+    }
+
     fn enter(&mut self, token: u32) -> Result<()> {
         self.work.charge(1)?;
         ensure!(
@@ -313,11 +368,7 @@ impl<'a> Resolver<'a> {
             method_arguments: Vec::new(),
         };
         if let Some(definition) = owner.definition {
-            let candidates = self
-                .candidates
-                .get(&(definition, name))
-                .cloned()
-                .unwrap_or_default();
+            let candidates = self.method_candidates(definition, &name)?;
             let mut matches = Vec::new();
             for candidate in candidates {
                 self.work.charge(1)?;
@@ -416,11 +467,7 @@ impl<'a> Resolver<'a> {
             target.canonical_token = Some(token);
             target.canonical_id = Some(self.input.id("field", token));
         } else if let Some(definition) = owner.definition {
-            let candidates = self
-                .field_candidates
-                .get(&(definition, name))
-                .cloned()
-                .unwrap_or_default();
+            let candidates = self.field_candidates(definition, &name)?;
             let mut matches = Vec::new();
             for candidate in candidates {
                 self.work.charge(1)?;
@@ -686,10 +733,7 @@ impl<'a> Resolver<'a> {
             ),
         };
         let definitions = if local {
-            self.types
-                .get(&(parent, namespace.clone(), name.clone()))
-                .cloned()
-                .unwrap_or_default()
+            self.type_candidates(parent, &namespace, &name)?
         } else {
             Vec::new()
         };

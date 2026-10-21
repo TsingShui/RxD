@@ -464,7 +464,15 @@ serialized projection are charged against the selected output allowance; cumulat
 scan evidence and resolved reference rows are charged against the metadata
 allowance, all before allocation. Those working-set checks fail with
 `RESOURCE_LIMIT` and no partial output; they account for this backend's own
-allocations, not the parser's or the pinned native engine's RSS. Whole-class work
+allocations, not the parser's or the pinned native engine's RSS. Whole-module
+structural validation and metadata loading are independent read-only passes over the
+same immutable snapshot: for inputs up to 64 MiB they run concurrently using one
+additional owned copy of the bytes (peak transient memory about twice the input),
+while larger inputs keep a single copy and run them sequentially. Neither pass is
+skipped or weakened, and a structural-validation failure still takes precedence over
+a metadata error. Candidate indices for `MemberRef`/`TypeRef` identity resolution are
+built only when an identifier actually needs them; a local `MethodDef`/`FieldDef`
+operand resolves directly. Whole-class work
 accumulates metadata parsing, ownership/member scanning, each method decode and pre-reconstruction
 signature validation; instruction limits stay per method. Whole-class records count
 the outer class_body, root type, nested types/fields/properties/events and each
