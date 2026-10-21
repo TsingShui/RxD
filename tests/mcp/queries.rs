@@ -4,15 +4,25 @@ use std::process::Command;
 
 #[cfg(feature = "backend-dotnet")]
 #[test]
-fn mcp_keeps_fixed_service_work_after_cli_input_scaling() {
+fn mcp_keeps_independent_fixed_service_budgets_after_cli_input_scaling() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "dotnet"]);
+    // The CLI scales its output envelope with the input. This server fixes a much
+    // smaller response-derived projection budget, so the same request is admitted by
+    // the CLI and rejected by the service.
+    let mut client = Client::start(&[
+        "--root",
+        root.to_str().unwrap(),
+        "--backends",
+        "dotnet",
+        "--max-response-bytes",
+        "1024",
+    ]);
     client.initialize();
     let rejected = client.tool(
-        "dotnet_xref",
+        "dotnet_methods",
         json!({
-            "input": {"path": input}, "kind": "string", "filter": "__rxd_nonexistent_budget_probe__"
+            "input": {"path": input}, "class": "Newtonsoft.Json.JsonReader", "name": "ReadAsInt32"
         }),
     );
     assert_eq!(rejected["isError"], true, "{rejected}");
@@ -20,8 +30,25 @@ fn mcp_keeps_fixed_service_work_after_cli_input_scaling() {
         rejected["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
         "{rejected}"
     );
-}
 
+    // The same query through the CLI is complete under its input-scaled envelope.
+    let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dotnet", "methods"])
+        .arg(&input)
+        .args([
+            "--class",
+            "Newtonsoft.Json.JsonReader",
+            "--name",
+            "ReadAsInt32",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        cli.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+}
 #[cfg(feature = "backend-js")]
 #[test]
 fn mcp_js_navigation_preserves_cli_identity_and_source() {

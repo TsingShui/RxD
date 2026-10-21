@@ -256,11 +256,22 @@ fn dotnet_field_type_reference_queries_reject_recursive_types_and_malformed_fiel
         bytes[offsets[0] + relative] = value;
         let broken = directory.path().join(name);
         fs::write(&broken, bytes).unwrap();
-        for token in ["0x02000003", "0x04000006"] {
-            let output = run("xref", &broken, &["--at", token]);
+        // The broken row itself is always in scope.
+        let output = run("xref", &broken, &["--at", "0x04000006"]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
+        // A cycle is reached through type resolution, so the type query stays local too.
+        // A malformed *field* signature is unrelated to the type answer: that query is
+        // no longer failed by it.
+        let output = run("xref", &broken, &["--at", "0x02000003"]);
+        if name == "cycle.dll" {
             assert_eq!(output.status.code(), Some(1));
             assert!(output.stdout.is_empty());
-            assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
+        } else {
+            success(&output);
+            let rows = jsonl(&output);
+            assert_eq!(rows.last().unwrap()["complete"], true);
         }
     }
 }

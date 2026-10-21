@@ -24,6 +24,16 @@ impl Default for Limits {
     }
 }
 
+/// One metadata row that could not be turned into an indexed entry. The query keeps
+/// answering from the rows it could read; `complete` is false while any exist.
+#[derive(Clone, Debug, Serialize)]
+pub struct Unreadable {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<u32>,
+    pub kind: &'static str,
+    pub reason: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct TypeInfo {
     pub id: String,
@@ -56,6 +66,11 @@ pub struct Field {
     pub declaring_type: Arc<String>,
     pub name: String,
     pub signature: Arc<String>,
+    /// `#Blob` index; the signature fields are filled by `Input::resolve_field`.
+    #[serde(skip)]
+    pub(crate) signature_index: u32,
+    #[serde(skip)]
+    pub(crate) resolved: bool,
     #[serde(rename = "access_flags")]
     pub flags: u16,
 }
@@ -80,6 +95,11 @@ pub struct Method {
     pub signature_flags: u8,
     pub return_type: Arc<String>,
     pub has_this: bool,
+    /// `#Blob` index; the signature fields are filled by `Input::resolve_method`.
+    #[serde(skip)]
+    pub(crate) signature_index: u32,
+    #[serde(skip)]
+    pub(crate) resolved: bool,
     pub has_body: bool,
     pub rva: u32,
     #[serde(rename = "access_flags")]

@@ -25,7 +25,7 @@ pub struct TokenSite {
 }
 
 impl Input {
-    pub fn scan_il(&self) -> Result<IlScan> {
+    pub fn scan_il(&mut self) -> Result<IlScan> {
         let mut work = Work::new(self.limits.work, self.limits.metadata_bytes);
         work.charge(self.metadata_work)?;
         let strings = crate::metadata::strings_with_work(self, &mut work)?;
@@ -43,13 +43,15 @@ impl Input {
             )?;
         }
         let mut sites = Vec::new();
-        for method in &self.methods {
+        for index in 0..self.methods.len() {
             work.charge(1)?;
-            if !method.has_body {
+            if !self.methods[index].has_body {
                 continue;
             }
-            let body =
-                crate::il::scan_body(self, method, self.limits.work - work.used(), &boundaries)?;
+            // Only scanned bodies need their signatures resolved (argument bounds).
+            self.resolve_method(index)?;
+            let remaining = self.limits.work - work.used();
+            let body = crate::il::scan_body(self, &self.methods[index], remaining, &boundaries)?;
             work.charge(body.work_used)?;
             for instruction in body.instructions {
                 let Operand::Token(target_token) = instruction.operand else {
@@ -57,7 +59,7 @@ impl Input {
                 };
                 footprint.add(std::mem::size_of::<TokenSite>() + instruction.mnemonic.len())?;
                 sites.push(TokenSite {
-                    method_token: method.token,
+                    method_token: self.methods[index].token,
                     code_offset: body.code_offset,
                     il_offset: instruction.offset,
                     size: instruction.size,

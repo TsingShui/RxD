@@ -319,7 +319,7 @@ impl<'a> Resolver<'a> {
             });
         }
         ensure!(
-            self.input.member_kinds.get(&token) == Some(&true),
+            self.input.member_kind(token)? == Some(true),
             "INVALID_QUERY: semantic method selector references field"
         );
         let row = self
@@ -424,7 +424,7 @@ impl<'a> Resolver<'a> {
             )
         } else {
             ensure!(
-                self.input.member_kinds.get(&token) == Some(&false),
+                self.input.member_kind(token)? == Some(false),
                 "INVALID_QUERY: field target required"
             );
             let row = self
@@ -557,21 +557,20 @@ impl<'a> Resolver<'a> {
         self.type_targets.insert(token, target.clone());
         Ok(target)
     }
-    fn kind(&self, token: u32) -> Option<&'static str> {
-        match token >> 24 {
+    fn kind(&self, token: u32) -> Result<Option<&'static str>> {
+        Ok(match token >> 24 {
             1 | 2 | 27 => Some("type"),
             4 => Some("field"),
             6 | 43 => Some("method"),
             10 => self
                 .input
-                .member_kinds
-                .get(&token)
-                .map(|method| if *method { "method" } else { "field" }),
+                .member_kind(token)?
+                .map(|method| if method { "method" } else { "field" }),
             _ => None,
-        }
+        })
     }
     fn target(&mut self, token: u32) -> Result<Rc<SemanticTarget>> {
-        match self.kind(token) {
+        match self.kind(token)? {
             Some("method") => self.method(token),
             Some("field") => self.field(token),
             Some("type") => self.ty(token),
@@ -1119,7 +1118,7 @@ pub struct Reference {
 }
 
 impl Input {
-    pub fn references(&self, token: u32, semantic: bool) -> Result<ReferenceResult> {
+    pub fn references(&mut self, token: u32, semantic: bool) -> Result<ReferenceResult> {
         if token >> 24 != 0x70 {
             self.validate_token(token)
                 .map_err(|error| anyhow::anyhow!("INVALID_QUERY: {error:#}"))?;
@@ -1152,7 +1151,7 @@ impl Input {
         let mut footprint = WorkingSet::new(self.limits.metadata_bytes, "reference working set");
         for site in scan.sites {
             let candidate = if let Some(resolver) = &mut resolver {
-                if resolver.kind(site.target_token) != resolver.kind(token) {
+                if resolver.kind(site.target_token)? != resolver.kind(token)? {
                     continue;
                 }
                 Some(resolver.target(site.target_token)?)

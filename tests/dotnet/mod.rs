@@ -930,13 +930,22 @@ fn empty_exception_sections(count: usize) -> Vec<u8> {
 }
 
 #[test]
-fn dotnet_repeated_attribute_targets_do_not_hide_an_invalid_parent_reference() {
+fn dotnet_unrelated_invalid_parent_reference_stays_out_of_local_listings() {
     let bad =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/InvalidReference.dll");
+    // A name listing reads rows and names only. The corrupt custom-attribute parent
+    // reference is unrelated to that answer, so the query completes instead of failing
+    // the whole file.
     let output = run("methods", &bad, &["--name", "Add"]);
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
+    success(&output);
+    let rows = jsonl(&output);
+    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!(rows.last().unwrap()["complete"], true);
+
+    // The explicit whole-structure check still reports the corruption.
+    let parsed = rxd_dotnet::Input::read(&bad, rxd_dotnet::Limits::default()).unwrap();
+    let error = parsed.verify_module().unwrap_err().to_string();
+    assert!(error.contains("INVALID_INPUT"), "{error}");
 }
 
 #[test]

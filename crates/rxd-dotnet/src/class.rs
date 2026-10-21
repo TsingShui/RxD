@@ -1,35 +1,49 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 
-use crate::{ClassBody, ClassMethod, Input, TypeInfo, input::Work};
+use crate::{ClassBody, ClassMethod, Input, input::Work};
 use anyhow::{Context, Result, ensure};
 
-pub(crate) fn body<'a>(input: &'a Input, root: &'a TypeInfo) -> Result<ClassBody<'a>> {
-    ensure!(
-        root.token != 0x02000001 || root.name != "<Module>",
-        "INVALID_QUERY: synthetic module is not a class"
-    );
+/// Resolve only what this class query needs: property/event associations and the
+/// signatures of its own (and nested) methods. Unrelated rows are never parsed.
+pub(crate) fn prepare(input: &mut Input, root_token: u32) -> Result<()> {
+    {
+        let root = input
+            .types
+            .iter()
+            .find(|ty| ty.token == root_token)
+            .context("INVALID_QUERY: type does not exist")?;
+        ensure!(
+            root.token != 0x02000001 || root.name != "<Module>",
+            "INVALID_QUERY: synthetic module is not a class"
+        );
+    }
+    crate::metadata::load_relationships(input)?;
     let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
     work.charge(input.metadata_work)?;
-    let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-    for ty in &input.types {
+    let selected = selected_types(input, root_token, &mut work)?;
+    let mut owned = Vec::new();
+    for (index, item) in input.methods.iter().enumerate() {
         work.charge(1)?;
-        if let Some(parent) = ty.declaring_type_token {
-            children.entry(parent).or_default().push(ty.token);
+        if selected.contains(&item.declaring_type_token) {
+            owned.push(index);
         }
     }
-    let mut selected = BTreeSet::from([root.token]);
-    let mut frontier = vec![root.token];
-    while let Some(parent) = frontier.pop() {
-        for child in children.get(&parent).into_iter().flatten() {
-            work.charge(1)?;
-            ensure!(
-                selected.insert(*child),
-                "INVALID_INPUT: cyclic nested ownership"
-            );
-            frontier.push(*child);
-        }
+    for index in owned {
+        input.resolve_method(index)?;
     }
+    Ok(())
+}
+
+pub(crate) fn build<'a>(input: &'a Input, root_token: u32) -> Result<ClassBody<'a>> {
+    let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
+    work.charge(input.metadata_work)?;
+    let selected = selected_types(input, root_token, &mut work)?;
+    let root = input
+        .types
+        .iter()
+        .find(|ty| ty.token == root_token)
+        .context("INVALID_QUERY: type does not exist")?;
     let types: Vec<_> = input
         .types
         .iter()
@@ -97,6 +111,30 @@ pub(crate) fn body<'a>(input: &'a Input, root: &'a TypeInfo) -> Result<ClassBody
         methods,
         work_used: work.used(),
     })
+}
+
+/// The selected type plus every type nested under it, with cycle detection.
+fn selected_types(input: &Input, root_token: u32, work: &mut Work) -> Result<BTreeSet<u32>> {
+    let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+    for ty in &input.types {
+        work.charge(1)?;
+        if let Some(parent) = ty.declaring_type_token {
+            children.entry(parent).or_default().push(ty.token);
+        }
+    }
+    let mut selected = BTreeSet::from([root_token]);
+    let mut frontier = vec![root_token];
+    while let Some(parent) = frontier.pop() {
+        for child in children.get(&parent).into_iter().flatten() {
+            work.charge(1)?;
+            ensure!(
+                selected.insert(*child),
+                "INVALID_INPUT: cyclic nested ownership"
+            );
+            frontier.push(*child);
+        }
+    }
+    Ok(selected)
 }
 
 struct Counter {

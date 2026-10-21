@@ -77,9 +77,11 @@ worker concurrency remain bounded, and explicit service discovery limits remain.
 
 .NET, WASM and PYC use a shared fallibly growing JSONL writer; headers, records, summary
 and final newline all count. Serialization exhaustion stays `RESOURCE_LIMIT`, not
-successful truncation. Existing atomic-output guarantees and malformed-unselected
-input validation must remain; this change does not repair DEX's existing direct
-file writes or every historical error-classification defect.
+successful truncation. Existing atomic-output guarantees must remain; this change does not repair DEX's
+existing direct file writes or every historical error-classification defect. How much
+of an input is validated before answering is a separate decision: .NET now validates
+the rows a query reads ([ADR 0017](0017-scoped-dotnet-validation.md)), while the other
+backends keep their documented scope.
 
 The ordinary CLI parent spools worker stdout to a private temporary file, forwards
 it only after success, and discards it on failure. It no longer retains a second

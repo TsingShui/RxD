@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+    collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
 
@@ -24,6 +24,24 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         "UNSUPPORTED: pointer metadata tables"
     );
     let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
+    // A row that cannot be indexed is recorded and skipped; other rows still answer.
+    let mut unreadable: Vec<crate::Unreadable> = Vec::new();
+    let mut skipped_types: BTreeSet<u32> = BTreeSet::new();
+    macro_rules! unreadable {
+        ($kind:expr, $token:expr, $error:expr) => {{
+            let error = $error;
+            let reason = format!("{error:#}");
+            // Budget exhaustion is not a bad row: it must still fail the read.
+            if reason.contains("RESOURCE_LIMIT") {
+                return Err(error.into());
+            }
+            unreadable.push(crate::Unreadable {
+                token: $token,
+                kind: $kind,
+                reason,
+            })
+        }};
+    }
     reserve_metadata(input, &mut work)?;
     let types = match tables.table::<TypeDefRaw>() {
         Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
@@ -34,14 +52,6 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         None => Vec::new(),
     };
     let methods = match tables.table::<MethodDefRaw>() {
-        Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
-        None => Vec::new(),
-    };
-    let refs = match tables.table::<MemberRefRaw>() {
-        Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
-        None => Vec::new(),
-    };
-    let specs = match tables.table::<MethodSpecRaw>() {
         Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
         None => Vec::new(),
     };
@@ -67,127 +77,184 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
     let mut core_base_types = BTreeSet::new();
     if let Some(refs) = tables.table::<TypeRefRaw>() {
         for row in refs.iter() {
-            let row = row?;
-            let namespace = input.name(row.type_namespace)?;
-            let name = input.name(row.type_name)?;
-            work.charge(
-                namespace
-                    .len()
-                    .saturating_add(name.len())
-                    .saturating_add(usize::from(!namespace.is_empty())),
-            )?;
-            let n = full_name(namespace, name);
-            if matches!(n.as_str(), "System.ValueType" | "System.Enum") {
-                let scope = row.resolution_scope.token.value();
-                let core_scope = if scope >> 24 == 35 {
-                    let assembly = tables
-                        .table::<AssemblyRefRaw>()
-                        .context("INVALID_INPUT: assembly reference table")?
-                        .get(scope & 0xffffff)?
-                        .context("INVALID_INPUT: assembly reference")?;
-                    let name = input.name(assembly.name)?;
-                    work.charge(name.len())?;
-                    is_core_library(name)
-                } else {
-                    scope >> 24 == 0 && own_core_library
-                };
-                if core_scope {
-                    core_base_types.insert(row.token.value());
+            let row = match row {
+                Ok(row) => row,
+                Err(error) => {
+                    unreadable!("type_ref", None, error);
+                    continue;
                 }
+            };
+            let processed = (|| -> Result<()> {
+                let namespace = input.name(row.type_namespace)?;
+                let name = input.name(row.type_name)?;
+                work.charge(
+                    namespace
+                        .len()
+                        .saturating_add(name.len())
+                        .saturating_add(usize::from(!namespace.is_empty())),
+                )?;
+                let n = full_name(namespace, name);
+                if matches!(n.as_str(), "System.ValueType" | "System.Enum") {
+                    let scope = row.resolution_scope.token.value();
+                    let core_scope = if scope >> 24 == 35 {
+                        let assembly = tables
+                            .table::<AssemblyRefRaw>()
+                            .context("INVALID_INPUT: assembly reference table")?
+                            .get(scope & 0xffffff)?
+                            .context("INVALID_INPUT: assembly reference")?;
+                        let name = input.name(assembly.name)?;
+                        work.charge(name.len())?;
+                        is_core_library(name)
+                    } else {
+                        scope >> 24 == 0 && own_core_library
+                    };
+                    if core_scope {
+                        core_base_types.insert(row.token.value());
+                    }
+                }
+                names.insert(row.token.value(), Arc::new(n));
+                Ok(())
+            })();
+            if let Err(error) = processed {
+                unreadable!("type_ref", Some(row.token.value()), error);
             }
-            names.insert(row.token.value(), Arc::new(n));
         }
     }
     let mut nested = BTreeMap::new();
     if let Some(rows) = tables.table::<NestedClassRaw>() {
         for row in rows.iter() {
-            let row = row?;
-            input.check_token(0x02000000 | row.nested_class, &[2])?;
-            input.check_token(0x02000000 | row.enclosing_class, &[2])?;
-            ensure!(
-                nested
-                    .insert(row.nested_class, row.enclosing_class)
-                    .is_none(),
-                "INVALID_INPUT: duplicate nested type"
-            );
+            let row = match row {
+                Ok(row) => row,
+                Err(error) => {
+                    unreadable!("nested_class", None, error);
+                    continue;
+                }
+            };
+            let processed = (|| -> Result<()> {
+                input.check_token(0x02000000 | row.nested_class, &[2])?;
+                input.check_token(0x02000000 | row.enclosing_class, &[2])?;
+                ensure!(
+                    nested
+                        .insert(row.nested_class, row.enclosing_class)
+                        .is_none(),
+                    "INVALID_INPUT: duplicate nested type"
+                );
+                Ok(())
+            })();
+            if let Err(error) = processed {
+                let token = 0x02000000 | row.nested_class;
+                skipped_types.insert(token);
+                unreadable!("nested_class", Some(token), error);
+            }
         }
     }
-    let mut generic_parameters = generic_parameters(input, &mut work)?;
+    let mut generic_parameters = generic_parameters(input, &mut work, &mut unreadable)?;
     let mut interfaces: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
     if let Some(rows) = tables.table::<InterfaceImplRaw>() {
         for row in rows.iter() {
-            let row = row?;
-            work.charge(std::mem::size_of::<(u32, u32)>())?;
+            let row = match row {
+                Ok(row) => row,
+                Err(error) => {
+                    unreadable!("interface_impl", None, error);
+                    continue;
+                }
+            };
             let owner = 0x02000000 | row.class;
-            input.check_token(owner, &[2])?;
-            input.check_token(row.interface.token.value(), &[1, 2, 27])?;
-            interfaces
-                .entry(owner)
-                .or_default()
-                .push(row.interface.token.value());
+            let processed = (|| -> Result<()> {
+                work.charge(std::mem::size_of::<(u32, u32)>())?;
+                input.check_token(owner, &[2])?;
+                input.check_token(row.interface.token.value(), &[1, 2, 27])?;
+                interfaces
+                    .entry(owner)
+                    .or_default()
+                    .push(row.interface.token.value());
+                Ok(())
+            })();
+            if let Err(error) = processed {
+                unreadable!("interface_impl", Some(owner), error);
+            }
         }
     }
     let mut result_types = Vec::new();
-    for row in &types {
-        let name = input.name(row.type_name)?;
-        let namespace = input.name(row.type_namespace)?;
-        work.charge(name.len().saturating_add(namespace.len()))?;
-        let mut segments = vec![name];
-        let mut outer_namespace = namespace;
-        let mut rid = row.rid;
-        let mut seen = BTreeSet::new();
-        while let Some(parent) = nested.get(&rid) {
-            ensure!(
-                seen.insert(rid) && seen.len() <= 64,
-                "INVALID_INPUT: cyclic or excessive nested types"
-            );
-            let p = types
-                .get(
-                    (*parent as usize)
-                        .checked_sub(1)
-                        .context("INVALID_INPUT: nested parent")?,
-                )
-                .context("INVALID_INPUT: nested parent")?;
-            let parent_name = input.name(p.type_name)?;
-            work.charge(parent_name.len())?;
-            segments.push(parent_name);
-            outer_namespace = input.name(p.type_namespace)?;
-            rid = *parent;
+    // Original TypeDef row index -> position in `result_types`, which can be shorter
+    // when a row was unreadable.
+    let mut type_slot: Vec<Option<usize>> = vec![None; types.len()];
+    for (row_index, row) in types.iter().enumerate() {
+        if skipped_types.contains(&row.token.value()) {
+            continue;
         }
-        segments.reverse();
-        let joined_bytes = segments.iter().fold(segments.len() - 1, |bytes, name| {
-            bytes.saturating_add(name.len())
-        });
-        work.charge(
-            joined_bytes
-                .saturating_add(outer_namespace.len())
-                .saturating_add(usize::from(!outer_namespace.is_empty())),
-        )?;
-        let full = Arc::new(full_name(outer_namespace, &segments.join("+")));
-        names.insert(row.token.value(), full.clone());
-        if own_core_library && matches!(full.as_str(), "System.ValueType" | "System.Enum") {
-            core_base_types.insert(row.token.value());
+        let processed = (|| -> Result<TypeInfo> {
+            let name = input.name(row.type_name)?;
+            let namespace = input.name(row.type_namespace)?;
+            work.charge(name.len().saturating_add(namespace.len()))?;
+            let mut segments = vec![name];
+            let mut outer_namespace = namespace;
+            let mut rid = row.rid;
+            let mut seen = BTreeSet::new();
+            while let Some(parent) = nested.get(&rid) {
+                ensure!(
+                    seen.insert(rid) && seen.len() <= 64,
+                    "INVALID_INPUT: cyclic or excessive nested types"
+                );
+                let p = types
+                    .get(
+                        (*parent as usize)
+                            .checked_sub(1)
+                            .context("INVALID_INPUT: nested parent")?,
+                    )
+                    .context("INVALID_INPUT: nested parent")?;
+                let parent_name = input.name(p.type_name)?;
+                work.charge(parent_name.len())?;
+                segments.push(parent_name);
+                outer_namespace = input.name(p.type_namespace)?;
+                rid = *parent;
+            }
+            segments.reverse();
+            let joined_bytes = segments.iter().fold(segments.len() - 1, |bytes, name| {
+                bytes.saturating_add(name.len())
+            });
+            work.charge(
+                joined_bytes
+                    .saturating_add(outer_namespace.len())
+                    .saturating_add(usize::from(!outer_namespace.is_empty())),
+            )?;
+            let full = Arc::new(full_name(outer_namespace, &segments.join("+")));
+            names.insert(row.token.value(), full.clone());
+            if own_core_library && matches!(full.as_str(), "System.ValueType" | "System.Enum") {
+                core_base_types.insert(row.token.value());
+            }
+            Ok(TypeInfo {
+                id: input.id("type", row.token.value()),
+                declaring_type_token: nested.get(&row.rid).map(|rid| 0x02000000 | rid),
+                declaring_type_id: nested
+                    .get(&row.rid)
+                    .map(|rid| input.id("type", 0x02000000 | rid)),
+                extends_token: (row.extends.token.value() & 0xffffff != 0)
+                    .then_some(row.extends.token.value()),
+                kind: "class".to_owned(),
+                interfaces: interfaces.remove(&row.token.value()).unwrap_or_default(),
+                generic_parameters: generic_parameters
+                    .remove(&row.token.value())
+                    .unwrap_or_default(),
+                token: row.token.value(),
+                name: name.to_owned(),
+                namespace: namespace.to_owned(),
+                full_name: full,
+                flags: row.flags,
+            })
+        })();
+        match processed {
+            Ok(ty) => {
+                type_slot[row_index] = Some(result_types.len());
+                result_types.push(ty);
+            }
+            Err(error) => {
+                skipped_types.insert(row.token.value());
+                unreadable!("type", Some(row.token.value()), error);
+            }
         }
-        result_types.push(TypeInfo {
-            id: input.id("type", row.token.value()),
-            declaring_type_token: nested.get(&row.rid).map(|rid| 0x02000000 | rid),
-            declaring_type_id: nested
-                .get(&row.rid)
-                .map(|rid| input.id("type", 0x02000000 | rid)),
-            extends_token: (row.extends.token.value() & 0xffffff != 0)
-                .then_some(row.extends.token.value()),
-            kind: "class".to_owned(),
-            interfaces: interfaces.remove(&row.token.value()).unwrap_or_default(),
-            generic_parameters: generic_parameters
-                .remove(&row.token.value())
-                .unwrap_or_default(),
-            token: row.token.value(),
-            name: name.to_owned(),
-            namespace: namespace.to_owned(),
-            full_name: full,
-            flags: row.flags,
-        });
     }
+
     for ty in &mut result_types {
         ty.kind = if ty.flags & 0x20 != 0 {
             "interface"
@@ -214,44 +281,57 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
     let mut method_owners = vec![None; methods.len()];
     for (idx, ty) in types.iter().enumerate() {
         let next = types.get(idx + 1);
-        assign_range(
-            &mut field_owners,
-            ty.field_list,
-            next.map_or(fields.len() as u32 + 1, |r| r.field_list),
-            idx,
-        )?;
-        assign_range(
-            &mut method_owners,
-            ty.method_list,
-            next.map_or(methods.len() as u32 + 1, |r| r.method_list),
-            idx,
-        )?;
+        let assigned = (|| -> Result<()> {
+            assign_range(
+                &mut field_owners,
+                ty.field_list,
+                next.map_or(fields.len() as u32 + 1, |r| r.field_list),
+                idx,
+            )?;
+            assign_range(
+                &mut method_owners,
+                ty.method_list,
+                next.map_or(methods.len() as u32 + 1, |r| r.method_list),
+                idx,
+            )?;
+            Ok(())
+        })();
+        if let Err(error) = assigned {
+            skipped_types.insert(ty.token.value());
+            unreadable!("type_members", Some(ty.token.value()), error);
+        }
     }
-    ensure!(
-        field_owners.iter().all(Option::is_some) && method_owners.iter().all(Option::is_some),
-        "INVALID_INPUT: unowned metadata members"
-    );
-    let mut signatures = Signatures::default();
+    // Signatures, MemberRef/MethodSpec grammar and property/event associations are
+    // resolved on demand (`Input::resolve_*`), so an unrelated corrupt row cannot
+    // turn a local query into a whole-file failure. Table/heap/token structure was
+    // already validated before this point.
     let mut result_fields = Vec::new();
     for (idx, row) in fields.iter().enumerate() {
-        let signature = signatures.field(input, row.signature, &mut work)?;
-        let name = input.name(row.name)?;
-        let owner = field_owners[idx].context("INVALID_INPUT: field owner")?;
-        let declaring_type = result_types[owner].full_name.clone();
-        work.charge(name.len().saturating_add(2))?; // name bytes, shared owner/signature handles
-        result_fields.push(Field {
-            id: input.id("field", row.token.value()),
-            declaring_type_id: result_types[owner].id.clone(),
-            token: row.token.value(),
-            declaring_type_token: result_types[owner].token,
-            declaring_type,
-            name: name.to_owned(),
-            signature,
-            flags: row.flags.try_into()?,
-        });
+        let processed = (|| -> Result<Field> {
+            let name = input.name(row.name)?;
+            let owner = field_owners[idx].context("INVALID_INPUT: field owner")?;
+            let slot = type_slot[owner].context("INVALID_INPUT: declaring type is unreadable")?;
+            let declaring_type = result_types[slot].full_name.clone();
+            work.charge(name.len().saturating_add(2))?; // name bytes, shared owner handle
+            Ok(Field {
+                id: input.id("field", row.token.value()),
+                declaring_type_id: result_types[slot].id.clone(),
+                token: row.token.value(),
+                declaring_type_token: result_types[slot].token,
+                declaring_type,
+                name: name.to_owned(),
+                signature: Arc::new(String::new()),
+                signature_index: row.signature,
+                resolved: false,
+                flags: row.flags.try_into()?,
+            })
+        })();
+        match processed {
+            Ok(field) => result_fields.push(field),
+            Err(error) => unreadable!("field", Some(row.token.value()), error),
+        }
     }
     let mut result_methods = Vec::new();
-    let mut member_kinds = BTreeMap::new();
     let type_kinds: BTreeMap<_, _> = types
         .iter()
         .map(|row| {
@@ -264,84 +344,50 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         })
         .collect();
     for (idx, row) in methods.iter().enumerate() {
-        let cached = signatures.method(input, row.signature, &mut work)?;
-        let signature = cached.display(&mut work)?;
-        let sig = &cached.sig;
-        let name = input.name(row.name)?;
-        let owner = method_owners[idx].context("INVALID_INPUT: method owner")?;
-        let declaring_type = result_types[owner].full_name.clone();
-        let token = row.token.value();
-        let type_token = types[owner].token.value();
-        let is_value_type = type_kinds[&type_token];
-        work.charge(name.len().saturating_add(4))?; // name bytes and immutable shared handles
-        result_methods.push(Method {
-            declaring_type_id: result_types[owner].id.clone(),
-            impl_flags: row.impl_flags.try_into()?,
-            generic_parameters: generic_parameters
-                .remove(&row.token.value())
-                .unwrap_or_default(),
-            id: input.id("method", token),
-            token,
-            declaring_type,
-            declaring_type_token: type_token,
-            declaring_type_is_value_type: is_value_type,
-            name: name.to_owned(),
-            signature,
-            parameters: sig.parameters.clone(),
-            return_type: sig.return_type.clone(),
-            has_this: sig.has_this,
-            signature_flags: sig.flags,
-            has_body: row.rva != 0 && row.impl_flags & 3 == 0,
-            rva: row.rva,
-            flags: row.flags.try_into()?,
-        });
-    }
-    // Validate every reference, but do not build call names/projections until
-    // resolve_call asks for one. CLI metadata/FETCH does not consume that index.
-    for row in &refs {
-        let bytes = input.blob(row.signature)?;
-        work.charge(input.name(row.name)?.len())?;
-        let is_method = bytes.first() != Some(&6);
-        member_kinds.insert(row.token.value(), is_method);
-        if is_method {
-            signatures.method(input, row.signature, &mut work)?;
-        } else {
-            signatures.field(input, row.signature, &mut work)?;
+        let processed = (|| -> Result<Method> {
+            let name = input.name(row.name)?;
+            let owner = method_owners[idx].context("INVALID_INPUT: method owner")?;
+            let slot = type_slot[owner].context("INVALID_INPUT: declaring type is unreadable")?;
+            let declaring_type = result_types[slot].full_name.clone();
+            let token = row.token.value();
+            let type_token = types[owner].token.value();
+            let is_value_type = type_kinds[&type_token];
+            work.charge(name.len().saturating_add(4))?; // name bytes and shared owner handles
+            Ok(Method {
+                declaring_type_id: result_types[slot].id.clone(),
+                impl_flags: row.impl_flags.try_into()?,
+                generic_parameters: generic_parameters
+                    .remove(&row.token.value())
+                    .unwrap_or_default(),
+                id: input.id("method", token),
+                token,
+                declaring_type,
+                declaring_type_token: type_token,
+                declaring_type_is_value_type: is_value_type,
+                name: name.to_owned(),
+                signature: Arc::new(String::new()),
+                parameters: Arc::new(Vec::new()),
+                return_type: Arc::new(String::new()),
+                has_this: false,
+                signature_flags: 0,
+                signature_index: row.signature,
+                resolved: false,
+                has_body: row.rva != 0 && row.impl_flags & 3 == 0,
+                rva: row.rva,
+                flags: row.flags.try_into()?,
+            })
+        })();
+        match processed {
+            Ok(method) => result_methods.push(method),
+            Err(error) => unreadable!("method", Some(row.token.value()), error),
         }
     }
-    for row in specs {
-        let target = row.method.token.value();
-        input.check_token(target, &[6, 10])?;
-        ensure!(
-            target >> 24 != 10 || member_kinds.get(&target) == Some(&true),
-            "INVALID_INPUT: MethodSpec references field"
-        );
-        let args = generic_arguments(input, input.blob(row.instantiation)?, &mut work)?;
-        let (parameters, returns, vararg) = if target >> 24 == 6 {
-            let method = &result_methods[(target & 0xffffff) as usize - 1];
-            (
-                &method.parameters,
-                &method.return_type,
-                matches!(method.signature_flags & 15, 5 | 11),
-            )
-        } else {
-            let row = &refs[(target & 0xffffff) as usize - 1];
-            let sig = &signatures.method(input, row.signature, &mut work)?.sig;
-            (&sig.parameters, &sig.return_type, sig.vararg)
-        };
-        if !vararg {
-            for ty in parameters.iter().chain(std::iter::once(returns.as_ref())) {
-                validate_method_arguments(ty, &args, &mut work)?;
-            }
-        }
-    }
+    input.unreadable = unreadable;
     input.types = result_types;
     input.fields = result_fields;
     input.methods = result_methods;
-    input.member_kinds = member_kinds;
     input.type_kinds = type_kinds;
     input.type_names = names;
-    load_relationships(input, &mut work)?;
     input.metadata_work = work.used();
     Ok(())
 }
@@ -405,41 +451,90 @@ fn reserve_metadata(input: &Input, work: &mut Work) -> Result<()> {
 fn generic_parameters(
     input: &Input,
     work: &mut Work,
+    unreadable: &mut Vec<crate::Unreadable>,
 ) -> Result<BTreeMap<u32, Vec<crate::GenericParameter>>> {
     let tables = input.view.tables().context("INVALID_INPUT: tables")?;
     let mut constraints: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
     if let Some(rows) = tables.table::<GenericParamConstraintRaw>() {
         for row in rows.iter() {
-            let row = row?;
-            work.charge(std::mem::size_of::<(u32, u32)>())?;
-            input.check_token(0x2a000000 | row.owner, &[42])?;
-            input.check_token(row.constraint.token.value(), &[1, 2, 27])?;
-            constraints
-                .entry(row.owner)
-                .or_default()
-                .push(row.constraint.token.value());
+            let row = match row {
+                Ok(row) => row,
+                Err(error) => {
+                    unreadable.push(crate::Unreadable {
+                        token: None,
+                        kind: "generic_constraint",
+                        reason: format!("{error:#}"),
+                    });
+                    continue;
+                }
+            };
+            let processed = (|| -> Result<()> {
+                work.charge(std::mem::size_of::<(u32, u32)>())?;
+                input.check_token(0x2a000000 | row.owner, &[42])?;
+                input.check_token(row.constraint.token.value(), &[1, 2, 27])?;
+                constraints
+                    .entry(row.owner)
+                    .or_default()
+                    .push(row.constraint.token.value());
+                Ok(())
+            })();
+            if let Err(error) = processed {
+                let reason = format!("{error:#}");
+                if reason.contains("RESOURCE_LIMIT") {
+                    return Err(error);
+                }
+                unreadable.push(crate::Unreadable {
+                    token: Some(row.token.value()),
+                    kind: "generic_constraint",
+                    reason,
+                });
+            }
         }
     }
     let mut result: BTreeMap<u32, Vec<crate::GenericParameter>> = BTreeMap::new();
     if let Some(rows) = tables.table::<GenericParamRaw>() {
         for row in rows.iter() {
-            let row = row?;
-            let owner = row.owner.token.value();
-            input.check_token(owner, &[2, 6])?;
-            let name = input.name(row.name)?;
-            work.charge(name.len() + std::mem::size_of::<crate::GenericParameter>())?;
-            let items = result.entry(owner).or_default();
-            ensure!(
-                !items.iter().any(|parameter| parameter.number == row.number),
-                "INVALID_INPUT: duplicate generic parameter"
-            );
-            items.push(crate::GenericParameter {
-                token: row.token.value(),
-                number: row.number,
-                flags: row.flags,
-                name: name.to_owned(),
-                constraints: constraints.remove(&row.rid).unwrap_or_default(),
-            });
+            let row = match row {
+                Ok(row) => row,
+                Err(error) => {
+                    unreadable.push(crate::Unreadable {
+                        token: None,
+                        kind: "generic_parameter",
+                        reason: format!("{error:#}"),
+                    });
+                    continue;
+                }
+            };
+            let processed = (|| -> Result<()> {
+                let owner = row.owner.token.value();
+                input.check_token(owner, &[2, 6])?;
+                let name = input.name(row.name)?;
+                work.charge(name.len() + std::mem::size_of::<crate::GenericParameter>())?;
+                let items = result.entry(owner).or_default();
+                ensure!(
+                    !items.iter().any(|parameter| parameter.number == row.number),
+                    "INVALID_INPUT: duplicate generic parameter"
+                );
+                items.push(crate::GenericParameter {
+                    token: row.token.value(),
+                    number: row.number,
+                    flags: row.flags,
+                    name: name.to_owned(),
+                    constraints: constraints.remove(&row.rid).unwrap_or_default(),
+                });
+                Ok(())
+            })();
+            if let Err(error) = processed {
+                let reason = format!("{error:#}");
+                if reason.contains("RESOURCE_LIMIT") {
+                    return Err(error);
+                }
+                unreadable.push(crate::Unreadable {
+                    token: Some(row.token.value()),
+                    kind: "generic_parameter",
+                    reason,
+                });
+            }
         }
     }
     for parameters in result.values_mut() {
@@ -448,7 +543,12 @@ fn generic_parameters(
     Ok(result)
 }
 
-fn load_relationships(input: &mut Input, work: &mut Work) -> Result<()> {
+pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
+    if input.relationships_loaded {
+        return Ok(());
+    }
+    let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
+    work.charge(input.metadata_work)?;
     let tables = input.view.tables().context("INVALID_INPUT: tables")?;
     let mut properties = Vec::new();
     let mut events = Vec::new();
@@ -504,7 +604,7 @@ fn load_relationships(input: &mut Input, work: &mut Work) -> Result<()> {
                 )
                 .context("INVALID_INPUT: property owner")?;
             let bytes = input.blob(row.signature)?;
-            let mut parser = Signature::new(input, bytes, work);
+            let mut parser = Signature::new(input, bytes, &mut work);
             let flags = parser.byte()?;
             ensure!(
                 flags & !0x20 == 8,
@@ -637,6 +737,8 @@ fn load_relationships(input: &mut Input, work: &mut Work) -> Result<()> {
     }
     input.properties = properties;
     input.events = events;
+    input.metadata_work = work.used();
+    input.relationships_loaded = true;
     Ok(())
 }
 
@@ -662,84 +764,17 @@ fn assign_range(owners: &mut [Option<usize>], start: u32, end: u32, owner: usize
     Ok(())
 }
 
-// A blob offset is meaningful only in this immutable Input. Keep field and method
-// grammars separate: a previously validated field must not validate a method row.
-#[derive(Default)]
-struct Signatures {
-    fields: BTreeMap<u32, Arc<String>>,
-    methods: BTreeMap<u32, CachedMethodSig>,
-}
-
-impl Signatures {
-    fn field(&mut self, input: &Input, index: u32, work: &mut Work) -> Result<Arc<String>> {
-        work.charge(1)?;
-        let signature = match self.fields.entry(index) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => {
-                work.charge(2)?;
-                work.retain(
-                    12 * (std::mem::size_of::<(u32, Arc<String>)>() + std::mem::size_of::<usize>())
-                        + std::mem::size_of::<String>()
-                        + 2 * std::mem::size_of::<usize>(),
-                )?;
-                entry.insert(Arc::new(field_signature(input, input.blob(index)?, work)?))
-            }
-        };
-        Ok(signature.clone())
-    }
-
-    fn method(
-        &mut self,
-        input: &Input,
-        index: u32,
-        work: &mut Work,
-    ) -> Result<&mut CachedMethodSig> {
-        work.charge(1)?;
-        Ok(match self.methods.entry(index) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => {
-                work.charge(1)?;
-                work.retain(
-                    12 * (std::mem::size_of::<(u32, CachedMethodSig)>()
-                        + std::mem::size_of::<usize>()),
-                )?;
-                entry.insert(CachedMethodSig {
-                    sig: method_signature(input, input.blob(index)?, work)?,
-                    display: None,
-                })
-            }
-        })
-    }
-}
-
-struct CachedMethodSig {
-    sig: MethodSig,
-    display: Option<Arc<String>>,
-}
-
-impl CachedMethodSig {
-    fn display(&mut self, work: &mut Work) -> Result<Arc<String>> {
-        if self.display.is_none() {
-            let text = self.sig.display();
-            work.charge(text.len() + 1)?;
-            work.retain(std::mem::size_of::<String>() + 2 * std::mem::size_of::<usize>())?;
-            self.display = Some(Arc::new(text));
-        }
-        Ok(self.display.as_ref().unwrap().clone())
-    }
-}
-
 pub(crate) struct MethodSig {
+    pub(crate) flags: u8,
     pub(crate) parameters: Arc<Vec<String>>,
     pub(crate) return_type: Arc<String>,
     pub(crate) has_this: bool,
     pub(crate) vararg: bool,
     generic_count: u32,
     sentinel: Option<usize>,
-    flags: u8,
 }
 impl MethodSig {
-    fn display(&self) -> String {
+    pub(crate) fn display(&self) -> String {
         format!(
             "flags=0x{:02x};generic={};sentinel={:?};{}({})",
             self.flags,
@@ -763,16 +798,25 @@ pub(crate) fn call_signature(input: &Input, token: u32, work: &mut Work) -> Resu
                 .methods
                 .get(rid as usize - 1)
                 .context("INVALID_INPUT: missing method call token")?;
-            ensure!(
-                !matches!(method.signature_flags & 15, 5 | 11),
-                "UNSUPPORTED: vararg call signature"
-            );
+            // Parse this row's own blob so the projection never depends on whether an
+            // unrelated eager pass ran.
+            let sig = method_signature(input, input.blob(method.signature_index)?, work)?;
+            ensure!(!sig.vararg, "UNSUPPORTED: vararg call signature");
             work.charge(method.declaring_type.len() + method.name.len() + 2)?;
-            Ok(crate::input::method_call(method))
+            Ok(CallSignature {
+                token,
+                name: format!("{}::{}", method.declaring_type, method.name),
+                parameters: sig.parameters,
+                return_type: sig.return_type,
+                has_this: sig.has_this,
+                signature_flags: sig.flags,
+                declaring_type_token: method.declaring_type_token,
+                method_arguments: None,
+            })
         }
         10 => {
             ensure!(
-                input.member_kinds.get(&token) == Some(&true),
+                input.member_kind(token)? == Some(true),
                 "INVALID_INPUT: call references field"
             );
             let row = input

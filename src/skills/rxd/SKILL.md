@@ -191,7 +191,8 @@ unfiltered listings can start with the non-fetchable `<Module>` row.
 Use the `context_at`/`parent_at` a `strings` or `xref` row prints, and the `at` a
 `classes` row prints; `.NET` coordinates are bare metadata tokens (`0x06000025`).
 Metadata tokens are scoped to the module and cannot identify a member across
-assemblies. C# reconstruction
+assemblies. A .NET query validates the rows it reads, so unrelated corruption does not
+fail it; a row that is itself unreadable fails when queried. C# reconstruction
 requires an available ILSpy NativeAOT engine (included in complete distributions;
 optional in source builds). Engine absence or failure retains original IL and
 explicit fallback information; do not report fallback IL as reconstructed C#.

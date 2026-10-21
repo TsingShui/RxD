@@ -210,10 +210,12 @@ fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
         output_bytes: 1,
         ..rxd_dotnet::Limits::default()
     };
-    let parsed = rxd_dotnet::Input::read(&fixture, tight).unwrap();
-    let id = method_id(&fixture, "Add");
-    let method = parsed.method_by_id(&id).unwrap();
-    let error = parsed.body(method).err().unwrap().to_string();
+    let mut parsed = rxd_dotnet::Input::read(&fixture, tight).unwrap();
+    let token = parsed
+        .method_by_id(&method_id(&fixture, "Add"))
+        .unwrap()
+        .token;
+    let error = parsed.body_token(token).err().unwrap().to_string();
     assert!(error.contains("RESOURCE_LIMIT"), "{error}");
     assert!(error.contains("IL working set"), "{error}");
 
@@ -221,31 +223,110 @@ fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
     // projection reaches its own serialized-output bound first.
     let closure =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/closure/Closure.dll");
-    let parsed = rxd_dotnet::Input::read(&closure, tight).unwrap();
+    let mut parsed = rxd_dotnet::Input::read(&closure, tight).unwrap();
     let interface = parsed
         .types
         .iter()
         .find(|ty| ty.full_name.as_str() == "Rxd.Closure.IContract`1")
         .unwrap();
-    let error = parsed.class_body(&interface.id).err().unwrap().to_string();
+    let interface_id = interface.id.clone();
+    let root = parsed.prepare_class(&interface_id).unwrap();
+    let error = parsed.class_body(root).err().unwrap().to_string();
     assert!(error.contains("RESOURCE_LIMIT"), "{error}");
     assert!(error.contains("class output"), "{error}");
 
     // The same operations succeed under the default projection allowance.
-    let parsed = rxd_dotnet::Input::read(&fixture, rxd_dotnet::Limits::default()).unwrap();
-    let method = parsed.method_by_id(&method_id(&fixture, "Add")).unwrap();
-    parsed.body(method).unwrap();
-    let parsed = rxd_dotnet::Input::read(&closure, rxd_dotnet::Limits::default()).unwrap();
+    let mut parsed = rxd_dotnet::Input::read(&fixture, rxd_dotnet::Limits::default()).unwrap();
+    let token = parsed
+        .method_by_id(&method_id(&fixture, "Add"))
+        .unwrap()
+        .token;
+    parsed.body_token(token).unwrap();
+    let mut parsed = rxd_dotnet::Input::read(&closure, rxd_dotnet::Limits::default()).unwrap();
     let interface = parsed
         .types
         .iter()
         .find(|ty| ty.full_name.as_str() == "Rxd.Closure.IContract`1")
         .unwrap();
-    parsed.class_body(&interface.id).unwrap();
+    let interface_id = interface.id.clone();
+    let root = parsed.prepare_class(&interface_id).unwrap();
+    parsed.class_body(root).unwrap();
 }
 
 #[test]
-fn dotnet_metadata_budget_shared_blobs_do_not_bypass_unselected_signature_validation() {
+fn dotnet_unreadable_index_rows_are_reported_without_failing_local_queries() {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/closure");
+    let path = directory.join("Closure.dll");
+    let oracle: Value =
+        serde_json::from_slice(&fs::read(directory.join("expected.json")).unwrap()).unwrap();
+    let mut bytes = fs::read(&path).unwrap();
+    let nested = oracle["table_file_offsets"]["nested_class"]
+        .as_u64()
+        .unwrap() as usize;
+    // Second NestedClass row: nested_class at +4, enclosing_class at +6 (u16 each).
+    // Point the enclosing index past the TypeDef table so that row cannot be indexed.
+    bytes[nested + 6..nested + 8].copy_from_slice(&0xffffu16.to_le_bytes());
+    let temp = tempfile::tempdir().unwrap();
+    let broken = temp.path().join("unreadable-nested.dll");
+    fs::write(&broken, &bytes).unwrap();
+
+    // Another class still lists; the stream says it is not complete and names the row.
+    let listed = run(
+        "methods",
+        &broken,
+        &["--class", "Rxd.Closure.Base", "--name", "Inherited"],
+    );
+    // `success()` requires a complete summary; this stream is deliberately incomplete.
+    assert_eq!(listed.status.code(), Some(0));
+    assert!(listed.stderr.is_empty());
+    // `jsonl()` insists on a complete summary; parse this deliberately incomplete one.
+    let rows: Vec<Value> = String::from_utf8(listed.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows[1]["at"], "0x06000004");
+
+    // A FETCH that does not need the skipped row still answers.
+    success(&run(
+        "get-method",
+        &broken,
+        &["--at", "0x06000004", "--raw"],
+    ));
+
+    // The sibling nested class is still returned; a produced class body is the
+    // success criterion, not proving that an unrelated row was readable.
+    let sibling = run("get-class", &broken, &["--at", "0x02000008", "--raw"]);
+    assert_eq!(sibling.status.code(), Some(0));
+    let sibling: Value = serde_json::from_slice(&sibling.stdout).unwrap();
+    assert_eq!(sibling["detail"]["complete"], true);
+
+    // The skipped type itself is reported, atomically.
+    let destination = temp.path().join("keep.json");
+    fs::write(&destination, b"keep").unwrap();
+    failure(
+        run(
+            "get-class",
+            &broken,
+            &[
+                "--at",
+                "0x02000009",
+                "--raw",
+                "-o",
+                destination.to_str().unwrap(),
+            ],
+        ),
+        1,
+        "INVALID_INPUT",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"keep");
+    assert_eq!(fs::read(&broken).unwrap(), bytes);
+}
+
+#[test]
+fn dotnet_lazy_signatures_keep_unrelated_corruption_local() {
     let (path, oracle) = production();
     let mut bytes = fs::read(&path).unwrap();
     let offset = oracle["mutation"]["last_method_signature_index_offset"]
@@ -261,9 +342,11 @@ fn dotnet_metadata_budget_shared_blobs_do_not_bypass_unselected_signature_valida
     fs::write(&changed, bytes).unwrap();
     let destination = directory.path().join("keep.jsonl");
     fs::write(&destination, b"keep").unwrap();
-    // The invalid method is unrelated to the requested earlier member. Its blob
-    // was already valid under the FIELD grammar; it must still fail as a METHOD.
-    let output = run(
+
+    // The invalid signature belongs to the last method, which this filtered listing
+    // never emits or resolves: the query still answers, completely, from the rows and
+    // names it did read.
+    let listed = run(
         "methods",
         &changed,
         &[
@@ -271,23 +354,47 @@ fn dotnet_metadata_budget_shared_blobs_do_not_bypass_unselected_signature_valida
             "Newtonsoft.Json.JsonReader",
             "--name",
             "ReadAsInt32",
-            "-o",
-            destination.to_str().unwrap(),
         ],
     );
-    assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty());
-    let diagnostic = String::from_utf8_lossy(&output.stderr);
-    assert!(diagnostic.contains("INVALID_INPUT"), "{diagnostic}");
-    assert!(diagnostic.contains("calling convention"), "{diagnostic}");
-    assert_eq!(fs::read(destination).unwrap(), b"keep");
+    success(&listed);
+    let rows = jsonl(&listed);
+    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!(rows.last().unwrap()["complete"], true);
+    // Resolved on demand for the emitted row, not left as the lazy placeholder.
+    assert_eq!(rows[1]["detail"]["parameters"], serde_json::json!([]));
+    assert!(
+        rows[1]["detail"]["signature"]
+            .as_str()
+            .unwrap()
+            .contains("int32")
+    );
+
+    // Fetching the broken row itself is in scope: it fails atomically.
+    let last = format!(
+        "0x{:08x}",
+        0x0600_0000 | oracle["counts"]["methods"].as_u64().unwrap()
+    );
+    fs::write(&destination, b"keep").unwrap();
+    failure(
+        run(
+            "get-method",
+            &changed,
+            &["--at", &last, "--raw", "-o", destination.to_str().unwrap()],
+        ),
+        1,
+        "calling convention",
+    );
+    assert_eq!(fs::read(&destination).unwrap(), b"keep");
 }
 
 #[test]
 fn dotnet_metadata_budget_deferred_call_projection_keeps_generic_contexts_independent() {
     // resolve_call is a public library operation, not used by the current CLI's
     // ILSpy path. Exercise that seam directly rather than expose a test-only flag.
-    let parsed = rxd_dotnet::Input::read(&input(), rxd_dotnet::Limits::default()).unwrap();
+    let mut parsed = rxd_dotnet::Input::read(&input(), rxd_dotnet::Limits::default()).unwrap();
+    parsed.resolve_method_token(0x06000021).unwrap();
+    parsed.resolve_method_token(0x06000022).unwrap();
+    parsed.resolve_method_token(0x06000024).unwrap();
     let generic = parsed.method_by_id("0x06000022").unwrap();
     let mixed = parsed.method_by_id("0x06000024").unwrap();
     for (context, token, returns) in [

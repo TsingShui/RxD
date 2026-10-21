@@ -329,12 +329,12 @@ fn validate_operand_token(input: &Input, opcode: u16, token: u32, work: &mut Wor
     if token >> 24 == 10 {
         if matches!(opcode, 0x27 | 0x28 | 0x6f | 0x73 | 0xfe06 | 0xfe07) {
             ensure!(
-                input.member_kinds.get(&token) == Some(&true),
+                input.member_kind(token)? == Some(true),
                 "INVALID_INPUT: call references field"
             );
         } else if matches!(opcode, 0x7b..=0x80) {
             ensure!(
-                input.member_kinds.get(&token) == Some(&false),
+                input.member_kind(token)? == Some(false),
                 "INVALID_INPUT: field access references method"
             );
         }

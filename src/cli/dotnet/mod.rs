@@ -212,7 +212,7 @@ fn execute_inner(
         ("output_bytes", budget.output_bytes),
         ("instructions", budget.instructions),
     ]));
-    let input = perf.measure("read_parse", || Input::read(path, limits))?;
+    let mut input = perf.measure("read_parse", || Input::read(path, limits))?;
     perf.source_id = Some(input.source_id.clone());
     perf.counters.input_bytes = Some(input.file_bytes);
     perf.counters.entities = Some(input.types.len() + input.fields.len() + input.methods.len());
@@ -288,8 +288,11 @@ fn execute_inner(
             &["method"],
             crate::cli::xref::Expect::Content(&input.source_id),
         )?;
+        // FETCH resolves and decodes only the selected method; unrelated signatures
+        // are not parsed on this path.
+        let token = input.method_by_id(&at)?.token;
+        let body = perf.measure("decode", || input.body_token(token))?;
         let method = input.method_by_id(&at)?;
-        let body = perf.measure("decode", || input.body(method))?;
         let decompilation = if *raw {
             rxd_dotnet::Decompilation {
                 representation: "il".into(),
@@ -335,7 +338,8 @@ fn execute_inner(
             &["class"],
             crate::cli::xref::Expect::Content(&input.source_id),
         )?;
-        let class = perf.measure("decode", || input.class_body(&at))?;
+        let root = perf.measure("prepare", || input.prepare_class(&at))?;
+        let class = perf.measure("decode", || input.class_body(root))?;
         let rendered = if *raw {
             rxd_dotnet::ClassDecompilation {
                 representation: "il".into(),
@@ -452,7 +456,7 @@ fn execute_inner(
         )?;
         match &command {
             Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
-                list(&input, &command, options, &mut output, &mut records)?;
+                list(&mut input, &command, options, &mut output, &mut records)?;
             }
             Command::Strings { filter, case, .. } => {
                 let uses = perf.measure("strings", || {
@@ -959,7 +963,7 @@ enum Listing {
 
 /// Print one member kind, grouped by declaring type in declaration order.
 fn list(
-    input: &Input,
+    input: &mut Input,
     command: &Command,
     options: &Options,
     output: &mut rxd_core::output::Output,
@@ -995,6 +999,50 @@ fn list(
     // type is a separate question that `--class` answers exactly, so a member is never
     // reported for a match on its owner's name (ADR 0014).
     let matches = |name: &str| pattern.as_ref().is_none_or(|pattern| pattern.matches(name));
+    // Resolve signatures only for the rows this query can emit. Filtering by name and
+    // declaring type never needs them, so unrelated corrupt members stay unread.
+    let selected_classes: Option<std::collections::BTreeSet<u32>> = class.as_ref().map(|wanted| {
+        input
+            .types
+            .iter()
+            .filter(|ty| ty.full_name.as_ref() == wanted)
+            .map(|ty| ty.token)
+            .collect()
+    });
+    let owner_selected = |token: u32| {
+        selected_classes
+            .as_ref()
+            .is_none_or(|selected| selected.contains(&token))
+    };
+    let mut resolve_fields = Vec::new();
+    if listing == Listing::Fields {
+        for (index, field) in input.fields.iter().enumerate() {
+            if owner_selected(field.declaring_type_token)
+                && name.is_none_or(|wanted| wanted == &field.name)
+                && matches(&field.name)
+            {
+                resolve_fields.push(index);
+            }
+        }
+        for index in resolve_fields {
+            input.resolve_field(index)?;
+        }
+    }
+    let mut resolve_methods = Vec::new();
+    if listing == Listing::Methods {
+        for (index, item) in input.methods.iter().enumerate() {
+            if owner_selected(item.declaring_type_token)
+                && name.is_none_or(|wanted| wanted == &item.name)
+                && matches(&item.name)
+            {
+                resolve_methods.push(index);
+            }
+        }
+        for index in resolve_methods {
+            input.resolve_method(index)?;
+        }
+    }
+    let input: &Input = &*input;
     let mut fields_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
     let mut methods_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
     if listing == Listing::Fields {

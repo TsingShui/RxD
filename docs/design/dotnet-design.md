@@ -74,8 +74,8 @@ stale or foreign coordinate is therefore reported on the one path where an Agent
 copies it across calls, while a direct `--at` query stays file-scoped. Lookup still
 validates kind, token table and row range.
 
-Parsing first validates metadata table/heap layout, references and ranges, then reads
-a method body on demand; it does not build a whole-assembly `CilObject`, SSA or decode
+Parsing reads the PE/metadata headers, then validates each table/heap entry and token at
+the point of use and reads a method body on demand; it does not build a whole-assembly `CilObject`, SSA or decode
 all custom attributes. dotscope's minimal raw validation plus this backend's structure/
 reference/budget checks form the operation's validation. Token validation retains all
 upstream logic and caches only successful checks of the same token on the immutable
@@ -83,13 +83,23 @@ reference graph; provenance and changes are in
 `crates/rxd-dotnet/vendor/dotscope-validation/NOTICE`. This is not a claim of CLR
 executability, complete custom-attribute decoding, signature verification or all
 cross-assembly semantics. Queries are complete within their declared scope and never
-silently ignore corrupt data.
+silently ignore corrupt data. Since [ADR 0017](../adr/0017-scoped-dotnet-validation.md)
+that scope is the rows the query reads: success no longer certifies unread rows, and
+`Input::verify_module` performs the full option check.
 
 Metadata loading shares immutable owner names and decoded signatures within this one
 input. Field and method signature caches are separate and keyed by original blob offset;
-a cache hit never substitutes one signature grammar for the other. Every definition,
-MemberRef and MethodSpec still receives its structural/reference checks, including
-signatures outside a selected class/name. Filters do not bypass validation. MethodSpec
+a cache hit never substitutes one signature grammar for the other. Rows, heaps and tokens are
+bounds/dialect checked where they are read, but the whole-module cross-table/token pass
+is not part of a query; `Input::verify_module` keeps it as an explicit opt-in. Signature
+grammar, MemberRef/MethodSpec grammar and property/event associations are likewise
+resolved on demand: a listing resolves only the rows it emits, FETCH resolves the
+selected unit plus the tokens its body actually uses, and xref resolves the members it
+matches. Corrupt rows outside that set therefore no longer fail a local query, while a
+query that needs one still fails with `INVALID_INPUT`. Rows that cannot be indexed at
+all are skipped; a query that names one fails with its reason, while every other query
+answers normally and a successful stream keeps `complete: true`. Filters do not change this rule:
+they narrow which rows are resolved, not which rows are answered from. MethodSpec
 argument bounds remain checked during loading; callable display/context projections
 are built only when requested, rather than cloned into a whole-assembly call map.
 The cache is local to the load, never shared across files or mutable generic contexts.
@@ -451,7 +461,9 @@ sharing must not allow repeated signatures to expand into an unbounded output
 buffer. Exceeding it is atomic `RESOURCE_LIMIT`, not `INVALID_INPUT` or successful
 truncation. The earlier signature-sharing optimization preserved fixed quotas; the
 current input-scaled policy supersedes those ordinary-CLI quotas.
-Entities count types, fields and methods; work bounds parsing stages; xref charge actual decode, signature,
+Signature blobs are parsed once per row on first use and cached on that immutable row;
+listings resolve only emitted members, FETCH only the selected unit and its operand
+tokens. Entities count types, fields and methods; work bounds parsing stages; xref charge actual decode, signature,
 string and EH work. Full xref/strings scans share one fixed `#US` heap validation and
 reuse entry boundaries; FETCH shares instruction/token-kind/locals/parameter/branch/
 prefix/EH validation and skips IL hex and non-token mnemonic allocation when not

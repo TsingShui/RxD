@@ -10,7 +10,7 @@ struct Scan {
     work_used: usize,
 }
 
-fn scan(input: &Input) -> Result<Scan> {
+fn scan(input: &mut Input) -> Result<Scan> {
     let crate::IlScan {
         strings: literals,
         mut sites,
@@ -25,7 +25,7 @@ fn scan(input: &Input) -> Result<Scan> {
 }
 
 pub(crate) fn uses(
-    input: &Input,
+    input: &mut Input,
     contains: Option<&str>,
     case_sensitive: bool,
 ) -> Result<StringUses> {
@@ -119,7 +119,7 @@ pub(crate) fn uses(
 /// byte for byte. Otherwise the pattern is a case-sensitive substring, which is the search
 /// face on every backend, so a pattern inside a longer literal still finds its load sites.
 pub(crate) fn references(
-    input: &Input,
+    input: &mut Input,
     pattern: &str,
     exact: bool,
     case_sensitive: bool,
@@ -158,7 +158,7 @@ pub(crate) fn references(
     Ok(matched)
 }
 
-pub(crate) fn token_references(input: &Input, token: u32) -> Result<Vec<StringReference>> {
+pub(crate) fn token_references(input: &mut Input, token: u32) -> Result<Vec<StringReference>> {
     let Scan {
         literals,
         sites,

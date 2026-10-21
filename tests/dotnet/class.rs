@@ -359,13 +359,22 @@ fn dotnet_class_fetch_rejects_corrupt_ownership_and_original_method_bodies_witho
                 destination.to_str().unwrap(),
             ],
         );
-        assert_eq!(
-            output.status.code(),
-            Some(1),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        rejected(output);
-        assert_eq!(fs::read(&destination).unwrap(), b"keep me");
+        // The corrupted nesting row is skipped; the class body itself still builds.
+        // Method-body corruption and association errors remain in scope and fail.
+        if offset == nested + 2 {
+            assert_eq!(output.status.code(), Some(0), "{output:?}");
+            assert!(output.stdout.is_empty());
+            let written: Value = serde_json::from_slice(&fs::read(&destination).unwrap()).unwrap();
+            assert_eq!(written["detail"]["complete"], true);
+        } else {
+            assert_eq!(
+                output.status.code(),
+                Some(1),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            rejected(output);
+            assert_eq!(fs::read(&destination).unwrap(), b"keep me");
+        }
     }
 }
