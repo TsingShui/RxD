@@ -7,6 +7,8 @@ pub struct Limits {
     pub work: usize,
     pub instructions: usize,
     pub metadata_bytes: usize,
+    /// Complete serialized class/type projection, including nested member bodies.
+    pub output_bytes: usize,
 }
 
 impl Default for Limits {
@@ -17,6 +19,7 @@ impl Default for Limits {
             work: budget.work,
             instructions: budget.instructions,
             metadata_bytes: budget.metadata_bytes,
+            output_bytes: budget.output_bytes,
         }
     }
 }

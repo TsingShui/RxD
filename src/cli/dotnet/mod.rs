@@ -147,6 +147,7 @@ impl Options {
             work: budget.work,
             instructions: budget.instructions,
             metadata_bytes: budget.metadata_bytes,
+            output_bytes: budget.output_bytes,
         }
     }
 }

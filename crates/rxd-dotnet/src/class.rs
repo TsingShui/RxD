@@ -52,8 +52,10 @@ pub(crate) fn body<'a>(input: &'a Input, root: &'a TypeInfo) -> Result<ClassBody
         .filter(|event| selected.contains(&event.declaring_type_token))
         .collect();
     work.charge(input.methods.len())?;
+    // The serialized class projection is output, so bound it with the output
+    // envelope. The CLI's complete-output writer remains the final authority.
     let mut footprint = Counter {
-        remaining: usize::MAX,
+        remaining: input.limits.output_bytes,
     };
     for ty in &types {
         serde_json::to_writer(&mut footprint, ty)?;

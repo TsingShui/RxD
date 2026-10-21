@@ -458,8 +458,14 @@ prefix/EH validation and skips IL hex and non-token mnemonic allocation when not
 needed. Every readable method is validated; a corrupt method is never skipped to
 produce a complete zero result. Loop/depth and cumulative work failures are explicit.
 Budgets are checked before allocation, entity traversal, method decode and output,
-including JSONL header/summary and complete FETCH IL. Whole-class work accumulates
-metadata parsing, ownership/member scanning, each method decode and pre-reconstruction
+including JSONL header/summary and complete FETCH IL. Decoded IL working sets
+(instruction/switch storage plus the raw-byte hex view) and the whole-class
+serialized projection are charged against the selected output allowance; cumulative
+scan evidence and resolved reference rows are charged against the metadata
+allowance, all before allocation. Those working-set checks fail with
+`RESOURCE_LIMIT` and no partial output; they account for this backend's own
+allocations, not the parser's or the pinned native engine's RSS. Whole-class work
+accumulates metadata parsing, ownership/member scanning, each method decode and pre-reconstruction
 signature validation; instruction limits stay per method. Whole-class records count
 the outer class_body, root type, nested types/fields/properties/events and each
 method_body plus its method, checked before decoding. Serialized body volume is

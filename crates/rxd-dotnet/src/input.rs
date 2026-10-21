@@ -542,6 +542,37 @@ impl Work {
     }
 }
 
+// Decoded/retained working memory for one operation. The accounting is exact about
+// what this backend itself allocates; it is not an RSS bound for the parser or the
+// pinned native engine.
+pub(crate) struct WorkingSet {
+    used: usize,
+    limit: usize,
+    what: &'static str,
+}
+
+impl WorkingSet {
+    pub(crate) fn new(limit: usize, what: &'static str) -> Self {
+        Self {
+            used: 0,
+            limit,
+            what,
+        }
+    }
+
+    /// Count `bytes` before the caller allocates them. Exhaustion is a resource
+    /// failure, never a truncated result.
+    pub(crate) fn add(&mut self, bytes: usize) -> Result<()> {
+        let next = self
+            .used
+            .checked_add(bytes)
+            .with_context(|| format!("RESOURCE_LIMIT: {} size", self.what))?;
+        ensure!(next <= self.limit, "RESOURCE_LIMIT: {}", self.what);
+        self.used = next;
+        Ok(())
+    }
+}
+
 // Method definitions already own their full bounded signature. Build a call
 // projection only when queried, rather than duplicating every signature in an
 // eager second index on every outline/get request.
@@ -555,5 +586,28 @@ pub(crate) fn method_call(method: &Method) -> CallSignature {
         signature_flags: method.signature_flags,
         declaring_type_token: method.declaring_type_token,
         method_arguments: None,
+    }
+}
+
+#[cfg(test)]
+mod working_set_tests {
+    use super::WorkingSet;
+
+    #[test]
+    fn working_set_is_an_exact_bound_and_reports_the_operation() {
+        let mut set = WorkingSet::new(10, "test working set");
+        set.add(4).unwrap();
+        set.add(6).unwrap(); // exact fit succeeds
+        let error = set.add(1).unwrap_err().to_string();
+        assert!(error.contains("RESOURCE_LIMIT"), "{error}");
+        assert!(error.contains("test working set"), "{error}");
+        // A refused add leaves the accumulated footprint unchanged: zero still fits.
+        set.add(0).unwrap();
+
+        let mut overflow = WorkingSet::new(usize::MAX, "overflow working set");
+        overflow.add(1).unwrap();
+        let error = overflow.add(usize::MAX).unwrap_err().to_string();
+        assert!(error.contains("RESOURCE_LIMIT"), "{error}");
+        assert!(error.contains("overflow working set"), "{error}");
     }
 }

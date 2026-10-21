@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::{
     Input,
-    input::Work,
+    input::{Work, WorkingSet},
     signature::{self, MethodSignature, TypeSignature},
 };
 
@@ -1105,7 +1105,7 @@ impl Input {
             .map(|resolver| resolver.target(token))
             .transpose()?;
         let mut references = Vec::new();
-        let mut footprint = 0usize;
+        let mut footprint = WorkingSet::new(self.limits.metadata_bytes, "reference working set");
         for site in scan.sites {
             let candidate = if let Some(resolver) = &mut resolver {
                 if resolver.kind(site.target_token) != resolver.kind(token) {
@@ -1130,10 +1130,7 @@ impl Input {
             if let Some(resolver) = &mut resolver {
                 resolver.work.charge(1)?;
             }
-            footprint = footprint
-                .checked_add(std::mem::size_of::<Reference>() + site.mnemonic.len())
-                .context("RESOURCE_LIMIT: reference memory")?;
-            ensure!(true, "RESOURCE_LIMIT: reference memory");
+            footprint.add(std::mem::size_of::<Reference>() + site.mnemonic.len())?;
             references.push(Reference {
                 site,
                 target: candidate,

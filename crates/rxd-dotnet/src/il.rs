@@ -7,7 +7,10 @@ use dotscope::{
     metadata::tables::StandAloneSigRaw,
 };
 
-use crate::{ExceptionHandler, Input, Instruction, Method, MethodBody, Operand, input::Work};
+use crate::{
+    ExceptionHandler, Input, Instruction, Method, MethodBody, Operand,
+    input::{Work, WorkingSet},
+};
 
 pub(crate) fn body(input: &Input, method: &Method) -> Result<MethodBody> {
     body_with_budget(input, method, input.limits.work)
@@ -104,7 +107,13 @@ fn decode_body(
     let mut forbidden_targets = BTreeSet::new();
     let mut prefixed = false;
     let mut user_strings = BTreeSet::new();
-    let mut footprint = code_size * 2;
+    // The decoded body becomes this query's output, so its working set is bounded by
+    // the output envelope rather than by the retained-metadata allowance. The raw-byte
+    // hex view only exists when the caller asked for a FETCH record.
+    let mut footprint = WorkingSet::new(input.limits.output_bytes, "IL working set");
+    if strings.is_none() {
+        footprint.add(code_size * 2)?;
+    }
     while parser.has_more_data() {
         ensure!(
             instructions.len() < input.limits.instructions,
@@ -147,14 +156,12 @@ fn decode_body(
                 .iter()
                 .map(|n| u32::try_from(*n).context("INVALID_INPUT: switch target overflow"))
                 .collect::<Result<Vec<_>>>()?;
-            footprint = footprint
-                .checked_add(
-                    targets
-                        .len()
-                        .checked_mul(4)
-                        .context("RESOURCE_LIMIT: switch")?,
-                )
-                .context("RESOURCE_LIMIT: switch")?;
+            footprint.add(
+                targets
+                    .len()
+                    .checked_mul(4)
+                    .context("RESOURCE_LIMIT: switch")?,
+            )?;
             Operand::Switch(targets)
         } else {
             match cil.operand {
@@ -201,9 +208,7 @@ fn decode_body(
             method.parameters.len() + usize::from(method.has_this),
             locals.len(),
         )?;
-        footprint = footprint
-            .checked_add(96)
-            .context("RESOURCE_LIMIT: IL working size")?;
+        footprint.add(96)?;
         instructions.push(Instruction {
             offset: offset.try_into()?,
             size,

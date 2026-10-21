@@ -201,6 +201,50 @@ fn dotnet_class_stream_routes_fetch_and_type_xref_with_content_identity() {
 }
 
 #[test]
+fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
+    // The per-body and whole-class projections are bounded by the selected output
+    // envelope. `Input::read` ignores that dimension, so the guards can be exercised
+    // without a giant fixture: the accounting must refuse before allocating/serializing.
+    let fixture = input();
+    let tight = rxd_dotnet::Limits {
+        output_bytes: 1,
+        ..rxd_dotnet::Limits::default()
+    };
+    let parsed = rxd_dotnet::Input::read(&fixture, tight).unwrap();
+    let id = method_id(&fixture, "Add");
+    let method = parsed.method_by_id(&id).unwrap();
+    let error = parsed.body(method).err().unwrap().to_string();
+    assert!(error.contains("RESOURCE_LIMIT"), "{error}");
+    assert!(error.contains("IL working set"), "{error}");
+
+    // An interface has metadata and declarations but no method bodies, so the class
+    // projection reaches its own serialized-output bound first.
+    let closure =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/closure/Closure.dll");
+    let parsed = rxd_dotnet::Input::read(&closure, tight).unwrap();
+    let interface = parsed
+        .types
+        .iter()
+        .find(|ty| ty.full_name.as_str() == "Rxd.Closure.IContract`1")
+        .unwrap();
+    let error = parsed.class_body(&interface.id).err().unwrap().to_string();
+    assert!(error.contains("RESOURCE_LIMIT"), "{error}");
+    assert!(error.contains("class output"), "{error}");
+
+    // The same operations succeed under the default projection allowance.
+    let parsed = rxd_dotnet::Input::read(&fixture, rxd_dotnet::Limits::default()).unwrap();
+    let method = parsed.method_by_id(&method_id(&fixture, "Add")).unwrap();
+    parsed.body(method).unwrap();
+    let parsed = rxd_dotnet::Input::read(&closure, rxd_dotnet::Limits::default()).unwrap();
+    let interface = parsed
+        .types
+        .iter()
+        .find(|ty| ty.full_name.as_str() == "Rxd.Closure.IContract`1")
+        .unwrap();
+    parsed.class_body(&interface.id).unwrap();
+}
+
+#[test]
 fn dotnet_metadata_budget_shared_blobs_do_not_bypass_unselected_signature_validation() {
     let (path, oracle) = production();
     let mut bytes = fs::read(&path).unwrap();

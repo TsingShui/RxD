@@ -1,8 +1,11 @@
 //! Complete scans reuse the FETCH decoder and validate the immutable #US heap once.
 use std::collections::BTreeSet;
 
-use crate::{Input, Operand, StringRecord, input::Work};
-use anyhow::{Context, Result, ensure};
+use crate::{
+    Input, Operand, StringRecord,
+    input::{Work, WorkingSet},
+};
+use anyhow::Result;
 
 pub struct IlScan {
     pub strings: Vec<StringRecord>,
@@ -28,18 +31,17 @@ impl Input {
         let strings = crate::metadata::strings_with_work(self, &mut work)?;
         work.charge(strings.len())?;
         let boundaries: BTreeSet<_> = strings.iter().map(|literal| literal.offset).collect();
-        let mut footprint = strings.iter().try_fold(0usize, |sum, literal| {
-            sum.checked_add(
+        let mut footprint = WorkingSet::new(self.limits.metadata_bytes, "scan working set");
+        for literal in &strings {
+            footprint.add(
                 std::mem::size_of::<StringRecord>()
                     + literal.value.as_ref().map_or(0, String::len)
                     + literal
                         .utf16_units
                         .as_ref()
                         .map_or(0, |units| units.len() * 2),
-            )
-            .context("RESOURCE_LIMIT: scan literal memory")
-        })?;
-        ensure!(true, "RESOURCE_LIMIT: scan working memory");
+            )?;
+        }
         let mut sites = Vec::new();
         for method in &self.methods {
             work.charge(1)?;
@@ -53,10 +55,7 @@ impl Input {
                 let Operand::Token(target_token) = instruction.operand else {
                     continue;
                 };
-                footprint = footprint
-                    .checked_add(std::mem::size_of::<TokenSite>() + instruction.mnemonic.len())
-                    .context("RESOURCE_LIMIT: scan site memory")?;
-                ensure!(true, "RESOURCE_LIMIT: scan working memory");
+                footprint.add(std::mem::size_of::<TokenSite>() + instruction.mnemonic.len())?;
                 sites.push(TokenSite {
                     method_token: method.token,
                     code_offset: body.code_offset,
