@@ -2,7 +2,7 @@
 #[cfg(feature = "backend-html")]
 #[path = "html/mod.rs"]
 mod html;
-#[path = "resource_policy.rs"]
+#[path = "resource_policy/mod.rs"]
 mod resource_policy;
 
 #[cfg(feature = "backend-dotnet")]

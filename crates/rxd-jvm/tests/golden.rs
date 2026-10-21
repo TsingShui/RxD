@@ -76,7 +76,11 @@ fn snapshot(path: &Path) -> String {
                 out.push_str("(no Code attribute)\n");
                 continue;
             }
-            let id = Input::method_id(class, index);
+            let proto = method
+                .descriptor
+                .strip_prefix('(')
+                .unwrap_or(&method.descriptor);
+            let id = format!("L{};->{}({}", class.class.name, method.name, proto);
             match render_method(&input, &id, Limits::default()) {
                 Ok(source) => out.push_str(&source),
                 Err(error) => {

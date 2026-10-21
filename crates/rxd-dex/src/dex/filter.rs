@@ -141,7 +141,7 @@ mod tests {
     use super::*;
     use crate::dex::tests::const_string_fixture;
     use crate::dex::{Dex, PARALLEL_SCAN_CLASSES};
-    use crate::query::Query;
+    use crate::query::{Pattern, Query};
 
     #[test]
     fn pair_filter_finds_matches_at_both_edges() {
@@ -180,7 +180,7 @@ mod tests {
         let data = const_string_fixture(PARALLEL_SCAN_CLASSES);
         let dex = Dex::parse(&data).unwrap();
         let (kind, resolved) = dex
-            .resolve_targets(&Query::String("Authorization".to_owned()))
+            .resolve_targets(&Query::String(Pattern::search("Authorization", false)))
             .unwrap();
         let targets = Targets::new(resolved.clone());
         assert!(targets.bytes.is_some(), "one target must stay filterable");

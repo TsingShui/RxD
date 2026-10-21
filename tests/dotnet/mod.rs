@@ -364,44 +364,6 @@ fn dotnet_raw_il_is_complete_and_matches_the_independent_assembler() {
     }
 }
 
-fn unavailable(row: &Value) {
-    assert_eq!(row["detail"]["representation"], "il", "{row}");
-    assert_eq!(row["detail"]["decompiled"], false);
-    assert_eq!(row["detail"]["reason"], "engine_unavailable");
-    assert!(row["detail"]["code"].is_null());
-    assert!(row["detail"]["mapping"].as_array().unwrap().is_empty());
-}
-
-fn csharp_or_unavailable(row: &Value) {
-    if !cfg!(feature = "csharp-decompiler") {
-        unavailable(row);
-        return;
-    }
-    assert_eq!(row["detail"]["representation"], "csharp", "{row}");
-    assert_eq!(row["detail"]["decompiled"], true);
-    assert!(row["detail"]["reason"].is_null());
-    let code = row["detail"]["code"].as_str().unwrap();
-    assert!(!code.trim().is_empty());
-    let lines = code.lines().count() as u64;
-    let mapping = row["detail"]["mapping"].as_array().unwrap();
-    assert!(
-        !mapping.is_empty(),
-        "ordinary method omitted navigation: {row}"
-    );
-    for site in mapping {
-        let line = site["line"].as_u64().unwrap();
-        assert!(line > 0 && line <= lines, "{site}");
-        assert!(
-            row["detail"]["instructions"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|instruction| instruction["offset"] == site["il_offset"]),
-            "{site}"
-        );
-    }
-}
-
 #[test]
 fn dotnet_strings_and_explicit_call_references_preserve_unicode_and_offsets() {
     let strings = jsonl(&run("strings", &input(), &["--filter", "世界"]));

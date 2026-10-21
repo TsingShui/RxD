@@ -34,8 +34,6 @@ pub struct InputEntry {
 }
 
 impl Input {
-    /// Freeze input bytes before ZIP parsing or class analysis. No class loading.
-
     /// Read only the archive directory: `entries` never parses class files.
     pub fn read_entries(
         path: &Path,
@@ -169,11 +167,9 @@ impl Input {
                 compressed_size: usize::try_from(entry.compressed_size()).unwrap_or(usize::MAX),
                 uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
             });
-            if name == wanted {
-                if candidate.replace(index).is_some() {
-                    // Duplicate candidate entries: the full reader owns the verdict.
-                    return Ok(None);
-                }
+            if name == wanted && candidate.replace(index).is_some() {
+                // Duplicate candidate entries: the full reader owns the verdict.
+                return Ok(None);
             }
         }
         let Some(index) = candidate else {
@@ -218,6 +214,7 @@ impl Input {
         }))
     }
 
+    /// Freeze input bytes before ZIP parsing or class analysis. No class loading.
     pub fn read(path: &Path, limits: Limits, release: u16) -> Result<Self> {
         ensure!(release >= 8, "INVALID_QUERY: release must be at least 8");
         let mut options = OpenOptions::new();

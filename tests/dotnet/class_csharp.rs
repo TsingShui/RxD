@@ -42,17 +42,17 @@ fn dotnet_class_csharp_recovers_generic_declarations_members_and_owned_nested_sc
     assert!(!code.contains("Separate(") && !code.contains("Inherited("));
     let raw: Value =
         serde_json::from_slice(&run("get-class", &path, &["--at", &id, "--raw"]).stdout).unwrap();
-    for field in [
-        "type",
-        "types",
-        "fields",
-        "properties",
-        "events",
-        "methods",
-        "work_used",
-    ] {
-        assert_eq!(row["detail"][field], raw["detail"][field], "{field}");
+    for field in ["type", "types", "fields", "properties", "events", "methods"] {
+        assert!(
+            row["detail"].get(field).is_none(),
+            "default class body repeats {field}"
+        );
+        assert!(
+            !raw["detail"][field].is_null(),
+            "raw class body lost {field}"
+        );
     }
+    assert!(row["detail"]["work_used"].as_u64().unwrap() > 0);
 }
 
 fn native_fixture(directory: &Path, legacy: bool) -> PathBuf {
@@ -143,9 +143,9 @@ fn fetched(path: &Path, id: &str, args: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
-fn valid_mapping(row: &Value) {
+fn valid_mapping(row: &Value, inventory: &Value) {
     let lines = row["detail"]["code"].as_str().unwrap().lines().count() as u64;
-    let methods = row["detail"]["methods"].as_array().unwrap();
+    let methods = inventory["detail"]["methods"].as_array().unwrap();
     let mapping = row["detail"]["mapping"].as_array().unwrap();
     for point in mapping {
         let method = methods
@@ -170,8 +170,10 @@ fn valid_mapping(row: &Value) {
 #[test]
 fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_directly_fetchable() {
     let path = closure_input();
-    let row = fetched(&path, &type_id(&path, "Rxd.Closure.Root`1"), &[]);
-    valid_mapping(&row);
+    let root = type_id(&path, "Rxd.Closure.Root`1");
+    let row = fetched(&path, &root, &[]);
+    let inventory = fetched(&path, &root, &["--raw"]);
+    valid_mapping(&row, &inventory);
     let mapping = row["detail"]["mapping"].as_array().unwrap();
     let domains: std::collections::BTreeSet<_> = mapping
         .iter()
@@ -185,6 +187,7 @@ fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_dire
     let sugar = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/sugar/Sugar.dll");
     let id = type_id(&sugar, "Rxd.Sugar.Probe");
     let row = fetched(&sugar, &id, &[]);
+    let inventory = fetched(&sugar, &id, &["--raw"]);
     assert_eq!(
         row["detail"]["decompiled"], true,
         "{}",
@@ -194,10 +197,14 @@ fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_dire
     for evidence in ["async ", "await ", "yield return ", "=>"] {
         assert!(code.contains(evidence), "{code}");
     }
-    valid_mapping(&row);
-    let raw = fetched(&sugar, &id, &["--raw"]);
-    assert_eq!(row["detail"]["methods"], raw["detail"]["methods"]);
-    assert_eq!(row["detail"]["types"], raw["detail"]["types"]);
+    valid_mapping(&row, &inventory);
+    assert!(row["detail"].get("methods").is_none());
+    assert!(
+        !inventory["detail"]["methods"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let generated = outline(&sugar, &[])
         .into_iter()
         .find(|row| {
@@ -208,14 +215,16 @@ fn dotnet_class_csharp_mappings_keep_method_domains_and_generated_types_are_dire
                     .contains("DisplayClass")
         })
         .unwrap();
-    let row = fetched(&sugar, generated["at"].as_str().unwrap(), &[]);
+    let generated_at = generated["at"].as_str().unwrap();
+    let row = fetched(&sugar, generated_at, &[]);
     assert_eq!(
         row["detail"]["decompiled"], true,
         "{}",
         row["detail"]["reason"]
     );
-    assert_eq!(row["detail"]["type"], generated);
-    valid_mapping(&row);
+    let inventory = fetched(&sugar, generated_at, &["--raw"]);
+    assert_eq!(inventory["detail"]["type"], generated);
+    valid_mapping(&row, &inventory);
 }
 
 #[test]
@@ -235,9 +244,11 @@ fn dotnet_class_csharp_retains_no_body_declarations_and_complete_failed_reconstr
             row["detail"]["reason"]
         );
         assert!(row["detail"]["code"].as_str().unwrap().contains(evidence));
-        assert_eq!(
-            row["detail"]["methods"],
-            fetched(&path, &id, &["--raw"])["detail"]["methods"]
+        assert!(row["detail"].get("methods").is_none());
+        assert!(
+            fetched(&path, &id, &["--raw"])["detail"]
+                .get("methods")
+                .is_some()
         );
     }
     // A body the engine reconstructs with caveats is still returned, and every caveat
@@ -263,9 +274,11 @@ fn dotnet_class_csharp_retains_no_body_declarations_and_complete_failed_reconstr
         );
     }
     assert_eq!(row["detail"]["complete"], true);
-    assert_eq!(
-        row["detail"]["methods"],
-        fetched(&path, &id, &["--raw"])["detail"]["methods"]
+    assert!(row["detail"].get("methods").is_none());
+    assert!(
+        fetched(&path, &id, &["--raw"])["detail"]
+            .get("methods")
+            .is_some()
     );
     // The same bodies requested explicitly still carry no reconstruction at all.
     let raw = fetched(&path, &id, &["--raw"]);
@@ -290,7 +303,18 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(row["detail"]["decompiled"], true);
-    original_il(&row, "Add");
+    let raw = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dotnet", "get-method"])
+        .arg(&path)
+        .arg("--at")
+        .arg(&method)
+        .arg("--raw")
+        .env("RXD_DOTNET_NATIVE_LIBRARY", &library)
+        .output()
+        .unwrap();
+    success(&raw);
+    let raw: Value = serde_json::from_slice(&raw.stdout).unwrap();
+    original_il(&raw, "Add");
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
@@ -306,9 +330,12 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     assert_eq!(row["detail"]["reason"], "class_abi_unavailable");
     assert_eq!(row["detail"]["decompiled"], false);
     assert!(row["detail"]["code"].is_null());
-    assert_eq!(
-        row["detail"]["methods"],
-        fetched(&path, &id, &["--raw"])["detail"]["methods"]
+    assert!(row["detail"].get("methods").is_none());
+    assert!(
+        !fetched(&path, &id, &["--raw"])["detail"]["methods"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 }
 
@@ -359,7 +386,8 @@ fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() 
                     .contains("dropped 1 unprovable source entry")),
             "{row}"
         );
-        assert_eq!(row["detail"]["methods"], raw["detail"]["methods"]);
+        assert!(row["detail"].get("methods").is_none());
+        assert!(!raw["detail"]["methods"].as_array().unwrap().is_empty());
     }
 }
 

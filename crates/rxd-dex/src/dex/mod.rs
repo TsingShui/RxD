@@ -289,6 +289,7 @@ pub(crate) fn for_each_reference(
         hits.sort_unstable();
         hits.dedup();
         let mut member_memo: Option<(u32, String)> = None;
+        let mut target_memo = TargetMemo::default();
         for &(method_idx, index) in &hits {
             let method = dex.method(method_idx as usize)?;
             let member_bound = dex
@@ -316,7 +317,7 @@ pub(crate) fn for_each_reference(
             if bound > max_scratch_bytes {
                 return Err(ReferenceScratchLimit.into());
             }
-            dex.push_target_name(kind, index as usize, &mut matched)?;
+            dex.push_target_name(kind, index as usize, &mut target_memo, &mut matched)?;
             if !visit(ReferenceRow {
                 method_index: method_idx,
                 member,
@@ -1332,7 +1333,7 @@ pub(crate) mod tests {
         (0..class_count)
             .map(|index| ReferenceRow {
                 method_index: index as u32,
-                member: format!("LFixture{index};->m{index}"),
+                member: format!("LFixture{index};->m{index}()V"),
                 matched: "Authorization".to_owned(),
             })
             .collect()
@@ -1359,13 +1360,17 @@ pub(crate) mod tests {
         // exercise the same scanner through different resolve paths, which is where the
         // per-query differences live.
         let queries = [
-            ("string", Query::String("Authorization".to_owned())),
-            ("type", Query::Type("Fixture".to_owned())),
+            (
+                "string",
+                Query::String(Pattern::search("Authorization", false)),
+            ),
+            ("type", Query::Type(Pattern::search("Fixture", false))),
             (
                 "method",
                 Query::Method(crate::query::MemberQuery {
-                    name: Some("m0".to_owned()),
+                    name: Some(Pattern::search("m0", false)),
                     class: None,
+                    descriptor: None,
                 }),
             ),
         ];
@@ -1392,11 +1397,13 @@ pub(crate) mod tests {
     #[test]
     fn streaming_reference_scan_bounds_per_class_scratch() {
         let data = const_string_fixture(2);
-        let error =
-            for_each_reference(&data, &Query::String("Authorization".to_owned()), 0, |_| {
-                Ok(true)
-            })
-            .unwrap_err();
+        let error = for_each_reference(
+            &data,
+            &Query::String(Pattern::search("Authorization", false)),
+            0,
+            |_| Ok(true),
+        )
+        .unwrap_err();
         assert!(error.downcast_ref::<ReferenceScratchLimit>().is_some());
     }
 
@@ -1405,7 +1412,7 @@ pub(crate) mod tests {
         let data = const_string_fixture(PARALLEL_SCAN_CLASSES);
         let dex = Dex::parse(&data).unwrap();
         let (kind, targets) = dex
-            .resolve_targets(&Query::String("Authorization".to_owned()))
+            .resolve_targets(&Query::String(Pattern::search("Authorization", false)))
             .unwrap();
         let targets = Targets::new(targets);
         let sequential = dex.scan_all_classes_sequential(kind, &targets).unwrap();
@@ -1418,7 +1425,11 @@ pub(crate) mod tests {
     fn multi_chunk_parallel_scan_keeps_every_hit() {
         let class_count = PARALLEL_SCAN_CLASSES * 3 + 1;
         let data = const_string_fixture(class_count);
-        let rows = find_references(&data, &Query::String("Authorization".to_owned())).unwrap();
+        let rows = find_references(
+            &data,
+            &Query::String(Pattern::search("Authorization", false)),
+        )
+        .unwrap();
         assert_eq!(rows, expected_rows(class_count));
     }
 
@@ -1446,7 +1457,12 @@ pub(crate) mod tests {
     #[test]
     fn lists_defined_classes_from_class_defs() {
         let data = minimal_class_dex(b"Lcom/example/Main;");
-        assert_eq!(class_names(&data).unwrap(), ["Lcom/example/Main;"]);
+        let names: Vec<_> = class_names(&data)
+            .unwrap()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(names, ["Lcom/example/Main;"]);
         assert!(defines_class(&data, b"Lcom/example/Main;").unwrap());
     }
 

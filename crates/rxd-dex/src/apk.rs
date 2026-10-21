@@ -1098,6 +1098,7 @@ fn dedup_names(entries: Vec<crate::archive::ZipEntry>) -> Vec<crate::archive::Zi
 mod tests {
     use super::*;
     use crate::archive::tests::{build_zip, temp_apk};
+    use crate::query::Pattern;
 
     /// The rendered lines for a query, which is what the text mode prints.
     fn find_references(
@@ -1116,13 +1117,6 @@ mod tests {
     /// A member table that annotates a different member than the index lookup resolves
     /// would send a reader to the wrong code - exactly the failure it exists to prevent -
     /// so every line is checked against the lookup face.
-    /// The value of a `key=value` field of a member line; the value ends at the next space.
-    fn value_of<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-        let start = line.find(key)? + key.len();
-        let rest = &line[start..];
-        Some(rest.split(' ').next().unwrap_or(rest))
-    }
-
     /// Real-data check for the member table, against the same class the index faces use.
     ///
     /// Gated like the other real-data checks. Run:
@@ -1145,9 +1139,14 @@ mod tests {
         let dex = dex::tests::const_string_fixture(1);
         let zip = build_zip(&[("app.dex", &dex, true), ("assets/other.dex", &dex, false)]);
         let path = temp_apk("fallback", &zip);
-        let rows =
-            find_references(&path, &Query::String("Authorization".to_owned()), 2, false).unwrap();
-        assert_eq!(rows, ["app.dex | LFixture0;->m0 | matched=(Authorization)"]);
+        let rows = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap();
+        assert_eq!(rows, ["app.dex | LFixture0;->m0()V | matched=(Authorization)"]);
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -1160,11 +1159,16 @@ mod tests {
             ("classes.dex", &second, true),
         ]);
         let path = temp_apk("duplicate-classes", &zip);
-        let rows =
-            find_references(&path, &Query::String("Authorization".to_owned()), 2, false).unwrap();
+        let rows = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap();
         assert_eq!(
             rows,
-            ["classes.dex | LFixture0;->m0 | matched=(Authorization)"]
+            ["classes.dex | LFixture0;->m0()V | matched=(Authorization)"]
         );
         std::fs::remove_file(&path).unwrap();
     }
@@ -1175,9 +1179,14 @@ mod tests {
         let second = dex::tests::const_string_fixture(2);
         let zip = build_zip(&[("app.dex", &first, true), ("app.dex", &second, true)]);
         let path = temp_apk("duplicate-fallback", &zip);
-        let rows =
-            find_references(&path, &Query::String("Authorization".to_owned()), 2, false).unwrap();
-        assert_eq!(rows, ["app.dex | LFixture0;->m0 | matched=(Authorization)"]);
+        let rows = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap();
+        assert_eq!(rows, ["app.dex | LFixture0;->m0()V | matched=(Authorization)"]);
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -1374,10 +1383,16 @@ mod tests {
             list_classes(&wrapped, 2, false).unwrap()
         );
         assert_eq!(
-            find_references(&bare, &Query::String("Authorization".to_owned()), 2, false).unwrap(),
+            find_references(
+                &bare,
+                &Query::String(Pattern::search("Authorization", false)),
+                2,
+                false
+            )
+            .unwrap(),
             find_references(
                 &wrapped,
-                &Query::String("Authorization".to_owned()),
+                &Query::String(Pattern::search("Authorization", false)),
                 2,
                 false
             )
@@ -1453,11 +1468,16 @@ mod tests {
         let other = dex::tests::const_string_fixture(2);
         let zip = build_zip(&[("app.dex", &other, true), ("classes.dex", &named, true)]);
         let path = temp_apk("prefer-named", &zip);
-        let rows =
-            find_references(&path, &Query::String("Authorization".to_owned()), 2, false).unwrap();
+        let rows = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap();
         assert_eq!(
             rows,
-            ["classes.dex | LFixture0;->m0 | matched=(Authorization)"]
+            ["classes.dex | LFixture0;->m0()V | matched=(Authorization)"]
         );
         std::fs::remove_file(&path).unwrap();
     }
@@ -1487,14 +1507,19 @@ mod tests {
         let container = dex::tests::dex041_container(&[2, 1]);
         let zip = build_zip(&[("classes.dex", &container, true)]);
         let path = temp_apk("dex041", &zip);
-        let rows =
-            find_references(&path, &Query::String("Authorization".to_owned()), 2, false).unwrap();
+        let rows = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap();
         assert_eq!(
             rows,
             [
-                "classes.dex!classes1.dex | LFixture0;->m0 | matched=(Authorization)",
-                "classes.dex!classes1.dex | LFixture1;->m1 | matched=(Authorization)",
-                "classes.dex!classes2.dex | LFixture0;->m0 | matched=(Authorization)",
+                "classes.dex!classes1.dex | LFixture0;->m0()V | matched=(Authorization)",
+                "classes.dex!classes1.dex | LFixture1;->m1()V | matched=(Authorization)",
+                "classes.dex!classes2.dex | LFixture0;->m0()V | matched=(Authorization)",
             ]
         );
         std::fs::remove_file(&path).unwrap();
@@ -1537,9 +1562,14 @@ mod tests {
             ("classes2.dex", &good, true),
         ]);
         let path = temp_apk("junk-dex", &zip);
-        let error = find_references(&path, &Query::String("Authorization".to_owned()), 2, false)
-            .unwrap_err()
-            .to_string();
+        let error = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             error.contains("invalid DEX header"),
             "unexpected error: {error}"
@@ -1625,11 +1655,16 @@ mod tests {
         let container = dex::tests::dex041_container(&[1]);
         let zip = build_zip(&[("classes.dex", &container, true)]);
         let path = temp_apk("dex041-single", &zip);
-        let rows =
-            find_references(&path, &Query::String("Authorization".to_owned()), 2, false).unwrap();
+        let rows = find_references(
+            &path,
+            &Query::String(Pattern::search("Authorization", false)),
+            2,
+            false,
+        )
+        .unwrap();
         assert_eq!(
             rows,
-            ["classes.dex | LFixture0;->m0 | matched=(Authorization)"]
+            ["classes.dex | LFixture0;->m0()V | matched=(Authorization)"]
         );
         std::fs::remove_file(&path).unwrap();
     }
@@ -1644,14 +1679,14 @@ mod tests {
             ("AndroidManifest.xml", b"<manifest/>", false),
         ]);
         let path = temp_apk("synthetic", &zip);
-        let query = Query::String("Authorization".to_owned());
+        let query = Query::String(Pattern::search("Authorization", false));
         let rows = find_references(&path, &query, 2, false).unwrap();
         assert_eq!(
             rows,
             [
-                "classes.dex | LFixture0;->m0 | matched=(Authorization)",
-                "classes.dex | LFixture1;->m1 | matched=(Authorization)",
-                "classes2.dex | LFixture0;->m0 | matched=(Authorization)",
+                "classes.dex | LFixture0;->m0()V | matched=(Authorization)",
+                "classes.dex | LFixture1;->m1()V | matched=(Authorization)",
+                "classes2.dex | LFixture0;->m0()V | matched=(Authorization)",
             ]
         );
         assert_eq!(
@@ -1666,7 +1701,7 @@ mod tests {
     fn worker_count_must_be_positive() {
         let zip = build_zip(&[("classes.dex", b"payload", false)]);
         let path = temp_apk("workers", &zip);
-        let query = Query::String("x".to_owned());
+        let query = Query::String(Pattern::search("x", false));
         assert!(find_references(&path, &query, 0, false).is_err());
         std::fs::remove_file(&path).unwrap();
     }
@@ -1701,6 +1736,7 @@ mod tests {
             .map(|(index, descriptor)| {
                 ClassEntry::new(
                     (*descriptor).to_owned(),
+                    None,
                     format!("classes{index}.dex").into(),
                 )
             })
@@ -1809,7 +1845,11 @@ mod tests {
 
     #[test]
     fn class_entry_exposes_name_components() {
-        let entry = ClassEntry::new("Lcom/example/Main$Nested;".to_owned(), "classes.dex".into());
+        let entry = ClassEntry::new(
+            "Lcom/example/Main$Nested;".to_owned(),
+            None,
+            "classes.dex".into(),
+        );
         assert_eq!(entry.java_name(), "com/example/Main$Nested");
         assert_eq!(entry.package(), "com/example");
         assert_eq!(entry.simple_name(), "Main$Nested");

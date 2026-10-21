@@ -940,7 +940,7 @@ fn set_errno(value: i32) {
     // declare only the NDK-provided symbol on Android.
     #[cfg(target_os = "android")]
     unsafe {
-        extern "C" {
+        unsafe extern "C" {
             fn __errno() -> *mut core::ffi::c_int;
         }
         *__errno() = value;
