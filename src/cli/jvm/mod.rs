@@ -298,7 +298,16 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
     } = command
     {
         let limits = options.limits(&input, policy)?;
-        let input = Input::read(&input, limits, options.release)?;
+        // A plain `--at` fetch parses only the named class; `--from` and unusual
+        // archive layouts keep the full reader so stream identity is checked first.
+        let scoped = match (&selector.at, &selector.from) {
+            (Some(at), None) => Input::read_class_scoped(&input, limits, options.release, at)?,
+            _ => None,
+        };
+        let input = match scoped {
+            Some(input) => input,
+            None => Input::read(&input, limits, options.release)?,
+        };
         let coordinate = selector.resolve(&["class"], Expect::Content(&input.source_id))?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
         // One FETCH is one record: the source is a field of it, not the whole answer, so a

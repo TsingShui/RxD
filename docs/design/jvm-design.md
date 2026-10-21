@@ -57,6 +57,14 @@ lexicographically; fields and methods keep class-table order. Duplicate class en
 at the same version or duplicate declared class names fail instead of selecting one.
 Release selection does not verify runtime compatibility.
 
+`get-class` parses only the class its coordinate names: the entry is located from
+the archive directory and its `ClassFile` is the only one read. Archives with
+multi-release layouts, duplicate candidate entries, entry paths that disagree with
+the declared class name, raw `.class` inputs, and `--from` streams (whose identity is
+checked before selection) fall back to the complete reader, which stays the
+authority. Listings, `strings`, `xref` and `get-method` keep the complete parse.
+Scoped and full reads produce byte-identical `class_body` output.
+
 `header.source_id` is the input file SHA-256; class/method `source_id` is the actual
 class-byte SHA-256. JAR records retain the physical entry. A method ID is
 `rxd1:jvm:<class-sha256>:method:<method-table-index>`; the index is not a DEX

@@ -102,6 +102,122 @@ impl Input {
         Ok((source_id, file_bytes, entries))
     }
 
+    /// Parse only the class the coordinate names. Returns `None` when the archive
+    /// shape needs the full reader (multi-release layouts, duplicate candidates,
+    /// renamed entries, raw class files); the caller then falls back.
+    pub fn read_class_scoped(
+        path: &Path,
+        limits: Limits,
+        release: u16,
+        coordinate: &str,
+    ) -> Result<Option<Self>> {
+        ensure!(release >= 8, "INVALID_QUERY: release must be at least 8");
+        if coordinate.contains("->") || coordinate.is_empty() {
+            return Ok(None);
+        }
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let file = options.open(path)?;
+        let metadata = file.metadata()?;
+        ensure!(metadata.is_file(), "INVALID_INPUT: expected a regular file");
+        ensure!(
+            metadata.len() <= limits.input_bytes as u64,
+            "RESOURCE_LIMIT: input byte budget exceeded"
+        );
+        let mut bytes = Vec::new();
+        file.take(limits.input_bytes as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() <= limits.input_bytes,
+            "RESOURCE_LIMIT: input byte budget exceeded"
+        );
+        let source_id = rxd_core::identity::content_id(path, &bytes);
+        let file_bytes = bytes.len();
+        if bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
+            return Ok(None);
+        }
+        check_directory(&bytes, limits.entries)?;
+        let mut zip =
+            zip::ZipArchive::new(Cursor::new(bytes)).context("INVALID_INPUT: invalid JAR/ZIP")?;
+        ensure!(
+            zip.len() <= limits.entries,
+            "RESOURCE_LIMIT: archive entry budget exceeded"
+        );
+        let mut entries = Vec::new();
+        let mut candidate = None;
+        let internal = normalize_class_name(coordinate);
+        let wanted = format!("{internal}.class");
+        for index in 0..zip.len() {
+            let entry = zip.by_index(index)?;
+            let name = entry.name().to_owned();
+            if name.starts_with("META-INF/versions/") {
+                // Multi-release selection needs the complete candidate set.
+                return Ok(None);
+            }
+            entries.push(InputEntry {
+                name: name.clone(),
+                compression: match entry.compression() {
+                    zip::CompressionMethod::Stored => 0,
+                    zip::CompressionMethod::Deflated => 8,
+                    _ => 255,
+                },
+                compressed_size: usize::try_from(entry.compressed_size()).unwrap_or(usize::MAX),
+                uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
+            });
+            if name == wanted {
+                if candidate.replace(index).is_some() {
+                    // Duplicate candidate entries: the full reader owns the verdict.
+                    return Ok(None);
+                }
+            }
+        }
+        let Some(index) = candidate else {
+            return Ok(None);
+        };
+        let entry = zip.by_index(index)?;
+        let size = usize::try_from(entry.size()).context("RESOURCE_LIMIT: class size overflow")?;
+        ensure!(
+            size <= limits.class_bytes,
+            "RESOURCE_LIMIT: class byte budget exceeded: {wanted}"
+        );
+        ensure!(
+            size <= limits.expanded_bytes,
+            "RESOURCE_LIMIT: expanded byte budget exceeded"
+        );
+        let mut data = Vec::new();
+        entry.take(size as u64 + 1).read_to_end(&mut data)?;
+        ensure!(
+            data.len() == size,
+            "INVALID_INPUT: inconsistent class size: {wanted}"
+        );
+        let class_id = hash(&data);
+        let class =
+            ClassFile::parse_bounded(data, limits.class_bytes).with_context(|| wanted.clone())?;
+        ensure!(
+            class.metadata_bytes <= limits.expanded_bytes,
+            "RESOURCE_LIMIT: archive metadata budget exceeded"
+        );
+        if class.name != internal {
+            // The entry path and the declared class name disagree; use the full reader.
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            source_id,
+            file_bytes,
+            classes: vec![InputClass {
+                entry: Some(wanted),
+                source_id: class_id,
+                class,
+            }],
+            entries,
+        }))
+    }
+
     pub fn read(path: &Path, limits: Limits, release: u16) -> Result<Self> {
         ensure!(release >= 8, "INVALID_QUERY: release must be at least 8");
         let mut options = OpenOptions::new();
