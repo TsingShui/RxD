@@ -109,6 +109,12 @@ intermediates. See `prebuilt/README.md`.
 - `python3 benches/cli.py`: build release and benchmark the production/obfuscated
   corpus.
 
+On the shared interactive workstation, default local agent runs to
+`CARGO_BUILD_JOBS=2` and `RUST_TEST_THREADS=2`, without overlapping build/test/lint/
+benchmark jobs. Clean up owned disposable processes and rebuildable duplicate
+caches after milestones while retaining source, corpus and verification evidence;
+see `docs/agents/testing.md`. These controls do not add backend query quotas.
+
 ## First Principle: Fast Is All You Need
 
 When the tool is fast enough, intelligence emerges. rxd supplies fast, precise

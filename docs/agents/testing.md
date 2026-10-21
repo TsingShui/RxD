@@ -11,6 +11,32 @@ Do not require their timing batches or numeric exceptions just to merge; optiona
 measurements do not replace functional/safety E2E or explicit resource limits.
 See `AGENTS.md` for the authoritative scope and unchanged backend exceptions.
 
+## Shared workstation resource discipline
+
+Keep the interactive machine responsive during local agent work. Default to
+`CARGO_BUILD_JOBS=2` and `RUST_TEST_THREADS=2`; run build, lint, debug tests, release
+tests and benchmarks sequentially, not as overlapping background jobs. Use lower
+OS scheduling priority for compilation and cleanup when available. Do not raise
+concurrency without the operator's agreement. CI keeps its separately configured
+parallelism. These are development-process controls, not backend query budgets.
+
+After a validation milestone, stop only owned disposable workers/browsers and
+remove known rebuildable duplicate target directories and stale incremental caches
+when no build is using them. Preserve source changes, pinned inputs/provenance,
+reports/logs and the minimal hashed binaries needed to reproduce measurements.
+Record moved evidence paths before deleting a baseline build tree. Do not kill
+other sessions' processes, delete unknown captures, or indiscriminately clear the
+whole Cargo cache and force an expensive rebuild. Check resource use before the
+next heavy gate; bounded, scope-appropriate validation takes priority over running
+more gates concurrently.
+
+Full query-result dumps are disposable after verification unless needed for a
+concrete regression. Prefer compact hashes, counts, provenance and selected samples
+over repeated large JSONL exports; record cleanup rather than claiming removed
+output is still retained. Inspect and hash large files incrementally, not with
+whole-file string reads. Output benchmarks must still include real writes, but
+reuse or remove their temporary result files afterward.
+
 ## Local feedback and milestones
 
 | Changed behavior | Inner loop | Before the affected milestone |
