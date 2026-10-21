@@ -238,12 +238,11 @@ program-semantics recovery.
 
 ## Budgets and performance
 
-Every ceiling comes from the shared `rxd_core::Budget::default()` table: input 8 GiB
-(32-bit spans keep actual addressable content below 4 GiB), work 1,000,000,
-instructions per function 100,000. Retained reference metadata and the serialized
-output buffer each use the shared 128 MiB metadata ceiling. WASM projects that table
-onto its own `Limits` type; the CLI exposes no `--max-*` flag and restates no number,
-so a ceiling changes in exactly one place. Section work counts
+Ordinary CLI admission, work, instructions, reference metadata and complete output
+use the input-scaled envelopes in [ADR 0016](../adr/0016-input-scaled-cli-resources.md); they are not fixed
+8 GiB / one-million-work / 128 MiB quotas. Explicit library defaults and MCP keep
+their fixed policy. The CLI exposes no budget flags. Existing 32-bit span and format
+bounds remain. Section work counts
 type/import/export/function/table/memory/global/data/element entries.
 Work bounds section decode, function-body decode and reference scanning; `xref`
 charges actual decode and match work across all defined bodies once, independent

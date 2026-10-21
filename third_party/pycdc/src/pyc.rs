@@ -4,9 +4,9 @@ use std::rc::Rc;
 
 use crate::code::CodeObject;
 use crate::error::{PycError, Result};
-use crate::marshal::MarshalReader;
+use crate::marshal::{Limits, MarshalReader};
 use crate::object::PyObject;
-use crate::version::{header_kind, version_from_magic, HeaderKind, PythonVersion, FLAG_HASH_BASED};
+use crate::version::{FLAG_HASH_BASED, HeaderKind, PythonVersion, header_kind, version_from_magic};
 
 #[derive(Debug, Clone)]
 pub struct PycHeader {
@@ -102,14 +102,27 @@ impl PycModule {
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<PycModule> {
+        Self::from_bytes_with_limits(data, Limits::default())
+    }
+
+    pub fn from_bytes_with_limits(data: &[u8], limits: Limits) -> Result<PycModule> {
         let header = Self::read_header(data)?;
-        let code = Self::unmarshal(&data[header.header_size..], header.version)?;
+        let code =
+            Self::unmarshal_with_limits(&data[header.header_size..], header.version, limits)?;
         Ok(PycModule { header, code })
     }
 
     /// Load a raw marshal stream (no pyc header) for a known version.
     pub fn unmarshal(data: &[u8], version: PythonVersion) -> Result<Rc<CodeObject>> {
-        let mut reader = MarshalReader::new(data, version);
+        Self::unmarshal_with_limits(data, version, Limits::default())
+    }
+
+    pub fn unmarshal_with_limits(
+        data: &[u8],
+        version: PythonVersion,
+        limits: Limits,
+    ) -> Result<Rc<CodeObject>> {
+        let mut reader = MarshalReader::new(data, version).with_limits(limits);
         let obj = reader.load()?;
         if !reader.at_eof() {
             return Err(PycError::Msg(format!(

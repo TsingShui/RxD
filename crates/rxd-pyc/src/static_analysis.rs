@@ -19,6 +19,8 @@ use rxd_core::{Error, Result, perf::Perf};
 pub struct Limits {
     pub input_bytes: usize,
     pub entities: usize,
+    pub metadata_bytes: usize,
+    pub marshal: pycdc::marshal::Limits,
     pub work: usize,
 }
 impl Limits {
@@ -26,6 +28,10 @@ impl Limits {
         BTreeMap::from([
             ("input_bytes", self.input_bytes),
             ("entities", self.entities),
+            ("metadata_bytes", self.metadata_bytes),
+            ("marshal_objects", self.marshal.objects),
+            ("marshal_expanded_objects", self.marshal.expanded_objects),
+            ("marshal_copied_bytes", self.marshal.copied_bytes),
             ("work", self.work),
         ])
     }
@@ -88,7 +94,7 @@ impl Analysis {
                     (header.version, header.header_size)
                 }
             };
-            let mut reader = MarshalReader::with_evidence(&bytes[base..], version, base, limits.entities, limits.work);
+            let mut reader = MarshalReader::with_evidence(&bytes[base..], version, base, limits.entities, limits.work).with_limits(limits.marshal);
             let result = reader.load();
             parse_counts = reader.evidence_counts();
             let object = result.map_err(super::input_error)?;

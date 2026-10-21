@@ -1,5 +1,5 @@
 use super::{Output, static_commands::Options};
-use rxd_core::{Error, Result, envelope, perf::Perf};
+use rxd_core::{Result, envelope, perf::Perf};
 use rxd_pyc::{
     static_analysis::Analysis,
     string_constants::{self, Literal, Query},
@@ -104,10 +104,7 @@ fn record<'a>(analysis: &'a Analysis, literal: &'a Literal) -> Result<Record<'a>
     })
 }
 fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
-    serde_json::to_writer(&mut *writer, value)
-        .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
-    std::io::Write::write_all(writer, b"\n")
-        .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))
+    writer.json_line(value)
 }
 pub(super) fn valid_hex(value: &str) -> std::result::Result<String, String> {
     if !value.len().is_multiple_of(2) || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -125,8 +122,7 @@ pub fn run(
     perf: &mut Perf,
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
-    let limits = options.limits();
-    let mut analysis = Analysis::load(&input, version, limits, perf)?;
+    let mut analysis = options.load(&input, version, perf)?;
     let result = perf.measure("query", || -> Result<_> {
         let query_bytes = filter
             .as_ref()
@@ -168,7 +164,7 @@ pub fn run(
     perf.counters.records = Some(literals.len());
     perf.counters.matches = Some(literals.len());
     let serialized = perf.measure("serialize", || -> Result<Vec<u8>> {
-        let mut writer = Output { bytes: Vec::new() };
+        let mut writer = Output::new(options.budget.output_bytes);
         append(&mut writer, &envelope::header("pyc", "strings", Some(&analysis.source_id), Some(analysis.bytes.len()),
             json!({"filter":filter.as_deref(),"filter_hex":filter_hex.as_deref(),"version":version.map(|(major,minor)|format!("{major}.{minor}"))}),
             json!({"analysis":"constants","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned","containers":["tuple","frozenset"]}).as_object().unwrap().clone()))?;
@@ -181,7 +177,7 @@ pub fn run(
             append(&mut writer, &row)?;
         }
         append(&mut writer, &envelope::summary(literals.len(), true, json!({"code_count":analysis.codes.len(),"analysis":"constants","instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
-        Ok(writer.bytes)
+        Ok(writer.into_bytes())
     });
     perf.counters.work = Some(analysis.evidence.work);
     let bytes = serialized?;

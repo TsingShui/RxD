@@ -484,6 +484,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     assert_eq!(perf["counters"]["instructions"], 14);
     assert_eq!(perf["counters"]["records"], 2);
     assert!(perf["counters"]["ast_depth"].is_null());
+    assert_json_output_boundary(&complete);
     assert_no_budget_flags(&path, "xref");
     // Exact accounting lives in the library, which owns the shared ceilings.
     let mut base = shared_static_limits();
@@ -499,7 +500,6 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         ("input_bytes", bytes.len(), 14),
         ("entities", entities, 14),
         ("work", work, 14),
-        ("records", 2, 14),
         ("instructions", 0, 14),
     ] {
         let mut exact = base;
@@ -598,16 +598,8 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         1_000,
     );
     assert!(scan.is_ok());
-    // Output volume is no longer a ceiling; the same query answers completely.
-    let (_, result) = xref_library(
-        &deep_path,
-        Some((3, 12)),
-        &deep_id,
-        None,
-        shared_static_limits(),
-        1_000,
-    );
-    assert!(result.is_ok());
+    // A long path still has an exact finite serialization bound, not a record cap.
+    assert_json_output_boundary(&selected);
 }
 
 #[test]

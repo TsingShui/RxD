@@ -23,7 +23,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             && input.rows[22] == 0,
         "UNSUPPORTED: pointer metadata tables"
     );
-    let mut work = Work::new(input.limits.work);
+    let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
     reserve_metadata(input, &mut work)?;
     let types = match tables.table::<TypeDefRaw>() {
         Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
@@ -1249,7 +1249,10 @@ pub(crate) fn compressed(bytes: &[u8], pos: &mut usize, work: &mut Work) -> Resu
 }
 
 pub(crate) fn strings(input: &Input) -> Result<Vec<StringRecord>> {
-    strings_with_work(input, &mut Work::new(input.limits.work))
+    strings_with_work(
+        input,
+        &mut Work::new(input.limits.work, input.limits.metadata_bytes),
+    )
 }
 
 pub(crate) fn strings_with_work(input: &Input, work: &mut Work) -> Result<Vec<StringRecord>> {

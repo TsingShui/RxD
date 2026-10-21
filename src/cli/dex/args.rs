@@ -340,6 +340,20 @@ fn type_coordinate(coordinate: &str) -> String {
 }
 
 impl Command {
+    pub(crate) fn input(&self) -> &Path {
+        match self {
+            Self::Getclass(args) => &args.apk_path,
+            Self::Entries(args) => &args.apk_path,
+            Self::Strings(args) => &args.apk_path,
+            Self::Xref(args) => &args.apk_path,
+            Self::Manifest(args) => &args.apk_path,
+            Self::Classes(args) => &args.apk_path,
+            Self::Methods(args) => &args.apk_path,
+            Self::Fields(args) => &args.apk_path,
+            Self::GetMethod(args) => &args.apk_path,
+        }
+    }
+
     /// Whether this invocation asked for the perf record.
     pub(crate) fn perf(&self) -> bool {
         match self {

@@ -129,17 +129,9 @@ pub struct Options {
     perf: bool,
 }
 
-/// The budgets every JVM analysis runs under.
-///
-/// They are safety floors, not tuning knobs: an agent should not have to reason about six
-/// limits per backend, and DEX enforces the same class of budget without exposing any.
-fn limits() -> Limits {
-    Limits::default()
-}
-
 impl Options {
-    fn limits(&self) -> Limits {
-        limits()
+    fn limits(&self, input: &std::path::Path, policy: rxd_core::BudgetPolicy) -> Result<Limits> {
+        Ok(Limits::from(policy.for_file(input)?))
     }
 }
 
@@ -286,11 +278,11 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command) -> Result<()> {
+pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let emit_perf = command.perf();
     let name = command.name();
     let mut perf = rxd_core::perf::Perf::new(emit_perf, "analysis", "jvm", name);
-    let result = perf.measure("query", || execute_inner(command));
+    let result = perf.measure("query", || execute_inner(command, policy));
     perf.finish(result.as_ref().err().map(|_| "IO_ERROR"));
     if emit_perf {
         perf.emit();
@@ -298,14 +290,14 @@ pub fn execute(command: Command) -> Result<()> {
     result.map_err(super::classify)
 }
 
-fn execute_inner(command: Command) -> anyhow::Result<()> {
+fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Result<()> {
     if let Command::GetClass {
         input,
         selector,
         options,
     } = command
     {
-        let limits = options.limits();
+        let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
         let coordinate = selector.resolve(&["class"], Expect::Content(&input.source_id))?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
@@ -344,7 +336,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         options,
     } = command
     {
-        let limits = options.limits();
+        let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
         let wanted = class.as_deref().map(rxd_jvm::normalize_class_name);
         let needle = filter
@@ -415,7 +407,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         options,
     } = command
     {
-        let limits = options.limits();
+        let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
         let target = match target.selector() {
             Some(path) => target
@@ -486,7 +478,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
         case,
     } = command
     {
-        let limits = options.limits();
+        let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
         let mut output = Vec::new();
         append(
@@ -612,7 +604,7 @@ fn execute_inner(command: Command) -> anyhow::Result<()> {
             Command::Xref { .. } => unreachable!("handled above"),
         };
     let command_name = listing.name();
-    let limits = options.limits();
+    let limits = options.limits(&path, policy)?;
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
     if let Some((selector, raw)) = request {

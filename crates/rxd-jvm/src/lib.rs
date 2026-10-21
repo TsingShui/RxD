@@ -580,7 +580,12 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        let budget = rxd_core::Budget::default();
+        rxd_core::Budget::default().into()
+    }
+}
+
+impl From<rxd_core::Budget> for Limits {
+    fn from(budget: rxd_core::Budget) -> Self {
         Self {
             input_bytes: budget.input_bytes,
             class_bytes: budget.entry_bytes,

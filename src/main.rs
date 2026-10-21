@@ -6,7 +6,7 @@ mod query;
 
 use std::{
     ffi::OsStr,
-    io::{self, Read, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
     process::{Command, ExitCode, Stdio},
     time::Instant,
 };
@@ -124,19 +124,29 @@ fn capture_selector_stream() {
 }
 
 fn run_worker(perf: &mut Perf) -> Result<i32> {
+    // Do not retain another whole result in the parent. Publish the private spool
+    // only after successful completion, and discard it on worker failure.
+    let mut payload = tempfile::tempfile()?;
     let result = perf.measure("spawn_wait", || {
         Command::new(std::env::current_exe()?)
             .arg("--internal-worker")
             .args(std::env::args_os().skip(1))
             .stdin(Stdio::null())
-            .output()
+            .stdout(Stdio::from(payload.try_clone()?))
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()
     })?;
     if let Some(code) = result.status.code() {
-        perf.counters.output_bytes = Some(result.stdout.len());
+        perf.counters.output_bytes =
+            Some(usize::try_from(payload.metadata()?.len()).map_err(|_| {
+                Error::failure(rxd_core::Failure::Resource, "worker output length overflow")
+            })?);
         perf.measure("forward", || -> Result<()> {
             io::stderr().lock().write_all(&result.stderr)?;
             if code == 0 {
-                io::stdout().lock().write_all(&result.stdout)?;
+                payload.seek(SeekFrom::Start(0))?;
+                io::copy(&mut payload, &mut io::stdout().lock())?;
             }
             Ok(())
         })?;

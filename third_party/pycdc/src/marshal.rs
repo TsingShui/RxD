@@ -12,7 +12,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::evidence::{FieldEvidence, MarshalEvidence, Occurrence, Span};
 
-use crate::code::{CodeObject, CO_FAST_CELL, CO_FAST_FREE, CO_FAST_LOCAL};
+use crate::code::{CO_FAST_CELL, CO_FAST_FREE, CO_FAST_LOCAL, CodeObject};
 use crate::error::{PycError, Result};
 use crate::object::{ObjectRef, PyObject, PycLong};
 use crate::version::PythonVersion;
@@ -76,6 +76,7 @@ pub struct MarshalReader<'a> {
     evidence_stack: Vec<usize>,
     definitions: HashMap<usize, usize>,
     base: usize,
+    limits: Limits,
 }
 
 const MAX_MARSHAL_DEPTH: usize = 128;
@@ -83,6 +84,24 @@ const MAX_MARSHAL_OBJECTS: usize = 1_000_000;
 const MAX_EXPANDED_OBJECTS: usize = 1_000_000;
 const MAX_COPIED_BYTES: usize = 128 * 1024 * 1024;
 const MAX_LONG_WORK: usize = 16_777_216;
+
+/// Caller-selected finite storage/expansion bounds. Recursion and numeric-conversion
+/// guards are independent of these whole-input allowances.
+#[derive(Clone, Copy)]
+pub struct Limits {
+    pub objects: usize,
+    pub expanded_objects: usize,
+    pub copied_bytes: usize,
+}
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            objects: MAX_MARSHAL_OBJECTS,
+            expanded_objects: MAX_EXPANDED_OBJECTS,
+            copied_bytes: MAX_COPIED_BYTES,
+        }
+    }
+}
 
 impl<'a> MarshalReader<'a> {
     pub fn new(data: &'a [u8], version: PythonVersion) -> Self {
@@ -103,7 +122,13 @@ impl<'a> MarshalReader<'a> {
             evidence_stack: Vec::new(),
             definitions: HashMap::new(),
             base: 0,
+            limits: Limits::default(),
         }
+    }
+
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 
     /// Collect bounded occurrence/field evidence from this reader's fixed source buffer.
@@ -268,7 +293,7 @@ impl<'a> MarshalReader<'a> {
 
     fn charge_copy(&mut self, bytes: usize) -> Result<()> {
         self.copied_bytes = self.copied_bytes.saturating_add(bytes);
-        if self.copied_bytes > MAX_COPIED_BYTES {
+        if self.copied_bytes > self.limits.copied_bytes {
             return Err(PycError::ResourceLimit("marshal byte-copy budget exceeded"));
         }
         Ok(())
@@ -343,8 +368,8 @@ impl<'a> MarshalReader<'a> {
         };
 
         if self.depth >= MAX_MARSHAL_DEPTH
-            || self.objects >= MAX_MARSHAL_OBJECTS
-            || self.expanded_objects >= MAX_EXPANDED_OBJECTS
+            || self.objects >= self.limits.objects
+            || self.expanded_objects >= self.limits.expanded_objects
         {
             return Err(PycError::ResourceLimit(
                 "marshal object/depth budget exceeded",
@@ -541,7 +566,7 @@ impl<'a> MarshalReader<'a> {
                     self.expanded_objects = self
                         .expanded_objects
                         .saturating_add(weight.saturating_sub(1));
-                    if self.expanded_objects > MAX_EXPANDED_OBJECTS
+                    if self.expanded_objects > self.limits.expanded_objects
                         || self.depth.saturating_sub(1) + depth > MAX_MARSHAL_DEPTH
                     {
                         return Err(PycError::ResourceLimit(
@@ -692,7 +717,7 @@ impl<'a> MarshalReader<'a> {
             TYPE_NULL => {
                 return Err(PycError::Msg(format!(
                     "unexpected TYPE_NULL at offset {start}"
-                )))
+                )));
             }
             _ => {
                 return Err(PycError::BadMarshalType(
@@ -703,7 +728,7 @@ impl<'a> MarshalReader<'a> {
                         '?'
                     },
                     start,
-                ))
+                ));
             }
         };
 
@@ -844,7 +869,7 @@ impl<'a> MarshalReader<'a> {
                     return Err(PycError::Msg(format!(
                         "expected string in code object tuple, got {}",
                         other.type_name()
-                    )))
+                    )));
                 }
             }
         }

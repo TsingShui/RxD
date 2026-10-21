@@ -34,7 +34,10 @@ pub(crate) fn uses(
         sites,
         work_used,
     } = scan(input)?;
-    let mut work = Work::new(input.limits.work.saturating_sub(work_used));
+    let mut work = Work::new(
+        input.limits.work.saturating_sub(work_used),
+        input.limits.metadata_bytes,
+    );
     let mut owners: BTreeMap<(u32, u32), Vec<u32>> = BTreeMap::new();
     for site in sites {
         work.charge(1)?;
@@ -126,7 +129,10 @@ pub(crate) fn references(
         sites,
         work_used,
     } = scan(input)?;
-    let mut work = Work::new(input.limits.work.saturating_sub(work_used));
+    let mut work = Work::new(
+        input.limits.work.saturating_sub(work_used),
+        input.limits.metadata_bytes,
+    );
     work.charge(pattern.len())?;
     work.charge(literals.len())?;
     let tokens: BTreeSet<_> = literals
@@ -158,7 +164,10 @@ pub(crate) fn token_references(input: &Input, token: u32) -> Result<Vec<StringRe
         sites,
         work_used,
     } = scan(input)?;
-    let mut work = Work::new(input.limits.work.saturating_sub(work_used));
+    let mut work = Work::new(
+        input.limits.work.saturating_sub(work_used),
+        input.limits.metadata_bytes,
+    );
     work.charge(literals.len())?;
     ensure!(
         token >> 24 == 0x70

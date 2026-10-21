@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -142,12 +141,12 @@ pub struct Options {
 
 impl Options {
     /// The shared budget table, projected onto this backend's limits.
-    fn limits(&self) -> Limits {
-        let budget = Budget::default();
+    fn limits(&self, budget: Budget) -> Limits {
         Limits {
             input_bytes: budget.input_bytes,
             work: budget.work,
             instructions: budget.instructions,
+            metadata_bytes: budget.metadata_bytes,
         }
     }
 }
@@ -182,14 +181,18 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command) -> Result<()> {
+pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "dotnet", command.name());
-    let result = execute_inner(command, &mut perf).map_err(super::classify);
+    let result = execute_inner(command, policy, &mut perf).map_err(super::classify);
     super::finish(perf, emit_perf, result)
 }
 
-fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
+fn execute_inner(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    perf: &mut Perf,
+) -> anyhow::Result<()> {
     let (path, options) = match &command {
         Command::Classes { input, options, .. }
         | Command::Fields { input, options, .. }
@@ -199,13 +202,21 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         | Command::Strings { input, options, .. }
         | Command::Xref { input, options, .. } => (input, options),
     };
-    let limits = options.limits();
+    let budget = policy.for_file(path)?;
+    let limits = options.limits(budget);
+    perf.resource_limits = Some(std::collections::BTreeMap::from([
+        ("input_bytes", budget.input_bytes),
+        ("work", budget.work),
+        ("metadata_bytes", budget.metadata_bytes),
+        ("output_bytes", budget.output_bytes),
+        ("instructions", budget.instructions),
+    ]));
     let input = perf.measure("read_parse", || Input::read(path, limits))?;
     perf.source_id = Some(input.source_id.clone());
     perf.counters.input_bytes = Some(input.file_bytes);
     perf.counters.entities = Some(input.types.len() + input.fields.len() + input.methods.len());
     let query_start = perf.start_stage();
-    let mut output = Vec::new();
+    let mut output = rxd_core::output::Output::new(budget.output_bytes);
     let mut records = 0;
     // One target, resolved before the scan: the same two faces every backend takes, and a
     // token is the only thing .NET can match on exactly.
@@ -574,7 +585,7 @@ fn reference_record(
 }
 
 fn record(
-    output: &mut Vec<u8>,
+    output: &mut rxd_core::output::Output,
     records: &mut usize,
     _options: &Options,
     value: &Value,
@@ -584,64 +595,9 @@ fn record(
     Ok(())
 }
 
-fn append(output: &mut Vec<u8>, value: &Value) -> anyhow::Result<()> {
-    let mut writer = Output {
-        output,
-        limit_hit: false,
-    };
-    serde_json::to_writer(&mut writer, value).map_err(|error| {
-        if writer.limit_hit {
-            anyhow::anyhow!("RESOURCE_LIMIT: output bytes")
-        } else {
-            anyhow::anyhow!("INVALID_INPUT: {error}")
-        }
-    })?;
-    writer.write_all(b"\n")?;
+fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
+    output.json_line(value)?;
     Ok(())
-}
-
-struct Output<'a> {
-    output: &'a mut Vec<u8>,
-    limit_hit: bool,
-}
-impl Write for Output<'_> {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        // Shared metadata can expand again in JSON. Bound the complete stream,
-        // including headers/newlines, rather than only the retained input model.
-        if self.output.len().saturating_add(bytes.len()) > rxd_core::MAX_METADATA_BYTES {
-            self.limit_hit = true;
-            return Err(io::Error::other("RESOURCE_LIMIT: output bytes"));
-        }
-        self.output.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod output_tests {
-    #[test]
-    fn shared_metadata_output_ceiling_keeps_resource_errors_and_counts_newlines() {
-        // Exercise the actual ceiling without constructing an enormous assembly
-        // or adding a public budget override merely for a serializer regression.
-        let limit = rxd_core::MAX_METADATA_BYTES;
-        let mut output = Vec::with_capacity(limit);
-        let value = serde_json::Value::String("x".into());
-        output.resize(limit - 4, b' ');
-        super::append(&mut output, &value).unwrap(); // three JSON bytes + newline
-        assert_eq!(output.len(), limit);
-        for remaining in [0, 2, 3] {
-            output.truncate(limit - remaining);
-            let error = super::append(&mut output, &value).unwrap_err();
-            assert!(
-                error.to_string().starts_with("RESOURCE_LIMIT:"),
-                "{error:#}"
-            );
-            assert!(output.len() <= limit);
-        }
-    }
 }
 
 /// Names of token operands the resolver could not place, deduplicated and truncated so
@@ -1005,7 +961,7 @@ fn list(
     input: &Input,
     command: &Command,
     options: &Options,
-    output: &mut Vec<u8>,
+    output: &mut rxd_core::output::Output,
     records: &mut usize,
 ) -> anyhow::Result<()> {
     let (listing, class, name, filter, case) = match command {

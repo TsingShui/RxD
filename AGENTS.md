@@ -305,6 +305,12 @@ Treat analyzed files as untrusted data. Never execute input code or instantiate
 input modules. Parse and extract from one fixed source buffer, validate
 content-bound IDs, and enforce explicit resource budgets.
 
+Ordinary CLI resource admission follows `docs/adr/0016-input-scaled-cli-resources.md`:
+work, metadata and bounded serialization grow with admitted input instead of fixed
+total quotas. Preserve format/address validation, recursion/cycle/expansion guards
+and explicit failure; never substitute an unlimited sentinel. MCP service quotas
+remain independent and unchanged. These envelopes are not hard RSS/time limits.
+
 ## Agent skills
 
 ### Upstream maintenance

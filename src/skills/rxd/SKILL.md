@@ -59,9 +59,11 @@ and binwalk integration are planned, not available commands.
   DEX member indices/code units, WASM code-body offsets, PYC code-relative bytes,
   EVM decoded PCs versus original raw/hex carrier ranges. Do not interchange them.
 - Narrow before FETCH with selectors (`-f`, `--kind`, `--class`, `--within`,
-  `--depth`). Every resource ceiling comes from one internal budget table; there is
-  no `--max-*` flag to tune. Budget failure is a failure, not evidence of absence,
-  and partial output is never discarded silently.
+  `--depth`). Ordinary CLI work, metadata and serialization bounds grow with the
+  admitted input, rather than using fixed total quotas. Format, recursion and
+  expansion guards remain; MCP retains independent fixed service quotas. There is
+  no `--max-*` flag to tune. Resource failure is not evidence of absence, and
+  partial output is never discarded silently.
   Zero hits in a complete query are valid within that query's stated scope.
 - Default JS `slice` returns original bytes. Java/C#/C-like/Python reconstruction is
   an analysis representation, not original source or a universal semantic proof.

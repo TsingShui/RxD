@@ -9,6 +9,7 @@ use super::filter::CaseArgs;
 use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::envelope::{self, RecordMeta};
+use rxd_core::output::Output;
 use rxd_core::perf::Perf;
 use rxd_core::{Budget, Error, Result};
 use rxd_pyc::Limits;
@@ -100,38 +101,18 @@ pub struct Options {
     output: Option<PathBuf>,
     #[arg(long)]
     perf: bool,
+    #[arg(skip)]
+    budget: Budget,
 }
 
-/// The one shared budget table; pyc projects it instead of restating ceilings.
-pub(crate) fn budget() -> Budget {
-    Budget::default()
-}
-
-fn decompile_limits() -> Limits {
-    let budget = budget();
+fn decompile_limits(budget: Budget) -> Limits {
     Limits {
         input_bytes: budget.input_bytes,
         work: budget.work,
         // AST nesting is projected from the shared core limits the budget drives.
-        ast_depth: rxd_core::Limits::default().ast_depth,
-    }
-}
-
-struct Output {
-    bytes: Vec<u8>,
-}
-
-impl std::io::Write for Output {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if self.bytes.len().saturating_add(bytes.len()) > budget().metadata_bytes {
-            return Err(std::io::Error::other("serialized PYC output byte limit"));
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+        ast_depth: budget.ast_depth,
+        output_bytes: budget.output_bytes,
+        marshal: rxd_pyc::marshal_limits(budget),
     }
 }
 
@@ -215,7 +196,16 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command) -> Result<()> {
+pub fn execute(mut command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+    let (input, budget) = match &mut command {
+        Command::Decompile { input, options, .. } => (input, &mut options.budget),
+        Command::Codes { input, options, .. } | Command::Strings { input, options, .. } => {
+            (input, &mut options.budget)
+        }
+        Command::GetCode { input, options, .. } => (input, &mut options.common.budget),
+        Command::Xref { input, options, .. } => (input, &mut options.common.budget),
+    };
+    *budget = policy.for_file(input)?;
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "pyc", command.name());
     let result = execute_inner(command, &mut perf);
@@ -284,7 +274,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
         unreachable!()
     };
     validate_output(&input, options.output.as_deref())?;
-    let limits = decompile_limits();
+    let limits = decompile_limits(options.budget);
     let result = rxd_pyc::run(&input, version, limits, perf)?;
     perf.source_id = Some(result.source_id.clone());
     perf.counters.input_bytes = Some(result.input_bytes);
@@ -317,17 +307,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             object.insert("schema_version".into(), json!(envelope::SCHEMA_VERSION));
             object.insert("backend".into(), json!("pyc"));
             object.insert("command".into(), json!("decompile"));
-            let mut writer = Output { bytes: Vec::new() };
-            serde_json::to_writer(&mut writer, &row)
-                .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
-            std::io::Write::write_all(&mut writer, b"\n")
-                .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
-            Ok(writer.bytes)
+            let mut writer = Output::new(options.budget.output_bytes);
+            writer.json_line(&row)?;
+            Ok(writer.into_bytes())
         })?
     } else {
         result.source.into_bytes()
     };
-    if bytes.len() > budget().metadata_bytes {
+    if bytes.len() > options.budget.output_bytes {
         return Err(Error::failure(
             rxd_core::Failure::Resource,
             "serialized PYC output bytes",

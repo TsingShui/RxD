@@ -80,7 +80,8 @@ instructions and the ordered EH table.
 The pinned MIT Newtonsoft.Json 13.0.3 net6.0 assembly is included as an offline
 regression input; provenance and independent expectations are in
 [`tests/corpus/dotnet/`](../../tests/corpus/dotnet/README.md). It is never executed.
-These queries use the unchanged shared work allowance, with no budget overrides:
+These queries use the input-scaled CLI policy, with no budget overrides
+([ADR 0016](../adr/0016-input-scaled-cli-resources.md)):
 
 ```sh
 dll=tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll
@@ -91,8 +92,16 @@ $rxd dotnet get-method "$dll" --from target/newtonsoft-method.jsonl --raw
 
 The substring query includes `ReadAsInt32Async`; the exact name selects one method.
 The complete unfiltered lists have 494 types, 2,204 fields and 4,208 methods. The
-selected method retains its original IL and EH. This is metadata/FETCH coverage,
-not a claim that whole-assembly reference/string scans fit the same work budget.
+selected method retains its original IL and EH. The following complete whole-module
+scan now also succeeds instead of hitting the former one-million work quota:
+
+```sh
+$rxd dotnet xref "$dll" --kind string -f __rxd_nonexistent_budget_probe__ --perf
+# Complete zero-match stream; this still validates the scanned original IL.
+```
+
+This does not remove format, recursion or native ILSpy ABI guards. MCP keeps its
+fixed service policy and can still reject this larger scan.
 
 ## Enable C# and syntax sugar
 

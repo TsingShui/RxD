@@ -1,5 +1,11 @@
 # JavaScript examples
 
+Ordinary CLI work, semantic indexing, retained name/value metadata and bounded
+output scale with admitted input. Directory scans derive limits per file; lexical
+and static-fold recursion/expansion guards remain.
+See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
+remain independent and unchanged.
+
 `rxd js` locates structures, searches literals and extracts source on demand; it never
 executes input. Its query surface is:
 

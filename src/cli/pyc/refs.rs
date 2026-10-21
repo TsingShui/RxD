@@ -3,7 +3,6 @@ use clap::Args;
 use rxd_core::{Error, Result, envelope, perf::Perf};
 use rxd_pyc::{
     references::{self, Scan},
-    static_analysis::Analysis,
     string_constants,
 };
 use serde::Serialize;
@@ -41,9 +40,7 @@ struct Record<'a> {
     detail: &'a references::Hit,
 }
 fn append(out: &mut Output, value: &impl Serialize) -> Result<()> {
-    serde_json::to_writer(&mut *out, value)
-        .map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))?;
-    std::io::Write::write_all(out, b"\n").map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))
+    out.json_line(value)
 }
 pub fn run(
     input: PathBuf,
@@ -54,12 +51,11 @@ pub fn run(
     perf: &mut Perf,
 ) -> Result<()> {
     super::validate_output(&input, options.common.output.as_deref())?;
-    let limits = options.common.limits();
-    let loaded = Analysis::load(&input, version, limits, perf);
+    let loaded = options.common.load(&input, version, perf);
     perf.resource_limits
         .as_mut()
         .unwrap()
-        .insert("instructions", super::budget().instructions);
+        .insert("instructions", options.common.budget.instructions);
     let mut analysis = loaded?;
     let at = if target.filter.is_none() {
         Some(
@@ -133,7 +129,7 @@ pub fn run(
             &mut analysis,
             &query,
             selected,
-            super::budget().instructions,
+            options.common.budget.instructions,
             &mut scan,
         )
     });
@@ -155,7 +151,7 @@ pub fn run(
         "all_codes"
     };
     let bytes = perf.measure("serialize", || -> Result<_> {
-        let mut out = Output { bytes: Vec::new() };
+        let mut out = Output::new(options.common.budget.output_bytes);
         append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
             json!({"at":at,"kind":kind,"filter":target.filter,"case":if target.case.sensitive() {"sensitive"} else {"insensitive"},"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
@@ -167,7 +163,7 @@ pub fn run(
         analysis.charge_work(scan.unsupported.len())?;
         append(&mut out, &envelope::summary(scan.hits.len(), scan.unsupported.is_empty(),
             json!({"analysis":analysis_kind,"code_count":analysis.codes.len(),"scanned_code_count":scan.scanned_codes,"instructions":scan.instructions,"unsupported_count":scan.unsupported.len(),"unsupported":scan.unsupported,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
-        Ok(out.bytes)
+        Ok(out.into_bytes())
     });
     perf.counters.work = Some(analysis.evidence.work);
     let bytes = bytes?;

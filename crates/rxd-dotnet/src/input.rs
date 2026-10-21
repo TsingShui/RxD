@@ -228,7 +228,7 @@ impl Input {
     }
 
     pub fn resolve_call(&self, token: u32, context: &Method) -> Result<CallSignature> {
-        let mut work = Work::new(self.limits.work);
+        let mut work = Work::new(self.limits.work, self.limits.metadata_bytes);
         work.charge(self.metadata_work)?;
         let mut call = crate::metadata::call_signature(self, token, &mut work)?;
         if call.return_type.contains('!') || call.parameters.iter().any(|ty| ty.contains('!')) {
@@ -374,7 +374,7 @@ impl Input {
             return crate::il::validate_user_strings(
                 self,
                 &requested,
-                &mut Work::new(self.limits.work),
+                &mut Work::new(self.limits.work, self.limits.metadata_bytes),
             );
         }
         let table = (token >> 24) as u8;
@@ -426,7 +426,7 @@ impl Input {
             return Some(name.to_owned());
         }
         if token >> 24 == 27 {
-            let mut work = Work::new(self.limits.work);
+            let mut work = Work::new(self.limits.work, self.limits.metadata_bytes);
             let text = self.type_signature_with_work(token, &mut work).ok()?;
             return Some(self.name_tokens(&text));
         }
@@ -496,13 +496,15 @@ pub(crate) struct Work {
     initial: usize,
     remaining: usize,
     metadata_reserved: usize,
+    metadata_limit: usize,
 }
 impl Work {
-    pub(crate) fn new(limit: usize) -> Self {
+    pub(crate) fn new(limit: usize, metadata_limit: usize) -> Self {
         Self {
             initial: limit,
             remaining: limit,
             metadata_reserved: 0,
+            metadata_limit,
         }
     }
     pub(crate) fn used(&self) -> usize {
@@ -517,7 +519,7 @@ impl Work {
             .checked_add(bytes)
             .context("RESOURCE_LIMIT: metadata bytes")?;
         ensure!(
-            reserved.saturating_add(self.used()) <= rxd_core::MAX_METADATA_BYTES,
+            reserved.saturating_add(self.used()) <= self.metadata_limit,
             "RESOURCE_LIMIT: metadata bytes"
         );
         self.metadata_reserved = reserved;
@@ -532,7 +534,7 @@ impl Work {
             self.metadata_reserved
                 .saturating_add(self.used())
                 .saturating_add(amount)
-                <= rxd_core::MAX_METADATA_BYTES,
+                <= self.metadata_limit,
             "RESOURCE_LIMIT: metadata bytes"
         );
         self.remaining -= amount;

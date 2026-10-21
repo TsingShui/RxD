@@ -352,6 +352,7 @@ fn extract_html(
             input_bytes: budgets.input_bytes,
             ast_depth: budgets.ast_depth,
             semantic_nodes: budgets.semantic_nodes,
+            ..rxd_core::Limits::default()
         },
         &mut perf,
     )?;
@@ -384,6 +385,7 @@ fn extract_asar(
                 input_bytes: budgets.input_bytes,
                 ast_depth: budgets.ast_depth,
                 semantic_nodes: budgets.semantic_nodes,
+                ..rxd_core::Limits::default()
             },
             max_entries: budgets.entities,
             max_header_bytes: budgets.input_bytes.min(8 * 1024 * 1024),

@@ -84,7 +84,7 @@ fn decode_body(
         file.rva_to_offset(last_rva)? == code_offset + code_size - 1,
         "INVALID_INPUT: method crosses noncontiguous PE sections"
     );
-    let mut work = Work::new(work_limit);
+    let mut work = Work::new(work_limit, input.limits.metadata_bytes);
     work.charge(code_size)?;
     let locals = if local_signature_token == 0 {
         Vec::new()

@@ -1,5 +1,11 @@
 # DEX CLI examples
 
+Ordinary CLI per-entry inflation uses an input-scaled expansion envelope, not a
+fixed 256 MiB total. Missing/zero/invalid `RASC_MAX_INFLATED_ENTRY` uses that
+envelope; an explicit nonzero compatibility override still works.
+See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
+remain independent and unchanged.
+
 Run `cargo build --release`. `INPUT` is an authorized APK, DEX or ZIP with a root DEX;
 `CLASS` is a real name from `classes` output. Commands analyze statically and never
 install or run the application.

@@ -90,7 +90,7 @@ fn invalid(message: &str) -> Error {
 fn reserve(a: &mut Analysis, scan: &mut Scan, minimum: usize) -> Result<()> {
     a.charge_work(1)?;
     scan.retained_output_minimum = scan.retained_output_minimum.saturating_add(minimum);
-    if scan.retained_output_minimum > rxd_core::Budget::default().metadata_bytes {
+    if scan.retained_output_minimum > a.limits.metadata_bytes {
         return Err(Error::failure(
             rxd_core::Failure::Resource,
             "reference metadata bytes",

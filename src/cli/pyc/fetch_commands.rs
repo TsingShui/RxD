@@ -1,10 +1,7 @@
 use super::{Output, static_commands};
 use clap::Args;
-use rxd_core::{Error, Result, perf::Perf};
-use rxd_pyc::{
-    code_view::{self, Evidence},
-    static_analysis::Analysis,
-};
+use rxd_core::{Result, perf::Perf};
+use rxd_pyc::code_view::{self, Evidence};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -51,12 +48,11 @@ pub fn fetch(
     perf: &mut Perf,
 ) -> Result<()> {
     super::validate_output(&input, options.common.output.as_deref())?;
-    let limits = options.common.limits();
-    let loaded = Analysis::load(&input, version, limits, perf);
+    let loaded = options.common.load(&input, version, perf);
     perf.resource_limits
         .as_mut()
         .unwrap()
-        .insert("instructions", super::budget().instructions);
+        .insert("instructions", options.common.budget.instructions);
     let mut analysis = loaded?;
     // The stream is checked against the analysis identity (the pyc header's content hash).
     let at = selector
@@ -69,7 +65,7 @@ pub fn fetch(
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;
     let result = perf.measure("decode", || {
-        code_view::build(&mut analysis, selected, super::budget().instructions)
+        code_view::build(&mut analysis, selected, options.common.budget.instructions)
     });
     perf.counters.work = Some(analysis.evidence.work);
     let evidence = result?;
@@ -104,12 +100,9 @@ pub fn fetch(
                 evidence,
             },
         };
-        let mut out = Output { bytes: Vec::new() };
-        serde_json::to_writer(&mut out, &row)
-            .map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))?;
-        std::io::Write::write_all(&mut out, b"\n")
-            .map_err(|e| Error::new("RESOURCE_LIMIT", e.to_string()))?;
-        Ok(out.bytes)
+        let mut out = Output::new(options.common.budget.output_bytes);
+        out.json_line(&row)?;
+        Ok(out.into_bytes())
     })?;
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {

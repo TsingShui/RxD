@@ -15,7 +15,7 @@ fn at_path(path: &Path, error: Error) -> Error {
     Error::new(error.code, format!("{}: {}", path.display(), error.message))
 }
 
-fn discover(input: &Path, max_files: usize) -> Result<Vec<PathBuf>> {
+fn discover(input: &Path, max_files: Option<usize>) -> Result<Vec<PathBuf>> {
     let metadata = fs::symlink_metadata(input).map_err(Error::from)?;
     if metadata.is_file() {
         return Ok(vec![input.to_owned()]);
@@ -52,12 +52,15 @@ fn discover(input: &Path, max_files: usize) -> Result<Vec<PathBuf>> {
                 Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx")
             )
         {
-            if files.len() >= max_files {
+            if max_files.is_some_and(|limit| files.len() >= limit) {
                 return Err(Error::new(
                     "RESOURCE_LIMIT",
                     "recursive file budget exceeded",
                 ));
             }
+            files
+                .try_reserve(1)
+                .map_err(|_| Error::new("RESOURCE_LIMIT", "directory index allocation"))?;
             files.push(path);
         }
         // Skip symlinks (including directory links) and special files.
@@ -72,8 +75,8 @@ pub(super) struct Request<'a> {
     pub mode: SourceMode,
     pub syntax: Syntax,
     pub query: Query,
-    pub limits: Limits,
-    pub max_files: usize,
+    pub policy: rxd_core::BudgetPolicy,
+    pub max_files: Option<usize>,
     pub threads: usize,
 }
 
@@ -82,7 +85,7 @@ struct Shared<'a> {
     mode: SourceMode,
     syntax: Syntax,
     query: &'a Query,
-    limits: Limits,
+    policy: rxd_core::BudgetPolicy,
 }
 
 pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
@@ -91,7 +94,7 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
         mode,
         syntax,
         query,
-        limits,
+        policy,
         max_files,
         threads,
     } = request;
@@ -99,7 +102,7 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
         mode,
         syntax,
         query: &query,
-        limits,
+        policy,
     };
     // Validate even when discovery yields no files.
     if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
@@ -161,8 +164,8 @@ fn run_serial(
     records: &mut usize,
     output: &mut Vec<u8>,
 ) -> Result<()> {
-    let limits = shared.limits;
-    let remaining = limits;
+    let remaining = Limits::from(shared.policy.for_file(path)?);
+    perf.limits = Some(remaining);
     let previous = std::mem::take(&mut perf.counters);
     let result = rxd_js::run(
         path,
@@ -205,7 +208,6 @@ fn run_parallel(
     records: &mut usize,
     output: &mut Vec<u8>,
 ) -> Result<()> {
-    let limits = shared.limits;
     let metrics = perf.enabled();
     let command = shared.query.name();
     let pool = rayon::ThreadPoolBuilder::new()
@@ -219,15 +221,18 @@ fn run_parallel(
             .par_iter()
             .map(|path| {
                 let mut shard = Perf::new(metrics, "analysis", "js", command);
-                shard.limits = perf.limits;
-                let result = rxd_js::run(
-                    path,
-                    shared.mode,
-                    shared.syntax,
-                    shared.query.clone(),
-                    limits,
-                    &mut shard,
-                );
+                let result = (|| {
+                    let limits = Limits::from(shared.policy.for_file(path)?);
+                    shard.limits = Some(limits);
+                    rxd_js::run(
+                        path,
+                        shared.mode,
+                        shared.syntax,
+                        shared.query.clone(),
+                        limits,
+                        &mut shard,
+                    )
+                })();
                 (result, shard)
             })
             .collect()

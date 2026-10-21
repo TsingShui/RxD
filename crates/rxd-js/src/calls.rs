@@ -198,7 +198,7 @@ pub fn run(
             region,
             names: names.compile(),
             records: Vec::new(),
-            budget: crate::names::RecordBudget::default(),
+            budget: crate::names::RecordBudget::new(collector.limits),
             error: None,
         };
         visitor.visit_program(program);

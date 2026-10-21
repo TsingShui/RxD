@@ -121,7 +121,7 @@ impl Match {
 
 pub struct Collector<'s> {
     source: &'s Source,
-    limits: Limits,
+    pub(super) limits: Limits,
     query: Option<Vec<u16>>,
     query_case_sensitive: bool,
     pub entities: Vec<EntityNode>,

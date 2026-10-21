@@ -30,14 +30,21 @@ impl NameQuery {
     }
 }
 /// Bound rows before allocation, independently of the final serialized-byte limit.
-#[derive(Default)]
 pub(crate) struct RecordBudget {
     records: usize,
     bytes: usize,
+    limits: rxd_core::Limits,
 }
 impl RecordBudget {
+    pub fn new(limits: rxd_core::Limits) -> Self {
+        Self {
+            records: 0,
+            bytes: 0,
+            limits,
+        }
+    }
     pub fn charge(&mut self, label: &JsString) -> Result<()> {
-        let budget = rxd_core::Budget::default();
+        let budget = self.limits;
         self.records += 1;
         self.bytes = self
             .bytes

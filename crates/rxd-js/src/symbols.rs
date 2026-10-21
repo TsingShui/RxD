@@ -115,7 +115,7 @@ pub fn run(
             .map(|i| i.unwrap_or(0))
     })?;
     let region = &collector.entities[root].entity;
-    let semantic = lexical::build(program, rxd_core::Limits::default(), perf)?;
+    let semantic = lexical::build(program, collector.limits, perf)?;
     perf.measure("query", || {
         if lexical::is_dynamic(&semantic) {
             return Ok(Symbols {

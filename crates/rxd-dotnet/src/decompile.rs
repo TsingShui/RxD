@@ -35,7 +35,7 @@ pub fn render_class(
         input.file_bytes <= limits.input_bytes,
         "RESOURCE_LIMIT: input bytes"
     );
-    let mut work = Work::new(limits.work);
+    let mut work = Work::new(limits.work, limits.metadata_bytes);
     work.charge(class.work_used)?;
     for item in &class.methods {
         if let Some(body) = &item.body {
@@ -79,7 +79,7 @@ pub fn render(
             <= limits.work,
         "RESOURCE_LIMIT: decompilation work budget exceeded"
     );
-    let mut work = Work::new(limits.work);
+    let mut work = Work::new(limits.work, limits.metadata_bytes);
     work.charge(body.work_used.saturating_add(entities))?;
     validate_operands(input, method, body, &mut work)?;
     #[cfg(feature = "csharp-decompiler")]

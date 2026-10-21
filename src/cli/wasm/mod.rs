@@ -273,18 +273,29 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command) -> Result<()> {
+pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "wasm", command.name());
-    let result = execute_inner(command, &mut perf).map_err(super::classify);
+    let result = execute_inner(command, policy, &mut perf).map_err(super::classify);
     super::finish(perf, emit_perf, result)
 }
 
-fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
+fn execute_inner(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    perf: &mut Perf,
+) -> anyhow::Result<()> {
     let path = command.input();
     let options = command.options();
-    // One budget table for every backend; the CLI exposes no knobs for it.
-    let limits = Limits::default();
+    let budget = policy.for_file(path)?;
+    let limits = Limits::from(budget);
+    perf.resource_limits = Some(std::collections::BTreeMap::from([
+        ("input_bytes", budget.input_bytes),
+        ("work", budget.work),
+        ("metadata_bytes", budget.metadata_bytes),
+        ("output_bytes", budget.output_bytes),
+        ("instructions", budget.instructions),
+    ]));
     let module = perf.measure("read_parse", || Module::read(path, limits))?;
     perf.source_id = Some(module.source_id.clone());
     perf.counters.input_bytes = Some(module.file_bytes);
@@ -300,7 +311,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
     perf.counters.entities = Some(entities);
 
     let query_start = perf.start_stage();
-    let mut output = Vec::new();
+    let mut output = rxd_core::output::Output::new(budget.output_bytes);
     let mut records = 0usize;
 
     // `get` returns exactly one function_view record, not a header/records/summary stream.
@@ -865,7 +876,7 @@ fn emit_rows(
     rows: Vec<Row>,
     filter: Option<&str>,
     case_sensitive: bool,
-    output: &mut Vec<u8>,
+    output: &mut rxd_core::output::Output,
     records: &mut usize,
 ) -> anyhow::Result<()> {
     let needle = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
@@ -893,20 +904,17 @@ fn emit_rows(
     Ok(())
 }
 
-fn push_limited(output: &mut Vec<u8>, records: &mut usize, value: &Value) -> anyhow::Result<()> {
+fn push_limited(
+    output: &mut rxd_core::output::Output,
+    records: &mut usize,
+    value: &Value,
+) -> anyhow::Result<()> {
     append(output, value)?;
     *records += 1;
     Ok(())
 }
 
-fn append(output: &mut Vec<u8>, value: &Value) -> anyhow::Result<()> {
-    let bytes = serde_json::to_vec(value)?;
-    anyhow::ensure!(
-        output.len().saturating_add(bytes.len()).saturating_add(1)
-            <= rxd_core::Budget::default().metadata_bytes,
-        rxd_core::Error::failure(rxd_core::Failure::Resource, "serialized WASM output bytes")
-    );
-    output.extend_from_slice(&bytes);
-    output.push(b'\n');
+fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
+    output.json_line(value)?;
     Ok(())
 }

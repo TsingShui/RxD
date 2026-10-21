@@ -47,16 +47,16 @@ opcodes use `complete: false` / `INCOMPLETE_DECOMPILATION`; that flag describes 
 recovery only, not whole-file bytecode semantics or behavior equivalence.
 
 Input must be a regular file; directories return `INVALID_INPUT` (exit 1) with empty
-stdout and preserved `-o` target. Ceilings come only from the shared
-`rxd_core::Budget` table projected into the backend `Limits`; the CLI exposes no
-`--max-*` flag. Input 8 GiB (32-bit spans keep actual addressable content below 4 GiB),
-work 1,000,000, serialized output bounded by the shared 128 MiB metadata budget,
-and AST depth from the shared core limits; marshal
-parsing/reference expansion 128 levels and 1,000,000 objects, cumulative bytes read/
-copied 128 MiB, long-to-decimal squared-digit work 16,777,216. Cycles are rejected
+stdout and preserved `-o` target. Ordinary CLI work, metadata/copies, marshal
+objects/reference expansion, instruction counts and output use the input-scaled
+policy in [ADR 0016](../adr/0016-input-scaled-cli-resources.md); there are no `--max-*` flags or fixed total quotas.
+Explicit library defaults and MCP keep fixed quotas. The 32-bit input span guard,
+AST depth, marshal recursion (128), code allocation-hint guards and long-to-decimal
+squared-digit work (16,777,216) remain independent safety constraints. Cycles are rejected
 immediately; shared objects cannot bypass object budgets by exponential expansion.
-Source generation checks output before each append; JSON output is bounded and includes
-metadata plus trailing newline. Failure emits no partial stdout and does not replace an
+Source generation checks output before each append; all JSON/JSONL commands use the
+shared fallibly growing output writer, counting metadata and each trailing newline.
+Allocation or output-envelope exhaustion reports `RESOURCE_LIMIT`. Failure emits no partial stdout and does not replace an
 existing `-o` file.
 
 All PYC commands share `-o` input identity protection: reject absolute/relative and `..`
@@ -65,7 +65,7 @@ compares device/inode for hard links and case aliases, returning `INVALID_QUERY`
 Different targets use atomic replacement. `--perf` writes only to stderr.
 Isolated workers are not OS sandboxes.
 
-`decompile` takes its work and AST-depth ceilings from the shared `Budget`/core limits;
+`decompile` takes work from the selected policy and retains the core AST-depth guard;
 there is no CLI knob for either. Work starts at instruction recovery: decoder/recovery/
 generator helper entries, explicit loop iterations and scan callbacks each count one; AST safety
 traversal counts visited nodes and enqueued edges along actual repeated paths;
@@ -75,7 +75,8 @@ conversion are charged before allocation; UTF-8 conversion also counts scan and 
 replacement bytes; cache-span validation counts code units. Nested code recovery, repeat
 scans, AST clones and intermediate generation share one invocation budget. This is
 deterministic engine work, not instruction count, wall-clock timeout, OS memory or CPU
-quota. Marshal object/reference/copy/long budgets remain separate and unchanged.
+quota. Marshal object/reference/copy allowances follow the selected input-scaled or fixed
+policy; the separate numeric-conversion and recursion guards remain unchanged.
 
 AST depth is the structural path-node count built/folded (root expression/statement
 depth 1) covering expressions, statement bodies, patterns, parameters/annotations, type
@@ -195,25 +196,27 @@ real file bytes; integer fields without object occurrence have the last three ra
 null and reference false. Each incoming item has owner_id/constant_path/start/end/
 alias_start/alias_end/reference.
 
-Static budgets project the shared table: input 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), cumulative work 1,000,000, and serialized output
-bounded by the shared 128 MiB metadata ceiling. Marshal's object and copy limits
-still bound enumerations; there is no separate CLI entity-count ceiling. The CLI exposes no ceiling flag. Entities count every parsed
+Static commands use ADR 0016's input-scaled CLI work, metadata, marshal-object/copy
+and serialized-output envelopes; MCP and explicit default library calls retain
+fixed quotas. Format spans remain 32-bit. Evidence occurrence admission follows
+the selected work allowance, not a separate CLI knob. Entities count every parsed
 marshal occurrence (code, constants/names/localsplus entries, field objects; each alias
 occurrence counts 1). Work accumulates from the same parser
 into index/filtering: each occurrence, index/traversal visit, copied child handle,
 incoming path handle, query candidate, substring candidate and filter bytes count 1;
 exact-name comparison charges UTF-8 bytes. Container reservations, index paths/edges and
 record allocation are checked before use; serialization checks actual JSONL bytes
-including header/summary/newlines. Existing marshal depth 128, objects 1,000,000,
-reference expansion 1,000,000, copy 128 MiB and long squared work 16,777,216 remain.
+including header/summary/newlines. Marshal depth 128, cycle rejection, code-header
+allocation hints and long squared work 16,777,216 remain; object/reference/copy
+allowances grow with admitted input for ordinary CLI calls.
 `codes` has no instruction/AST budget because it builds neither; the shared
 `instructions` ceiling is only relevant to FETCH/xref.
 
 `-o` atomically writes the same complete response and does not repeat stdout. Any input/
 budget/query error has no partial result and leaves an existing output. Diagnostics/
-`--perf` goes to stderr. `resource_limits` echoes the five effective budgets;
-counters.entities/work/records are actual; ast_depth null; stages read/hash/parse/visit/
+`--perf` goes to stderr. `resource_limits` echoes the effective input_bytes,
+entities, work, metadata_bytes, output_bytes and marshal object/expansion/copy
+allowances; counters.entities/work/records are actual; ast_depth null; stages read/hash/parse/visit/
 query/serialize/write. Decompile keeps decompile/generate; new nullable perf fields are
 null. Worker isolation is not an OS sandbox; no analyzed code executes.
 
@@ -297,7 +300,8 @@ container's owner path; an empty path means the owner's entire co_consts field a
 Shared literal TYPE_REF uses its own occurrence pair and is not added to container
 aliases.
 
-Budgets inherit the five static limits and marshal hard limits. Records count matching
+Budgets inherit the selected static and marshal allowances plus the independent
+recursion/cycle/numeric-conversion guards. Records count matching
 output only, not filtered literals. Work continues from parser/index and additionally
 charges every owner-slot/container visit, path push/clone, alias path retention/
 projection, query bytes, literal raw-byte validation, actual substring byte comparisons
@@ -417,16 +421,17 @@ boundaries are rejected. 3.10+ empty line table gives empty mapping; 3.8–3.10 
 exception table (hex empty, exceptions []), and stored field spans are not synthesized.
 Original line/exception payload bytes are retained in both hex and metadata.fields.
 
-Budgets: the five static limits plus the shared `instructions` ceiling (100,000)
-counted in actual raw units (prefix/cache included) before decode; no ceiling flag is
-exposed. Work continues from
+Budgets: the static limits plus the selected `instructions` envelope, counted in
+actual raw units (prefix/cache included) before decode. Ordinary CLI follows
+ADR 0016; explicit fixed callers retain the default 100,000 instruction allowance.
+No ceiling flag is exposed. Work continues from
 parser/index/query and charges every scanned/raw projected unit, table/definition/child
 visit and scalar byte evidence. Metadata scalars/incoming, raw rows, table/child rows and
 hex payload have output lower-bound prechecks before expansion; the complete JSON plus
 newline is then limited by actual writes. All output is complete and bounded before
 atomic stdout/`-o` publication. Failure has no partial stdout, never replaces output or
-modifies input. Perf resource_limits echoes six effective budgets; instructions are raw
-units retained, work cumulative, ast_depth null; instructions outside the selected code
+modifies input. Perf resource_limits echoes the static allowances plus instructions;
+instructions are raw units retained, work cumulative, ast_depth null; instructions outside the selected code
 are not scanned and no AST is built.
 
 ## Name references
@@ -524,8 +529,8 @@ body/bad instruction/prefix/cache/operand index/local kind/jump boundary in the 
 range is `INVALID_INPUT` (exit 1), with atomic stdout/`-o`. Refs does not scan line/
 exception semantics; get-code validates those.
 
-Budgets inherit the five static limits, the marshal limits and the shared `instructions`
-ceiling; entities count parser definitions/occurrences/index edges, with no new
+Budgets inherit the selected static/marshal allowances and per-code `instructions`
+envelope; entities count parser definitions/occurrences/index edges, with no new
 AST entities. The per-code instruction ceiling is checked before decode. Work accumulates from
 parser/index and charges actual decoder scans/raw projection, boundary construction/
 checks, each supported operand resolution, name candidate/actual byte comparisons, hit/
@@ -583,8 +588,10 @@ code index then instruction offset.
 The common xref query retains at/kind/filter/case/within/version with absent selectors null;
 constant header/summary detail.analysis=`explicit_constant_references`; the rest of the
 fixed schema is shared with name selectors. Summary/perf records count only real hits;
-unsupported evidence is counted separately under the same records budget. Unknown/
-RESERVED/instrumented opcodes make that owner's coverage incomplete. The supported matrix,
+unsupported evidence is counted separately and remains subject to the selected
+work/metadata/output allowances, not a separate CLI record-count quota. MCP's
+service record admission remains independent. Unknown/RESERVED/instrumented
+opcodes make that owner's coverage incomplete. The supported matrix,
 input safety, atomic output and non-goals are the same as name xref.
 
 ## Capability status and MCP

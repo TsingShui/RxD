@@ -456,10 +456,8 @@ fn utf8(pool: &[Constant], index: u16) -> Result<String> {
     let Constant::Utf8(units) = constant(pool, index)? else {
         bail!("INVALID_INPUT: expected UTF8 constant at {index}");
     };
-    ensure!(
-        units.len() <= 4096,
-        "RESOURCE_LIMIT: metadata string length exceeded"
-    );
+    // CONSTANT_Utf8 has already been bounded by its original u16 byte length.
+    // Do not impose a smaller quota on otherwise valid metadata names.
     String::from_utf16(units).context("INVALID_INPUT: non-Unicode metadata name")
 }
 

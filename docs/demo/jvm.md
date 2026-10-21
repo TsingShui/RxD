@@ -1,5 +1,11 @@
 # JVM method queries
 
+Ordinary CLI archive/index/entry/work envelopes scale with admitted input. JVM
+format widths, code length and reconstruction-state guards remain; valid metadata
+names are not capped at 4096 units.
+See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
+remain independent and unchanged.
+
 ```sh
 cargo build --release
 target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar --class fixture.FlowFixture -o target/jvm-methods.jsonl

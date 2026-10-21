@@ -21,12 +21,17 @@ use std::time::Instant;
 ///
 /// `0` and unparseable values preserve the built-in default, matching the existing CLI
 /// contract. The returned policy is immutable and passed explicitly to archive operations.
-fn archive_policy_from_env() -> apk::ArchivePolicy {
-    archive_policy(std::env::var("RASC_MAX_INFLATED_ENTRY").ok().as_deref())
+fn archive_policy_from_env(default: usize) -> apk::ArchivePolicy {
+    archive_policy(
+        std::env::var("RASC_MAX_INFLATED_ENTRY").ok().as_deref(),
+        default,
+    )
 }
 
-fn archive_policy(value: Option<&str>) -> apk::ArchivePolicy {
-    let mut policy = apk::ArchivePolicy::default();
+fn archive_policy(value: Option<&str>, default: usize) -> apk::ArchivePolicy {
+    let mut policy = apk::ArchivePolicy {
+        max_inflated_entry: default,
+    };
     if let Some(value) = value
         && let Ok(bytes) = value.trim().parse::<usize>()
         && bytes != 0
@@ -35,10 +40,15 @@ fn archive_policy(value: Option<&str>) -> apk::ArchivePolicy {
     }
     policy
 }
-pub(super) fn execute(command: Command) -> rxd_core::Result<i32> {
+pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> rxd_core::Result<i32> {
+    let budget = policy.for_file(command.input())?;
     restore_default_sigpipe();
     let (perf_on, name) = (command.perf(), command.name());
-    let result = match run_command(command, archive_policy_from_env(), Instant::now()) {
+    let result = match run_command(
+        command,
+        archive_policy_from_env(budget.entry_bytes),
+        Instant::now(),
+    ) {
         Ok(code) => Ok(code),
         // A consumer that closed the pipe is a normal Unix idiom, not a failure.
         Err(error) if is_broken_pipe(&error) => Ok(0),

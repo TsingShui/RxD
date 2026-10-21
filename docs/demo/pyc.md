@@ -77,8 +77,8 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name s
 `codes` does not scan bytecode or recover source; `instruction_validation: not_scanned`.
 Body status is present/empty/unavailable. Static entry accepts only the six final magic
 formats in the design matrix; other versions/implementations are rejected explicitly.
-Input/entities/work/records/output ceilings come from the shared `rxd_core::Budget`; no
-command exposes a `--max-*` flag. Perf stderr `resource_limits` echoes the projected
+Ordinary CLI input/work/metadata/output allowances grow with admitted input under
+[ADR 0016](../adr/0016-input-scaled-cli-resources.md); no command exposes a `--max-*` flag. Perf stderr `resource_limits` echoes the projected
 values and all JSONL bytes count toward output. Errors do not replace existing `-o`.
 
 ```sh
@@ -89,8 +89,9 @@ target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc
 ```
 
 Work covers actual recovery, repeated nested calls, scans, AST checks/copies and source
-generation; it is not a time cancellation or OS memory limit. The work and AST-depth
-ceilings are the shared table values, and marshal hard limits remain. Resource failure
+generation; it is not time cancellation or an OS memory limit. Work and marshal
+object/copy envelopes scale with input; recursion, cycle rejection and numeric
+conversion guards remain independent. Resource failure
 behaves the same in default/JSON modes and never replaces `-o`; because the CLI has no
 ceiling knob, boundary accounting is exercised through the `rxd_pyc` library in tests.
 
@@ -171,9 +172,9 @@ directly loaded. See the [PYC design](../design/pyc-design.md#name-references).
 Static commands support final CPython 3.8.20, 3.9.6, 3.10.16, 3.11.11, 3.12.14 and
 3.13.2. `.pyc` headers allow PEP 552 flags 0/1/3; raw marshal requires `--version X.Y`.
 The code index uses deterministic DFS preorder and first containment, with IDs stable
-across renames and processes. codes/strings/get-code/xref share input, entity, work,
-record and output budgets from the shared table; get-code and xref additionally use its
-`instructions` ceiling. All
+across renames and processes. codes/strings/get-code/xref share the selected
+input-scaled CLI or fixed MCP policy; get-code and xref also use its instruction
+allowance. All
 output is complete before atomic stdout/`-o` publication. `rxd pyz` and PyInstaller
 containers are separate and still planned. Control-flow deflattening, deobfuscation and
 decryption are permanent non-goals.

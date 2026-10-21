@@ -426,13 +426,19 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     assert_eq!(perf["command"], "strings");
     assert!(perf["counters"]["instructions"].is_null());
     assert!(perf["counters"]["ast_depth"].is_null());
-    let budget = rxd_core::Budget::default();
+    let budget =
+        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize).unwrap();
     assert_eq!(
         perf["resource_limits"],
         serde_json::json!({
             "input_bytes": budget.input_bytes,
-            "entities": usize::MAX,
+            "entities": budget.work,
             "work": budget.work,
+            "metadata_bytes": budget.metadata_bytes,
+            "output_bytes": budget.output_bytes,
+            "marshal_objects": budget.work,
+            "marshal_expanded_objects": budget.work,
+            "marshal_copied_bytes": budget.metadata_bytes,
         })
     );
     let bytes = fs::read(&path).unwrap();

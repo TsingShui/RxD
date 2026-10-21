@@ -365,7 +365,6 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
     for bad in [
         id.replace("code:", "const:"),
         id.replace("code:4", "code:04"),
-        id.replace("code:4", "code:9999"),
         format!("{id}:0"),
         "rxd1:pyc:0:code:4".into(),
     ] {
@@ -375,6 +374,12 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             "INVALID_QUERY",
         );
     }
+
+    failure(
+        refs(&path, "value", &["--within", "code:9999"]),
+        2,
+        "NOT_FOUND",
+    );
 
     let (_dir, changed) = fixture(
         fs::read(&path)
@@ -557,18 +562,21 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
     let complete = refs(&path, "marker", &["--perf"]);
     let stream = rows(&complete);
     let perf = perf_row(&complete);
-    let budget = rxd_core::Budget::default();
+    let cli_budget =
+        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize).unwrap();
     assert_eq!(
         perf["resource_limits"]["instructions"],
-        Value::from(budget.instructions)
+        Value::from(cli_budget.instructions)
     );
     assert!(perf["counters"]["ast_depth"].is_null());
     assert_eq!(
         perf["counters"]["records"],
         stream.last().unwrap()["records"]
     );
+    assert_json_output_boundary(&complete);
     assert_no_budget_flags(&path, "xref");
-    // Exact accounting lives in the library, which owns the shared ceilings.
+    // Explicit library callers still select fixed quotas, independently of CLI policy.
+    let budget = rxd_core::Budget::default();
     let bytes = fs::read(&path).unwrap();
     let mut base = shared_static_limits();
     base.input_bytes = bytes.len();
@@ -583,7 +591,6 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
         ("input_bytes", bytes.len(), budget.instructions),
         ("entities", entities, budget.instructions),
         ("work", work, budget.instructions),
-        ("records", scan.hits.len(), budget.instructions),
         ("instructions", 0, 99),
     ] {
         let mut exact = base;

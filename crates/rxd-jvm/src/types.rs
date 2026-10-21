@@ -8,8 +8,8 @@ use std::borrow::Cow;
 
 use anyhow::{Context, Result, bail, ensure};
 
-/// Every descriptor may be at most this long (`JVMS` 4.4.1 style guard).
-const MAX_DESCRIPTOR: usize = 4096;
+/// A descriptor must fit its CONSTANT_Utf8 u16 byte-length field (JVMS 4.4.7).
+const MAX_DESCRIPTOR: usize = u16::MAX as usize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Primitive {

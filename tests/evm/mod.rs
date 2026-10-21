@@ -1305,25 +1305,39 @@ fn evm_function_stack_storage_ceiling_comes_from_the_shared_budget() {
     ));
 }
 
-/// The shared work ceiling still stops oversized inputs, with no CLI knob to raise it.
+/// A linear scan does not fail merely because input exceeds a fixed work quota.
 #[test]
-fn evm_shared_work_ceiling_stops_oversized_inputs_atomically() {
-    // Decoding 1.1M bytes already exceeds the one-million-unit shared work budget.
-    let (directory, path) = fixture("00".repeat(1_100_000), "large.hex");
+fn evm_input_scaled_work_allows_large_linear_scans_with_complete_output() {
+    // Over 1.1M decoded bytes but only one block. Do not turn this regression into
+    // a million-row output stress test: PUSH32 payloads are original input bytes.
+    let carrier = format!("{}00", format!("7f{}", "00".repeat(32)).repeat(33_334));
+    let (directory, path) = fixture(carrier, "large.hex");
     let destination = directory.path().join("preserved.json");
     fs::write(&destination, "preserved").unwrap();
-    let failed = run(
+    let output = run(
         "blocks",
         &path,
         "hex",
         &["--perf", "-o", destination.to_str().unwrap()],
     );
-    assert!(!failed.status.success());
-    assert!(failed.stdout.is_empty());
-    assert_eq!(fs::read(&destination).unwrap(), b"preserved");
-    let reports = perf_reports(&failed);
-    assert_eq!(reports[0]["error_code"], "RESOURCE_LIMIT");
-    assert_eq!(reports[0]["resource_limits"]["work"], 1_000_000);
+    success(&output);
+    assert!(output.stdout.is_empty());
+    let rows: Vec<Value> = fs::read_to_string(&destination)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.last().unwrap()["records"], 1);
+    let reports = perf_reports(&output);
+    assert_eq!(reports[0]["error_code"], Value::Null);
+    assert_eq!(
+        reports[0]["resource_limits"]["work"],
+        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize)
+            .unwrap()
+            .work
+    );
+    assert!(reports[0]["counters"]["work"].as_u64().unwrap() > 1_000_000);
 }
 
 /// The removed mixed stream and the platform-native range view that stays.

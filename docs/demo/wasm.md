@@ -1,5 +1,11 @@
 # WebAssembly static queries
 
+Ordinary CLI work, instructions, retained references and complete serialized
+output scale with admitted module size. Canonical coordinates, body bounds and
+validation of original instructions remain unchanged.
+See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
+remain independent and unchanged.
+
 The examples use the repository's independently rebuildable handwritten WASM fixture;
 modules are never instantiated.
 

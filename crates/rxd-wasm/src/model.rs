@@ -9,15 +9,22 @@ pub struct Limits {
     pub input_bytes: usize,
     pub work: usize,
     pub instructions: usize,
+    pub metadata_bytes: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        let budget = rxd_core::Budget::default();
+        rxd_core::Budget::default().into()
+    }
+}
+
+impl From<rxd_core::Budget> for Limits {
+    fn from(budget: rxd_core::Budget) -> Self {
         Self {
             input_bytes: budget.input_bytes,
             work: budget.work,
             instructions: budget.instructions,
+            metadata_bytes: budget.metadata_bytes,
         }
     }
 }

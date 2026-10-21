@@ -1,11 +1,14 @@
 use super::Output;
 use clap::Args;
 use rxd_core::envelope;
-use rxd_core::{Error, Result, perf::Perf};
+use rxd_core::{Result, perf::Perf};
 use rxd_pyc::static_analysis::{Analysis, Limits};
 use serde::Serialize;
 use serde_json::json;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 #[derive(Args)]
 pub struct Options {
@@ -15,18 +18,36 @@ pub struct Options {
     pub perf: bool,
     #[arg(long)]
     pub debug: bool,
+    #[arg(skip)]
+    pub(crate) budget: rxd_core::Budget,
 }
 
 impl Options {
     pub(crate) fn limits(&self) -> Limits {
-        let budget = super::budget();
+        let budget = self.budget;
         Limits {
             input_bytes: budget.input_bytes,
-            // No enumeration ceiling: the marshal reader's field stays for its own
-            // arithmetic, not as a limit on how much a correct query may report.
-            entities: usize::MAX,
+            // Every evidence occurrence consumes the selected work allowance;
+            // there is no separate CLI entity-count knob.
+            entities: budget.work,
+            metadata_bytes: budget.metadata_bytes,
+            marshal: rxd_pyc::marshal_limits(budget),
             work: budget.work,
         }
+    }
+
+    pub(super) fn load(
+        &self,
+        input: &Path,
+        version: Option<(u8, u8)>,
+        perf: &mut Perf,
+    ) -> Result<Analysis> {
+        let loaded = Analysis::load(input, version, self.limits(), perf);
+        // Analysis owns parser limits; complete serialization is a CLI constraint.
+        if let Some(limits) = &mut perf.resource_limits {
+            limits.insert("output_bytes", self.budget.output_bytes);
+        }
+        loaded
     }
 }
 
@@ -212,10 +233,7 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
 }
 
 fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
-    serde_json::to_writer(&mut *writer, value)
-        .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
-    std::io::Write::write_all(writer, b"\n")
-        .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))
+    writer.json_line(value)
 }
 
 pub struct CodeQuery {
@@ -233,8 +251,7 @@ pub fn codes(
     perf: &mut Perf,
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
-    let limits = options.limits();
-    let mut analysis = Analysis::load(&input, version, limits, perf)?;
+    let mut analysis = options.load(&input, version, perf)?;
     let at = if query.selector.at.is_some() || query.selector.from.is_some() {
         Some(
             query
@@ -264,14 +281,14 @@ pub fn codes(
     perf.counters.matches = Some(selected.len());
     perf.counters.records = Some(selected.len());
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
-        let mut writer = Output { bytes: Vec::new() };
+        let mut writer = Output::new(options.budget.output_bytes);
         append(&mut writer,&rxd_core::envelope::header("pyc","codes",Some(&analysis.source_id),Some(analysis.bytes.len()),
             json!({"filter":query.filter,"case":if query.case_sensitive {"sensitive"} else {"insensitive"},"name":query.name,"at":at,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
             json!({"analysis":"metadata","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
         for &index in &selected { append(&mut writer,&record(&analysis,index)?)?; }
         append(&mut writer,&rxd_core::envelope::summary(selected.len(),true,
             json!({"code_count":analysis.codes.len(),"analysis":"metadata","instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
-        Ok(writer.bytes)
+        Ok(writer.into_bytes())
     })?;
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {

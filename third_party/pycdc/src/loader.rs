@@ -3,10 +3,10 @@
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::code::CodeObject;
-use crate::pyc::{version_from_tuple, PycHeader, PycModule};
-use crate::version::PythonVersion;
 use crate::Result;
+use crate::code::CodeObject;
+use crate::pyc::{PycHeader, PycModule, version_from_tuple};
+use crate::version::PythonVersion;
 
 /// Load a pyc file; with `version_override` treat the file as a raw marshal
 /// stream for the given (major, minor) — matching pycdc's `-c -v X.Y` mode.
@@ -17,11 +17,19 @@ pub fn load(path: &Path, version_override: Option<(u8, u8)>) -> Result<Loaded> {
 
 /// Load from an in-memory buffer (stdin input, embedded data).
 pub fn load_bytes(data: &[u8], version_override: Option<(u8, u8)>) -> Result<Loaded> {
+    load_bytes_with_limits(data, version_override, crate::marshal::Limits::default())
+}
+
+pub fn load_bytes_with_limits(
+    data: &[u8],
+    version_override: Option<(u8, u8)>,
+    limits: crate::marshal::Limits,
+) -> Result<Loaded> {
     match version_override {
         Some((maj, min)) => {
             let version = version_from_tuple(maj, min)
                 .ok_or_else(|| crate::PycError::UnsupportedVersion(format!("{maj}.{min}")))?;
-            let code = PycModule::unmarshal(&data, version)?;
+            let code = PycModule::unmarshal_with_limits(&data, version, limits)?;
             Ok(Loaded {
                 version,
                 code,
@@ -29,7 +37,7 @@ pub fn load_bytes(data: &[u8], version_override: Option<(u8, u8)>) -> Result<Loa
             })
         }
         None => {
-            let module = PycModule::from_bytes(&data)?;
+            let module = PycModule::from_bytes_with_limits(&data, limits)?;
             Ok(Loaded {
                 version: module.version(),
                 code: module.code.clone(),

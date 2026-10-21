@@ -490,7 +490,7 @@ pub fn run_source(
                 | Query::Members { .. }
                 | Query::Symbols { .. }
         )
-        .then_some(rxd_core::Budget::default().metadata_bytes),
+        .then_some(limits.output_bytes),
         limit_hit: false,
     };
     let header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,

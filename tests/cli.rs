@@ -2,6 +2,8 @@
 #[cfg(feature = "backend-html")]
 #[path = "html/mod.rs"]
 mod html;
+#[path = "resource_policy.rs"]
+mod resource_policy;
 
 #[cfg(feature = "backend-dotnet")]
 #[path = "dotnet/mod.rs"]
@@ -3897,7 +3899,10 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
             fs::metadata(&path).unwrap().len()
         );
         assert_eq!(analysis["counters"]["entities"], 11);
-        assert_eq!(analysis["limits"]["input_bytes"], 8u64 << 30);
+        assert_eq!(
+            analysis["limits"]["input_bytes"],
+            fs::metadata(&path).unwrap().len()
+        );
         assert!(
             analysis["stages_ns"]
                 .as_object()

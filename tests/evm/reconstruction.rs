@@ -358,11 +358,12 @@ fn evm_reconstruction_only_lowers_selected_contexts_and_reports_separate_work() 
             assert!(counters["instructions"].as_u64().unwrap() > 15 + padding as u64);
             assert!(reports[0]["stages_ns"]["reconstruct"].as_u64().unwrap() > 0);
             assert!(reports[0]["stages_ns"]["query"].as_u64().unwrap() > 0);
-            // `reconstruction_work` comes from the shared work budget, `values` from
-            // the shared entry budget; neither is a CLI knob.
+            // Work scales with admitted input; the live value arena does not.
             assert_eq!(
                 reports[0]["resource_limits"]["reconstruction_work"],
-                1_000_000
+                rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize)
+                    .unwrap()
+                    .work
             );
             assert_eq!(reports[0]["resource_limits"]["values"], 1_048_576);
             let plain = run("get-function", &path, "hex", &["--at", id]);

@@ -373,13 +373,19 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         .collect();
     assert_eq!(perf.len(), 2);
     let analysis = perf.iter().find(|row| row["scope"] == "analysis").unwrap();
-    let budget = rxd_core::Budget::default();
+    let budget =
+        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize).unwrap();
     assert_eq!(
         analysis["resource_limits"],
         serde_json::json!({
             "input_bytes": budget.input_bytes,
-            "entities": usize::MAX,
+            "entities": budget.work,
             "work": budget.work,
+            "metadata_bytes": budget.metadata_bytes,
+            "output_bytes": budget.output_bytes,
+            "marshal_objects": budget.work,
+            "marshal_expanded_objects": budget.work,
+            "marshal_copied_bytes": budget.metadata_bytes,
         })
     );
     assert!(analysis["counters"]["ast_depth"].is_null());

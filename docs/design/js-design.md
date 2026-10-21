@@ -331,8 +331,8 @@ exact source and an unresolved reason. Getters/methods, spreads and compound
 assignments are explicitly unresolved. Resolved values/containers do not duplicate
 their source text; their original spans remain available. Strings preserve UTF-16.
 
-Collection is bounded by the shared work and metadata budgets; serialized bytes
-also obey the metadata ceiling, with atomic failure rather than truncated output.
+Collection uses the selected work/metadata envelope; complete serialization uses
+its separate output envelope (ADR 0016), with atomic failure rather than truncation.
 `complete` means all selected source slots were returned, not that the object's
 runtime value or dependency graph is known.
 
@@ -495,9 +495,10 @@ Success requires exit 0 and a final complete `scan_summary`; empty directories s
 return it. Any file failure or resource limit fails the whole invocation atomically,
 exposing no partial stdout and preserving the `-o` target.
 
-Input bytes, entities and AST depth are checked per file; record and output-byte
-budgets cover the whole invocation, including every header/summary and the final
-`scan_summary`. The shared budget bounds scanned files and directory depth.
+Admission, syntax depth and applicable work/storage/output envelopes are checked
+per file using ADR 0016. Ordinary CLI directory scans have no fixed file-count or
+aggregate output quota. Directory nesting and worker concurrency remain bounded;
+explicit service discovery quotas remain separate.
 `--perf` accumulates counters/timings and adds a `discover` phase with `source_id:
 null`. Each file is read once into a fixed buffer and parser state is released after
 processing; no cross-file index is kept.
@@ -777,7 +778,8 @@ declarations, unresolved and dynamic queries can all succeed with zero records.
 `xref`/`symbols` and slice symbol paths enable the semantic pass as needed and return its
 diagnostics as `INVALID_INPUT`; structure listings/find/locate and slice structure paths stay
 parser-only. Structural traversal checks entity and AST-depth budgets first; semantic
-nodes above the shared `semantic_nodes` ceiling (1,000,000) return `RESOURCE_LIMIT` before
+nodes above the selected `semantic_nodes` envelope (input-scaled for CLI, fixed
+for explicit service/default library callers) return `RESOURCE_LIMIT` before
 index allocation. Reference records are budgeted before collecting positions; output
 bytes include header/summary. The node budget is not a parser/peak-RSS limit. Perf
 adds a semantic phase and semantic_nodes/symbols/references counts only on those paths.
@@ -829,9 +831,8 @@ containing structure. A symbol record's `at` can be passed directly to `xref --a
 Both record kinds mix in ascending `(start, end)`. Summary records count symbols plus
 unresolved references; complete means the query completed, not resolution/runtime
 completeness. Record budgets are checked before collecting identities/positions;
-output bytes include header/summary. The semantic node default is 1,000,000
-(the shared `semantic_nodes` ceiling); entity, depth, input and atomic-output contracts are
-unchanged. Perf adds the semantic phase/counts only for xref/symbols/slice-symbol.
+output bytes include header/summary. Semantic node admission follows ADR 0016;
+structural depth, input and atomic-output contracts remain. Perf adds the semantic phase/counts only for xref/symbols/slice-symbol.
 
 ## Declaration extraction by binding
 
@@ -877,9 +878,9 @@ and `symbol`, `declaration`, `source`, not a structural entity:
   valid real binding can be extracted from a file containing eval/with as syntax only;
   dynamic binding is not recovered. The dynamic symbols query contract is unchanged.
 
-Common input, entity, depth, output and atomic-failure contracts apply. `slice
-the shared `semantic_nodes` ceiling is 1,000,000 and only symbol IDs build/limit the
-semantic index; structure IDs do not. Perf records is 1; symbol paths include the
+Common input, depth, output and atomic-failure contracts apply. Only symbol IDs
+build the semantic index, using the selected input-scaled/fixed node envelope;
+structure IDs do not. Perf records is 1; symbol paths include the
 semantic phase and whole-file index counts.
 
 ## Local syntax fragments
@@ -1011,10 +1012,12 @@ reused across incompatible versions. The first version has no disk cache.
 
 ## Errors and resources
 
-Input is untrusted. Reading has an input-byte cap; output has record-count and
-serialized-byte budgets; indexing has an entity cap. Limits are checked as early as
-possible and continuously during traversal. Defaults come from measured peak memory
-and are mandatory for release; unlimited mode is not a substitute.
+Input is untrusted. Ordinary CLI work, retained name/value metadata, semantic nodes
+and bounded serialization grow with admitted input under
+[ADR 0016](../adr/0016-input-scaled-cli-resources.md), instead of fixed total quotas.
+Existing AST and closed-fold recursion/steps/value-expansion guards remain; MCP and
+explicit default library limits retain their fixed policy. These envelopes are not
+peak-memory guarantees, and none is replaced with an unlimited sentinel.
 
 Syntax errors fail atomically and emit no recovered partial structures. There is no
 permissive mode. Parser recursion depth, stack use and cancellation need separate

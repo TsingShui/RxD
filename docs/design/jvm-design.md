@@ -207,17 +207,16 @@ whole-class Java output are not yet promised.
 
 ## Resources and validation
 
-Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
-4 GiB); class raw bytes and decoded metadata each 16 MiB; selected-entry expanded total
-and archive metadata each 128 MiB; 10,000 archive physical entries; data-flow work
-1,000,000; no record or output ceiling. These are internal floors (`Limits::default`), not flags: the
-CLI exposes no per-backend budget knobs, matching DEX. Work
+Ordinary CLI input, expanded-entry/metadata bytes, archive entries and work follow
+[ADR 0016](../adr/0016-input-scaled-cli-resources.md)'s input-scaled envelopes. Explicit library defaults and
+MCP keep their fixed quotas. No record/output ceiling or CLI budget knob is added. Work
 covers frontend state copies, type representation and queue transfer, not every backend
 pipeline operation. Code is limited to 1–65,535 bytes by the specification; descriptors
-to 4,096 bytes, array dimensions to 255, parameters to 255 words (including `this` for
-instance methods). Metadata strings are limited to 4,096 UTF-16 units; attribute
-catalogs and per-method instruction materialization each to 16 MiB; string constants
-retain full UTF-16.
+to the `CONSTANT_Utf8` u16 encoded-byte range, array dimensions to 255, parameters
+to 255 words (including `this` for instance methods). Metadata names no longer have
+a smaller 4096-unit quota. Attribute catalogs use the selected metadata envelope;
+per-method instruction materialization retains its local 16 MiB expansion guard.
+String constants retain full UTF-16.
 
 One bounded buffer is read from an open regular file; hashing and analysis use those
 actual bytes. ZIP central-directory budgets are checked before generic ZIP decoding;

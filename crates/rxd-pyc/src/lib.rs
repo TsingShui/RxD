@@ -13,6 +13,16 @@ pub struct Limits {
     pub input_bytes: usize,
     pub work: usize,
     pub ast_depth: usize,
+    pub output_bytes: usize,
+    pub marshal: pycdc::marshal::Limits,
+}
+
+pub fn marshal_limits(budget: rxd_core::Budget) -> pycdc::marshal::Limits {
+    pycdc::marshal::Limits {
+        objects: budget.work,
+        expanded_objects: budget.work,
+        copied_bytes: budget.metadata_bytes,
+    }
 }
 
 pub struct Decompilation {
@@ -42,10 +52,11 @@ pub fn run(
         ("input_bytes", limits.input_bytes),
         ("work", limits.work),
         ("ast_depth", limits.ast_depth),
+        ("output_bytes", limits.output_bytes),
         ("marshal_depth", 128),
-        ("marshal_objects", 1_000_000),
-        ("marshal_expanded_objects", 1_000_000),
-        ("marshal_copied_bytes", 128 * 1024 * 1024),
+        ("marshal_objects", limits.marshal.objects),
+        ("marshal_expanded_objects", limits.marshal.expanded_objects),
+        ("marshal_copied_bytes", limits.marshal.copied_bytes),
         ("marshal_long_work", 16_777_216),
     ]));
     perf.counters.work = Some(0);
@@ -55,7 +66,7 @@ pub fn run(
     let source_id = perf.measure("hash", || rxd_core::identity::content_id(path, &bytes));
     perf.source_id = Some(source_id.clone());
     let loaded = perf.measure("parse", || {
-        loader::load_bytes(&bytes, version).map_err(input_error)
+        loader::load_bytes_with_limits(&bytes, version, limits.marshal).map_err(input_error)
     })?;
     let (outcome, usage) = pycdc::budget::limited(
         pycdc::budget::Limits {
@@ -68,7 +79,12 @@ pub fn run(
             })?;
             let source = perf.measure("generate", || {
                 pycdc::budget::cancelled(|| {
-                    generate_limited(&result.body, loaded.version, result.clean, usize::MAX)
+                    generate_limited(
+                        &result.body,
+                        loaded.version,
+                        result.clean,
+                        limits.output_bytes,
+                    )
                 })
             })?;
             Ok((result.clean, source))

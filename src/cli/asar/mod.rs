@@ -3,19 +3,21 @@ use super::xref::Expect;
 use super::{finish, write_output};
 pub(crate) use args::Command;
 use rxd_core::perf::Perf;
-use rxd_core::{Budget, Error, Limits, Result};
+use rxd_core::{Error, Limits, Result};
 use std::io::{self, Write};
 
-pub(super) fn execute(command: Command) -> Result<()> {
+pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let common = command.common();
     let input = common.input.clone();
     let destination = common.output.clone();
     let emit_perf = common.perf;
-    let budget = Budget::default();
-    let limits = Limits {
-        input_bytes: budget.input_bytes,
-        ..Limits::default()
-    };
+    let budget = policy.for_file(&input)?;
+    let mut limits = Limits::from(budget);
+    // Unpacked children are not counted by the archive carrier. Their actual length
+    // is checked on the opened child handle; retain the content-span guard.
+    if matches!(policy, rxd_core::BudgetPolicy::InputScaled) {
+        limits.input_bytes = rxd_core::MAX_SPAN_BYTES;
+    }
     let max_entries = budget.entries;
     let max_header_bytes = budget.metadata_bytes;
     let mut perf = Perf::new(emit_perf, "analysis", "asar", command.name());

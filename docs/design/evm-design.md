@@ -96,21 +96,15 @@ undecoded bytes. The original carrier is always independent evidence.
 
 ## Resource and execution bounds
 
-Every ceiling comes from one shared table, `rxd_core::Budget`; the CLI exposes no
-`--max-*` flag, so a query cannot be given a different ceiling than any other backend.
-The defaults this backend projects are: raw file 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), one million work units, and no record or output
-ceiling: a query prints its whole answer including the trailing newline. The abstract interpreter's
-state/stack-cell/value-arena ceilings have no dedicated shared field, so they are taken
-from the same table: 100,000 states (an interpreter ceiling of its own), 1,048,576 stack cells and
-arena values (shared entry budget) and one million reconstruction work units (shared work
-budget). The record budget counts functions, persistent/transient storage, opcodes, basic
-blocks, CFG blocks and metadata entries; a structure may count in two producer views.
-The record budget is checked after upstream analysis; it is not an upstream compute or
-memory limit. The native engine keeps its own analysis budgets; rxd does not modify the
+Ordinary CLI admission, navigation work and reconstruction work follow the
+input-scaled policy in [ADR 0016](../adr/0016-input-scaled-cli-resources.md); no `--max-*` flag is exposed. Existing
+32-bit content spans remain. There is no fixed record/output ceiling: a query
+prints its complete answer including the trailing newline. Independent interpreter
+limits remain 100,000 states and 1,048,576 stack cells/arena values; they do not grow
+with file size. MCP retains its fixed service policy. The native engine keeps its own analysis budgets; rxd does not modify the
 engine or claim hard CPU/RSS limits.
 
-Results are serialized through a bounded writer; overflow exits 1 with
+Results are serialized before publication; resource failures exit 1 with
 `RESOURCE_LIMIT` and no partial success. The standard isolated analysis worker/thread
 is used. `--perf` emits the analysis/cli stderr sidecar with decode/analyze phases and
 resource parameters; stdout is unchanged.
@@ -122,7 +116,7 @@ including empty results) share the same fixed `header.detail` and `summary.detai
 sets; a value that does not apply is `null` or absent (ADR 0003). A data record carries identity in `at`, extras in
 `detail`, the caller in `context_at`, and always `source_id=null`: the header carries the
 source identity once. Objects are built before bounded serialization, so new nullable
-fields and the trailing newline are covered by the shared output-byte ceiling; failure
+fields and the trailing newline are serialized before publication; failure
 leaves no partial stdout and preserves an existing `-o` file.
 
 Header detail has 24 fixed fields: carrier, bytecode, offset_unit, basic_block_end,

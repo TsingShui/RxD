@@ -29,7 +29,7 @@ pub fn refs(module: &Module, targets: &[u32]) -> Result<Vec<Reference>> {
     let mut out = Vec::new();
     let mut work = 0usize;
     let mut retained = 0usize;
-    let metadata_limit = rxd_core::Budget::default().metadata_bytes;
+    let metadata_limit = limits.metadata_bytes;
     for position in 0..module.functions.len() {
         let (_locals, ops) = module.decode_body(position)?;
         work = work.saturating_add(ops.len());

@@ -2,6 +2,26 @@ use super::support::Client;
 use serde_json::{Value, json};
 use std::process::Command;
 
+#[cfg(feature = "backend-dotnet")]
+#[test]
+fn mcp_keeps_fixed_service_work_after_cli_input_scaling() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
+    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "dotnet"]);
+    client.initialize();
+    let rejected = client.tool(
+        "dotnet_xref",
+        json!({
+            "input": {"path": input}, "kind": "string", "filter": "__rxd_nonexistent_budget_probe__"
+        }),
+    );
+    assert_eq!(rejected["isError"], true, "{rejected}");
+    assert_eq!(
+        rejected["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
+        "{rejected}"
+    );
+}
+
 #[cfg(feature = "backend-js")]
 #[test]
 fn mcp_js_navigation_preserves_cli_identity_and_source() {

@@ -307,6 +307,11 @@ pub fn restore_default_sigpipe() {
 pub fn restore_default_sigpipe() {}
 
 pub fn execute(cli: Cli) -> Result<i32> {
+    execute_with_policy(cli, rxd_core::BudgetPolicy::InputScaled)
+}
+
+fn execute_with_policy(cli: Cli, policy: rxd_core::BudgetPolicy) -> Result<i32> {
+    let _ = policy;
     match cli.backend {
         #[cfg(feature = "mcp")]
         Backend::Mcp { command } => crate::mcp::execute(command).map(|()| 0),
@@ -314,23 +319,23 @@ pub fn execute(cli: Cli) -> Result<i32> {
         #[cfg(feature = "backend-kuna")]
         Backend::Kuna { args } => Ok(kuna::run(args)),
         #[cfg(feature = "backend-dotnet")]
-        Backend::Dotnet { command } => dotnet::execute(command).map(|()| 0),
+        Backend::Dotnet { command } => dotnet::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-js")]
-        Backend::Js { command } => js::execute(command).map(|()| 0),
+        Backend::Js { command } => js::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-asar")]
-        Backend::Asar { command } => asar::execute(command).map(|()| 0),
+        Backend::Asar { command } => asar::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-html")]
-        Backend::Html { command } => html::execute(command).map(|()| 0),
+        Backend::Html { command } => html::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-dex")]
-        Backend::Dex { command } => dex::execute(command),
+        Backend::Dex { command } => dex::execute(command, policy),
         #[cfg(feature = "backend-jvm")]
-        Backend::Jvm { command } => jvm::execute(command).map(|()| 0),
+        Backend::Jvm { command } => jvm::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-wasm")]
-        Backend::Wasm { command } => wasm::execute(command).map(|()| 0),
+        Backend::Wasm { command } => wasm::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-evm")]
-        Backend::Evm { command } => evm::execute(command).map(|()| 0),
+        Backend::Evm { command } => evm::execute(command, policy).map(|()| 0),
         #[cfg(feature = "backend-pyc")]
-        Backend::Pyc { command } => pyc::execute(command).map(|()| 0),
+        Backend::Pyc { command } => pyc::execute(command, policy).map(|()| 0),
     }
 }
 #[cfg(feature = "mcp")]
@@ -340,7 +345,10 @@ pub(crate) fn execute_query(cli: Cli, input_limit: usize) -> Result<i32> {
     match cli.backend {
         #[cfg(feature = "backend-dex")]
         Backend::Dex { command } => dex::execute_query(command, input_limit),
-        _ => execute(cli),
+        _ => execute_with_policy(
+            cli,
+            rxd_core::BudgetPolicy::Fixed(rxd_core::Budget::default()),
+        ),
     }
 }
 

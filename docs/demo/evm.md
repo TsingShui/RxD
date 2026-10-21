@@ -111,11 +111,11 @@ See the [EVM design](../design/evm-design.md#strings-and-data-candidates).
 
 ## Budgets and performance
 
-EVM is capability-first and has no numeric latency gate. Every ceiling comes from the
-shared `rxd_core::Budget`; there is no `--max-*` flag. Default raw input is 8 GiB, one
-million work units, no record or output ceiling, and the abstract
-interpreter's state/arena ceilings are projected from the same table (100,000 states,
-1,048,576 stack cells and arena entries, one million reconstruction work units).
+EVM is capability-first and has no numeric latency gate. Ordinary CLI admission and
+navigation/reconstruction work scale with input under
+[ADR 0016](../adr/0016-input-scaled-cli-resources.md); there is no `--max-*` flag or
+fixed record/output quota. Interpreter guards remain 100,000 states and 1,048,576
+stack cells/arena entries. MCP service quotas remain separate.
 Failures are atomic with no partial stdout and preserve existing `-o` files. `--perf`
 reports decode/analyze/navigate/reconstruct/structure/serialize phases separately and
 echoes the effective ceilings; measurements are informational.

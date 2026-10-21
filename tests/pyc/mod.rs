@@ -40,6 +40,8 @@ fn shared_static_limits() -> rxd_pyc::static_analysis::Limits {
     rxd_pyc::static_analysis::Limits {
         input_bytes: budget.input_bytes,
         entities: usize::MAX,
+        metadata_bytes: budget.metadata_bytes,
+        marshal: rxd_pyc::marshal_limits(budget),
         work: budget.work,
     }
 }
@@ -187,6 +189,8 @@ fn shared_decompile_limits() -> rxd_pyc::Limits {
         input_bytes: budget.input_bytes,
         work: budget.work,
         ast_depth: rxd_core::Limits::default().ast_depth,
+        output_bytes: budget.output_bytes,
+        marshal: rxd_pyc::marshal_limits(budget),
     }
 }
 
@@ -219,6 +223,36 @@ fn xref_name_library(
             result.map(|()| scan)
         });
     (perf, result)
+}
+
+/// Exercise the complete CLI JSON/JSONL through the public bounded writer. There is
+/// no CLI output-budget flag and no independent record-count limit to dial down.
+fn assert_json_output_boundary(output: &Output) {
+    success(output);
+    assert!(output.stdout.ends_with(b"\n"));
+    let rows: Vec<Value> = output
+        .stdout
+        .split(|&byte| byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    let size = output.stdout.len();
+    let mut exact = rxd_core::output::Output::new(size);
+    for row in &rows {
+        exact.json_line(row).unwrap();
+    }
+    assert_eq!(
+        exact.len(),
+        size,
+        "headers, records, summary and newlines count"
+    );
+    let mut short = rxd_core::output::Output::new(size - 1);
+    let error = rows
+        .iter()
+        .try_for_each(|row| short.json_line(row))
+        .unwrap_err();
+    assert_eq!(error.kind(), Some(rxd_core::Failure::Resource));
+    assert!(short.len() < size);
 }
 
 /// Assert every former `--max-*` spelling is refused as an unknown argument.

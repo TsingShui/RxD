@@ -341,7 +341,7 @@ pub fn run(
             names: names.compile(),
             access,
             records: Vec::new(),
-            budget: crate::names::RecordBudget::default(),
+            budget: crate::names::RecordBudget::new(collector.limits),
             error: None,
         };
         visitor.visit_program(program);

@@ -134,7 +134,7 @@ impl Owner {
 
 impl<'a> Resolver<'a> {
     pub(crate) fn new(input: &'a Input, used: usize) -> Result<Self> {
-        let mut work = Work::new(input.limits.work);
+        let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
         work.charge(used)?;
         let mut candidates: BTreeMap<_, Vec<_>> = BTreeMap::new();
         for method in &input.methods {

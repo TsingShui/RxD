@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use super::filter::CaseArgs;
 use super::xref::{Expect, Selector};
 use clap::{Args, Subcommand, ValueEnum};
-use rxd_core::{Budget, Error, Result, perf::Perf};
+use rxd_core::{Error, Result, perf::Perf};
 use rxd_evm::{
     Analysis, FunctionNavigation, FunctionSelection, Limits, Listing, LiteralInventory,
     LiteralKind, LiteralQuery, Navigation, Query,
@@ -209,12 +209,16 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command) -> Result<()> {
+pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let options = command.options();
     let mut perf = Perf::new(options.perf, "analysis", "evm", command.name());
-    // One budget table for every backend; the CLI exposes no knob for it.
-    let budget = Budget::default();
-    let limits = Limits::from_budget(budget);
+    let budget = policy.for_file(&options.input)?;
+    let mut limits = Limits::from_budget(budget);
+    if matches!(policy, rxd_core::BudgetPolicy::InputScaled) {
+        // Archive-size scaling must not enlarge the abstract interpreter's live state.
+        limits.stack_cells = rxd_core::MAX_ARCHIVE_ENTRIES;
+        limits.values = rxd_core::MAX_ARCHIVE_ENTRIES;
+    }
     let mut effective_limits = [("input_bytes", limits.input_bytes)]
         .into_iter()
         .collect::<std::collections::BTreeMap<_, _>>();

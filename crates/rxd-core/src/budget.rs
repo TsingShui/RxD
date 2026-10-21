@@ -1,0 +1,86 @@
+//! Input-scaled CLI bounds, separate from explicit caller/service quotas.
+//!
+//! The constant allowances preserve existing small-input behavior. They are not total
+//! CLI ceilings: encoded input contributes finite work, storage and output allowances.
+//! Amplification/recursion guards still fail explicitly; this is not an unlimited mode.
+use std::path::Path;
+
+use crate::{Budget, Error, Failure, MAX_SPAN_BYTES, Result};
+
+#[derive(Clone, Copy, Debug)]
+pub enum BudgetPolicy {
+    InputScaled,
+    Fixed(Budget),
+}
+
+impl BudgetPolicy {
+    /// Size admission is not an identity check. Parsers still read/hash their fixed buffer.
+    /// A file that grows past the admitted length is refused by the bounded reader.
+    pub fn for_file(self, path: &Path) -> Result<Budget> {
+        if let Self::Fixed(budget) = self {
+            return Ok(budget);
+        }
+        let metadata = std::fs::metadata(path)?;
+        if !metadata.is_file() {
+            return Err(Error::failure(
+                Failure::Input,
+                "expected a regular local file",
+            ));
+        }
+        let bytes = usize::try_from(metadata.len())
+            .map_err(|_| Error::failure(Failure::Resource, "input length is not addressable"))?;
+        Budget::for_input_bytes(bytes)
+    }
+}
+
+impl Budget {
+    /// Bound amplification relative to admitted physical input, without a fixed total
+    /// work/metadata/output quota. All arithmetic is checked, never an unlimited sentinel.
+    ///
+    /// These are safety envelopes, not proofs of semantic completeness or RSS ceilings.
+    /// Formats with compressed/shared structures keep their local expansion guards too.
+    pub fn for_input_bytes(bytes: usize) -> Result<Self> {
+        let base = Self::default();
+        let grow = |allowance: usize, factor: usize| {
+            bytes
+                .checked_mul(factor)
+                .and_then(|n| allowance.checked_add(n))
+                .filter(|n| *n <= isize::MAX as usize)
+                .ok_or_else(|| {
+                    Error::failure(Failure::Resource, "input-derived resource bound overflow")
+                })
+        };
+        Ok(Self {
+            input_bytes: bytes,
+            // Expansion remains bounded even for dishonest compressed-size declarations.
+            entry_bytes: grow(base.entry_bytes, 16)?.min(MAX_SPAN_BYTES),
+            metadata_bytes: grow(base.metadata_bytes, 64)?,
+            output_bytes: grow(base.output_bytes, 256)?,
+            entries: grow(base.entries, 1)?,
+            instructions: grow(base.instructions, 1)?,
+            work: grow(base.work, 128)?,
+            ast_depth: base.ast_depth,
+            semantic_nodes: grow(base.semantic_nodes, 4)?,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scaled_bounds_preserve_guards_and_refuse_arithmetic_overflow() {
+        let fixed = Budget::default();
+        let scaled = Budget::for_input_bytes(1024).unwrap();
+        assert_eq!(scaled.input_bytes, 1024);
+        assert!(scaled.work > fixed.work);
+        assert!(scaled.metadata_bytes > fixed.metadata_bytes);
+        assert!(scaled.output_bytes > fixed.output_bytes);
+        assert_eq!(scaled.ast_depth, fixed.ast_depth);
+        assert_eq!(
+            Budget::for_input_bytes(usize::MAX).unwrap_err().kind(),
+            Some(Failure::Resource)
+        );
+    }
+}

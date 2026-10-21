@@ -103,12 +103,13 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
         id.replace("code:", "const:"),
         id.replace("code:0", "code:01"),
         format!("{id}x"),
-        id.replace("code:0", "code:99999"),
         "code:".into(),
         "rxd1:pyc:0:code:0".into(),
     ] {
         failure(fetch(&original, &bad, &[]), 2, "INVALID_QUERY");
     }
+    // A canonical coordinate that names no code is not malformed (ADR 0015).
+    failure(fetch(&original, "code:99999", &[]), 2, "NOT_FOUND");
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("keep.json");
     let nested_start = oracle["marshal_ranges"]["code_ranges"][11]["pyc_bytecode_start"]
@@ -182,13 +183,15 @@ fn pyc_get_code_budgets_are_exact_cumulative_and_fail_atomically_with_perf() {
     let complete = fetch(&path, id, &["--perf"]);
     success(&complete);
     let perf = perf_row(&complete);
-    let budget = rxd_core::Budget::default();
+    let budget =
+        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize).unwrap();
     assert_eq!(
         perf["resource_limits"]["instructions"],
         Value::from(budget.instructions)
     );
     assert_eq!(perf["counters"]["instructions"], 99);
     assert!(perf["counters"]["ast_depth"].is_null());
+    assert_json_output_boundary(&complete);
     assert_no_budget_flags(&path, "get-code");
     // Exact accounting lives in the library, which owns the shared ceilings.
     let mut base = shared_static_limits();
@@ -237,7 +240,7 @@ fn pyc_get_code_budgets_are_exact_cumulative_and_fail_atomically_with_perf() {
     failure(
         fetch(&path, "code:99999", &["-o", out.to_str().unwrap()]),
         2,
-        "INVALID_QUERY",
+        "NOT_FOUND",
     );
     assert_eq!(fs::read(&out).unwrap(), b"keep");
 }

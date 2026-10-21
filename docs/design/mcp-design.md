@@ -141,7 +141,8 @@ description: a row selector is `at`, a substring filter is `filter`, original by
 plus that kind's own arguments. Naming is the flag spelling, never a second vocabulary.
 
 No backend exposes a `--max-*` ceiling any more, so no ceiling reaches a worker as a
-flag: every shared limit comes from `rxd_core::Budget`, and the server's only per-call
+flag. MCP explicitly selects the fixed `rxd_core::Budget::default()` policy, not the
+ordinary CLI's input-scaled policy (ADR 0016), and the server's only per-call
 knob is the thread budget. A command that declares `--threads` is given
 `min(requested, max-threads / worker-slots)`, so a caller may ask for fewer threads,
 never for more. Request-level budgets stay where the protocol already has them: the
@@ -301,9 +302,10 @@ EOF. A failed worker does not stop the protocol service or unrelated admitted wo
 A CLI-projected tool has no per-call `limits` argument: a backend ceiling has no CLI
 flag, so a tool argument cannot carry one either. Only the typed native Kuna adapter
 keeps its own native `limits`, because those are its own protocol fields, not CLI flags.
-Shared caps come from `rxd_core::Budget` (input 256 MiB,
-records/entities 100,000, work 16,777,216, instructions/semantic nodes 1,000,000, AST depth
-128), and the server enforces only what the protocol owns: the captured serialized output
+The CLI projection explicitly preserves `rxd_core::Budget::default()` (8 GiB input
+subject to format spans, one-million work/semantic nodes, 100,000 instructions,
+128 MiB metadata/output, AST depth 512). Protocol snapshot/record admission remains
+independent and can be tighter. ADR 0016's ordinary CLI scaling does not apply here: the captured serialized output
 is capped at one quarter of the response ceiling (default 8 MiB) - a transport bound the
 protocol owns, not an analysis budget - and the complete RPC frame at
 `max-response-bytes`. A

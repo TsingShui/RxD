@@ -67,11 +67,11 @@ Multi-file extraction and directory transactions are not implemented.
 
 ## Resource budgets
 
-Defaults: header budget 8 MiB; the shared budget 10,000 (including
-directories); paths at most 4,096 UTF-8 bytes; serde_json's default recursion guard.
-the shared budget defaults to 8 GiB and may be lowered to between 1 byte and 8 GiB;
-the selected original file is charged, not a declared whole-archive size. 32-bit
-spans keep actual addressable content below 4 GiB. There is no record or output
+Header/index allowances grow with the admitted archive size under [ADR 0016](../adr/0016-input-scaled-cli-resources.md).
+There is no fixed ordinary-CLI 8 MiB header or entry-count quota. Paths remain at
+most 4096 UTF-8 bytes with serde_json's recursion guard. Selected packed/unpacked
+content is checked against the actual opened handle and 32-bit content span range;
+large carrier files are not read wholesale merely for admission. There is no record or output
 ceiling: `entries` prints every entry and `extract` writes the whole artifact plus its
 receipt, because a narrower answer is the caller's filter, not a budget. Parsing keeps
 its input, entry and work ceilings, and a real overflow there is an atomic

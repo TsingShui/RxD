@@ -173,9 +173,11 @@ deterministic parallel order are preserved. The input should not change during a
 invocation. MCP uses ADR 0007's private immutable snapshot and explicit `target_id`
 without caching parse/decompile state.
 
-The default inflate limit per selected entry is 256 MiB. The compatibility variable
-`RASC_MAX_INFLATED_ENTRY` accepts a non-zero `usize`; 0, empty and unparseable values
-use the default. Range and size are checked while reading; exceeding the limit fails
+The ordinary CLI derives its per-entry expansion envelope from physical carrier
+size under [ADR 0016](../adr/0016-input-scaled-cli-resources.md), rather than a fixed 256 MiB ceiling. The compatibility
+variable `RASC_MAX_INFLATED_ENTRY` still accepts a nonzero `usize`; zero, empty and
+unparseable values select the input-scaled envelope. MCP retains its fixed policy
+and does not inherit this environment override. Range and size are checked while reading; exceeding the limit fails
 without silently skipping. This is not a whole-input, result-byte or peak-RSS limit.
 
 DEX and JVM share `radguard::backend` (method/class rendering) as a normal path

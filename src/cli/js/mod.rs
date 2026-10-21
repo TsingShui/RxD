@@ -33,7 +33,7 @@ fn resolve_anchor(
         .map_err(super::classify)
 }
 
-pub(super) fn execute(command: Command) -> Result<()> {
+pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let common = command.common();
     let input = common.input.clone();
     let destination = common.output.clone();
@@ -50,15 +50,17 @@ pub(super) fn execute(command: Command) -> Result<()> {
         SyntaxArg::Ts => Syntax::Ts,
         SyntaxArg::Tsx => Syntax::Tsx,
     };
-    let budget = rxd_core::Budget::default();
-    let limits = Limits {
-        input_bytes: budget.input_bytes,
-        ast_depth: budget.ast_depth,
-        semantic_nodes: budget.semantic_nodes,
-    };
     let scan = command.scan().map(|s| s.threads);
+    let directory = scan.is_some() && input.symlink_metadata().is_ok_and(|m| m.is_dir());
+    let budget = if directory {
+        // Discovery has its own depth/concurrency protection; each file gets its own policy.
+        rxd_core::Budget::default()
+    } else {
+        policy.for_file(&input)?
+    };
+    let limits = Limits::from(budget);
     let mut perf = Perf::new(emit_perf, "analysis", "js", command.name());
-    perf.limits = Some(limits);
+    perf.limits = (!directory).then_some(limits);
     // Validate --from and analyze/extract from this exact buffer, never a second read.
     let frozen = if matches!(&command, Command::Slice { selector, .. } | Command::Xref { selector, .. } if selector.from.is_some())
     {
@@ -128,8 +130,11 @@ pub(super) fn execute(command: Command) -> Result<()> {
                     mode,
                     syntax,
                     query,
-                    limits,
-                    max_files: budget.entries,
+                    policy,
+                    max_files: match policy {
+                        rxd_core::BudgetPolicy::Fixed(budget) => Some(budget.entries),
+                        rxd_core::BudgetPolicy::InputScaled => None,
+                    },
                     threads,
                 },
                 &mut perf,

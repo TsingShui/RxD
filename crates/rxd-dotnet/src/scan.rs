@@ -23,7 +23,7 @@ pub struct TokenSite {
 
 impl Input {
     pub fn scan_il(&self) -> Result<IlScan> {
-        let mut work = Work::new(self.limits.work);
+        let mut work = Work::new(self.limits.work, self.limits.metadata_bytes);
         work.charge(self.metadata_work)?;
         let strings = crate::metadata::strings_with_work(self, &mut work)?;
         work.charge(strings.len())?;

@@ -269,7 +269,8 @@ persistent parse state are not implemented.
 
 ## Resource budgets
 
-The shared input-byte budget applies before reading. There is no catalog-record
+Input admission follows [ADR 0016](../adr/0016-input-scaled-cli-resources.md): actual regular-file length plus
+the existing 32-bit span guard, not a fixed 8 GiB quota. There is no catalog-record
 ceiling (including extract's validation catalog) or CLI output ceiling (complete
 JSONL, or raw artifact plus receipt); lexical nesting is limited to 512, distinct
 from the `--depth` selector. The explicitly supplied document base URL is additionally

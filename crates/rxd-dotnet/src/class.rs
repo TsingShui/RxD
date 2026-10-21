@@ -9,7 +9,7 @@ pub(crate) fn body<'a>(input: &'a Input, root: &'a TypeInfo) -> Result<ClassBody
         root.token != 0x02000001 || root.name != "<Module>",
         "INVALID_QUERY: synthetic module is not a class"
     );
-    let mut work = Work::new(input.limits.work);
+    let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
     work.charge(input.metadata_work)?;
     let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
     for ty in &input.types {

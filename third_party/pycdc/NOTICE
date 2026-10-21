@@ -15,6 +15,11 @@ sandbox. The imported Rust files are formatted with this workspace's rustfmt ver
 `cargo fmt --all -- --check` passes. The upstream library opts out of the workspace Clippy
 gate; rxd-pyc and the CLI adapter remain gated.
 
+The rxd adapter now supplies explicit marshal object/reference-expansion/copy limits
+for input-scaled CLI analysis, while default library loading retains its fixed limits.
+Recursion, cycle rejection, code-header allocation hints and quadratic numeric-work
+guards remain independent. Limits flow through both raw and header-bearing loaders.
+
 Upstream attribution and licensing remain unchanged. Any later local change belongs in
 this vendored copy and should be documented here. Tests and corpus provenance are in
 `tests/corpus/pyc/README.md` and `tests/fixtures/pyc/README.md`.

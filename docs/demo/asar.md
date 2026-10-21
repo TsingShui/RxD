@@ -112,10 +112,10 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 # The ASAR runner was removed; see benches/README.md "Removed per-backend runners".
 ```
 
-Defaults: header 8 MiB, 10,000 container entries, 4,096 UTF-8 path bytes. Input defaults
-to 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), charged for the selected file; every result record;
-no record or output ceiling covering all list JSONL or extract file plus receipt. Parsing ceilings,
+Header/index allowances grow with the archive under
+[ADR 0016](../adr/0016-input-scaled-cli-resources.md), without fixed CLI input/header/
+entry-count quotas. Paths retain the 4096-byte guard and selected content retains
+32-bit spans. There is no record/output quota for complete listings or artifacts. Parsing bounds,
 path traversal, duplicate paths, malformed headers, links, out-of-range targets and
 overflow never rely on running the sample.
 

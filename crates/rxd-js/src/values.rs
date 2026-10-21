@@ -8,7 +8,7 @@ use crate::{
 use oxc_ast::{AstKind, ast::*};
 use oxc_ast_visit::Visit;
 use oxc_span::{GetSpan, Span};
-use rxd_core::{Budget, Error, Result, Source, perf::Perf};
+use rxd_core::{Error, Limits, Result, Source, perf::Perf};
 use serde::Serialize;
 
 pub const VALUE_KINDS: &[&str] = &[
@@ -165,6 +165,7 @@ struct Visitor<'c, 's> {
     region: Span,
     records: Vec<Value<'s>>,
     bytes: usize,
+    limits: Limits,
     error: Option<Error>,
 }
 impl<'s> Visitor<'_, 's> {
@@ -177,7 +178,7 @@ impl<'s> Visitor<'_, 's> {
         {
             return;
         }
-        let budget = Budget::default();
+        let budget = self.limits;
         // Bound owned labels and retained source projections before retaining a row.
         let bytes = detail.name.len_utf16() * 2
             + detail.value.source.map_or(0, str::len)
@@ -427,6 +428,7 @@ pub fn run<'s>(
             region,
             records: Vec::new(),
             bytes: 0,
+            limits: collector.limits,
             error: None,
         };
         v.visit_program(program);

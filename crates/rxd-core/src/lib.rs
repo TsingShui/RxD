@@ -1,3 +1,6 @@
+pub mod budget;
+pub mod output;
+pub use budget::BudgetPolicy;
 pub mod identity;
 use std::{fmt, fs::OpenOptions, io::Read, path::Path};
 
@@ -176,35 +179,37 @@ impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
-        Self::new("IO_ERROR", error.to_string())
+        Self::failure(
+            if error.kind() == std::io::ErrorKind::OutOfMemory {
+                Failure::Resource
+            } else {
+                Failure::Io
+            },
+            error.to_string(),
+        )
     }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Default and hard ceiling for one input file: 8 GiB. Every supported rxd target
-/// is 64-bit. No CLI flag can raise or lower it; `Budget` is the only source.
+/// Explicit caller/service input quota. Ordinary CLI admission uses the actual input
+/// length and the format's span limit instead (see `Budget::for_input_bytes`).
 pub const MAX_INPUT_BYTES: usize = 8 << 30;
 
-/// One archive entry: 256 MiB. DEX applies this to a single inflated entry and the JVM
-/// backend to one class file, so the ceiling is a property of the format family, not of
-/// a backend.
+/// Explicit caller/service entry quota and small-input expansion allowance.
 pub const MAX_ENTRY_BYTES: usize = 256 << 20;
 
-/// Physical archive entries: one million. A production APK or fat JAR stays far below
-/// it, and the cap exists so a crafted directory cannot make the reader allocate.
+/// Explicit caller/service archive-index quota and small-input allowance.
 pub const MAX_ARCHIVE_ENTRIES: usize = 1 << 20;
 
-/// Decoded metadata a single analysis may hold: 128 MiB.
+/// Explicit caller/service metadata quota and small-input storage allowance.
 pub const MAX_METADATA_BYTES: usize = 128 << 20;
 
-/// Work units one query may spend: one million.
+/// Explicit caller/service work quota and small-input work allowance.
 pub const MAX_WORK_UNITS: usize = 1_000_000;
 
-/// The resource budget every backend runs under.
-///
-/// One table for the whole tool: a backend projects it onto its own `Limits` type
-/// instead of restating the numbers, so a ceiling is changed in exactly one place.
+/// Explicit resource bounds projected into backend limits. `default()` preserves
+/// caller/service quotas; ordinary CLI queries use `for_input_bytes` instead.
 #[derive(Clone, Copy, Debug)]
 pub struct Budget {
     /// One input file.
@@ -213,6 +218,8 @@ pub struct Budget {
     pub entry_bytes: usize,
     /// Decoded metadata one analysis may hold.
     pub metadata_bytes: usize,
+    /// Complete serialized result, including envelope and newlines.
+    pub output_bytes: usize,
     /// Physical archive entries.
     pub entries: usize,
     /// Instructions one method may decode to.
@@ -231,6 +238,7 @@ impl Default for Budget {
             input_bytes: MAX_INPUT_BYTES,
             entry_bytes: MAX_ENTRY_BYTES,
             metadata_bytes: MAX_METADATA_BYTES,
+            output_bytes: MAX_METADATA_BYTES,
             entries: MAX_ARCHIVE_ENTRIES,
             instructions: 100_000,
             work: MAX_WORK_UNITS,
@@ -240,8 +248,8 @@ impl Default for Budget {
     }
 }
 
-/// Content spans are 32-bit, so no backend can address an input at or above 4 GiB.
-/// This is a structural limit of the formats, not a policy budget.
+/// Content spans are 32-bit on readers using this guard. Lazily read archive carriers
+/// are not themselves content spans. This is an address-width bound, not a size quota.
 pub const MAX_SPAN_BYTES: usize = u32::MAX as usize;
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -249,17 +257,28 @@ pub struct Limits {
     pub input_bytes: usize,
     pub ast_depth: usize,
     pub semantic_nodes: usize,
+    pub metadata_bytes: usize,
+    pub output_bytes: usize,
+    pub work: usize,
+}
+
+impl From<Budget> for Limits {
+    fn from(budget: Budget) -> Self {
+        Self {
+            input_bytes: budget.input_bytes,
+            ast_depth: budget.ast_depth,
+            semantic_nodes: budget.semantic_nodes,
+            metadata_bytes: budget.metadata_bytes,
+            output_bytes: budget.output_bytes,
+            work: budget.work,
+        }
+    }
 }
 
 impl Default for Limits {
     /// The budget table is the only place these numbers live.
     fn default() -> Self {
-        let budget = Budget::default();
-        Self {
-            input_bytes: budget.input_bytes,
-            ast_depth: budget.ast_depth,
-            semantic_nodes: budget.semantic_nodes,
-        }
+        Budget::default().into()
     }
 }
 

@@ -433,19 +433,20 @@ generated members remain indexable, queryable and extractable.
 
 ## Budgets and performance
 
-CLI and library defaults both use `rxd_core::Budget`: input 8 GiB (lowerable;
-32-bit spans keep actual addressable content below 4 GiB), cumulative work 1,000,000,
-instructions per method 100,000 and metadata 128 MiB. The former independent library
-work default of 16,777,216 is not an alternative allowance. The CLI has no override flag.
+Ordinary CLI input, work, metadata, instruction and complete-output bounds follow
+[ADR 0016](../adr/0016-input-scaled-cli-resources.md), growing with admitted input instead of imposing fixed total quotas.
+Explicit library defaults and MCP retain the old fixed policy (one million work,
+128 MiB metadata/output); the CLI has no override flag. Format spans remain 32-bit.
 Fixed row/index/cache storage is conservatively reserved against metadata bytes before
 allocation; decoded/copied string payloads are additionally bounded by charged work.
 Shared owner/signature handles do not recharge the bytes they no longer copy. Signature
 cache lookups, new parses and displays remain charged, and deferred callable projection
 starts with the metadata work already spent. The complete serialized CLI output is
-also capped at the shared 128 MiB ceiling, including header/summary/newline bytes:
+bounded independently using the input-scaled output envelope, including header/summary/newline bytes:
 sharing must not allow repeated signatures to expand into an unbounded output
 buffer. Exceeding it is atomic `RESOURCE_LIMIT`, not `INVALID_INPUT` or successful
-truncation. These changes do not raise any shared cap.
+truncation. The earlier signature-sharing optimization preserved fixed quotas; the
+current input-scaled policy supersedes those ordinary-CLI quotas.
 Entities count types, fields and methods; work bounds parsing stages; xref charge actual decode, signature,
 string and EH work. Full xref/strings scans share one fixed `#US` heap validation and
 reuse entry boundaries; FETCH shares instruction/token-kind/locals/parameter/branch/

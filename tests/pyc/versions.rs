@@ -971,9 +971,8 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         // A coordinate names a code object in the input being queried; the header carries
         // identity, so a rewritten file still resolves the same index.
         success(&command("get-code", &path, &["--at", id]));
-        let stale = id.to_owned();
         failure(
-            command("get-code", &path, &["--at", &format!("{stale}:extra")]),
+            command("get-code", &path, &["--at", &format!("{id}:extra")]),
             2,
             "INVALID_QUERY",
         );
@@ -987,12 +986,44 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
                     "--at",
                     "arg",
                     "--within",
-                    &format!("{stale}:extra"),
+                    &format!("{id}:extra"),
                 ],
             ),
-            1,
-            "SOURCE_MISMATCH",
+            2,
+            "INVALID_QUERY",
         );
+        // Short coordinates have no digest. Foreign identity belongs to the
+        // original stream header, not to an invented suffix on code:N.
+        let code_stream = dir.path().join("codes.jsonl");
+        let constant_stream = dir.path().join("strings.jsonl");
+        for (cmd, stream) in [("codes", &code_stream), ("strings", &constant_stream)] {
+            let output = command(cmd, &original, &[]);
+            success(&output);
+            fs::write(stream, output.stdout).unwrap();
+        }
+        for (cmd, stream) in [
+            ("codes", &code_stream),
+            ("get-code", &code_stream),
+            ("xref", &constant_stream),
+        ] {
+            fs::write(&dest, b"keep").unwrap();
+            failure(
+                command(
+                    cmd,
+                    &path,
+                    &[
+                        "--from",
+                        stream.to_str().unwrap(),
+                        "-o",
+                        dest.to_str().unwrap(),
+                    ],
+                ),
+                1,
+                "SOURCE_MISMATCH",
+            );
+            assert_eq!(fs::read(&dest).unwrap(), b"keep");
+            assert_eq!(fs::read(&path).unwrap(), changed);
+        }
         let zero = rows(&command(
             "xref",
             &original,
@@ -1024,8 +1055,7 @@ fn analysis_perf(output: &Output) -> Value {
         .unwrap()
 }
 #[test]
-fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomically() {
-    let budget = rxd_core::Budget::default();
+fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
     let probe = corpus(VERSIONS[0].0, "graph.timestamp.pyc");
     for cmd in ["codes", "strings", "xref", "get-code"] {
         assert_no_budget_flags(&probe, cmd);
@@ -1033,6 +1063,7 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
     for &(version, _) in VERSIONS {
         let path = corpus(version, "graph.timestamp.pyc");
         let data = fs::read(&path).unwrap();
+        let cli_budget = rxd_core::Budget::for_input_bytes(data.len()).unwrap();
         let codes = code_rows(version, "graph");
         let at = codes[0]["at"].as_str().unwrap();
         let units = codes[0]["detail"]["bytecode_bytes"].as_u64().unwrap() as usize / 2;
@@ -1127,7 +1158,8 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
             "{version}/get-code instructions"
         );
 
-        // The CLI still projects the one shared table for every command.
+        // The CLI derives input-scaled envelopes; explicit library quotas above
+        // retain their own exact success / one-unit-short failure boundaries.
         for (cmd, args) in [
             ("codes", vec![]),
             ("strings", vec![]),
@@ -1141,7 +1173,12 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
             let perf = analysis_perf(&output);
             assert_eq!(
                 perf["resource_limits"]["work"],
-                Value::from(budget.work),
+                Value::from(cli_budget.work),
+                "{version}/{cmd}"
+            );
+            assert_eq!(
+                perf["resource_limits"]["output_bytes"],
+                Value::from(cli_budget.output_bytes),
                 "{version}/{cmd}"
             );
         }
@@ -1157,7 +1194,7 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
                 &["--at", "code:99999", "-o", dest.to_str().unwrap()],
             ),
             2,
-            "INVALID_QUERY",
+            "NOT_FOUND",
         );
         assert_eq!(fs::read(&dest).unwrap(), b"keep");
     }

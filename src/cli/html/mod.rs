@@ -2,22 +2,16 @@ mod args;
 use super::xref::Expect;
 use super::{finish, write_output};
 pub(crate) use args::Command;
-use rxd_core::{Budget, Error, Limits, Result, perf::Perf};
+use rxd_core::{Error, Limits, Result, perf::Perf};
 use std::io::{self, Write};
 
-pub(super) fn execute(command: Command) -> Result<()> {
+pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let (common, name) = match &command {
         Command::Entries { common, .. }
         | Command::Resources { common, .. }
         | Command::Extract { common, .. } => (common, command.name()),
     };
-    // One budget table for every backend; the CLI exposes no knobs for it.
-    let budget = Budget::default();
-    let limits = Limits {
-        input_bytes: budget.input_bytes,
-        ast_depth: 512,
-        ..Limits::default()
-    };
+    let limits = Limits::from(policy.for_file(&common.input)?);
     let mut perf = Perf::new(common.perf, "analysis", "html", name);
     perf.limits = Some(limits);
     let emit_perf = common.perf;
