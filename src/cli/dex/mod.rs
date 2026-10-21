@@ -302,16 +302,32 @@ fn run_command(
                     "filter":args.filter, "offset":args.offset, "limit":args.limit,
                 }),
             )?;
-            for entry in &strings {
-                push_record(
-                    &mut payload,
-                    "string",
-                    &[
-                        ("entry", Field::Text(entry.dex_name.as_ref())),
-                        ("index", Field::Number(entry.index as u64)),
-                        ("value", Field::Text(&entry.value)),
-                    ],
-                )?;
+            {
+                use rayon::prelude::*;
+                // Render a bounded batch at a time: a whole-output piece vector would
+                // hold a second copy of the 89 MiB payload at peak.
+                const BATCH: usize = 96 * 1024;
+                for start in (0..strings.len()).step_by(BATCH) {
+                    let batch = &strings[start..(start + BATCH).min(strings.len())];
+                    let pieces: Vec<String> = batch
+                        .par_chunks(8192)
+                        .map(|chunk| {
+                            let mut out = String::with_capacity(chunk.len() * 104);
+                            for entry in chunk {
+                                push_string_row(
+                                    &mut out,
+                                    entry.dex_name.as_ref(),
+                                    entry.index as u64,
+                                    &entry.value,
+                                )?;
+                            }
+                            Ok::<String, anyhow::Error>(out)
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    for piece in pieces {
+                        payload.push_str(&piece);
+                    }
+                }
             }
             finish_stream(&mut payload, strings.len())?;
             emit(&payload, args.output.as_deref())?;
@@ -525,6 +541,7 @@ fn fetch_record(
 /// One detail value written without a `serde_json::Value`.
 enum Field<'a> {
     Text(&'a str),
+    #[cfg(test)]
     Number(u64),
 }
 
@@ -552,6 +569,17 @@ fn push_reference(payload: &mut String, entry: &str, caller: &str, matched: &str
     Ok(())
 }
 fn push_json_string(out: &mut String, value: &str) {
+    // Almost every DEX string is plain UTF-8 without an escape-worthy byte; one
+    // scan lets those skip the per-character match below.
+    if !value
+        .bytes()
+        .any(|byte| byte < 0x20 || byte == b'"' || byte == b'\\')
+    {
+        out.push('"');
+        out.push_str(value);
+        out.push('"');
+        return;
+    }
     out.push('"');
     for character in value.chars() {
         match character {
@@ -575,6 +603,26 @@ fn push_json_string(out: &mut String, value: &str) {
 /// Append one `{record, detail}` row straight into the payload. A large archive renders
 /// hundreds of thousands of rows, so building a `Value` per row only to serialize it is
 /// pure allocation; this writes the same bytes in place.
+/// One string row, written with its constant keys inline. A string listing is
+/// hundreds of thousands of rows, so re-escaping the same five keys per row is pure
+/// overhead; this keeps the bytes identical to [`push_record`].
+fn push_string_row(payload: &mut String, entry: &str, index: u64, value: &str) -> Result<()> {
+    payload.push_str("{\"record\":\"string\",\"detail\":{\"entry\":");
+    push_json_string(payload, entry);
+    payload.push_str(",\"index\":");
+    use std::fmt::Write as _;
+    let _ = write!(payload, "{index}");
+    payload.push_str(",\"value\":");
+    push_json_string(payload, value);
+    payload.push_str("}}\n");
+    #[cfg(feature = "mcp")]
+    if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {
+        bail!("RESOURCE_LIMIT: query output byte budget exceeded");
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn push_record(payload: &mut String, kind: &str, fields: &[(&str, Field<'_>)]) -> Result<()> {
     push_record_at(payload, kind, None, fields)
 }
@@ -604,6 +652,7 @@ fn push_record_at(
         payload.push(':');
         match value {
             Field::Text(text) => push_json_string(payload, text),
+            #[cfg(test)]
             Field::Number(number) => payload.push_str(&number.to_string()),
         }
     }
