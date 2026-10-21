@@ -479,15 +479,16 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
     } = command
     {
         let limits = options.limits(&input, policy)?;
-        let input = Input::read(&input, limits, options.release)?;
+        let (source_id, file_bytes, entries) =
+            Input::read_entries(&input, limits, options.release)?;
         let mut output = Vec::new();
         append(
             &mut output,
             &header(
                 "jvm",
                 "entries",
-                Some(&input.source_id),
-                Some(input.file_bytes),
+                Some(&source_id),
+                Some(file_bytes),
                 json!({}),
                 json!({"analysis":"entries","release":options.release})
                     .as_object()
@@ -497,7 +498,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
         )?;
         let mut records = 0usize;
         let pattern = filter.map(|value| rxd_core::filter::Contains::new(&value, case.sensitive()));
-        for entry in &input.entries {
+        for entry in &entries {
             if pattern
                 .as_ref()
                 .is_some_and(|pattern| !pattern.matches(&entry.name))

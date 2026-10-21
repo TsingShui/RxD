@@ -35,6 +35,73 @@ pub struct InputEntry {
 
 impl Input {
     /// Freeze input bytes before ZIP parsing or class analysis. No class loading.
+
+    /// Read only the archive directory: `entries` never parses class files.
+    pub fn read_entries(
+        path: &Path,
+        limits: Limits,
+        release: u16,
+    ) -> Result<(String, usize, Vec<InputEntry>)> {
+        ensure!(release >= 8, "INVALID_QUERY: release must be at least 8");
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let file = options.open(path)?;
+        let metadata = file.metadata()?;
+        ensure!(metadata.is_file(), "INVALID_INPUT: expected a regular file");
+        ensure!(
+            metadata.len() <= limits.input_bytes as u64,
+            "RESOURCE_LIMIT: input byte budget exceeded"
+        );
+        let mut bytes = Vec::new();
+        file.take(limits.input_bytes as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() <= limits.input_bytes,
+            "RESOURCE_LIMIT: input byte budget exceeded"
+        );
+        let source_id = rxd_core::identity::content_id(path, &bytes);
+        let file_bytes = bytes.len();
+        let mut entries = Vec::new();
+        if bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
+            entries.push(InputEntry {
+                name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                compression: 0,
+                compressed_size: file_bytes,
+                uncompressed_size: file_bytes,
+            });
+        } else {
+            check_directory(&bytes, limits.entries)?;
+            let mut zip = zip::ZipArchive::new(Cursor::new(bytes))
+                .context("INVALID_INPUT: invalid JAR/ZIP")?;
+            ensure!(
+                zip.len() <= limits.entries,
+                "RESOURCE_LIMIT: archive entry budget exceeded"
+            );
+            for index in 0..zip.len() {
+                let entry = zip.by_index(index)?;
+                entries.push(InputEntry {
+                    name: entry.name().to_owned(),
+                    compression: match entry.compression() {
+                        zip::CompressionMethod::Stored => 0,
+                        zip::CompressionMethod::Deflated => 8,
+                        _ => 255,
+                    },
+                    compressed_size: usize::try_from(entry.compressed_size()).unwrap_or(usize::MAX),
+                    uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
+                });
+            }
+        }
+        Ok((source_id, file_bytes, entries))
+    }
+
     pub fn read(path: &Path, limits: Limits, release: u16) -> Result<Self> {
         ensure!(release >= 8, "INVALID_QUERY: release must be at least 8");
         let mut options = OpenOptions::new();
