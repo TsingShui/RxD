@@ -187,6 +187,12 @@ cargo build --release --no-default-features --features backend-js
 cargo build --release --no-default-features --features all-backends
 ```
 
+`backend-kuna` (the `rxd kuna` command namespace) is a default feature, but the
+Kuna engine is linked only with `bundled-kuna`. A plain build exposes the command
+and reports `KUNA_NOT_BUNDLED` when it runs; release bundles and
+`scripts/build-bundled.py` opt in, while `--no-default-features` removes the
+namespace entirely.
+
 Prebuilt bundles are documented in [`prebuilt/README.md`](prebuilt/README.md);
 the full maintenance and release flow is in
 [Build and verification](docs/demo/ci.md#build-and-verification-details).
@@ -222,7 +228,7 @@ backends or release analysis runtime caches.
 
 | Backend | Entry | Capability | Status |
 | --- | --- | --- | --- |
-| **Native (Kuna)** | `rxd kuna` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ optional embedded distribution |
+| **Native (Kuna)** | `rxd kuna` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
 | **JavaScript** | `rxd js` | JS/TS/JSX/TSX and recursive directories; structure, strings, byte locations, lexical references, original source extraction | ✅ |
 | **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction | ✅ |
 | **HTML** | `rxd html` | Local-page lexical catalog and node-level raw extraction (element/text/comment/doctype) | ✅ |

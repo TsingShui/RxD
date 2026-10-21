@@ -1,5 +1,12 @@
 # Directly linked Kuna CLI
 
+`backend-kuna` is a default feature, so the `rxd kuna` namespace exists in an
+ordinary build. The engine is a separate opt-in: only `bundled-kuna` links the
+pinned `third_party/kuna` checkout through the generated adapter. Without it the
+command reports `KUNA_NOT_BUNDLED`; `--no-default-features` omits the namespace
+entirely. Default and reduced builds therefore never need the upstream toolchain,
+while release bundles ship the engine and specs.
+
 ```sh
 git submodule update --init third_party/kuna
 python3 scripts/build-bundled.py --jobs 1
