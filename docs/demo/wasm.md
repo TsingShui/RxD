@@ -30,7 +30,11 @@ $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at"
 # code-body offsets); there is no separate --bytecode/--instructions spelling.
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --raw
 $rxd wasm strings tests/fixtures/wasm/fixture.wasm -f hello
-$rxd wasm xref tests/fixtures/wasm/fixture.wasm --func 1
+$rxd wasm xref tests/fixtures/wasm/fixture.wasm --at "$at"
+$rxd wasm functions tests/fixtures/wasm/fixture.wasm --name sum | \
+  $rxd wasm xref tests/fixtures/wasm/fixture.wasm --from -
+$rxd wasm xref tests/fixtures/wasm/fixture.wasm --kind function -f ENV.LOG
+$rxd wasm functions tests/fixtures/wasm/fixture.wasm --at "$at"
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --perf
 ```
 
@@ -48,7 +52,13 @@ mixes types with functions. Identity is the row's `at` coordinate (`type:0`, `fu
 `xref --at` rows carry the caller coordinate in `context_at` and the referenced
 function in `detail.target`, and report only direct calls and `ref.func`;
 `call_indirect` is marked indirect and its runtime table target is not resolved.
-Changing any input byte invalidates old coordinates. Budgets come from the shared
+Export rows expose `detail.target_at` for direct navigation to the exported function;
+function imports expose the same field for caller queries, but have no fetchable body.
+Names are not identities, and export aliases do not become name-section labels.
+Short coordinates refer to the current input; use a listing's `--from` stream or a
+full content-bound ID to detect changed input bytes, including same-size changes.
+A nonexistent coordinate is `NOT_FOUND`; an unmatched name filter is a complete
+empty result. Contradictory kinds are argument errors, never silent empty scans. Budgets come from the shared
 `rxd_core::Budget` table, so there is no `--max-*` flag. Whole-function decompilation
 may exceed 150 ms only for genuinely large targets; ordinary listings/strings/xref and
 instruction view get remain under the 150 ms rule.

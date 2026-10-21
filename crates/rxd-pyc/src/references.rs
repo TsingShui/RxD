@@ -22,6 +22,7 @@ pub struct Hit {
     pub raw_operand: Option<u32>,
     pub operand: Option<u32>,
     pub target: Target,
+    pub target_name: Option<String>,
     pub operation: &'static str,
     pub constant_id: Option<String>,
     pub constant_slot: Option<usize>,
@@ -89,10 +90,17 @@ fn invalid(message: &str) -> Error {
 fn reserve(a: &mut Analysis, scan: &mut Scan, minimum: usize) -> Result<()> {
     a.charge_work(1)?;
     scan.retained_output_minimum = scan.retained_output_minimum.saturating_add(minimum);
+    if scan.retained_output_minimum > rxd_core::Budget::default().metadata_bytes {
+        return Err(Error::failure(
+            rxd_core::Failure::Resource,
+            "reference metadata bytes",
+        ));
+    }
     Ok(())
 }
 pub enum Query<'a> {
     Name(&'a str),
+    NameFilter(&'a rxd_core::filter::Contains),
     Constant {
         id: &'a str,
         selected: &'a SelectedConstant,
@@ -109,7 +117,7 @@ pub fn scan(
 ) -> Result<()> {
     let table = table_for(a.version).map_err(crate::input_error)?;
     let scope = match query {
-        Query::Name(_) => within.map_or(0..a.codes.len(), |i| i..i + 1),
+        Query::Name(_) | Query::NameFilter(_) => within.map_or(0..a.codes.len(), |i| i..i + 1),
         Query::Constant { selected, .. } if within.is_none_or(|i| i == selected.owner) => {
             selected.owner..selected.owner + 1
         }
@@ -213,89 +221,109 @@ pub fn scan(
             a.charge_work(resolutions)?;
             let targets = instruction_targets(a, owner, ins, table)?;
             for (position, target) in targets.into_iter().enumerate() {
-                let (operation, constant_id, constant_slot, constant_path, literal_kind, relation) =
-                    match query {
-                        Query::Constant { id, selected } => {
-                            a.charge_work(1)?;
-                            if target.table != "consts" || target.index != selected.path[0] {
-                                continue;
-                            }
-                            let operation = match ins.op {
-                                Op::LOAD_CONST => "constant_load",
-                                Op::RETURN_CONST => "constant_return",
-                                Op::KW_NAMES => "keyword_names",
-                                _ => continue,
-                            };
-                            a.charge_work(id.len().saturating_add(selected.path.len()))?;
-                            let path_bytes = selected.path.iter().fold(
-                                selected.path.len().saturating_sub(1),
-                                |n, &i| {
-                                    n.saturating_add(if i == 0 {
-                                        1
-                                    } else {
-                                        i.ilog10() as usize + 1
-                                    })
-                                },
-                            );
-                            reserve(
-                                a,
-                                scan,
-                                256usize.saturating_add(id.len()).saturating_add(path_bytes),
-                            )?;
-                            (
-                                operation,
-                                Some((*id).to_owned()),
-                                Some(selected.path[0]),
-                                Some(selected.path.clone()),
-                                Some(selected.kind),
-                                Some(if selected.path.len() == 1 {
-                                    "direct_constant"
-                                } else {
-                                    "containing_constant"
-                                }),
-                            )
+                let (
+                    operation,
+                    constant_id,
+                    constant_slot,
+                    constant_path,
+                    literal_kind,
+                    relation,
+                    target_name,
+                ) = match query {
+                    Query::Constant { id, selected } => {
+                        a.charge_work(1)?;
+                        if target.table != "consts" || target.index != selected.path[0] {
+                            continue;
                         }
-                        Query::Name(name) => {
-                            let Some(operation) = operation(ins.op, position) else {
-                                continue;
-                            };
-                            let field = if target.table == "localsplus" {
-                                "localsplus_names"
+                        let operation = match ins.op {
+                            Op::LOAD_CONST => "constant_load",
+                            Op::RETURN_CONST => "constant_return",
+                            Op::KW_NAMES => "keyword_names",
+                            _ => continue,
+                        };
+                        a.charge_work(id.len().saturating_add(selected.path.len()))?;
+                        let path_bytes = selected.path.iter().fold(
+                            selected.path.len().saturating_sub(1),
+                            |n, &i| {
+                                n.saturating_add(if i == 0 { 1 } else { i.ilog10() as usize + 1 })
+                            },
+                        );
+                        reserve(
+                            a,
+                            scan,
+                            256usize.saturating_add(id.len()).saturating_add(path_bytes),
+                        )?;
+                        (
+                            operation,
+                            Some((*id).to_owned()),
+                            Some(selected.path[0]),
+                            Some(selected.path.clone()),
+                            Some(selected.kind),
+                            Some(if selected.path.len() == 1 {
+                                "direct_constant"
                             } else {
-                                target.table
-                            };
-                            let definition = a
-                                .field_definition(owner, field)
-                                .ok_or_else(|| invalid("missing name operand table"))?;
-                            let child = a.evidence.occurrences[definition].children[target.index];
-                            let definition = a.evidence.occurrences[child].definition;
-                            if !matches!(
-                                a.evidence.occurrences[definition].object.as_deref(),
-                                Some(PyObject::Str(_))
-                            ) {
-                                return Err(invalid("name operand does not identify a string"));
-                            }
-                            let length = a
-                                .payload(definition)
-                                .ok_or_else(|| invalid("name operand has no original payload"))?
-                                .len();
-                            let mut matched = length == name.len();
-                            if matched {
-                                for (i, byte) in name.bytes().enumerate() {
-                                    a.charge_work(1)?;
-                                    if a.payload(definition).unwrap()[i] != byte {
-                                        matched = false;
-                                        break;
+                                "containing_constant"
+                            }),
+                            None,
+                        )
+                    }
+                    Query::Name(_) | Query::NameFilter(_) => {
+                        let Some(operation) = operation(ins.op, position) else {
+                            continue;
+                        };
+                        let field = if target.table == "localsplus" {
+                            "localsplus_names"
+                        } else {
+                            target.table
+                        };
+                        let definition = a
+                            .field_definition(owner, field)
+                            .ok_or_else(|| invalid("missing name operand table"))?;
+                        let child = a.evidence.occurrences[definition].children[target.index];
+                        let definition = a.evidence.occurrences[child].definition;
+                        if !matches!(
+                            a.evidence.occurrences[definition].object.as_deref(),
+                            Some(PyObject::Str(_))
+                        ) {
+                            return Err(invalid("name operand does not identify a string"));
+                        }
+                        let length = a
+                            .payload(definition)
+                            .ok_or_else(|| invalid("name operand has no original payload"))?
+                            .len();
+                        let matched = match query {
+                            Query::Name(name) => {
+                                let mut equal = length == name.len();
+                                if equal {
+                                    for (i, byte) in name.bytes().enumerate() {
+                                        a.charge_work(1)?;
+                                        if a.payload(definition).unwrap()[i] != byte {
+                                            equal = false;
+                                            break;
+                                        }
                                     }
                                 }
+                                equal
                             }
-                            if !matched {
-                                continue;
+                            Query::NameFilter(filter) => {
+                                a.charge_work(length)?;
+                                // Surrogatepass payload is not valid UTF-8: never match a lossy replacement.
+                                std::str::from_utf8(a.payload(definition).unwrap())
+                                    .is_ok_and(|s| filter.matches(s))
                             }
-                            reserve(a, scan, 256)?;
-                            (operation, None, None, None, None, None)
+                            Query::Constant { .. } => unreachable!(),
+                        };
+                        if !matched {
+                            continue;
                         }
-                    };
+                        a.charge_work(length)?;
+                        reserve(a, scan, 256usize.saturating_add(length))?;
+                        let target_name = std::str::from_utf8(a.payload(definition).unwrap())
+                            .ok()
+                            .map(str::to_owned);
+                        (operation, None, None, None, None, None, target_name)
+                    }
+                };
                 scan.hits.push(Hit {
                     code_index: owner,
                     offset: ins.offset,
@@ -304,6 +332,7 @@ pub fn scan(
                     raw_operand: raw[ins.offset / 2].raw_arg,
                     operand: ins.has_arg.then_some(ins.arg),
                     target,
+                    target_name,
                     operation,
                     constant_id,
                     constant_slot,

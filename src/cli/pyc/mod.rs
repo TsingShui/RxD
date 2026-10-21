@@ -27,12 +27,8 @@ pub enum Command {
     /// Find explicit name or constant-occurrence references, with enclosing code IDs.
     Xref {
         input: PathBuf,
-        /// Exact name referenced by an instruction (`LOAD_NAME`, `LOAD_GLOBAL`, …).
-        #[arg(long, conflicts_with = "at", required_unless_present = "at")]
-        name: Option<String>,
-        /// The `at` a `strings` row prints: `const:0:3`.
-        #[arg(long)]
-        at: Option<String>,
+        #[command(flatten)]
+        target: refs::Target,
         #[arg(long)]
         within: Option<String>,
         #[arg(long, value_parser = parse_version)]
@@ -77,10 +73,10 @@ pub enum Command {
         #[command(flatten)]
         case: CaseArgs,
         /// Exact code name; not a substring.
-        #[arg(long, conflicts_with = "index")]
-        name: Option<String>,
         #[arg(long)]
-        index: Option<usize>,
+        name: Option<String>,
+        #[command(flatten)]
+        selector: Selector,
         #[command(flatten)]
         options: static_commands::Options,
     },
@@ -127,6 +123,9 @@ struct Output {
 
 impl std::io::Write for Output {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.bytes.len().saturating_add(bytes.len()) > budget().metadata_bytes {
+            return Err(std::io::Error::other("serialized PYC output byte limit"));
+        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -227,12 +226,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
     let command = match command {
         Command::Xref {
             input,
-            name,
-            at,
+            target,
             within,
             version,
             options,
-        } => return refs::run(input, name, at, within, version, options, perf),
+        } => return refs::run(input, target, within, version, options, perf),
         Command::Strings {
             input,
             version,
@@ -263,13 +261,16 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             filter,
             case,
             name,
-            index,
+            selector,
             options,
         } => {
-            let filter = filter
-                .as_deref()
-                .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
-            return static_commands::codes(input, version, filter, name, index, options, perf);
+            let query = static_commands::CodeQuery {
+                filter,
+                case_sensitive: case.sensitive(),
+                name,
+                selector,
+            };
+            return static_commands::codes(input, version, query, options, perf);
         }
         command => command,
     };
@@ -318,14 +319,20 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             object.insert("command".into(), json!("decompile"));
             let mut writer = Output { bytes: Vec::new() };
             serde_json::to_writer(&mut writer, &row)
-                .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
+                .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
             std::io::Write::write_all(&mut writer, b"\n")
-                .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
+                .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))?;
             Ok(writer.bytes)
         })?
     } else {
         result.source.into_bytes()
     };
+    if bytes.len() > budget().metadata_bytes {
+        return Err(Error::failure(
+            rxd_core::Failure::Resource,
+            "serialized PYC output bytes",
+        ));
+    }
     perf.counters.output_bytes = Some(bytes.len());
     perf.counters.records = Some(1);
     perf.measure("write", || {

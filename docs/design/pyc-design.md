@@ -50,7 +50,8 @@ Input must be a regular file; directories return `INVALID_INPUT` (exit 1) with e
 stdout and preserved `-o` target. Ceilings come only from the shared
 `rxd_core::Budget` table projected into the backend `Limits`; the CLI exposes no
 `--max-*` flag. Input 8 GiB (32-bit spans keep actual addressable content below 4 GiB),
-no record or output ceiling, work 1,000,000 and AST depth from the shared core limits; marshal
+work 1,000,000, serialized output bounded by the shared 128 MiB metadata budget,
+and AST depth from the shared core limits; marshal
 parsing/reference expansion 128 levels and 1,000,000 objects, cumulative bytes read/
 copied 128 MiB, long-to-decimal squared-digit work 16,777,216. Cycles are rejected
 immediately; shared objects cannot bypass object budgets by exponential expansion.
@@ -148,8 +149,11 @@ later single-code FETCH rejects an unreadable body.
 
 `-f/--filter` is a substring over the code name (folded unless `--case sensitive`) and `--name` matches
 the original UTF-8 name exactly, both preserving global indexes; zero matches is a
-complete empty result. `--index` missing is `INVALID_QUERY` (exit 2), and `--name`
-cannot be combined with `--index`. Marshal surrogatepass payloads keep raw bytes: valid
+complete empty result. `--at code:N | --from JSONL` selects an existing code row;
+there is no numeric `--index` flag. Coordinate, exact name and substring selectors
+AND together. A missing coordinate is `NOT_FOUND` (exit 2), validated before name
+filtering, not an empty result. Stream identity is checked against the same fixed
+analysis buffer used by the query. Marshal surrogatepass payloads keep raw bytes: valid
 UTF-8 metadata uses a string, otherwise text is null and corresponding `*_bytes` give
 lowercase payload hex; the lossy decompiler compatibility view is never used. Non-ASCII
 payloads for ASCII tags are rejected. Cycles/forward xref are rejected; FLAG_REF
@@ -159,8 +163,8 @@ stay separate.
 ### Codes schema v2
 
 ADR 0003 three-part JSONL: exactly one header, zero or more `record: code` sorted by
-global index, exactly one summary. Header query is `filter/name/index/version` (null
-when absent); detail is `analysis/python_version/code_count/instruction_validation`.
+global index, exactly one summary. Header query is `filter/case/name/at/version` (null
+when absent; case is `insensitive` or `sensitive`; `at` is the resolved stream anchor); detail is `analysis/python_version/code_count/instruction_validation`.
 Summary records/complete describe data records; detail is `code_count/analysis/
 instruction_validation`; analysis is always `metadata`.
 
@@ -192,8 +196,9 @@ null and reference false. Each incoming item has owner_id/constant_path/start/en
 alias_start/alias_end/reference.
 
 Static budgets project the shared table: input 8 GiB (32-bit spans keep actual
-addressable content below 4 GiB), entities 100,000, cumulative work 1,000,000, and no
-record or output ceiling. The CLI exposes no ceiling flag. Entities count every parsed
+addressable content below 4 GiB), cumulative work 1,000,000, and serialized output
+bounded by the shared 128 MiB metadata ceiling. Marshal's object and copy limits
+still bound enumerations; there is no separate CLI entity-count ceiling. The CLI exposes no ceiling flag. Entities count every parsed
 marshal occurrence (code, constants/names/localsplus entries, field objects; each alias
 occurrence counts 1). Work accumulates from the same parser
 into index/filtering: each occurrence, index/traversal visit, copied child handle,
@@ -322,7 +327,8 @@ rxd pyc get-code raw.marshal --at code:0 --version 3.12
 any enumerated module root, class body, function, lambda or comprehension code; a class
 body is code evidence, not a complete runtime class definition. `--at` takes the
 `code:<index>` a codes row prints; nothing is expanded, and an index past the table is
-`INVALID_QUERY` (exit 2). A `--from` stream from another input is `SOURCE_MISMATCH`. Missing readable body is `INVALID_INPUT`; readable empty bytecode differs from
+`NOT_FOUND` (exit 2). A malformed coordinate is `INVALID_QUERY`; a `--from` stream
+from another input is `SOURCE_MISMATCH`. Missing readable body is `INVALID_INPUT`; readable empty bytecode differs from
 unavailable.
 
 Default output is one schema-2 `code_view` JSON envelope without header/summary. Outer
@@ -426,18 +432,29 @@ are not scanned and no AST is built.
 ## Name references
 
 ```sh
-rxd pyc xref module.pyc --name marker
-rxd pyc xref module.pyc --name marker --within code:9
-rxd pyc xref graph.marshal --version 3.12 --name cell -o target/xref.jsonl
+rxd pyc xref module.pyc --kind name --at marker
+rxd pyc xref module.pyc --kind name -f MARK --within code:9
+rxd pyc xref graph.marshal --version 3.12 --kind name --at cell -o target/xref.jsonl
 ```
 
-`--name` and `--at` are mutually exclusive and exactly one is required. Name
-selection matches the original name payload against query UTF-8 bytes exactly, without
-substring, case-fold, Unicode normalization or replacement-character comparison. Empty
-names are allowed; ordinary zero hits exit 0 with header/summary records=0. The same
-format matrix is used. `--within` accepts the `code:<index>` coordinate a row prints;
-malformed or out-of-range selectors are `INVALID_QUERY` (exit 2), and a `--from` stream
-from another input is `SOURCE_MISMATCH`.
+Exactly one of `--at`, `--from`, or `-f/--filter` is required. `--kind name --at NAME`
+interprets the anchor as a literal name (not a coordinate) and compares the original
+payload against query UTF-8 bytes exactly. Empty names are allowed; `--case` does not
+alter exact anchors. `--kind name -f TEXT` searches name payloads with the shared
+substring rule, folding case unless `--case sensitive`. It never searches code-owner
+names or opcode names. Unrepresentable surrogatepass names are not matched via a
+lossy replacement, and names are never Unicode-normalized. Hits carry the actual
+matched UTF-8 `detail.target_name`, including for exact anchors; constant hits have
+that field null. A filter selecting multiple names still scans each body once.
+Empty filters match all representable names; ordinary zero hits return a complete
+empty stream. Constant content search remains `strings -f` followed by
+`xref --from`; `xref -f` supports only `--kind name`.
+
+`--within` accepts the `code:<index>` coordinate a row prints. Malformed scope is
+`INVALID_QUERY`, missing scope is `NOT_FOUND` (both exit 2). `--from` accepts a
+strings stream, infers a constant target, and rejects a contradictory name kind;
+its identity is checked against the same analysis buffer. A stream from another
+input is `SOURCE_MISMATCH`.
 With it, only that code body is scanned; without it, all
 distinct codes are scanned by global index and shared aliases are not rescanned. Same-name
 owners and multiple real instructions in one owner are retained, ordered by code index then
@@ -475,8 +492,8 @@ table operands and produce no name hit.
 
 ### Refs schema v2
 
-Header/reference/summary JSONL per ADR 0003. Header query: name/const_id/within/version
-(optional null); detail: analysis/python_version/code_count/scope/instruction_validation;
+Header/reference/summary JSONL per ADR 0003. Header query: at/kind/filter/case/within/version
+(optional null; kind=`name`/`constant`, case=`insensitive`/`sensitive`); detail: analysis/python_version/code_count/scope/instruction_validation;
 analysis=`explicit_name_references`; scope=`all_codes`/`selected_code`; instruction_
 validation=`scanned_scope`.
 
@@ -487,11 +504,12 @@ is the real half-open file range of the actual 2-byte instruction inside the ori
 bytecode **definition payload** (PYC includes
 the 16-byte header; raw starts at 0), excluding prefix/cache; shared bodies still use
 definition bytes; short TYPE_REF tokens/code-relative offsets are never file spans. Detail:
-code_index/offset/opcode/name/raw_operand/operand/target/operation/constant_id/
+code_index/offset/opcode/name/raw_operand/operand/target/target_name/operation/constant_id/
 constant_slot/constant_path/literal_kind/relation. name is the raw opcode's version-table
 name; raw_operand is the unexpanded byte; operand is the EXTENDED_ARG-folded value;
 offset is code-relative. Target is table/index/id/value_id with the same identities as
-get-code; query.name is the matched raw name.
+get-code; `target_name` is the matched raw name and `query.at` is the literal name
+only for exact name queries.
 
 Summary records are real hit count; complete only means the selected selector's explicit
 reference scan covered the selected scope, not source recovery or the get-code raw view.
@@ -512,7 +530,7 @@ AST entities. The per-code instruction ceiling is checked before decode. Work ac
 parser/index and charges actual decoder scans/raw projection, boundary construction/
 checks, each supported operand resolution, name candidate/actual byte comparisons, hit/
 diagnostic retention and serialization projection before expansion; it is not reset per
-code. Records budget covers retained hits and unsupported evidence; summary.records/
+code. The shared metadata ceiling bounds retained hits and unsupported evidence; summary.records/
 perf.records count only real hits. Output lower-bound guards run before appending
 evidence; a bounded serializer then limits all header/reference/summary/newlines, and an
 exact complete boundary may succeed. Budget/structure failures have no partial stdout and
@@ -522,6 +540,8 @@ do not replace output or modify input; failed perf preserves actual work/instruc
 
 ```sh
 rxd pyc xref module.pyc --at 'const:9:2.0'
+rxd pyc strings module.pyc -f marker -o target/strings.jsonl
+rxd pyc xref module.pyc --from target/strings.jsonl
 rxd pyc xref graph.marshal --version 3.12 --at "$CONST_AT" --within "$CODE_AT"
 ```
 
@@ -530,8 +550,10 @@ CONST_ID comes from a real strings row `at`, not a literal value. It accepts the
 against the header identity. Validation covers full input SHA-256 (full form only),
 backend, kind=const, an existing owner code, canonical decimal top-level slot and every
 path component. The path may traverse only tuple/frozenset and end at str/bytes;
-containers, code, other literal kinds, mutable containers, out-of-range, malformed IDs and
-full-form digest mismatches (`SOURCE_MISMATCH`) are rejected. The selected path is located from the
+containers, code, other literal kinds and mutable containers are outside the selected
+str/bytes profile (`INVALID_QUERY`). Malformed IDs are `INVALID_QUERY`; a canonical
+missing owner or path slot is `NOT_FOUND`, and a full-form digest mismatch is
+`SOURCE_MISMATCH`. Path syntax is validated before looking up an owner. The selected path is located from the
 same parser evidence definition/children; equal literals are not traversed and all shared
 aliases are not expanded; work scales with actual path depth. Shared payload keeps distinct
 owner/slot/path identity. `.pyc` and raw marshal compute full digest and file spans
@@ -558,7 +580,7 @@ in different slots/owners are not linked; multiple nested leaves in one containi
 share instruction evidence, but each query echoes only the selected occurrence. Ordering is
 code index then instruction offset.
 
-The common xref query retains name/const_id/within/version with absent keys null;
+The common xref query retains at/kind/filter/case/within/version with absent selectors null;
 constant header/summary detail.analysis=`explicit_constant_references`; the rest of the
 fixed schema is shared with name selectors. Summary/perf records count only real hits;
 unsupported evidence is counted separately under the same records budget. Unknown/
@@ -577,7 +599,7 @@ Control-flow deflattening, deobfuscation and decryption are permanent non-goals.
 `pyc_codes/strings/xref/get_code/decompile` reuse the fixed input/evidence/index and
 preserve native source/fallback/completeness. JSONL projects to header/records/summary;
 single FETCH keeps its original record. Unsolvable raw text, code IDs and original spans
-remain unchanged. The MCP `xref` tool preserves name/const selectors and within scope;
+remain unchanged. The MCP `xref` tool mirrors at/kind/filter selectors and within scope;
 resource limits map to input/entities/work/records/output/instructions where supported.
 
 Shared snapshot, quota, cancellation and complete-response rules are in the

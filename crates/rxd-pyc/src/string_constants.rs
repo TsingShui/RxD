@@ -98,14 +98,24 @@ pub fn resolve_id(analysis: &mut Analysis, id: &str) -> Result<SelectedConstant>
         ));
     }
     let owner = index(owner)?;
+    let mut path = Vec::new();
+    for value in encoded_path.split('.') {
+        analysis.charge_work(1)?;
+        path.push(index(value)?);
+    }
+    let missing = || {
+        Error::failure(
+            rxd_core::Failure::NotFound,
+            format!("no constant occurrence {id} in this input"),
+        )
+    };
     if owner >= analysis.codes.len() {
-        return Err(invalid());
+        return Err(missing());
     }
     let mut definition = analysis
         .field_definition(owner, "consts")
         .ok_or_else(invalid)?;
-    let mut path = Vec::new();
-    for value in encoded_path.split('.') {
+    for &slot in &path {
         analysis.charge_work(1)?;
         if !matches!(
             analysis.evidence.occurrences[definition].object.as_deref(),
@@ -113,13 +123,11 @@ pub fn resolve_id(analysis: &mut Analysis, id: &str) -> Result<SelectedConstant>
         ) {
             return Err(invalid());
         }
-        let slot = index(value)?;
         let child = *analysis.evidence.occurrences[definition]
             .children
             .get(slot)
-            .ok_or_else(invalid)?;
+            .ok_or_else(missing)?;
         definition = analysis.evidence.occurrences[child].definition;
-        path.push(slot);
     }
     let kind = match analysis.evidence.occurrences[definition].object.as_deref() {
         Some(PyObject::Str(_)) => "str",

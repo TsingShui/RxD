@@ -9,7 +9,7 @@ fn refs(path: &Path, name: &str, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["pyc", "xref"])
         .arg(path)
-        .args(["--name", name])
+        .args(["--kind", "name", "--at", name])
         .args(args)
         .output()
         .unwrap()
@@ -276,7 +276,10 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             "detail",
         ],
     );
-    assert_js_keys(&stream[0]["query"], &["name", "at", "within", "version"]);
+    assert_js_keys(
+        &stream[0]["query"],
+        &["at", "kind", "filter", "case", "within", "version"],
+    );
     assert_js_keys(
         &stream[0]["detail"],
         &[
@@ -288,9 +291,10 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         ],
     );
     assert!(stream[0]["query"]["within"].is_null());
-    assert!(stream[0]["query"]["at"].is_null());
+    assert!(stream[0]["query"]["filter"].is_null());
+    assert_eq!(stream[0]["query"]["kind"], "name");
     assert!(stream[0]["query"]["version"].is_null());
-    assert_eq!(stream[0]["query"]["name"], "value");
+    assert_eq!(stream[0]["query"]["at"], "value");
     assert_eq!(stream[0]["command"], "xref");
     assert_eq!(stream[0]["schema_version"], 2);
     for hit in &stream[1..stream.len() - 1] {
@@ -328,6 +332,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
                 "raw_operand",
                 "operand",
                 "target",
+                "target_name",
                 "operation",
                 "constant_id",
                 "constant_slot",

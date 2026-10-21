@@ -374,9 +374,9 @@ fn pyc_final_versions_trace_every_explicit_name_and_packed_target_to_fetch() {
             }
             let mut fetched = std::collections::BTreeMap::<usize, Value>::new();
             for name in names {
-                let all = rows(&command("xref", &path, &["--name", name]));
-                assert_eq!(all[0]["query"]["name"], name);
-                assert!(all[0]["query"]["at"].is_null());
+                let all = rows(&command("xref", &path, &["--kind", "name", "--at", name]));
+                assert_eq!(all[0]["query"]["at"], name);
+                assert!(all[0]["query"]["filter"].is_null());
                 assert_eq!(all.last().unwrap()["complete"], true);
                 let hits: Vec<_> = all.iter().filter(|r| r["record"] == "reference").collect();
                 let mut wanted = Vec::new();
@@ -465,7 +465,7 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                 Vec::new()
             };
             let mut name_args = base_args.clone();
-            name_args.extend(["--name", "cell"]);
+            name_args.extend(["--kind", "name", "--at", "cell"]);
             let named = rows(&command("xref", &path, &name_args));
             assert_eq!(named.last().unwrap()["complete"], true);
             assert!(named.last().unwrap()["records"].as_u64().unwrap() > 0);
@@ -857,7 +857,9 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
                         "xref",
                         &path,
                         &[
-                            "--name",
+                            "--kind",
+                            "name",
+                            "--at",
                             "no-hit",
                             "--version",
                             minor,
@@ -899,7 +901,7 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
         let refs = rows(&command(
             "xref",
             &path,
-            &["--name", "no-hit", "--version", minor],
+            &["--kind", "name", "--at", "no-hit", "--version", minor],
         ));
         assert_eq!(refs.last().unwrap()["complete"], false);
         assert_eq!(refs.last().unwrap()["detail"]["unsupported_count"], 1);
@@ -942,7 +944,7 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
             for (cmd, args) in [
                 ("codes", vec![]),
                 ("strings", vec![]),
-                ("xref", vec!["--name", "none"]),
+                ("xref", vec!["--kind", "name", "--at", "none"]),
                 ("get-code", vec!["--at", id]),
             ] {
                 let mut args = args;
@@ -979,7 +981,14 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
             command(
                 "xref",
                 &path,
-                &["--name", "arg", "--within", &format!("{stale}:extra")],
+                &[
+                    "--kind",
+                    "name",
+                    "--at",
+                    "arg",
+                    "--within",
+                    &format!("{stale}:extra"),
+                ],
             ),
             1,
             "SOURCE_MISMATCH",
@@ -987,7 +996,7 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
         let zero = rows(&command(
             "xref",
             &original,
-            &["--name", "no-exact-name-matches"],
+            &["--kind", "name", "--at", "no-exact-name-matches"],
         ));
         assert_eq!(zero.last().unwrap()["records"], 0);
         assert_eq!(zero.last().unwrap()["complete"], true);
@@ -1122,7 +1131,7 @@ fn pyc_final_versions_enforce_every_query_budget_at_its_actual_boundary_atomical
         for (cmd, args) in [
             ("codes", vec![]),
             ("strings", vec![]),
-            ("xref", vec!["--name", "arg"]),
+            ("xref", vec!["--kind", "name", "--at", "arg"]),
             ("get-code", vec!["--at", at]),
         ] {
             let mut instrumented = args;
@@ -1238,7 +1247,11 @@ fn pyc_final_versions_navigate_pinned_actual_email_policy_modules_offline() {
                 code["code_hex"].as_str().unwrap().len() / 2
             );
         }
-        let refs = rows(&command("xref", &path, &["--name", "value"]));
+        let refs = rows(&command(
+            "xref",
+            &path,
+            &["--kind", "name", "--at", "value"],
+        ));
         assert!(refs.last().unwrap()["records"].as_u64().unwrap() > 0);
         assert_eq!(refs.last().unwrap()["complete"], true);
         let hit = &refs[1];

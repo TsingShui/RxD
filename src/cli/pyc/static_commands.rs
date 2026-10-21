@@ -218,20 +218,46 @@ fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
         .map_err(|error| Error::new("RESOURCE_LIMIT", error.to_string()))
 }
 
+pub struct CodeQuery {
+    pub filter: Option<String>,
+    pub case_sensitive: bool,
+    pub name: Option<String>,
+    pub selector: super::super::xref::Selector,
+}
+
 pub fn codes(
     input: PathBuf,
     version: Option<(u8, u8)>,
-    filter: Option<rxd_core::filter::Contains>,
-    name: Option<String>,
-    index: Option<usize>,
+    query: CodeQuery,
     options: Options,
     perf: &mut Perf,
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
     let limits = options.limits();
     let mut analysis = Analysis::load(&input, version, limits, perf)?;
+    let at = if query.selector.at.is_some() || query.selector.from.is_some() {
+        Some(
+            query
+                .selector
+                .resolve(
+                    &["code"],
+                    super::super::xref::Expect::Content(&analysis.source_id),
+                )
+                .map_err(super::super::classify)?,
+        )
+    } else {
+        None
+    };
+    let filter = query
+        .filter
+        .as_deref()
+        .map(|f| rxd_core::filter::Contains::new(f, query.case_sensitive));
     let selected = perf.measure("query", || {
-        analysis.select_codes(filter.as_ref(), name.as_deref(), index)
+        let index = at
+            .as_deref()
+            .map(|at| analysis.parse_code_id(at))
+            .transpose()?;
+        analysis.select_codes(filter.as_ref(), query.name.as_deref(), index)
     });
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;
@@ -240,7 +266,7 @@ pub fn codes(
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = Output { bytes: Vec::new() };
         append(&mut writer,&rxd_core::envelope::header("pyc","codes",Some(&analysis.source_id),Some(analysis.bytes.len()),
-            json!({"filter":filter.as_ref().map(|filter| filter.text()),"name":name,"index":index,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
+            json!({"filter":query.filter,"case":if query.case_sensitive {"sensitive"} else {"insensitive"},"name":query.name,"at":at,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
             json!({"analysis":"metadata","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
         for &index in &selected { append(&mut writer,&record(&analysis,index)?)?; }
         append(&mut writer,&rxd_core::envelope::summary(selected.len(),true,

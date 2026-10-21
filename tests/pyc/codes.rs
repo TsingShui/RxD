@@ -100,7 +100,7 @@ fn pyc_codes_preserves_spans_parents_filters_and_path_independent_ids() {
     assert_eq!(same.len(), 4);
     assert_eq!(
         same[0]["query"],
-        serde_json::json!({"filter":null,"name":"same","index":null,"version":null})
+        serde_json::json!({"filter":null,"case":"insensitive","name":"same","at":null,"version":null})
     );
     for row in &same[1..3] {
         assert_eq!(
@@ -112,12 +112,11 @@ fn pyc_codes_preserves_spans_parents_filters_and_path_independent_ids() {
     assert_eq!(empty.len(), 2);
     assert_eq!(empty[1]["records"], 0);
     assert_eq!(empty[1]["complete"], true);
-    let selected = rows(&codes(&path, &["--index", "4"]));
+    let selected = rows(&codes(&path, &["--at", "code:4"]));
     assert_eq!(selected[1], all[5]);
-    failure(codes(&path, &["--index", "99999"]), 2, "INVALID_QUERY");
-    let conflict = codes(&path, &["--index", "0", "--name", "same"]);
-    assert_eq!(conflict.status.code(), Some(2));
-    assert!(conflict.stdout.is_empty());
+    failure(codes(&path, &["--at", "code:99999"]), 2, "NOT_FOUND");
+    let intersected = rows(&codes(&path, &["--at", "code:0", "--name", "same"]));
+    assert_eq!(intersected.len(), 2);
     let raw = rows(&codes(&corpus("graph.marshal"), &["--version", "3.12"]));
     assert_eq!(raw[0]["query"]["version"], "3.12");
     for (raw, pyc) in raw[1..raw.len() - 1].iter().zip(&all[1..all.len() - 1]) {
@@ -421,9 +420,9 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
     let dest = dir.path().join("keep.jsonl");
     fs::write(&dest, b"keep").unwrap();
     failure(
-        codes(&path, &["--index", "99999", "-o", dest.to_str().unwrap()]),
+        codes(&path, &["--at", "code:99999", "-o", dest.to_str().unwrap()]),
         2,
-        "INVALID_QUERY",
+        "NOT_FOUND",
     );
     assert_eq!(fs::read(&dest).unwrap(), b"keep");
 }

@@ -53,7 +53,7 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
         assert_eq!(hits.len(), expected.len());
         assert_eq!(stream.last().unwrap()["complete"], true);
         assert_eq!(stream[0]["query"]["at"], id);
-        assert!(stream[0]["query"]["name"].is_null());
+        assert_eq!(stream[0]["query"]["kind"], "constant");
         for (hit, expected) in hits.iter().zip(expected) {
             assert_eq!(hit["context_at"], literal["context_at"]);
             assert_eq!(hit["detail"]["constant_id"], id);
@@ -327,10 +327,13 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     assert_eq!(all[1..all.len() - 1], scoped[1..scoped.len() - 1]);
     assert_eq!(all[0]["detail"]["scope"], "constant_owner");
     assert_eq!(scoped[0]["detail"]["scope"], "selected_code");
-    assert_js_keys(&all[0]["query"], &["name", "at", "within", "version"]);
+    assert_js_keys(
+        &all[0]["query"],
+        &["at", "kind", "filter", "case", "within", "version"],
+    );
     assert_eq!(all[0]["query"]["at"], id);
     assert_eq!(all[0]["query"]["version"], "3.12");
-    assert!(all[0]["query"]["name"].is_null());
+    assert_eq!(all[0]["query"]["kind"], "constant");
     assert!(all[0]["query"]["within"].is_null());
     assert_eq!(all[0]["detail"]["analysis"], "explicit_constant_references");
     assert_eq!(
@@ -347,6 +350,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
             "raw_operand",
             "operand",
             "target",
+            "target_name",
             "operation",
             "constant_id",
             "constant_slot",
@@ -368,10 +372,9 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let _ = &digest;
     // A coordinate is `const:<owner>:<path>`; there is no hash to forge or strip.
     for invalid in [
-        id.replace(":const:", ":code:"),
+        id.replacen("const:", "code:", 1),
         format!("{id}:0"),
         "const:01:0".to_owned(),
-        "const:99:0".to_owned(),
         "const:0:".to_owned(),
         "const:0:00".to_owned(),
         "const:0:2.01".to_owned(),
@@ -380,8 +383,6 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         "const:0:+0".to_owned(),
         "const:0:０".to_owned(),
         "const:0:99999999999999999999999".to_owned(),
-        "const:0:99".to_owned(),
-        "const:0:2.9".to_owned(),
         "const:0:0.0".to_owned(),
         "const:0:2".to_owned(),
         "const:0:6".to_owned(),
@@ -390,6 +391,13 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
             invoke("xref", &path, &["--version", "3.12", "--at", &invalid]),
             2,
             "INVALID_QUERY",
+        );
+    }
+    for missing in ["const:99:0", "const:0:99", "const:0:2.9"] {
+        failure(
+            invoke("xref", &path, &["--version", "3.12", "--at", missing]),
+            2,
+            "NOT_FOUND",
         );
     }
     failure(
@@ -404,7 +412,16 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
 
     for args in [
         vec!["--version", "3.12"],
-        vec!["--version", "3.12", "--at", id, "--name", "x"],
+        vec![
+            "--version",
+            "3.12",
+            "--at",
+            id,
+            "--kind",
+            "name",
+            "--at",
+            "x",
+        ],
     ] {
         let failed = invoke("xref", &path, &args);
         assert_eq!(failed.status.code(), Some(2));
@@ -438,9 +455,10 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let names = rows(&invoke(
         "xref",
         &path,
-        &["--version", "3.12", "--name", "x"],
+        &["--version", "3.12", "--kind", "name", "--at", "x"],
     ));
-    assert!(names[0]["query"]["at"].is_null());
+    assert_eq!(names[0]["query"]["at"], "x");
+    assert_eq!(names[0]["query"]["kind"], "name");
 }
 
 fn perf_row(output: &Output) -> Value {

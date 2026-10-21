@@ -37,8 +37,15 @@ fn assert_record(row: &Value) {
     assert!(row["parent_at"].is_null());
     let fields: &[&str] = match row["record"].as_str().unwrap() {
         "type" => &["type_index", "params", "results"],
-        "import" => &["module", "name", "kind", "func_index", "type_index"],
-        "export" => &["name", "kind", "index"],
+        "import" => &[
+            "module",
+            "name",
+            "kind",
+            "func_index",
+            "type_index",
+            "target_at",
+        ],
+        "export" => &["name", "kind", "index", "target_at"],
         "function" => &[
             "func_index",
             "type_index",
@@ -173,6 +180,12 @@ fn wasm_jsonl(output: &Output) -> Vec<Value> {
         &header["detail"],
         &["analysis", "imported_funcs", "total_funcs"],
     );
+    let query_keys: &[&str] = match header["command"].as_str().unwrap() {
+        "functions" => &["at", "name", "filter", "case"],
+        "xref" => &["at", "kind", "filter", "case"],
+        _ => &["filter", "case"],
+    };
+    assert_keys(&header["query"], query_keys);
     for row in &rows[1..rows.len() - 1] {
         assert_record(row);
     }
@@ -215,7 +228,7 @@ fn records_of(rows: &[Value], record: &str) -> Vec<Value> {
 
 /// The `at` a `functions` row prints, which is exactly what `--at` accepts.
 fn func_at(path: &Path, index: u64) -> String {
-    wasm_jsonl(&run("functions", path, &["--func", &index.to_string()]))
+    wasm_jsonl(&run("functions", path, &["--at", &format!("func:{index}")]))
         .into_iter()
         .find(|row| row["record"] == "function")
         .unwrap_or_else(|| panic!("missing function {index}"))["at"]
@@ -395,6 +408,7 @@ fn wasm_imported_function_is_enumerated_but_not_a_defined_function() {
         .expect("imported function record");
     assert_eq!(func_import["at"], "import:0");
     assert_eq!(func_import["detail"]["func_index"], 0);
+    assert_eq!(func_import["detail"]["target_at"], "func:0");
     assert_eq!(func_import["detail"]["module"], "env");
     assert_eq!(func_import["detail"]["name"], "log");
     // No defined-function record carries index 0.
@@ -409,11 +423,11 @@ fn wasm_imported_function_is_enumerated_but_not_a_defined_function() {
 #[test]
 fn wasm_functions_select_by_exact_index_name_and_filter() {
     let path = input();
-    let by_index = wasm_jsonl(&run("functions", &path, &["--func", "1"]));
+    let by_index = wasm_jsonl(&run("functions", &path, &["--at", "func:1"]));
     let functions = records_of(&by_index, "function");
     assert_eq!(functions.len(), 1);
     assert_eq!(functions[0]["detail"]["func_index"], 1);
-    assert_eq!(by_index[0]["query"]["func"], 1);
+    assert_eq!(by_index[0]["query"]["at"], "func:1");
 
     let by_name = wasm_jsonl(&run("functions", &path, &["--name", "sum"]));
     let named = records_of(&by_name, "function");
@@ -467,6 +481,125 @@ fn wasm_xref_rows_carry_the_caller_coordinate_and_target() {
         // The caller coordinate a row prints is directly fetchable.
         let caller = get_raw(&path, r["context_at"].as_str().unwrap());
         assert_eq!(caller["detail"]["func"]["func_index"], 2);
+    }
+}
+
+#[test]
+fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
+    let path = input();
+    let exact = records_of(
+        &wasm_jsonl(&run("xref", &path, &["--at", "func:1"])),
+        "reference",
+    );
+    let folded = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-f", "SUM"]));
+    assert_eq!(records_of(&folded, "reference"), exact);
+    assert_eq!(folded[0]["query"]["case"], "insensitive");
+    let strict = wasm_jsonl(&run(
+        "xref",
+        &path,
+        &["--kind", "function", "-f", "SUM", "--case", "sensitive"],
+    ));
+    assert!(records_of(&strict, "reference").is_empty());
+    // The caller is run, but references to sum must not match a caller-name search.
+    let callers = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-f", "run"]));
+    assert!(records_of(&callers, "reference").is_empty());
+    let imports = wasm_jsonl(&run(
+        "xref",
+        &path,
+        &["--kind", "function", "-f", "ENV.LOG"],
+    ));
+    let imported = records_of(&imports, "reference");
+    assert_eq!(imported.len(), 1);
+    assert_eq!(imported[0]["detail"]["target"], "func:0");
+    let all = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-f", ""]));
+    let all_refs = records_of(&all, "reference");
+    assert_eq!(all_refs.len(), exact.len() + imported.len());
+    assert_eq!(all_refs[0], imported[0]);
+    assert_eq!(&all_refs[1..], exact.as_slice());
+    failure(run("xref", &path, &["-f", "sum"]), 2, "--kind");
+    failure(
+        run(
+            "xref",
+            &path,
+            &["--at", "func:1", "-f", "sum", "--kind", "function"],
+        ),
+        2,
+        "cannot be used",
+    );
+    let wrong = run("xref", &path, &["--at", "func:1", "--kind", "type"]);
+    assert!(String::from_utf8_lossy(&wrong.stderr).contains("type"));
+    assert!(String::from_utf8_lossy(&wrong.stderr).contains("function"));
+    failure(wrong, 2, "INVALID_QUERY");
+    failure(run("xref", &path, &["--at", "func:9999"]), 2, "NOT_FOUND");
+    for at in ["func:+1", "func:01", "func:-1", "type:0"] {
+        failure(run("xref", &path, &["--at", at]), 2, "INVALID_QUERY");
+    }
+}
+
+#[test]
+fn wasm_function_streams_are_content_bound_and_fail_atomically() {
+    let path = input();
+    let dir = tempfile::tempdir().unwrap();
+    let stream = dir.path().join("functions.jsonl");
+    let functions = run("functions", &path, &["--name", "sum"]);
+    success(&functions);
+    fs::write(&stream, &functions.stdout).unwrap();
+    for command in ["functions", "xref"] {
+        let from = wasm_jsonl(&run(command, &path, &["--from", stream.to_str().unwrap()]));
+        let direct = wasm_jsonl(&run(command, &path, &["--at", "func:1"]));
+        assert_eq!(from, direct);
+    }
+    let fetched = run("get-function", &path, &["--from", stream.to_str().unwrap()]);
+    success(&fetched);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fetched.stdout).unwrap()["at"],
+        "func:1"
+    );
+
+    // Change only a name byte: valid module, identical size, different identity.
+    let mut changed = fs::read(&path).unwrap();
+    let pos = changed.windows(3).rposition(|s| s == b"sum").unwrap();
+    changed[pos] = b'S';
+    let changed_path = dir.path().join("changed.wasm");
+    fs::write(&changed_path, &changed).unwrap();
+    success(&run("functions", &changed_path, &[]));
+    let destination = dir.path().join("keep.jsonl");
+    for command in ["functions", "xref", "get-function"] {
+        fs::write(&destination, b"keep").unwrap();
+        failure(
+            run(
+                command,
+                &changed_path,
+                &[
+                    "--from",
+                    stream.to_str().unwrap(),
+                    "-o",
+                    destination.to_str().unwrap(),
+                ],
+            ),
+            1,
+            "SOURCE_MISMATCH",
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"keep");
+    }
+}
+
+#[test]
+fn wasm_exports_link_to_function_bodies_without_reassembling_coordinates() {
+    let path = input();
+    let exports = wasm_jsonl(&run("exports", &path, &[]));
+    let functions: Vec<_> = records_of(&exports, "export")
+        .into_iter()
+        .filter(|e| e["detail"]["kind"] == "func")
+        .collect();
+    assert!(!functions.is_empty());
+    for export in functions {
+        let at = export["detail"]["target_at"].as_str().unwrap();
+        let view = get_raw(&path, at);
+        assert_eq!(
+            view["detail"]["func"]["func_index"],
+            export["detail"]["index"]
+        );
     }
 }
 
@@ -546,13 +679,20 @@ fn wasm_listings_expose_no_budget_flags() {
 }
 
 #[test]
-fn wasm_unmatched_selector_is_not_an_error() {
+fn wasm_coordinates_validate_existence_before_name_filters() {
     let path = input();
     // Index 0 is an imported function with no code body; scanning callers is valid.
     success(&run("xref", &path, &["--at", "func:0"]));
-    // Out-of-range function index for a listing selector yields an empty catalog.
-    let rows = wasm_jsonl(&run("functions", &path, &["--func", "9999"]));
+    // A content search may be empty; a coordinate must name a real listed row.
+    let rows = wasm_jsonl(&run("functions", &path, &["--name", "missing"]));
     assert!(records_of(&rows, "function").is_empty());
+    for at in ["func:0", "func:9999"] {
+        failure(
+            run("functions", &path, &["--at", at, "-f", "missing"]),
+            2,
+            "NOT_FOUND",
+        );
+    }
 }
 
 #[test]
@@ -575,7 +715,7 @@ fn wasm_get_expands_short_coordinates_and_rejects_foreign_hashes() {
     failure(
         run("get-function", &path, &["--at", "func:9999"]),
         2,
-        "INVALID_QUERY",
+        "NOT_FOUND",
     );
     // A full id naming different content can never be expanded into this module.
     failure(
@@ -590,7 +730,7 @@ fn wasm_get_expands_short_coordinates_and_rejects_foreign_hashes() {
     // Malformed coordinates are rejected, never guessed.
     failure(
         run("get-function", &path, &["--at", "bogus"]),
-        1,
+        2,
         "INVALID_QUERY",
     );
     // A coordinate of another kind is not a function.

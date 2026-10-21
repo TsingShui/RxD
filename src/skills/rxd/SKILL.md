@@ -23,7 +23,7 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 | Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-f … --kind string` or `--from` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref` / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
-| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row) or `--name`, `get-code --at`, whole-module `decompile` |
+| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at/--from` (a `strings` row), `xref --kind name --at NAME/-f TEXT`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
@@ -192,14 +192,16 @@ explicit fallback information; do not report fallback IL as reconstructed C#.
 ```sh
 rxd wasm functions module.wasm -f hello
 rxd wasm strings module.wasm -f hello
-rxd wasm xref module.wasm --func "$FUNCTION_INDEX"
+rxd wasm xref module.wasm --at "$FUNCTION_AT"
+rxd wasm xref module.wasm --kind function -f hello
 rxd wasm get-function module.wasm --at "$CALLER_AT"
 rxd wasm get-function module.wasm --at "$CALLER_AT" --raw
 ```
 
 Each listing emits one kind only: `types`, `imports`, `exports`, `functions`,
 `tables`, `memories`, `globals`, `data`, `elements`, `strings`. Select the merged
-function index from `functions`, then use the caller coordinate in `xref`'s
+function coordinate from `functions` (or `detail.target_at` from exports/imports),
+then use the caller coordinate in `xref`'s
 `context_at`. Strings inventory data/name sections; it does not prove
 string-to-code ownership. `xref` reports direct calls and `ref.func`; indirect
 calls remain unresolved.
@@ -215,7 +217,8 @@ rxd pyc codes module.pyc -f token
 rxd pyc strings module.pyc -f Authorization
 rxd pyc xref module.pyc --at "$CONSTANT_AT"
 rxd pyc get-code module.pyc --at "$CODE_AT"
-rxd pyc xref module.pyc --name token --within "$CODE_AT"
+rxd pyc xref module.pyc --kind name --at token --within "$CODE_AT"
+rxd pyc xref module.pyc --kind name -f token
 rxd pyc decompile module.pyc --json
 ```
 

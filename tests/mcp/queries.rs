@@ -1172,7 +1172,7 @@ fn mcp_python_navigation_preserves_code_tables_and_source_completeness() {
         ("pyc_codes", json!({"name":"Greeter"})),
         ("pyc_strings", json!({"filter":""})),
         ("pyc_strings", json!({"filter_hex":"47"})),
-        ("pyc_xref", json!({"name":"print"})),
+        ("pyc_xref", json!({"kind":"name","at":"print"})),
         ("pyc_get_code", json!({"at":code["at"]})),
         ("pyc_decompile", json!({})),
     ] {

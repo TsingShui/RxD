@@ -53,9 +53,9 @@ pub enum Command {
     Functions {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// Keep only the function at this merged function index.
-        #[arg(long = "func")]
-        func: Option<u32>,
+        /// Select a defined function by its coordinate or a prior function stream.
+        #[command(flatten)]
+        selector: Selector,
         /// Keep only functions whose name-section label matches exactly.
         /// Exact name-section label; not a substring.
         #[arg(long)]
@@ -144,9 +144,16 @@ pub enum Command {
     Xref {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
-        /// The `at` a `functions` row prints: `func:42`.
+        #[command(flatten)]
+        selector: Selector,
+        /// Substring over the target function label; never caller names.
+        #[arg(short, long, requires = "kind", conflicts_with_all = ["at", "from"])]
+        filter: Option<String>,
+        /// Only function references are supported; inferred for --at/--from.
         #[arg(long)]
-        at: String,
+        kind: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
         #[command(flatten)]
         options: Options,
     },
@@ -221,8 +228,9 @@ impl Command {
             | Self::Globals { case, .. }
             | Self::Data { case, .. }
             | Self::Elements { case, .. }
-            | Self::Strings { case, .. } => case.sensitive(),
-            Self::Xref { .. } | Self::Get { .. } => false,
+            | Self::Strings { case, .. }
+            | Self::Xref { case, .. } => case.sensitive(),
+            Self::Get { .. } => false,
         }
     }
 
@@ -237,8 +245,9 @@ impl Command {
             | Self::Globals { filter, .. }
             | Self::Data { filter, .. }
             | Self::Elements { filter, .. }
-            | Self::Strings { filter, .. } => filter.as_deref(),
-            Self::Xref { .. } | Self::Get { .. } => None,
+            | Self::Strings { filter, .. }
+            | Self::Xref { filter, .. } => filter.as_deref(),
+            Self::Get { .. } => None,
         }
     }
 
@@ -342,6 +351,90 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Resolve identity anchors before filtering: a nonexistent coordinate is never
+    // disguised as a successful empty listing. The Module owns the checked bytes.
+    let selected_function = if let Command::Functions { selector, .. } = &command {
+        if selector.at.is_some() || selector.from.is_some() {
+            let at = selector.resolve(&["function"], Expect::Content(&module.source_id))?;
+            let index = module.function_index_at(&at)?;
+            anyhow::ensure!(
+                index >= module.imported_func_count(),
+                rxd_core::Error::failure(
+                    rxd_core::Failure::NotFound,
+                    format!("no defined function row for func:{index}")
+                )
+            );
+            Some(index)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let mut query = command_query(&command);
+    let reference_targets = if let Command::Xref {
+        selector,
+        filter,
+        kind,
+        ..
+    } = &command
+    {
+        if let Some(filter) = filter {
+            anyhow::ensure!(
+                kind.as_deref() == Some("function"),
+                rxd_core::Error::failure(
+                    rxd_core::Failure::Query,
+                    "xref filter requires --kind function"
+                )
+            );
+            let needle = rxd_core::filter::Contains::new(filter, command.case_sensitive());
+            let mut targets = Vec::new();
+            for import in &module.imports {
+                if let Some(index) = import.func_index
+                    && needle.matches(&format!("{}.{}", import.module, import.name))
+                {
+                    targets.push(index);
+                }
+            }
+            targets.extend(
+                module
+                    .functions
+                    .iter()
+                    .filter(|f| {
+                        needle.matches(
+                            f.name
+                                .as_deref()
+                                .unwrap_or(&coordinate("func", f.func_index)),
+                        )
+                    })
+                    .map(|f| f.func_index),
+            );
+            Some(targets)
+        } else {
+            let at = selector.resolve(&["function"], Expect::Content(&module.source_id))?;
+            let index = module.function_index_at(&at)?;
+            anyhow::ensure!(
+                kind.as_deref().is_none_or(|k| k == "function"),
+                rxd_core::Error::failure(
+                    rxd_core::Failure::Query,
+                    format!(
+                        "--kind {} contradicts function coordinate {}",
+                        kind.as_deref().unwrap_or(""),
+                        at
+                    )
+                )
+            );
+            query["at"] = json!(at);
+            query["kind"] = json!("function");
+            Some(vec![index])
+        }
+    } else {
+        None
+    };
+    if let Some(index) = selected_function {
+        query["at"] = json!(coordinate("func", index));
+    }
+
     append(
         &mut output,
         &header(
@@ -349,7 +442,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             command.name(),
             Some(&module.source_id),
             Some(module.file_bytes),
-            command_query(&command),
+            query,
             json!({
                 "analysis": "metadata",
                 "imported_funcs": module.imported_func_count(),
@@ -384,8 +477,8 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
             &mut output,
             &mut records,
         )?,
-        Command::Functions { func, name, .. } => emit_rows(
-            function_rows(&module, *func, name.as_deref()),
+        Command::Functions { name, .. } => emit_rows(
+            function_rows(&module, selected_function, name.as_deref()),
             filter,
             command.case_sensitive(),
             &mut output,
@@ -436,11 +529,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
                 &mut records,
             )?;
         }
-        Command::Xref { at, .. } => {
-            // The coordinate names one function in the index space, which is what call
-            // operands carry; it is not the position of the body in the code section.
-            let target = module.function_index_at(at)?;
-            let references = perf.measure("xref", || rxd_wasm::refs(&module, target))?;
+        Command::Xref { .. } => {
+            // Multi-target content search scans each body once, never once per target.
+            let references = perf.measure("xref", || {
+                rxd_wasm::refs(&module, reference_targets.as_deref().unwrap())
+            })?;
             for reference in references {
                 let mut detail = Map::new();
                 detail.insert(
@@ -481,11 +574,20 @@ fn execute_inner(command: Command, perf: &mut Perf) -> anyhow::Result<()> {
 /// The `query` echo: the selectors this command actually took.
 fn command_query(command: &Command) -> Value {
     match command {
-        Command::Functions { func, name, .. } => {
-            json!({"func": func, "name": name, "filter": command.filter()})
+        Command::Functions { selector, name, .. } => {
+            json!({"at": selector.at, "name": name, "filter": command.filter(), "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
         }
-        Command::Xref { at, .. } => json!({"at": at}),
-        _ => json!({"filter": command.filter()}),
+        Command::Xref {
+            selector,
+            kind,
+            filter,
+            ..
+        } => {
+            json!({"at": selector.at, "kind": kind, "filter": filter, "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
+        }
+        _ => {
+            json!({"filter": command.filter(), "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
+        }
     }
 }
 
@@ -574,7 +676,8 @@ fn import_rows(module: &Module) -> Vec<Row> {
                 "name": import.name,
                 "kind": import.kind,
                 "func_index": import.func_index,
-                "type_index": import.type_index
+                "type_index": import.type_index,
+                "target_at": import.func_index.map(|i| coordinate("func", i))
             })
             .as_object()
             .unwrap()
@@ -594,7 +697,7 @@ fn export_rows(module: &Module) -> Vec<Row> {
             start: None,
             end: None,
             label: export.name.clone(),
-            detail: json!({"name":export.name,"kind":export.kind,"index":export.index})
+            detail: json!({"name":export.name,"kind":export.kind,"index":export.index,"target_at":coordinate(export.kind, export.index)})
                 .as_object()
                 .unwrap()
                 .clone(),
@@ -798,6 +901,11 @@ fn push_limited(output: &mut Vec<u8>, records: &mut usize, value: &Value) -> any
 
 fn append(output: &mut Vec<u8>, value: &Value) -> anyhow::Result<()> {
     let bytes = serde_json::to_vec(value)?;
+    anyhow::ensure!(
+        output.len().saturating_add(bytes.len()).saturating_add(1)
+            <= rxd_core::Budget::default().metadata_bytes,
+        rxd_core::Error::failure(rxd_core::Failure::Resource, "serialized WASM output bytes")
+    );
     output.extend_from_slice(&bytes);
     output.push(b'\n');
     Ok(())

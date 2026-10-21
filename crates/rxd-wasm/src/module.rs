@@ -433,22 +433,37 @@ impl Module {
                 .bytes()
                 .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         {
-            return Err(anyhow::anyhow!(
-                "INVALID_QUERY: malformed or unsupported WASM coordinate"
-            ));
+            return Err(rxd_core::Error::failure(
+                rxd_core::Failure::Query,
+                "malformed or unsupported WASM coordinate",
+            )
+            .into());
         }
         if parts[2] != self.source_id {
-            return Err(anyhow::anyhow!(
-                "SOURCE_MISMATCH: coordinate belongs to different source content"
-            ));
+            return Err(rxd_core::Error::failure(
+                rxd_core::Failure::Mismatch,
+                "coordinate belongs to different source content",
+            )
+            .into());
         }
         ensure!(
             parts[3] == "func",
-            "INVALID_QUERY: --at requires a function coordinate"
+            rxd_core::Error::failure(
+                rxd_core::Failure::Query,
+                format!("expected function coordinate (func), got {}", parts[3])
+            )
         );
-        parts[4]
-            .parse()
-            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: function index"))
+        let index: u32 = parts[4].parse().map_err(|_| {
+            rxd_core::Error::failure(rxd_core::Failure::Query, "function index must be a u32")
+        })?;
+        ensure!(
+            parts[4] == index.to_string(),
+            rxd_core::Error::failure(
+                rxd_core::Failure::Query,
+                "function index must be canonical decimal"
+            )
+        );
+        Ok(index)
     }
 
     pub fn defined_position(&self, func_index: u32) -> Result<usize> {

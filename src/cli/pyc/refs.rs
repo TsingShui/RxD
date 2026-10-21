@@ -11,6 +11,20 @@ use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Args)]
+pub struct Target {
+    #[command(flatten)]
+    selector: super::super::xref::Selector,
+    /// Substring over referenced names; requires --kind name.
+    #[arg(short, long, requires = "kind", conflicts_with_all = ["at", "from"])]
+    filter: Option<String>,
+    /// name for an exact literal name or content search; constant is inferred from --at/--from.
+    #[arg(long)]
+    kind: Option<String>,
+    #[command(flatten)]
+    case: super::super::filter::CaseArgs,
+}
+
+#[derive(Args)]
 pub struct RefsOptions {
     #[command(flatten)]
     pub common: static_commands::Options,
@@ -33,8 +47,7 @@ fn append(out: &mut Output, value: &impl Serialize) -> Result<()> {
 }
 pub fn run(
     input: PathBuf,
-    name: Option<String>,
-    at: Option<String>,
+    target: Target,
     within: Option<String>,
     version: Option<(u8, u8)>,
     options: RefsOptions,
@@ -48,28 +61,73 @@ pub fn run(
         .unwrap()
         .insert("instructions", super::budget().instructions);
     let mut analysis = loaded?;
+    let at = if target.filter.is_none() {
+        Some(
+            target
+                .selector
+                .resolve(
+                    &["string"],
+                    super::super::xref::Expect::Content(&analysis.source_id),
+                )
+                .map_err(super::super::classify)?,
+        )
+    } else {
+        None
+    };
+    let kind = target.kind.as_deref().unwrap_or("constant");
+    if !matches!(kind, "name" | "constant") {
+        return Err(Error::failure(
+            rxd_core::Failure::Query,
+            format!("xref supports name or constant targets, got {kind}"),
+        ));
+    }
+    if target.selector.from.is_some() && kind != "constant" {
+        return Err(Error::failure(
+            rxd_core::Failure::Query,
+            "--kind name contradicts constant coordinate from a strings stream",
+        ));
+    }
+    if target.filter.is_some() && kind != "name" {
+        return Err(Error::failure(
+            rxd_core::Failure::Query,
+            "--filter requires --kind name; select a constant with strings then --from",
+        ));
+    }
+    let filter = target
+        .filter
+        .as_deref()
+        .map(|s| rxd_core::filter::Contains::new(s, target.case.sensitive()));
     let mut scan = Scan::default();
     let result = perf.measure("query", || -> Result<()> {
         let selected = within
             .as_deref()
             .map(|id| analysis.parse_code_id(id))
             .transpose()?;
-        let constant = at
-            .as_deref()
-            .map(|id| string_constants::resolve_id(&mut analysis, id))
-            .transpose()?;
-        let query = match (name.as_deref(), at.as_deref(), constant.as_ref()) {
-            (Some(name), None, None) => {
-                analysis.charge_work(name.len())?;
-                references::Query::Name(name)
+        let constant = if kind == "constant" {
+            let value = at.as_deref().unwrap();
+            let coordinate_kind = value.split(':').nth(if value.starts_with("rxd1:") { 3 } else { 0 }).unwrap_or("");
+            if coordinate_kind != "const" {
+                return Err(Error::failure(rxd_core::Failure::Query, format!("expected constant coordinate (const), got {coordinate_kind}; use --kind name for literal names")));
             }
-            (None, Some(id), Some(selected)) => references::Query::Constant { id, selected },
-            _ => {
-                return Err(Error::new(
-                    "INVALID_QUERY",
-                    "exactly one of --name or --at is required",
-                ));
+            Some(string_constants::resolve_id(
+                &mut analysis,
+                at.as_deref().unwrap(),
+            )?)
+        } else {
+            None
+        };
+        let query = if let Some(filter) = &filter {
+            analysis.charge_work(filter.text().len())?;
+            references::Query::NameFilter(filter)
+        } else if let Some(selected) = &constant {
+            references::Query::Constant {
+                id: at.as_deref().unwrap(),
+                selected,
             }
+        } else {
+            let name = at.as_deref().unwrap();
+            analysis.charge_work(name.len())?;
+            references::Query::Name(name)
         };
         references::scan(
             &mut analysis,
@@ -84,14 +142,14 @@ pub fn run(
     perf.counters.records = Some(scan.hits.len());
     perf.counters.matches = Some(scan.hits.len());
     result?;
-    let analysis_kind = if at.is_some() {
+    let analysis_kind = if kind == "constant" {
         "explicit_constant_references"
     } else {
         "explicit_name_references"
     };
     let scope = if within.is_some() {
         "selected_code"
-    } else if at.is_some() {
+    } else if kind == "constant" {
         "constant_owner"
     } else {
         "all_codes"
@@ -99,7 +157,7 @@ pub fn run(
     let bytes = perf.measure("serialize", || -> Result<_> {
         let mut out = Output { bytes: Vec::new() };
         append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            json!({"name":name,"at":at,"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
+            json!({"at":at,"kind":kind,"filter":target.filter,"case":if target.case.sensitive() {"sensitive"} else {"insensitive"},"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;

@@ -164,11 +164,15 @@ impl Analysis {
         index: Option<usize>,
     ) -> Result<Vec<usize>> {
         if index.is_some_and(|index| index >= self.codes.len()) {
-            return Err(Error::new("INVALID_QUERY", "code index does not exist"));
+            return Err(Error::failure(
+                rxd_core::Failure::NotFound,
+                "code index does not exist",
+            ));
         }
 
         let mut selected = Vec::new();
-        for i in 0..self.codes.len() {
+        let scope = index.map_or(0..self.codes.len(), |i| i..i + 1);
+        for i in scope {
             self.charge_work(1)?;
             let name_matches = match name {
                 None => true,
@@ -192,7 +196,7 @@ impl Analysis {
                     filter.matches(&candidate)
                 }
             };
-            if index.is_none_or(|index| index == i) && name_matches && filter_matches {
+            if name_matches && filter_matches {
                 selected.push(i);
             }
         }

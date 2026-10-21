@@ -39,7 +39,8 @@ rxd wasm types module.wasm -f i32
 rxd wasm functions module.wasm --name run
 rxd wasm get-function module.wasm --at func:42
 rxd wasm strings module.wasm -f 'example'
-rxd wasm xref module.wasm --func 42
+rxd wasm xref module.wasm --at func:42
+rxd wasm xref module.wasm --kind function -f log
 ```
 
 One command emits one record kind; there is no mixed structural stream. `types`,
@@ -52,20 +53,35 @@ Every listing command takes `-f/--filter`, a substring over the
 value the row is named by: the name-section label for `functions` and `globals`,
 the rendered signature for `types`, `module.name` for `imports`, the export name
 for `exports`, the decoded literal for `strings`, and otherwise the row's own `at`
-coordinate. Platform exact selectors sit next to it: `functions --func N` selects
-one combined function index and `functions --name NAME` matches the name
-section exactly (duplicates preserved).
+coordinate. Filters fold case by default; `--case sensitive` makes them exact-case.
+`functions --name NAME` matches the name section exactly (duplicates preserved).
+`functions --at func:N | --from JSONL` selects an existing defined-function row;
+there is no separate numeric `--func` selector. Exact name, coordinate and substring
+selectors AND together. Coordinate existence is validated before filtering: an
+out-of-range index, or an imported function with no defined-function row, is
+`NOT_FOUND`, never an empty-success listing. Unmatched content/name searches may
+return an empty complete listing. `query` echoes `filter, case`, plus `at, name`
+for functions or `at, kind` for references; a stream anchor echoes its resolved `at`.
+
+Import rows retain their import-entry identity and expose a nullable
+`detail.target_at` (`func:N` for function imports). Export rows expose
+`detail.target_at` in the exported item's own index space. These are not export or
+import positions: copy the target coordinate to query a function, including in a
+stripped module with no name section. Export names do not become function names.
 
 - `get-function --at COORD | --from JSONL` takes the `at` a `functions` row prints (`func:42`). A short
   coordinate is expanded against the header source identity inside the library; a
   full `rxd1:wasm:<sha256>:func:<n>` id keeps its own hash, so one naming different
   content fails as `SOURCE_MISMATCH` instead of being rewritten, and a malformed
-  coordinate is `INVALID_QUERY` rather than guessed. Imported function indices have no
-  code body and are `INVALID_QUERY`.
+  coordinate is `INVALID_QUERY` rather than guessed. Indices must use canonical
+  unsigned decimal spelling. A well-formed missing index is `NOT_FOUND`. Imported
+  function indices have no code body and are `INVALID_QUERY`. `--from` consumes a
+  function listing and validates its source identity against the same fixed Module
+  buffer used by the subsequent listing, reference scan or extraction.
 - `get-function` emits one JSON `function_view` record. It first tries structured
   decompilation: on success it returns `representation: clike`, `decompiled: true`,
   language-neutral C-like code, a `mapping` from output lines to code-body byte
-  offsets, and the `func`, `source_id`, `bytecode_hex`, locals, and original file
+  offsets, and the `func`, `bytecode_hex`, locals, and original file
   range. Unsupported or failed reconstruction returns `representation: wasm`,
   `decompiled: false`, an explicit `reason`, `code: null`, and the original
   instruction view. Each instruction's `offset` is relative to the function code
@@ -80,16 +96,24 @@ section exactly (duplicates preserved).
   without lossy replacement, and `-f/--filter` then matches their lossy text.
   Data-segment linear-memory layout is reported as the declared offset expression;
   no constant folding or runtime evaluation is performed.
-- `xref --at func:N` finds instructions in all defined function bodies that explicitly
-  reference the target function index (`call`, `return_call`, `ref.func`) and retains
-  the caller index and code-body offset. It does not resolve `call_indirect` runtime
-  table targets and never claims a statically determined indirect callee;
-  `call_indirect` records its type and table indices and is marked indirect.
+- `xref --at func:N | --from JSONL` finds instructions in all defined function bodies
+  that explicitly reference the target function index (`call`, `return_call`,
+  `ref.func`), including imported targets. `--kind function` is optional for an
+  identity; a contradictory kind is `INVALID_QUERY`, naming both kinds.
+  `xref --kind function -f TEXT [--case sensitive]` selects target labels: defined
+  function name-section labels (otherwise `func:N`) and imported `module.name`.
+  It never searches callers, signatures or export aliases. An empty filter selects
+  all target functions; an unmatched filter returns an empty complete scan.
+  Multiple selected targets use one bounded body scan, with references in caller
+  index/instruction order and no duplicate rows from overlapping target selection.
+  Only function targets are supported. The caller coordinate and code-body offset
+  are retained. `call_indirect` has no guessed callee and is not a reference hit;
+  its type/table indices remain available in the raw instruction view.
 
 `-o` atomically writes exactly the stdout content. Failures emit no partial stdout
-and never overwrite an existing output. Diagnostics go to stderr. `INVALID_QUERY`
-and argument errors exit 2; `INVALID_QUERY`, `SOURCE_MISMATCH`, input, resource and I/O
-failures exit 1.
+and never overwrite an existing output. Diagnostics go to stderr. `INVALID_QUERY`,
+`NOT_FOUND` and argument errors exit 2; `SOURCE_MISMATCH`, input, resource and I/O
+failures exit 1 (ADR 0015).
 
 ## Envelope (schema_version=2)
 
@@ -137,8 +161,8 @@ Fixed detail fields:
 | Record | Detail fields |
 | --- | --- |
 | `type` | `type_index, params, results` |
-| `import` | `module, name, kind, func_index, type_index` |
-| `export` | `name, kind, index` |
+| `import` | `module, name, kind, func_index, type_index, target_at` |
+| `export` | `name, kind, index, target_at` |
 | `function` | `func_index, type_index, name, params, results, body_file_offset, body_size` |
 | `table` | `index, element_type, initial, maximum` |
 | `memory` | `index, initial, maximum, memory64, shared` |
@@ -153,7 +177,7 @@ Fixed detail fields:
 `record="function_view"` FETCH record without header/summary; it additionally carries
 `backend="wasm"`, `command="get-function"` and `schema_version=2` outside. `--raw` is
 the only spelling for the original instruction view; there is no separate
-`--raw` flag. `func` is a
+`--bytecode` or `--instructions` flag. `func` is a
 typed object with `func_index, type_index, name, params, results`. Instructions have
 `offset, opcode, operand`; locals have `count, value_type`; `mapping` is
 `[line, code-body-offset]`. Operand keeps the kind-specific immediate object (memarg:
@@ -215,13 +239,16 @@ program-semantics recovery.
 ## Budgets and performance
 
 Every ceiling comes from the shared `rxd_core::Budget::default()` table: input 8 GiB
-(32-bit spans keep actual addressable content below 4 GiB), entities 100,000, work
-1,000,000, instructions per function 100,000, no record or output ceiling. WASM
-projects that table onto its own `Limits` type; the CLI exposes no `--max-*` flag and
-restates no number, so a ceiling changes in exactly one place. Entities count
+(32-bit spans keep actual addressable content below 4 GiB), work 1,000,000,
+instructions per function 100,000. Retained reference metadata and the serialized
+output buffer each use the shared 128 MiB metadata ceiling. WASM projects that table
+onto its own `Limits` type; the CLI exposes no `--max-*` flag and restates no number,
+so a ceiling changes in exactly one place. Section work counts
 type/import/export/function/table/memory/global/data/element entries.
 Work bounds section decode, function-body decode and reference scanning; `xref`
-charges actual decode and match work across all defined bodies. Budgets are checked
+charges actual decode and match work across all defined bodies once, independent
+of the number of selected targets. Target count is work-bounded, and reference
+metadata is charged before cloning names into retained rows. Budgets are checked
 before allocation, section enumeration, function decode and output, including JSONL
 header/summary and complete `get-function` original bytes. Code bodies are validated
 against specification bounds; immediate vector lengths and `br_table` target counts

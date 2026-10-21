@@ -4,6 +4,7 @@ use super::*;
 mod boundaries;
 mod codes;
 mod constant_refs;
+mod contracts;
 mod get_code;
 mod refs;
 mod strings;
@@ -397,7 +398,7 @@ fn pyc_outputs_reject_resolved_input_aliases_for_every_command() {
     for (command, selection) in [
         ("codes", vec![]),
         ("strings", vec![]),
-        ("xref", vec!["--name", "fib"]),
+        ("xref", vec!["--kind", "name", "--at", "fib"]),
         ("get-code", vec!["--at", id.as_str()]),
         ("decompile", vec!["--json"]),
     ] {
