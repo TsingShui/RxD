@@ -15,6 +15,7 @@ use anyhow::{Result, bail};
 pub(crate) use args::Command;
 use rayon::prelude::*;
 use rxd_dex::{apk, manifest, query};
+use std::path::Path;
 use std::time::Instant;
 
 /// Reads the optional per-entry inflation ceiling from the environment.
@@ -460,6 +461,93 @@ fn run_command(
             finish_stream(&mut payload, listed)?;
             emit(&payload, args.output.as_deref())?;
         }
+        Command::Extract(args) => {
+            let destination = args
+                .output
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("INVALID_QUERY: extract requires --output"))?;
+            let entries = apk::list_entries(&args.apk_path)?;
+            let pattern = args
+                .filter
+                .as_deref()
+                .map(|needle| rxd_core::filter::Contains::new(needle, args.case.sensitive()));
+            let names: Vec<String> = match &args.name {
+                Some(name) => vec![name.clone()],
+                None => entries
+                    .iter()
+                    .filter(|entry| {
+                        pattern
+                            .as_ref()
+                            .is_none_or(|pattern| pattern.matches(&entry.name))
+                    })
+                    .map(|entry| entry.name.clone())
+                    .collect(),
+            };
+            if names.is_empty() {
+                bail!("NOT_FOUND: no entry matches the selection");
+            }
+            if args.all {
+                if destination.exists() && !destination.is_dir() {
+                    bail!("INVALID_QUERY: --all requires a directory for --output");
+                }
+                std::fs::create_dir_all(destination)?;
+                let mut seen = std::collections::BTreeSet::new();
+                for name in &names {
+                    let relative = extract_relative(name)?;
+                    if !seen.insert(relative) {
+                        bail!("INVALID_QUERY: two entries extract to the same path");
+                    }
+                }
+            } else if destination.is_dir() {
+                bail!("INVALID_QUERY: --name requires a file for --output");
+            }
+            let mut payload = stream_header(
+                "extract",
+                std::slice::from_ref(&args.apk_path),
+                json!({"name":args.name, "all":args.all, "filter":args.filter}),
+            )?;
+            let mut records = 0usize;
+            apk::extract_entries_with_policy(
+                &args.apk_path,
+                archive_policy,
+                &names,
+                |entry, bytes| -> Result<()> {
+                    let target = if args.all {
+                        let target = destination.join(extract_relative(entry)?);
+                        if let Some(parent) = target.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        target
+                    } else {
+                        destination.to_path_buf()
+                    };
+                    if same_file(&target, &args.apk_path) {
+                        bail!("INVALID_QUERY: output must not replace the input");
+                    }
+                    super::write_output(bytes, Some(&target))?;
+                    let path = target.to_str().ok_or_else(|| {
+                        anyhow::anyhow!("INVALID_QUERY: output path must be UTF-8")
+                    })?;
+                    let sha256 = rxd_core::identity::content_id(Path::new(""), bytes);
+                    append_json(
+                        &mut payload,
+                        &data_record(
+                            "file",
+                            json!({
+                                "entry":entry,
+                                "path":path,
+                                "file_bytes":bytes.len(),
+                                "sha256":sha256,
+                            }),
+                        ),
+                    )?;
+                    records += 1;
+                    Ok(())
+                },
+            )?;
+            finish_stream(&mut payload, records)?;
+            emit(&payload, None)?;
+        }
         Command::Manifest(args) => {
             let data =
                 apk::read_entry_with_policy(&args.apk_path, archive_policy, "AndroidManifest.xml")?;
@@ -662,6 +750,47 @@ fn push_record_at(
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
     Ok(())
+}
+
+/// A safe destination path for an archive entry written under a directory.
+///
+/// Entry names are attacker-controlled, so only ordinary relative components are
+/// accepted: no absolute paths, `..`, root/prefix components, or Windows separators.
+fn extract_relative(name: &str) -> Result<std::path::PathBuf> {
+    use std::path::Component;
+    if name.is_empty() || name.contains('\\') {
+        bail!("INVALID_QUERY: unsafe entry path {name}");
+    }
+    let mut relative = std::path::PathBuf::new();
+    for component in Path::new(name).components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            _ => bail!("INVALID_QUERY: unsafe entry path {name}"),
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        bail!("INVALID_QUERY: unsafe entry path {name}");
+    }
+    Ok(relative)
+}
+
+/// Whether writing `destination` would replace the analysed input.
+fn same_file(destination: &Path, input: &Path) -> bool {
+    let input = std::fs::canonicalize(input).ok();
+    let resolved = std::fs::canonicalize(destination).ok().or_else(|| {
+        let parent = destination
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        Some(
+            std::fs::canonicalize(parent)
+                .ok()?
+                .join(destination.file_name()?),
+        )
+    });
+    input
+        .zip(resolved)
+        .is_some_and(|(input, destination)| input == destination)
 }
 
 fn data_record(kind: &str, detail: Value) -> Value {

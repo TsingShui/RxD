@@ -1021,6 +1021,51 @@ pub fn list_entries(path: &Path) -> Result<Vec<ZipEntry>> {
     crate::archive::parse_zip_entries(&archive, |_| true)
 }
 
+/// Inflate the named entries in central-directory order and hand each original
+/// payload to `visit`.
+///
+/// A name is the selector here, so two entries carrying it are rejected instead of
+/// letting the last one silently overwrite the earlier extraction. Bare DEX inputs
+/// present the same single `classes.dex` entry every other command walks.
+pub fn extract_entries_with_policy(
+    path: &Path,
+    policy: ArchivePolicy,
+    names: &[String],
+    mut visit: impl FnMut(&str, &[u8]) -> Result<()>,
+) -> Result<()> {
+    use crate::profile::{Stage, measure};
+    let archive = measure(Stage::Map, || Archive::open(path))?;
+    let entries = if is_bare_dex(&archive) {
+        vec![ZipEntry::bare(
+            "classes.dex",
+            crate::archive::BytesSource::source_len(&archive),
+        )]
+    } else {
+        crate::archive::parse_zip_entries(&archive, |_| true)?
+    };
+    let mut found = vec![false; names.len()];
+    for entry in &entries {
+        let Some(index) = names.iter().position(|name| name == &entry.name) else {
+            continue;
+        };
+        if std::mem::replace(&mut found[index], true) {
+            bail!("INVALID_QUERY: entry {} appears more than once", entry.name);
+        }
+    }
+    if let Some(index) = found.iter().position(|seen| !seen) {
+        bail!("NOT_FOUND: entry {} not found", names[index]);
+    }
+    for entry in &entries {
+        if names.iter().any(|name| name == &entry.name) {
+            let bytes = measure(Stage::Inflate, || {
+                inflate_entry(&archive, entry, policy.max_inflated_entry)
+            })?;
+            visit(&entry.name, &bytes)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 pub fn read_entry(path: &Path, wanted: &str) -> Result<Vec<u8>> {
     read_entry_with_policy(path, ArchivePolicy::default(), wanted)

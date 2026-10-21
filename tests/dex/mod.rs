@@ -61,6 +61,7 @@ fn assert_record(row: &Value) {
             "compressed_size",
             "uncompressed_size",
         ],
+        "file" => &["entry", "path", "file_bytes", "sha256"],
         "field" => &[],
         // `methods` prints one descriptor row per definition; `get-class --members` prints
         // its member table as text, so this is the only `method` record shape.
@@ -279,6 +280,104 @@ fn dex_xref_takes_its_anchor_from_a_previous_stream() {
     assert_eq!(refused.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&refused.stderr).contains("describes a 1-byte input"));
     drop(stream_dir);
+}
+
+#[test]
+fn dex_extract_writes_original_entry_bytes_and_a_receipt() {
+    let (dir, path) = fixture(
+        deflated_zip(&[
+            ("lib/arm64-v8a/liba.so", b"\x7fELF-A"),
+            ("lib/arm64-v8a/libb.so", b"\x7fELF-B"),
+            ("assets/note.txt", b"hello"),
+        ]),
+        "app.apk",
+    );
+    let file = dir.path().join("liba.so");
+    let output = query(
+        "extract",
+        &path,
+        &[
+            "--name",
+            "lib/arm64-v8a/liba.so",
+            "-o",
+            file.to_str().unwrap(),
+        ],
+    );
+    success(&output);
+    let rows = dex_records(&output);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["detail"]["entry"], "lib/arm64-v8a/liba.so");
+    assert_eq!(rows[0]["detail"]["file_bytes"], 6);
+    assert_eq!(rows[0]["detail"]["path"], file.to_str().unwrap());
+    assert_eq!(
+        rows[0]["detail"]["sha256"].as_str().unwrap().len(),
+        64,
+        "receipt carries a SHA-256"
+    );
+    assert_eq!(fs::read(&file).unwrap(), b"\x7fELF-A");
+
+    // A missing entry is NOT_FOUND and must not replace an existing artifact.
+    let kept = dir.path().join("kept.so");
+    fs::write(&kept, b"previous").unwrap();
+    let output = query(
+        "extract",
+        &path,
+        &["--name", "missing.so", "-o", kept.to_str().unwrap()],
+    );
+    refused(output);
+    assert_eq!(fs::read(&kept).unwrap(), b"previous");
+}
+
+#[test]
+fn dex_extract_all_preserves_entry_paths_and_rejects_traversal() {
+    let (dir, path) = fixture(
+        deflated_zip(&[
+            ("lib/arm64-v8a/liba.so", b"A"),
+            ("lib/arm64-v8a/libb.so", b"B"),
+            ("assets/note.txt", b"hello"),
+        ]),
+        "app.apk",
+    );
+    let destination = dir.path().join("out");
+    let output = query(
+        "extract",
+        &path,
+        &["--all", "-f", "lib/", "-o", destination.to_str().unwrap()],
+    );
+    success(&output);
+    let rows = dex_records(&output);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        fs::read(destination.join("lib/arm64-v8a/liba.so")).unwrap(),
+        b"A"
+    );
+    assert_eq!(
+        fs::read(destination.join("lib/arm64-v8a/libb.so")).unwrap(),
+        b"B"
+    );
+
+    let (bad_dir, bad) = fixture(stored_zip(&[("../escape.so", b"x")]), "bad.apk");
+    let output = query(
+        "extract",
+        &bad,
+        &["--all", "-o", bad_dir.path().join("out").to_str().unwrap()],
+    );
+    refused(output);
+    assert!(!bad_dir.path().join("escape.so").exists());
+}
+
+#[test]
+fn dex_extract_never_replaces_the_analysed_archive() {
+    let (dir, path) = fixture(deflated_zip(&[("lib/a.so", b"payload")]), "app.apk");
+    let before = fs::read(&path).unwrap();
+    let output = query(
+        "extract",
+        &path,
+        &["--name", "lib/a.so", "-o", path.to_str().unwrap()],
+    );
+    refused(output);
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert!(dir.path().join("app.apk").exists());
 }
 
 #[test]

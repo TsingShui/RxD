@@ -18,6 +18,8 @@ preserved; argument positions and exit-code semantics are.
 | Command | Query and output |
 | --- | --- |
 | `entries INPUT` | Archive entries in central-directory order with compression and sizes; duplicate names are preserved. |
+| `extract INPUT --name ENTRY -o FILE` | One entry's original bytes, written atomically to `FILE`, plus a `file` receipt with its SHA-256. |
+| `extract INPUT --all [-f PATTERN] -o DIR` | Every matching entry under `DIR`, preserving entry-relative paths; unsafe names (`..`, absolute, separators) and duplicate destinations are rejected. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
 | `xref INPUT --at COORD` | References to one identity, matched exactly: `Lx/y;` a type, `Lx/y;->name(proto)` a method, `Lx/y;->name:type` a field, and, with `--kind string`, a literal. `--kind` is inferred from the coordinate and must agree with it. `context_at` is the referring member, `detail.target` the matched coordinate, `detail.entry` the DEX it lives in. One row is one (caller, target) pair, so `detail.target` is always a single coordinate. |
 | `xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type`/`string` record. The stream header's `input_bytes` is checked against this archive: that catches a stream from another file, but it is a mismatch guard, not a content identity. |
@@ -131,6 +133,12 @@ defined by more than one entry appears once per entry; duplicate detection is th
 
 | reference | xref | `target, entry` |
 | entry | entries | `name, compression, compressed_size, uncompressed_size` |
+| file | extract | `entry, path, file_bytes, sha256` |
+
+Extraction never parses DEX, never executes the payload and never replaces the analysed
+archive; each destination is published through an atomic rename, so a failed query leaves
+the previous artifact in place. Names are the selector, so an entry name carried by two
+central-directory records is `INVALID_QUERY` rather than an implicit last-one-wins.
 
 `class.name` is dotted; `package` keeps DEX slash separators. `string.index` is the
 DEX `string_ids` index and `value` is decoded text. `strings` enumerates the global

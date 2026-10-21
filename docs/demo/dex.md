@@ -31,6 +31,15 @@ target/release/rxd dex methods /path/to/app.apk | \
   target/release/rxd dex get-method /path/to/app.apk --from -
 target/release/rxd dex get-class /path/to/app.apk --at com.example.Main
 target/release/rxd dex manifest /path/to/app.apk -o target/AndroidManifest.xml
+
+# Native libraries are ordinary entries: extract the original .so, then analyze it
+# with the native backend. Nothing is executed or loaded.
+target/release/rxd dex entries /path/to/app.apk -f lib/arm64-v8a/
+target/release/rxd dex extract /path/to/app.apk \
+  --name lib/arm64-v8a/libfoo.so -o target/libfoo.so
+target/release/rxd kuna functions target/libfoo.so --summary --json
+# Or keep the archive layout for a whole ABI directory.
+target/release/rxd dex extract /path/to/app.apk --all -f lib/arm64-v8a/ -o target/native
 target/release/rxd dex classes /path/to/classes.dex --threads 2
 ```
 

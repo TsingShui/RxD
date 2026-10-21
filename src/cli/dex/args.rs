@@ -15,6 +15,13 @@ pub enum Command {
     Getclass(GetClassArgs),
     /// List the entries an archive holds, in central-directory order.
     Entries(EntriesArgs),
+    /// Write original entry bytes to --output, preserving them exactly.
+    ///
+    /// `--name` writes one entry to a file; `--all` writes every entry matching
+    /// `--filter` (or every entry) under a destination directory. APK-native
+    /// libraries are ordinary entries, so this is also how a `.so` is extracted
+    /// before it is handed to a native analyzer.
+    Extract(ExtractArgs),
     /// List every string in every root DEX of an archive.
     Strings(StringsArgs),
     /// Find code references across every DEX in an APK.
@@ -144,6 +151,35 @@ pub struct MemberByIndexArgs {
     pub output: Option<PathBuf>,
     #[arg(long, alias = "thread", default_value_t = default_threads())]
     pub threads: usize,
+    /// Emit the analysis perf record as JSONL on stderr.
+    #[arg(long)]
+    pub perf: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    clap::ArgGroup::new("selection")
+        .required(true)
+        .multiple(false)
+        .args(["name", "all"])
+))]
+pub struct ExtractArgs {
+    pub apk_path: PathBuf,
+    /// Exact archive entry name; writes it to the --output file.
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Extract every entry matching --filter (or every entry when no filter is
+    /// given); --output must be a directory.
+    #[arg(long)]
+    pub all: bool,
+    ///  substring filter over entry names. Folded unless `--case sensitive`.
+    #[arg(short, long)]
+    pub filter: Option<String>,
+    #[command(flatten)]
+    pub case: CaseArgs,
+    /// Destination file (--name) or directory (--all).
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
@@ -344,6 +380,7 @@ impl Command {
         match self {
             Self::Getclass(args) => &args.apk_path,
             Self::Entries(args) => &args.apk_path,
+            Self::Extract(args) => &args.apk_path,
             Self::Strings(args) => &args.apk_path,
             Self::Xref(args) => &args.apk_path,
             Self::Manifest(args) => &args.apk_path,
@@ -359,6 +396,7 @@ impl Command {
         match self {
             Self::Getclass(args) => args.perf,
             Self::Entries(args) => args.perf,
+            Self::Extract(args) => args.perf,
             Self::Strings(args) => args.perf,
             Self::Xref(args) => args.perf,
             Self::Manifest(args) => args.perf,
@@ -373,6 +411,7 @@ impl Command {
         match self {
             Self::Getclass(_) => "get-class",
             Self::Entries(_) => "entries",
+            Self::Extract(_) => "extract",
             Self::Strings(_) => "strings",
             Self::Xref(_) => "xref",
             Self::Manifest(_) => "manifest",
