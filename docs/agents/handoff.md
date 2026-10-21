@@ -1,10 +1,17 @@
 # Contract Unification: Handoff
 
-State: **finished.** Every backend's CLI surface *and* the MCP tool surface are unified and
-green. `cargo test --test cli` reports `410 passed / 0 failed` (twice in a row),
-`cargo build` has no warnings, `cargo clippy -p rxd --all-targets` is clean,
-`scripts/format-workspace.py --check` passes and `scripts/mcp-smoke.py` verifies the
-relocated stdio server. The rules are in
+**Historical checkpoint, not current acceptance evidence.** The commands, selector
+exceptions and test counts below describe the earlier unification work and must not
+be reused as validation of the current tree. Current contracts live in
+`docs/design/*-design.md`; in particular WASM/PYC now use coordinate selectors and
+PYC exact name references use `--kind name --at`. Later real-input checks found
+remaining backend gaps and stale tests; do not infer that all backends are green.
+
+At the recorded checkpoint, the CLI and MCP surfaces were reported unified and
+green: `cargo test --test cli` was recorded as `410 passed / 0 failed` twice,
+`cargo build` without warnings, `cargo clippy -p rxd --all-targets` clean,
+`scripts/format-workspace.py --check` passing and `scripts/mcp-smoke.py` verifying
+the relocated stdio server. The rules are in
 `AGENTS.md` (`## Query Surface`), the budget table is `rxd_core::Budget`, and no backend
 exposes `--max-*`.
 
