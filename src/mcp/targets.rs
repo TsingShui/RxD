@@ -931,10 +931,19 @@ fn directory_names(
 
 #[cfg(unix)]
 fn set_errno(value: i32) {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[cfg(target_os = "linux")]
     // SAFETY: errno location points to writable thread-local storage.
     unsafe {
         *libc::__errno_location() = value;
+    }
+    // Bionic names the accessor __errno(), which the libc crate does not bind;
+    // declare only the NDK-provided symbol on Android.
+    #[cfg(target_os = "android")]
+    unsafe {
+        extern "C" {
+            fn __errno() -> *mut core::ffi::c_int;
+        }
+        *__errno() = value;
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     // SAFETY: errno location points to writable thread-local storage.
