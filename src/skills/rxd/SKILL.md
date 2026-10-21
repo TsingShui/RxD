@@ -179,7 +179,14 @@ rxd dotnet methods library.dll > target/methods.jsonl && rxd dotnet xref library
 rxd dotnet get-method library.dll --at "$METHOD_AT" --raw
 rxd dotnet get-method library.dll --at "$METHOD_AT"
 rxd dotnet get-class library.dll --at "$TYPE_AT" --raw
+rxd dotnet classes library.dll --class "$TYPE_NAME" -o target/class.jsonl
+rxd dotnet get-class library.dll --from target/class.jsonl --raw
+rxd dotnet xref library.dll --from target/class.jsonl
 ```
+
+A `classes` stream carries `record: class`; pass it directly to class FETCH or
+type XREF without rewriting it as `type`. Select a real type before piping:
+unfiltered listings can start with the non-fetchable `<Module>` row.
 
 Use the `context_at`/`parent_at` a `strings` or `xref` row prints, and the `at` a
 `classes` row prints; `.NET` coordinates are bare metadata tokens (`0x06000025`).

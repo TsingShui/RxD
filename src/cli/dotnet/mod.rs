@@ -116,7 +116,7 @@ pub enum Command {
         #[arg(long, value_enum, default_value_t = crate::cli::filter::CaseMode::Insensitive)]
         case: crate::cli::filter::CaseMode,
         /// Read the target from a previous JSONL stream (a file, or `-` for stdin);
-        /// `method`, `field` and `type` records are accepted.
+        /// `method`, `field`, `class` and `string` records are accepted.
         #[arg(long, value_name = "JSONL", conflicts_with_all = ["at", "filter"])]
         from: Option<PathBuf>,
 
@@ -331,7 +331,7 @@ fn execute_inner(
         append(&mut output, &value)?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
         let at = selector.resolve(
-            &["type"],
+            &["class"],
             crate::cli::xref::Expect::Content(&input.source_id),
         )?;
         let class = perf.measure("decode", || input.class_body(&at))?;
@@ -1113,7 +1113,7 @@ fn dotnet_target(
         (Some(coordinate), _) => coordinate.to_owned(),
         (None, Some(path)) => crate::cli::xref::selector_stream(
             path,
-            &["method", "field", "type", "string"],
+            &["method", "field", "class", "string"],
             crate::cli::xref::Expect::Content(source_id),
         )?,
         (None, None) => unreachable!("checked above"),

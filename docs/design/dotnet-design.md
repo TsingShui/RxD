@@ -112,15 +112,19 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
 
 - `get-method` and `get-class` take exactly one selector: `--at <token>` or
   `--from <jsonl|->`. `--from` takes the first record whose `record` kind matches
-  the command (`method` for `get-method`, `type` for `get-class`; `xref` accepts
-  `method`/`field`/`type`) and which carries an `at` coordinate; the stream is
+  the command (`method` for `get-method`, `class` for `get-class`; `xref` accepts
+  `method`/`field`/`class`/`string`) and which carries an `at` coordinate; the stream is
   bounded to 64 KiB and a mismatched `source_id` is `SOURCE_MISMATCH` (exit 1).
   A token/`--kind` contradiction is `INVALID_QUERY` (exit 2). The analyzed
   input itself remains a regular file: only the selector stream may be piped.
+  A `class` row still denotes a type token (`--kind type`), not a `--kind class`
+  spelling. Select a fetchable class before piping: an unfiltered listing can start
+  with `<Module>`, which `get-class` deliberately rejects. `--from` selects one
+  anchor; it does not skip that row or execute a batch.
 
 - `classes`/`fields`/`methods` each emit a header, their own records and a summary JSONL
   (one object kind per command). Header echoes filters;
-  order follows metadata tokens. `--type` matches the full type name exactly;
+  order follows metadata tokens. `--class` matches the full type name exactly;
   `--name` matches a method name exactly and preserves overloads.
 - `get-method` emits one JSON record with method, source_id, raw `il_hex`, instructions,
   exception handlers, locals and original file range. Instruction `offset` is the IL

@@ -99,6 +99,108 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
 }
 
 #[test]
+fn dotnet_class_stream_routes_fetch_and_type_xref_with_content_identity() {
+    let (path, _) = production();
+    let original = fs::read(&path).unwrap();
+    let name = "Newtonsoft.Json.JsonConverter";
+    let listed = run("classes", &path, &["--class", name]);
+    let rows = jsonl(&listed);
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[1]["record"], "class");
+    assert_eq!(rows[1]["detail"]["full_name"], name);
+    assert_eq!(rows[2]["records"], 1);
+    assert_eq!(rows[2]["complete"], true);
+    let at = rows[1]["at"].as_str().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let stream = directory.path().join("classes.jsonl");
+    fs::write(&stream, &listed.stdout).unwrap();
+    let commands: &[(&str, &[&str])] = &[("get-class", &["--raw"]), ("xref", &[])];
+    for &(command, extra) in commands {
+        let mut args = vec!["--at", at];
+        args.extend_from_slice(extra);
+        let direct = run(command, &path, &args);
+        success(&direct);
+        let mut args = vec!["--from", stream.to_str().unwrap()];
+        args.extend_from_slice(extra);
+        let from_file = run(command, &path, &args);
+        success(&from_file);
+        let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(["dotnet", command])
+            .arg(&path)
+            .args(["--from", "-"])
+            .args(extra)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            use std::io::Write;
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(&listed.stdout)
+                .unwrap();
+        }
+        let from_stdin = child.wait_with_output().unwrap();
+        success(&from_stdin);
+        for fetched in [&from_file, &from_stdin] {
+            if command == "get-class" {
+                assert_eq!(fetched.stdout, direct.stdout);
+                let body: Value = serde_json::from_slice(&fetched.stdout).unwrap();
+                assert_eq!(body["at"], at);
+                assert_eq!(body["detail"]["type"], rows[1]);
+                assert_eq!(body["detail"]["representation"], "il");
+                assert_eq!(body["detail"]["complete"], true);
+            } else {
+                let direct_rows = jsonl(&direct);
+                let fetched_rows = jsonl(fetched);
+                // Query echoes differ by --at/--from; the target and evidence do not.
+                assert_eq!(fetched_rows[0]["detail"], direct_rows[0]["detail"]);
+                assert_eq!(fetched_rows[0]["query"]["kind"], "type");
+                assert_eq!(fetched_rows[0]["detail"]["target"]["target_kind"], "type");
+                assert_eq!(fetched_rows[0]["detail"]["target"]["name"], name);
+                assert_eq!(fetched_rows[1..], direct_rows[1..]);
+                assert_eq!(fetched_rows.last().unwrap()["complete"], true);
+                assert!(fetched_rows.last().unwrap()["records"].as_u64().unwrap() > 0);
+            }
+        }
+    }
+    // A class record still denotes a type token, not a new --kind class spelling.
+    failure(
+        run(
+            "xref",
+            &path,
+            &["--from", stream.to_str().unwrap(), "--kind", "method"],
+        ),
+        2,
+        "is a type token, but --kind method",
+    );
+    // A same-size, valid DOS-header mutation keeps the token but changes content identity.
+    let mut changed = original.clone();
+    changed[0x20] ^= 1;
+    let foreign = directory.path().join("changed.dll");
+    fs::write(&foreign, &changed).unwrap();
+    success(&run("classes", &foreign, &["--class", name]));
+    let destination = directory.path().join("keep.jsonl");
+    for &(command, extra) in commands {
+        fs::write(&destination, b"keep").unwrap();
+        let mut args = vec![
+            "--from",
+            stream.to_str().unwrap(),
+            "-o",
+            destination.to_str().unwrap(),
+        ];
+        args.extend_from_slice(extra);
+        failure(run(command, &foreign, &args), 1, "SOURCE_MISMATCH");
+        assert_eq!(fs::read(&destination).unwrap(), b"keep");
+    }
+    assert_eq!(fs::read(&foreign).unwrap(), changed);
+    assert_eq!(fs::read(&path).unwrap(), original);
+}
+
+#[test]
 fn dotnet_metadata_budget_shared_blobs_do_not_bypass_unselected_signature_validation() {
     let (path, oracle) = production();
     let mut bytes = fs::read(&path).unwrap();

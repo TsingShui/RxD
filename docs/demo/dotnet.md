@@ -88,9 +88,13 @@ dll=tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll
 $rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader -f ReadAsInt32
 $rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader --name ReadAsInt32 -o target/newtonsoft-method.jsonl
 $rxd dotnet get-method "$dll" --from target/newtonsoft-method.jsonl --raw
+$rxd dotnet classes "$dll" --class Newtonsoft.Json.JsonConverter -o target/newtonsoft-class.jsonl
+$rxd dotnet get-class "$dll" --from target/newtonsoft-class.jsonl --raw
+$rxd dotnet xref "$dll" --from target/newtonsoft-class.jsonl
 ```
 
-The substring query includes `ReadAsInt32Async`; the exact name selects one method.
+The `class` row is consumed directly by both class FETCH and type XREF; it does
+not need to be rewritten as `type`. The substring query includes `ReadAsInt32Async`; the exact name selects one method.
 The complete unfiltered lists have 494 types, 2,204 fields and 4,208 methods. The
 selected method retains its original IL and EH. The following complete whole-module
 scan now also succeeds instead of hitting the former one-million work quota:
@@ -153,11 +157,13 @@ the handle itself. Outline/xref follow the header/records/summary completeness c
 
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
-type_at=$($rxd dotnet methods "$closure" --class 'Rxd.Closure.Root`1' | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="class"))')
-$rxd dotnet get-class "$closure" --at "$type_at" --raw
-$rxd dotnet get-class "$closure" --at "$type_at" --raw -o target/closure-il.json --perf
-$rxd dotnet get-class "$closure" --at "$type_at"
-$rxd dotnet get-class "$closure" --at "$type_at" -o target/closure-csharp.json --perf
+$rxd dotnet classes "$closure" --class 'Rxd.Closure.Root`1' -o target/closure-classes.jsonl
+$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl --raw
+$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl --raw -o target/closure-il.json --perf
+$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl
+$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl -o target/closure-csharp.json --perf
+$rxd dotnet classes "$closure" --class 'Rxd.Closure.Root`1' | $rxd dotnet get-class "$closure" --from - --raw
+$rxd dotnet xref "$closure" --from target/closure-classes.jsonl
 ```
 
 A body the engine reconstructs with caveats is returned together with those caveats;
