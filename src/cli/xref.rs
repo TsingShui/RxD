@@ -14,9 +14,16 @@
 //! names both kinds, never an empty result set: a silently empty answer reads exactly like a
 //! true one, which is the failure mode both faces exist to prevent.
 
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 use super::filter::CaseMode;
 use anyhow::{Context, Result, bail};
-use clap::{Args, ValueEnum};
+use clap::Args;
+#[cfg(any(
+    feature = "backend-dex",
+    feature = "backend-jvm",
+    feature = "backend-dotnet"
+))]
+use clap::ValueEnum;
 use serde_json::Value;
 use std::{
     io::{self, Read},
@@ -24,6 +31,11 @@ use std::{
 };
 
 /// Which kind of target a reference query names.
+#[cfg(any(
+    feature = "backend-dex",
+    feature = "backend-jvm",
+    feature = "backend-dotnet"
+))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Kind {
     String,
@@ -32,6 +44,11 @@ pub enum Kind {
     Field,
 }
 
+#[cfg(any(
+    feature = "backend-dex",
+    feature = "backend-jvm",
+    feature = "backend-dotnet"
+))]
 impl Kind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -44,6 +61,7 @@ impl Kind {
 }
 
 /// One identity, as a row prints it.
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Anchor {
     /// A string literal. It has no coordinate of its own, so `--kind string` names it.
@@ -64,6 +82,7 @@ pub enum Anchor {
     },
 }
 
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl Anchor {
     pub fn kind(&self) -> Kind {
         match self {
@@ -94,6 +113,7 @@ impl Anchor {
 }
 
 /// What a resolved target query asks for.
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
     pub kind: Kind,
@@ -107,6 +127,7 @@ pub struct Target {
     pub case_sensitive: bool,
 }
 
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl Target {
     /// The header's echo of the query.
     pub fn json(&self) -> serde_json::Value {
@@ -156,6 +177,7 @@ impl Selector {
 }
 
 /// The two faces every backend shares.
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 #[derive(Debug, Args)]
 pub struct TargetArgs {
     /// Exact target coordinate, as a row prints it: `Lx/y;`, `Lx/y;->name(proto)`,
@@ -183,6 +205,7 @@ pub struct TargetArgs {
     pub from: Option<PathBuf>,
 }
 
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl TargetArgs {
     /// The selector stream this query names, if any.
     pub fn selector(&self) -> Option<&Path> {
@@ -457,7 +480,7 @@ fn ensure_same(found: &str, expected: &str) -> Result<()> {
     .into())
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "backend-dex", feature = "backend-jvm")))]
 mod tests {
     use super::*;
 

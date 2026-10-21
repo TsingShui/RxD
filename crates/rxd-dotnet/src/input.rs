@@ -1,5 +1,5 @@
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs::OpenOptions, io::Read, path::Path};
+use std::{collections::BTreeMap, fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, bail, ensure};
 use dotscope::{CilAssemblyView, ValidationConfig};
@@ -18,12 +18,11 @@ pub struct Input {
     pub(crate) limits: Limits,
     pub(crate) rows: [u32; 64],
     pub(crate) metadata_work: usize,
-    pub(crate) calls: BTreeMap<u32, CallSignature>,
     pub(crate) member_kinds: BTreeMap<u32, bool>,
     pub(crate) type_kinds: BTreeMap<u32, bool>,
     /// Metadata token to full type name, for the tokens a row can point at but not show:
     /// a base type or an interface is a token, and a name is what a reader navigates by.
-    pub(crate) type_names: BTreeMap<u32, String>,
+    pub(crate) type_names: BTreeMap<u32, Arc<String>>,
 }
 
 impl Input {
@@ -111,7 +110,6 @@ impl Input {
             limits,
             rows,
             metadata_work: 0,
-            calls: BTreeMap::new(),
             member_kinds: BTreeMap::new(),
             type_kinds: BTreeMap::new(),
             type_names: BTreeMap::new(),
@@ -230,25 +228,10 @@ impl Input {
     }
 
     pub fn resolve_call(&self, token: u32, context: &Method) -> Result<CallSignature> {
-        let mut call = if token >> 24 == 6 {
-            let index = self
-                .methods
-                .binary_search_by_key(&token, |method| method.token)
-                .map_err(|_| anyhow::anyhow!("INVALID_INPUT: missing method call token"))?;
-            let method = &self.methods[index];
-            ensure!(
-                !matches!(method.signature_flags & 15, 5 | 11),
-                "UNSUPPORTED: vararg call signature"
-            );
-            method_call(method)
-        } else {
-            self.calls
-                .get(&token)
-                .cloned()
-                .with_context(|| format!("UNSUPPORTED: unresolved call signature 0x{token:08x}"))?
-        };
+        let mut work = Work::new(self.limits.work);
+        work.charge(self.metadata_work)?;
+        let mut call = crate::metadata::call_signature(self, token, &mut work)?;
         if call.return_type.contains('!') || call.parameters.iter().any(|ty| ty.contains('!')) {
-            let mut work = Work::new(self.limits.work);
             let type_args =
                 crate::metadata::type_arguments(self, call.declaring_type_token, &mut work)?;
             let same_owner = call.declaring_type_token == context.declaring_type_token;
@@ -261,12 +244,13 @@ impl Input {
                     &mut work,
                 )
             };
-            call.return_type = replace(&call.return_type)?;
-            call.parameters = call
-                .parameters
-                .iter()
-                .map(|ty| replace(ty))
-                .collect::<Result<_>>()?;
+            call.return_type = Arc::new(replace(&call.return_type)?);
+            call.parameters = Arc::new(
+                call.parameters
+                    .iter()
+                    .map(|ty| replace(ty))
+                    .collect::<Result<_>>()?,
+            );
         }
         Ok(call)
     }
@@ -329,7 +313,10 @@ impl Input {
                 "UNSUPPORTED: unresolved field generic context"
             );
             work.charge(field.signature.len())?;
-            return Ok((field.signature.clone(), Some(field.flags & 0x10 != 0)));
+            return Ok((
+                field.signature.as_ref().clone(),
+                Some(field.flags & 0x10 != 0),
+            ));
         }
         self.check_token(token, &[10])?;
         use dotscope::metadata::tables::MemberRefRaw;
@@ -428,7 +415,7 @@ impl Input {
 
     /// The full name a metadata token points at, when this assembly knows it.
     pub fn type_name(&self, token: u32) -> Option<&str> {
-        self.type_names.get(&token).map(String::as_str)
+        self.type_names.get(&token).map(|name| name.as_str())
     }
 
     /// A printable type for any token a row can name: a definition, a reference, or a
@@ -508,22 +495,46 @@ fn hex_token(value: &str) -> Result<u32> {
 pub(crate) struct Work {
     initial: usize,
     remaining: usize,
+    metadata_reserved: usize,
 }
 impl Work {
     pub(crate) fn new(limit: usize) -> Self {
         Self {
             initial: limit,
             remaining: limit,
+            metadata_reserved: 0,
         }
     }
     pub(crate) fn used(&self) -> usize {
         self.initial - self.remaining
     }
 
+    // Retained containers are a byte budget, not repeated parsing work. Include
+    // charged work as a conservative allowance for decoded/copied string payloads.
+    pub(crate) fn retain(&mut self, bytes: usize) -> Result<()> {
+        let reserved = self
+            .metadata_reserved
+            .checked_add(bytes)
+            .context("RESOURCE_LIMIT: metadata bytes")?;
+        ensure!(
+            reserved.saturating_add(self.used()) <= rxd_core::MAX_METADATA_BYTES,
+            "RESOURCE_LIMIT: metadata bytes"
+        );
+        self.metadata_reserved = reserved;
+        Ok(())
+    }
+
     pub(crate) fn charge(&mut self, amount: usize) -> Result<()> {
         if amount > self.remaining {
             bail!("RESOURCE_LIMIT: analysis work");
         }
+        ensure!(
+            self.metadata_reserved
+                .saturating_add(self.used())
+                .saturating_add(amount)
+                <= rxd_core::MAX_METADATA_BYTES,
+            "RESOURCE_LIMIT: metadata bytes"
+        );
         self.remaining -= amount;
         Ok(())
     }

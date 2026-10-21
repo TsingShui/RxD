@@ -75,6 +75,25 @@ $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 Original IL `leave` crosses two finally handlers; `get --raw` preserves original
 instructions and the ordered EH table.
 
+## Published assembly: bounded metadata navigation
+
+The pinned MIT Newtonsoft.Json 13.0.3 net6.0 assembly is included as an offline
+regression input; provenance and independent expectations are in
+[`tests/corpus/dotnet/`](../../tests/corpus/dotnet/README.md). It is never executed.
+These queries use the unchanged shared work allowance, with no budget overrides:
+
+```sh
+dll=tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll
+$rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader -f ReadAsInt32
+$rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader --name ReadAsInt32 -o target/newtonsoft-method.jsonl
+$rxd dotnet get-method "$dll" --from target/newtonsoft-method.jsonl --raw
+```
+
+The substring query includes `ReadAsInt32Async`; the exact name selects one method.
+The complete unfiltered lists have 494 types, 2,204 fields and 4,208 methods. The
+selected method retains its original IL and EH. This is metadata/FETCH coverage,
+not a claim that whole-assembly reference/string scans fit the same work budget.
+
 ## Enable C# and syntax sugar
 
 A registered prebuilt bundle needs no .NET SDK (macOS ARM64 only):

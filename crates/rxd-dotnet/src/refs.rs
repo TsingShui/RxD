@@ -256,7 +256,7 @@ impl<'a> Resolver<'a> {
                 scope: ScopeIdentity::Module,
                 owner_token: method.declaring_type_token,
                 original_owner_token: method.declaring_type_token,
-                owner_name: method.declaring_type.clone(),
+                owner_name: method.declaring_type.as_ref().clone(),
                 name: method.name.clone(),
                 signature: Some(signature),
                 owner_arguments: Vec::new(),
@@ -719,6 +719,7 @@ impl<'a> Resolver<'a> {
         let name = if let Some(definition) = owner.definition {
             self.input.types[(definition & 0xffffff) as usize - 1]
                 .full_name
+                .as_ref()
                 .clone()
         } else if owner.token >> 24 == 1 {
             let row = self

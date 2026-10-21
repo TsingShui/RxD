@@ -1,8 +1,9 @@
 # .NET release measurement inputs
 
-The ordinary offline regression fixture is independently assembled original data
-in `tests/fixtures/dotnet/`. It is deliberately synthetic and does not establish
-production performance or semantic coverage.
+Small offline boundary fixtures are independently assembled original data in
+`tests/fixtures/dotnet/`; they do not establish production performance or semantic
+coverage. `newtonsoft-json-13.0.3/` additionally retains one published assembly and
+its MIT license for ordinary offline metadata-budget regression tests.
 
 Exploratory release measurements use existing assemblies from the public
 `ATRAPSLLC/dotscope` repository, fixed at commit
@@ -48,16 +49,29 @@ Aggregate IL acceptance additionally pins the independently published MIT
 `22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07`).
 Package SHA-256 is
 `872fc189e638ab1056555b03aaa38f68bcb54286e221aa646eb1129babf63c77`;
-source URL and license are recorded in `class-expectations.json`. Keep the package,
-assembly and full independent exploratory oracle under ignored `target/`.
+source URL and license are recorded in `class-expectations.json`. The exact assembly
+and original license are retained in `newtonsoft-json-13.0.3/`; keep the NuGet package
+and full independent exploratory oracle under ignored `target/`.
 The committed selective oracle pins JsonReader/JValue original scope, field and
 method tokens, exact IL hashes, no-body declarations and ordered EH. It comes
 from trusted System.Reflection.Metadata PEReader plus OpCodes operand descriptors,
 never rxd; the analyzed assembly is not loaded or executed.
 
-`tests/dotnet/class_csharp.rs` loads this oracle and checks the same selected
-whole-class IL and C# through the CLI; the runner that measured it was removed
-(`benches/README.md`).
+`tests/dotnet/metadata_budget.rs` checks all metadata row counts/tokens plus the
+JsonReader.ReadAsInt32 original IL hash/EH from this oracle, through real CLI processes
+under the shared 1,000,000 work default. It also rejects an unrelated MethodDef
+pointing at an already-cached field signature, preserving the destination file.
+`metadata-oracle.py` independently reads PE/CLI table headers (not rxd/dotscope) for
+counts and mutation offsets; no managed code is loaded. Reproduce its small manifest:
+
+```sh
+python3 tests/corpus/dotnet/newtonsoft-json-13.0.3/metadata-oracle.py > target/newtonsoft-metadata.json
+cmp target/newtonsoft-metadata.json tests/corpus/dotnet/newtonsoft-json-13.0.3/metadata.json
+```
+
+The historic whole-class measurement runner was removed (`benches/README.md`).
+The metadata regression is not current whole-class C#/xref/string-scan acceptance;
+those operations have their own cumulative work and reconstruction requirements.
 
 This measures independent production outline → type ID and complete selected
 class IL to stdout/atomic files, at least 20 fresh-process samples per workload.

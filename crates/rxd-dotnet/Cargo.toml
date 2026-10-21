@@ -14,7 +14,7 @@ bundled-ilspy = ["csharp-decompiler", "rxd-core/runtime-bundle"]
 rxd-core.workspace = true
 libloading = { version = "0.9", optional = true }
 anyhow = "1.0"
-serde.workspace = true
+serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
 sha2 = "0.11"
 strum = "0.28"

@@ -6,6 +6,7 @@ mod class;
 mod class_csharp;
 mod closure;
 mod field_type_refs;
+mod metadata_budget;
 mod method_refs;
 mod strings;
 mod sugar;
@@ -751,7 +752,8 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
     )
     .unwrap();
     let mismatched = run("get-method", &path, &["--from", foreign.to_str().unwrap()]);
-    assert_eq!(mismatched.status.code(), Some(2));
+    assert_eq!(mismatched.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&mismatched.stderr).contains("SOURCE_MISMATCH"));
     assert!(String::from_utf8_lossy(&mismatched.stderr).contains("different input"));
     rejected(mismatched);
 }

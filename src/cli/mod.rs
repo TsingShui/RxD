@@ -59,7 +59,11 @@ mod skill;
 #[cfg(feature = "backend-wasm")]
 mod wasm;
 /// The `xref` target surface shared by every backend that answers "who references this?".
-#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
+#[cfg(any(
+    feature = "backend-dex",
+    feature = "backend-jvm",
+    feature = "backend-dotnet"
+))]
 mod xref;
 
 #[derive(Parser)]

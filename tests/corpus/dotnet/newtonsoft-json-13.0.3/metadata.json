@@ -1,0 +1,26 @@
+{
+  "oracle": "Independent PE/CLI table-header decoder (metadata-oracle.py)",
+  "provenance": {
+    "package": "Newtonsoft.Json",
+    "version": "13.0.3",
+    "source_url": "https://api.nuget.org/v3-flatcontainer/newtonsoft.json/13.0.3/newtonsoft.json.13.0.3.nupkg",
+    "package_sha256": "872fc189e638ab1056555b03aaa38f68bcb54286e221aa646eb1129babf63c77",
+    "archive_entry": "lib/net6.0/Newtonsoft.Json.dll",
+    "dll_sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+    "dll_bytes": 712464,
+    "license": "MIT",
+    "license_url": "https://github.com/JamesNK/Newtonsoft.Json/blob/13.0.3/LICENSE.md",
+    "analysis_only": true,
+    "input_executed": false
+  },
+  "counts": {
+    "classes": 494,
+    "fields": 2204,
+    "methods": 4208
+  },
+  "mutation": {
+    "last_method_signature_index_offset": 386712,
+    "blob_index_width": 2,
+    "first_field_signature_index": 29741
+  }
+}

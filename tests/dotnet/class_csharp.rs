@@ -152,7 +152,10 @@ fn valid_mapping(row: &Value) {
             .iter()
             .find(|method| method["at"] == point["method_id"])
             .unwrap();
-        assert_eq!(point["method_token"], method["detail"]["method"]["at"]);
+        assert_eq!(
+            format!("0x{:08x}", point["method_token"].as_u64().unwrap()),
+            method["detail"]["method"]["at"]
+        );
         assert!(point["line"].as_u64().unwrap() > 0 && point["line"].as_u64().unwrap() <= lines);
         assert!(
             method["detail"]["instructions"]
@@ -322,8 +325,9 @@ fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() 
         .iter()
         .find(|method| method["detail"]["method"]["detail"]["name"] == "Guard")
         .unwrap()["detail"]["method"]["at"]
-        .as_u64()
+        .as_str()
         .unwrap();
+    let guard = u32::from_str_radix(guard.strip_prefix("0x").unwrap(), 16).unwrap();
     for mapping in [
         serde_json::json!([{"method_token":0x0600ffff,"il_offset":0,"line":1}]),
         serde_json::json!([{"method_token":guard,"il_offset":1,"line":1}]),

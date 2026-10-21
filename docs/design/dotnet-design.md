@@ -85,6 +85,16 @@ executability, complete custom-attribute decoding, signature verification or all
 cross-assembly semantics. Queries are complete within their declared scope and never
 silently ignore corrupt data.
 
+Metadata loading shares immutable owner names and decoded signatures within this one
+input. Field and method signature caches are separate and keyed by original blob offset;
+a cache hit never substitutes one signature grammar for the other. Every definition,
+MemberRef and MethodSpec still receives its structural/reference checks, including
+signatures outside a selected class/name. Filters do not bypass validation. MethodSpec
+argument bounds remain checked during loading; callable display/context projections
+are built only when requested, rather than cloned into a whole-assembly call map.
+The cache is local to the load, never shared across files or mutable generic contexts.
+No IL decoding, target execution or ILSpy initialization is needed for metadata listings.
+
 ## Commands and protocol
 
 ```sh
@@ -104,7 +114,8 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   `--from <jsonl|->`. `--from` takes the first record whose `record` kind matches
   the command (`method` for `get-method`, `type` for `get-class`; `xref` accepts
   `method`/`field`/`type`) and which carries an `at` coordinate; the stream is
-  bounded to 64 KiB and a mismatched `source_id` is `INVALID_QUERY`. The analyzed
+  bounded to 64 KiB and a mismatched `source_id` is `SOURCE_MISMATCH` (exit 1).
+  A token/`--kind` contradiction is `INVALID_QUERY` (exit 2). The analyzed
   input itself remains a regular file: only the selector stream may be piped.
 
 - `classes`/`fields`/`methods` each emit a header, their own records and a summary JSONL
@@ -422,10 +433,20 @@ generated members remain indexable, queryable and extractable.
 
 ## Budgets and performance
 
-Defaults: input 8 GiB (lowerable; 32-bit spans keep actual addressable content below
-4 GiB), work 16,777,216, instructions per method 100,000, and no
-record or output ceiling. All of them live in `rxd_core::Budget`; the CLI has no override flag. Entities count types,
-fields and methods; work bounds parsing stages; xref charge actual decode, signature,
+CLI and library defaults both use `rxd_core::Budget`: input 8 GiB (lowerable;
+32-bit spans keep actual addressable content below 4 GiB), cumulative work 1,000,000,
+instructions per method 100,000 and metadata 128 MiB. The former independent library
+work default of 16,777,216 is not an alternative allowance. The CLI has no override flag.
+Fixed row/index/cache storage is conservatively reserved against metadata bytes before
+allocation; decoded/copied string payloads are additionally bounded by charged work.
+Shared owner/signature handles do not recharge the bytes they no longer copy. Signature
+cache lookups, new parses and displays remain charged, and deferred callable projection
+starts with the metadata work already spent. The complete serialized CLI output is
+also capped at the shared 128 MiB ceiling, including header/summary/newline bytes:
+sharing must not allow repeated signatures to expand into an unbounded output
+buffer. Exceeding it is atomic `RESOURCE_LIMIT`, not `INVALID_INPUT` or successful
+truncation. These changes do not raise any shared cap.
+Entities count types, fields and methods; work bounds parsing stages; xref charge actual decode, signature,
 string and EH work. Full xref/strings scans share one fixed `#US` heap validation and
 reuse entry boundaries; FETCH shares instruction/token-kind/locals/parameter/branch/
 prefix/EH validation and skips IL hex and non-token mnemonic allocation when not

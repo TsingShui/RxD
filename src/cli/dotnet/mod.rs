@@ -585,23 +585,62 @@ fn record(
 }
 
 fn append(output: &mut Vec<u8>, value: &Value) -> anyhow::Result<()> {
-    let mut writer = Output { output };
-    serde_json::to_writer(&mut writer, value)
-        .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
+    let mut writer = Output {
+        output,
+        limit_hit: false,
+    };
+    serde_json::to_writer(&mut writer, value).map_err(|error| {
+        if writer.limit_hit {
+            anyhow::anyhow!("RESOURCE_LIMIT: output bytes")
+        } else {
+            anyhow::anyhow!("INVALID_INPUT: {error}")
+        }
+    })?;
     writer.write_all(b"\n")?;
     Ok(())
 }
 
 struct Output<'a> {
     output: &'a mut Vec<u8>,
+    limit_hit: bool,
 }
 impl Write for Output<'_> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        // Shared metadata can expand again in JSON. Bound the complete stream,
+        // including headers/newlines, rather than only the retained input model.
+        if self.output.len().saturating_add(bytes.len()) > rxd_core::MAX_METADATA_BYTES {
+            self.limit_hit = true;
+            return Err(io::Error::other("RESOURCE_LIMIT: output bytes"));
+        }
         self.output.extend_from_slice(bytes);
         Ok(bytes.len())
     }
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod output_tests {
+    #[test]
+    fn shared_metadata_output_ceiling_keeps_resource_errors_and_counts_newlines() {
+        // Exercise the actual ceiling without constructing an enormous assembly
+        // or adding a public budget override merely for a serializer regression.
+        let limit = rxd_core::MAX_METADATA_BYTES;
+        let mut output = Vec::with_capacity(limit);
+        let value = serde_json::Value::String("x".into());
+        output.resize(limit - 4, b' ');
+        super::append(&mut output, &value).unwrap(); // three JSON bytes + newline
+        assert_eq!(output.len(), limit);
+        for remaining in [0, 2, 3] {
+            output.truncate(limit - remaining);
+            let error = super::append(&mut output, &value).unwrap_err();
+            assert!(
+                error.to_string().starts_with("RESOURCE_LIMIT:"),
+                "{error:#}"
+            );
+            assert!(output.len() <= limit);
+        }
     }
 }
 
@@ -1018,7 +1057,10 @@ fn list(
         }
     }
     for ty in &input.types {
-        if class.as_ref().is_some_and(|name| *name != ty.full_name) {
+        if class
+            .as_ref()
+            .is_some_and(|name| name != ty.full_name.as_ref())
+        {
             continue;
         }
         match listing {
@@ -1129,7 +1171,7 @@ fn dotnet_target(
                 let inferred = token_kind(token);
                 if token >> 24 != 0x70 || inferred != Some(crate::cli::xref::Kind::String) {
                     anyhow::bail!(
-                        "--at {coordinate} is a {} token, but --kind string was given",
+                        "INVALID_QUERY: --at {coordinate} is a {} token, but --kind string was given",
                         inferred.map_or("non-string", |kind| kind.as_str())
                     );
                 }
@@ -1153,7 +1195,7 @@ fn dotnet_target(
         && given != inferred
     {
         anyhow::bail!(
-            "--at {coordinate} is a {} token, but --kind {} was given",
+            "INVALID_QUERY: --at {coordinate} is a {} token, but --kind {} was given",
             inferred.as_str(),
             given.as_str()
         );

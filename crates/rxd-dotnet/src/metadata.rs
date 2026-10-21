@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+    sync::Arc,
+};
 
 use anyhow::{Context, Result, bail, ensure};
 use dotscope::metadata::tables::{
@@ -20,6 +23,8 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             && input.rows[22] == 0,
         "UNSUPPORTED: pointer metadata tables"
     );
+    let mut work = Work::new(input.limits.work);
+    reserve_metadata(input, &mut work)?;
     let types = match tables.table::<TypeDefRaw>() {
         Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
         None => Vec::new(),
@@ -40,7 +45,6 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         Some(t) => t.iter().collect::<dotscope::Result<Vec<_>>>()?,
         None => Vec::new(),
     };
-    let mut work = Work::new(input.limits.work);
     let mut names = BTreeMap::new();
     let is_core_library = |name: &str| {
         matches!(
@@ -64,8 +68,15 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
     if let Some(refs) = tables.table::<TypeRefRaw>() {
         for row in refs.iter() {
             let row = row?;
-            let n = full_name(input.name(row.type_namespace)?, input.name(row.type_name)?);
-            work.charge(n.len())?;
+            let namespace = input.name(row.type_namespace)?;
+            let name = input.name(row.type_name)?;
+            work.charge(
+                namespace
+                    .len()
+                    .saturating_add(name.len())
+                    .saturating_add(usize::from(!namespace.is_empty())),
+            )?;
+            let n = full_name(namespace, name);
             if matches!(n.as_str(), "System.ValueType" | "System.Enum") {
                 let scope = row.resolution_scope.token.value();
                 let core_scope = if scope >> 24 == 35 {
@@ -84,7 +95,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
                     core_base_types.insert(row.token.value());
                 }
             }
-            names.insert(row.token.value(), n);
+            names.insert(row.token.value(), Arc::new(n));
         }
     }
     let mut nested = BTreeMap::new();
@@ -118,10 +129,11 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
     }
     let mut result_types = Vec::new();
     for row in &types {
-        let name = input.name(row.type_name)?.to_string();
-        let namespace = input.name(row.type_namespace)?.to_string();
-        let mut segments = vec![name.clone()];
-        let mut outer_namespace = namespace.clone();
+        let name = input.name(row.type_name)?;
+        let namespace = input.name(row.type_namespace)?;
+        work.charge(name.len().saturating_add(namespace.len()))?;
+        let mut segments = vec![name];
+        let mut outer_namespace = namespace;
         let mut rid = row.rid;
         let mut seen = BTreeSet::new();
         while let Some(parent) = nested.get(&rid) {
@@ -138,13 +150,20 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
                 .context("INVALID_INPUT: nested parent")?;
             let parent_name = input.name(p.type_name)?;
             work.charge(parent_name.len())?;
-            segments.push(parent_name.to_owned());
-            outer_namespace = input.name(p.type_namespace)?.to_owned();
+            segments.push(parent_name);
+            outer_namespace = input.name(p.type_namespace)?;
             rid = *parent;
         }
         segments.reverse();
-        let full = full_name(&outer_namespace, &segments.join("+"));
-        work.charge(name.len() + namespace.len() + full.len())?;
+        let joined_bytes = segments.iter().fold(segments.len() - 1, |bytes, name| {
+            bytes.saturating_add(name.len())
+        });
+        work.charge(
+            joined_bytes
+                .saturating_add(outer_namespace.len())
+                .saturating_add(usize::from(!outer_namespace.is_empty())),
+        )?;
+        let full = Arc::new(full_name(outer_namespace, &segments.join("+")));
         names.insert(row.token.value(), full.clone());
         if own_core_library && matches!(full.as_str(), "System.ValueType" | "System.Enum") {
             core_base_types.insert(row.token.value());
@@ -163,8 +182,8 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
                 .remove(&row.token.value())
                 .unwrap_or_default(),
             token: row.token.value(),
-            name,
-            namespace,
+            name: name.to_owned(),
+            namespace: namespace.to_owned(),
             full_name: full,
             flags: row.flags,
         });
@@ -175,12 +194,12 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         } else if ty
             .extends_token
             .is_some_and(|token| core_base_types.contains(&token))
-            && !(own_core_library && ty.full_name == "System.Enum")
+            && !(own_core_library && ty.full_name.as_str() == "System.Enum")
         {
             if ty
                 .extends_token
                 .and_then(|token| names.get(&token))
-                .is_some_and(|name| name == "System.Enum")
+                .is_some_and(|name| name.as_str() == "System.Enum")
             {
                 "enum"
             } else {
@@ -212,26 +231,26 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
         field_owners.iter().all(Option::is_some) && method_owners.iter().all(Option::is_some),
         "INVALID_INPUT: unowned metadata members"
     );
+    let mut signatures = Signatures::default();
     let mut result_fields = Vec::new();
     for (idx, row) in fields.iter().enumerate() {
-        let signature = field_signature(input, input.blob(row.signature)?, &mut work)?;
-        let name = input.name(row.name)?.to_string();
+        let signature = signatures.field(input, row.signature, &mut work)?;
+        let name = input.name(row.name)?;
         let owner = field_owners[idx].context("INVALID_INPUT: field owner")?;
         let declaring_type = result_types[owner].full_name.clone();
-        work.charge(name.len() + declaring_type.len() + signature.len())?;
+        work.charge(name.len().saturating_add(2))?; // name bytes, shared owner/signature handles
         result_fields.push(Field {
             id: input.id("field", row.token.value()),
             declaring_type_id: result_types[owner].id.clone(),
             token: row.token.value(),
             declaring_type_token: result_types[owner].token,
             declaring_type,
-            name,
+            name: name.to_owned(),
             signature,
             flags: row.flags.try_into()?,
         });
     }
     let mut result_methods = Vec::new();
-    let mut calls = BTreeMap::new();
     let mut member_kinds = BTreeMap::new();
     let type_kinds: BTreeMap<_, _> = types
         .iter()
@@ -240,20 +259,21 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
                 && !(own_core_library
                     && names
                         .get(&row.token.value())
-                        .is_some_and(|name| name == "System.Enum"));
+                        .is_some_and(|name| name.as_str() == "System.Enum"));
             (row.token.value(), is_value)
         })
         .collect();
     for (idx, row) in methods.iter().enumerate() {
-        let sig = method_signature(input, input.blob(row.signature)?, &mut work)?;
-        let name = input.name(row.name)?.to_string();
+        let cached = signatures.method(input, row.signature, &mut work)?;
+        let signature = cached.display(&mut work)?;
+        let sig = &cached.sig;
+        let name = input.name(row.name)?;
         let owner = method_owners[idx].context("INVALID_INPUT: method owner")?;
         let declaring_type = result_types[owner].full_name.clone();
         let token = row.token.value();
         let type_token = types[owner].token.value();
         let is_value_type = type_kinds[&type_token];
-        let signature = sig.display();
-        work.charge(name.len() + declaring_type.len() + signature.len())?;
+        work.charge(name.len().saturating_add(4))?; // name bytes and immutable shared handles
         result_methods.push(Method {
             declaring_type_id: result_types[owner].id.clone(),
             impl_flags: row.impl_flags.try_into()?,
@@ -265,10 +285,10 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             declaring_type,
             declaring_type_token: type_token,
             declaring_type_is_value_type: is_value_type,
-            name,
+            name: name.to_owned(),
             signature,
-            parameters: sig.parameters,
-            return_type: sig.return_type,
+            parameters: sig.parameters.clone(),
+            return_type: sig.return_type.clone(),
             has_this: sig.has_this,
             signature_flags: sig.flags,
             has_body: row.rva != 0 && row.impl_flags & 3 == 0,
@@ -276,36 +296,17 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             flags: row.flags.try_into()?,
         });
     }
-    for row in refs {
+    // Validate every reference, but do not build call names/projections until
+    // resolve_call asks for one. CLI metadata/FETCH does not consume that index.
+    for row in &refs {
         let bytes = input.blob(row.signature)?;
-        let name = input.name(row.name)?;
-        let parent = row.class.token.value();
-        let declaring = names
-            .get(&parent)
-            .cloned()
-            .unwrap_or_else(|| format!("token(0x{parent:08x})"));
-        work.charge(name.len() + declaring.len())?;
-        if bytes.first() == Some(&6) {
-            member_kinds.insert(row.token.value(), false);
-            let _ = field_signature(input, bytes, &mut work)?;
-            continue;
-        }
-        member_kinds.insert(row.token.value(), true);
-        let sig = method_signature(input, bytes, &mut work)?;
-        if !sig.vararg {
-            calls.insert(
-                row.token.value(),
-                CallSignature {
-                    token: row.token.value(),
-                    name: format!("{declaring}::{name}"),
-                    parameters: sig.parameters,
-                    return_type: sig.return_type,
-                    has_this: sig.has_this,
-                    signature_flags: sig.flags,
-                    declaring_type_token: parent,
-                    method_arguments: None,
-                },
-            );
+        work.charge(input.name(row.name)?.len())?;
+        let is_method = bytes.first() != Some(&6);
+        member_kinds.insert(row.token.value(), is_method);
+        if is_method {
+            signatures.method(input, row.signature, &mut work)?;
+        } else {
+            signatures.field(input, row.signature, &mut work)?;
         }
     }
     for row in specs {
@@ -316,49 +317,88 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             "INVALID_INPUT: MethodSpec references field"
         );
         let args = generic_arguments(input, input.blob(row.instantiation)?, &mut work)?;
-        let base = if target >> 24 == 6 {
-            result_methods
-                .binary_search_by_key(&target, |m| m.token)
-                .ok()
-                .map(|index| &result_methods[index])
-                .filter(|method| !matches!(method.signature_flags & 15, 5 | 11))
-                .map(crate::input::method_call)
+        let (parameters, returns, vararg) = if target >> 24 == 6 {
+            let method = &result_methods[(target & 0xffffff) as usize - 1];
+            (
+                &method.parameters,
+                &method.return_type,
+                matches!(method.signature_flags & 15, 5 | 11),
+            )
         } else {
-            calls.get(&target).cloned()
+            let row = &refs[(target & 0xffffff) as usize - 1];
+            let sig = &signatures.method(input, row.signature, &mut work)?.sig;
+            (&sig.parameters, &sig.return_type, sig.vararg)
         };
-        if let Some(base) = base {
-            for ty in base
-                .parameters
-                .iter()
-                .chain(std::iter::once(&base.return_type))
-            {
+        if !vararg {
+            for ty in parameters.iter().chain(std::iter::once(returns.as_ref())) {
                 validate_method_arguments(ty, &args, &mut work)?;
             }
-            let token = row.token.value();
-            calls.insert(
-                token,
-                CallSignature {
-                    token,
-                    name: format!("{}<{}>", base.name, args.join(",")),
-                    parameters: base.parameters,
-                    return_type: base.return_type,
-                    has_this: base.has_this,
-                    signature_flags: base.signature_flags,
-                    declaring_type_token: base.declaring_type_token,
-                    method_arguments: Some(args),
-                },
-            );
         }
     }
     input.types = result_types;
     input.fields = result_fields;
     input.methods = result_methods;
-    input.calls = calls;
     input.member_kinds = member_kinds;
     input.type_kinds = type_kinds;
     input.type_names = names;
     load_relationships(input, &mut work)?;
     input.metadata_work = work.used();
+    Ok(())
+}
+
+// Bound the fixed retained rows/indices before allocating them. Two row slots
+// cover Vec growth; full identity strings and conservative tree-node storage are
+// included separately. Variable signature/name payloads are bounded by Work.
+fn reserve_metadata(input: &Input, work: &mut Work) -> Result<()> {
+    let id_bytes = input.source_id.len() + 32;
+    let word = std::mem::size_of::<usize>();
+    let weights = [
+        (
+            1,
+            12 * (std::mem::size_of::<(u32, Arc<String>)>() + word) + 40,
+        ),
+        (
+            2,
+            2 * (std::mem::size_of::<TypeDefRaw>() + std::mem::size_of::<TypeInfo>())
+                + 2 * id_bytes
+                + 12 * (std::mem::size_of::<(u32, Arc<String>)>() + word)
+                + 64,
+        ),
+        (
+            4,
+            2 * (std::mem::size_of::<FieldRaw>() + std::mem::size_of::<Field>())
+                + 2 * id_bytes
+                + std::mem::size_of::<Option<usize>>(),
+        ),
+        (
+            6,
+            2 * (std::mem::size_of::<MethodDefRaw>() + std::mem::size_of::<Method>())
+                + 2 * id_bytes
+                + std::mem::size_of::<Option<usize>>(),
+        ),
+        (
+            10,
+            2 * std::mem::size_of::<MemberRefRaw>()
+                + 12 * (std::mem::size_of::<(u32, bool)>() + word),
+        ),
+        (43, 2 * std::mem::size_of::<MethodSpecRaw>()),
+        (23, std::mem::size_of::<crate::Property>() + id_bytes),
+        (20, std::mem::size_of::<crate::Event>() + id_bytes),
+        (24, std::mem::size_of::<crate::Accessor>()),
+        (
+            42,
+            12 * (std::mem::size_of::<(u32, Vec<crate::GenericParameter>)>() + word),
+        ),
+        (41, 12 * (std::mem::size_of::<(u32, u32)>() + word)),
+        (9, 12 * (std::mem::size_of::<(u32, Vec<u32>)>() + word)),
+    ];
+    for (table, bytes) in weights {
+        work.retain(
+            (input.rows[table] as usize)
+                .checked_mul(bytes)
+                .context("RESOURCE_LIMIT: metadata bytes")?,
+        )?;
+    }
     Ok(())
 }
 
@@ -622,9 +662,76 @@ fn assign_range(owners: &mut [Option<usize>], start: u32, end: u32, owner: usize
     Ok(())
 }
 
+// A blob offset is meaningful only in this immutable Input. Keep field and method
+// grammars separate: a previously validated field must not validate a method row.
+#[derive(Default)]
+struct Signatures {
+    fields: BTreeMap<u32, Arc<String>>,
+    methods: BTreeMap<u32, CachedMethodSig>,
+}
+
+impl Signatures {
+    fn field(&mut self, input: &Input, index: u32, work: &mut Work) -> Result<Arc<String>> {
+        work.charge(1)?;
+        let signature = match self.fields.entry(index) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                work.charge(2)?;
+                work.retain(
+                    12 * (std::mem::size_of::<(u32, Arc<String>)>() + std::mem::size_of::<usize>())
+                        + std::mem::size_of::<String>()
+                        + 2 * std::mem::size_of::<usize>(),
+                )?;
+                entry.insert(Arc::new(field_signature(input, input.blob(index)?, work)?))
+            }
+        };
+        Ok(signature.clone())
+    }
+
+    fn method(
+        &mut self,
+        input: &Input,
+        index: u32,
+        work: &mut Work,
+    ) -> Result<&mut CachedMethodSig> {
+        work.charge(1)?;
+        Ok(match self.methods.entry(index) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                work.charge(1)?;
+                work.retain(
+                    12 * (std::mem::size_of::<(u32, CachedMethodSig)>()
+                        + std::mem::size_of::<usize>()),
+                )?;
+                entry.insert(CachedMethodSig {
+                    sig: method_signature(input, input.blob(index)?, work)?,
+                    display: None,
+                })
+            }
+        })
+    }
+}
+
+struct CachedMethodSig {
+    sig: MethodSig,
+    display: Option<Arc<String>>,
+}
+
+impl CachedMethodSig {
+    fn display(&mut self, work: &mut Work) -> Result<Arc<String>> {
+        if self.display.is_none() {
+            let text = self.sig.display();
+            work.charge(text.len() + 1)?;
+            work.retain(std::mem::size_of::<String>() + 2 * std::mem::size_of::<usize>())?;
+            self.display = Some(Arc::new(text));
+        }
+        Ok(self.display.as_ref().unwrap().clone())
+    }
+}
+
 pub(crate) struct MethodSig {
-    pub(crate) parameters: Vec<String>,
-    pub(crate) return_type: String,
+    pub(crate) parameters: Arc<Vec<String>>,
+    pub(crate) return_type: Arc<String>,
     pub(crate) has_this: bool,
     pub(crate) vararg: bool,
     generic_count: u32,
@@ -641,6 +748,94 @@ impl MethodSig {
             self.return_type,
             self.parameters.join(",")
         )
+    }
+}
+
+/// Build only the call projection requested by the caller. Full metadata loading
+/// already checked all referenced signatures and MethodSpec argument bounds.
+pub(crate) fn call_signature(input: &Input, token: u32, work: &mut Work) -> Result<CallSignature> {
+    work.charge(1)?;
+    input.check_token(token, &[6, 10, 43])?;
+    let rid = token & 0xffffff;
+    match token >> 24 {
+        6 => {
+            let method = input
+                .methods
+                .get(rid as usize - 1)
+                .context("INVALID_INPUT: missing method call token")?;
+            ensure!(
+                !matches!(method.signature_flags & 15, 5 | 11),
+                "UNSUPPORTED: vararg call signature"
+            );
+            work.charge(method.declaring_type.len() + method.name.len() + 2)?;
+            Ok(crate::input::method_call(method))
+        }
+        10 => {
+            ensure!(
+                input.member_kinds.get(&token) == Some(&true),
+                "INVALID_INPUT: call references field"
+            );
+            let row = input
+                .view
+                .tables()
+                .and_then(|t| t.table::<MemberRefRaw>())
+                .context("INVALID_INPUT: MemberRef table")?
+                .get(rid)?
+                .context("INVALID_INPUT: MemberRef token")?;
+            let sig = method_signature(input, input.blob(row.signature)?, work)?;
+            ensure!(!sig.vararg, "UNSUPPORTED: vararg call signature");
+            let name = input.name(row.name)?;
+            let parent = row.class.token.value();
+            let owner = input.type_name(parent);
+            work.charge(owner.map_or(17, str::len) + name.len() + 2)?;
+            let name = match owner {
+                Some(owner) => format!("{owner}::{name}"),
+                None => format!("token(0x{parent:08x})::{name}"),
+            };
+            Ok(CallSignature {
+                token,
+                name,
+                parameters: sig.parameters,
+                return_type: sig.return_type,
+                has_this: sig.has_this,
+                signature_flags: sig.flags,
+                declaring_type_token: parent,
+                method_arguments: None,
+            })
+        }
+        43 => {
+            let row = input
+                .view
+                .tables()
+                .and_then(|t| t.table::<MethodSpecRaw>())
+                .context("INVALID_INPUT: MethodSpec table")?
+                .get(rid)?
+                .context("INVALID_INPUT: MethodSpec token")?;
+            let target = row.method.token.value();
+            input.check_token(target, &[6, 10])?;
+            let mut call = call_signature(input, target, work)?;
+            let args = generic_arguments(input, input.blob(row.instantiation)?, work)?;
+            for ty in call
+                .parameters
+                .iter()
+                .chain(std::iter::once(call.return_type.as_ref()))
+            {
+                validate_method_arguments(ty, &args, work)?;
+            }
+            let argument_bytes =
+                args.iter().map(String::len).sum::<usize>() + args.len().saturating_sub(1);
+            work.charge(
+                call.name
+                    .len()
+                    .saturating_add(argument_bytes.saturating_mul(2))
+                    .saturating_add(2),
+            )?;
+            call.name = format!("{}<{}>", call.name, args.join(","));
+            call.token = token;
+            call.method_arguments = Some(args);
+            Ok(call)
+        }
+        _ => unreachable!("checked callable token"),
     }
 }
 
@@ -892,9 +1087,13 @@ impl<'a, 'w> Signature<'a, 'w> {
             }
             parameters.push(self.ty(depth + 1, false)?);
         }
+        // Shared immutable signature storage; the allocation is charged once.
+        self.work.charge(2)?;
+        self.work
+            .retain(2 * (std::mem::size_of::<String>() + 2 * std::mem::size_of::<usize>()))?;
         Ok(MethodSig {
-            parameters,
-            return_type,
+            parameters: Arc::new(parameters),
+            return_type: Arc::new(return_type),
             has_this: flags & 0x20 != 0,
             vararg: matches!(flags & 15, 5 | 11),
             generic_count,

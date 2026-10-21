@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
@@ -9,10 +10,11 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
+        let budget = rxd_core::Budget::default();
         Self {
-            input_bytes: rxd_core::MAX_INPUT_BYTES,
-            work: 16 * 1024 * 1024,
-            instructions: 100_000,
+            input_bytes: budget.input_bytes,
+            work: budget.work,
+            instructions: budget.instructions,
         }
     }
 }
@@ -32,7 +34,7 @@ pub struct TypeInfo {
     pub token: u32,
     pub name: String,
     pub namespace: String,
-    pub full_name: String,
+    pub full_name: Arc<String>,
     #[serde(rename = "access_flags")]
     pub flags: u32,
 }
@@ -46,9 +48,9 @@ pub struct Field {
     pub token: u32,
     #[serde(skip_serializing)]
     pub declaring_type_token: u32,
-    pub declaring_type: String,
+    pub declaring_type: Arc<String>,
     pub name: String,
-    pub signature: String,
+    pub signature: Arc<String>,
     #[serde(rename = "access_flags")]
     pub flags: u16,
 }
@@ -62,16 +64,16 @@ pub struct Method {
     pub id: String,
     #[serde(skip_serializing)]
     pub token: u32,
-    pub declaring_type: String,
+    pub declaring_type: Arc<String>,
     #[serde(skip_serializing)]
     pub declaring_type_token: u32,
     pub declaring_type_is_value_type: bool,
     pub name: String,
-    pub signature: String,
-    pub parameters: Vec<String>,
+    pub signature: Arc<String>,
+    pub parameters: Arc<Vec<String>>,
     #[serde(skip_serializing)]
     pub signature_flags: u8,
-    pub return_type: String,
+    pub return_type: Arc<String>,
     pub has_this: bool,
     pub has_body: bool,
     pub rva: u32,
@@ -132,9 +134,9 @@ pub struct MethodBody {
 pub struct CallSignature {
     pub token: u32,
     pub name: String,
-    pub parameters: Vec<String>,
+    pub parameters: Arc<Vec<String>>,
     pub signature_flags: u8,
-    pub return_type: String,
+    pub return_type: Arc<String>,
     pub has_this: bool,
     pub declaring_type_token: u32,
     pub method_arguments: Option<Vec<String>>,

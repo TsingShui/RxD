@@ -116,7 +116,14 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
             let ty = types.iter().find(|ty| ty["at"] == *token).unwrap();
             assert_eq!(ty["detail"]["full_name"], expected["name"]);
             assert_eq!(ty["detail"]["extends_token"], expected["extends_token"]);
-            assert_eq!(ty["detail"]["interfaces"], expected["interfaces"]);
+            // Named interfaces carry their original tokens beside the display list;
+            // the empty list keeps its compact existing representation.
+            assert_eq!(
+                ty["detail"]
+                    .get("interface_tokens")
+                    .unwrap_or(&ty["detail"]["interfaces"]),
+                &expected["interfaces"]
+            );
             assert_eq!(ty["detail"]["access_flags"], expected["flags"]);
             for parameter in expected["generic_parameters"].as_array().unwrap() {
                 assert!(
@@ -179,14 +186,26 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
                 .as_object()
                 .unwrap()
                 .iter()
-                .filter(|(_, item)| types.iter().any(|ty| ty["at"] == item["owner_token"]))
+                .filter(|(_, item)| {
+                    let owner = format!("0x{:08x}", item["owner_token"].as_u64().unwrap());
+                    types.iter().any(|ty| ty["at"] == owner)
+                })
                 .collect();
             let got = row["detail"][category].as_array().unwrap();
             assert_eq!(got.len(), selected.len());
             for (token, expected) in selected {
-                let got = got.iter().find(|got| got["at"] == *token).unwrap();
+                let got = got
+                    .iter()
+                    .find(|got| {
+                        format!("0x{:08x}", got["detail"]["token"].as_u64().unwrap()) == *token
+                    })
+                    .unwrap();
+                assert!(got["at"].is_null());
                 assert_eq!(got["detail"]["name"], expected["name"]);
-                assert_eq!(got["parent_at"], expected["owner_token"]);
+                assert_eq!(
+                    got["parent_at"],
+                    format!("0x{:08x}", expected["owner_token"].as_u64().unwrap())
+                );
                 for accessor in expected["accessors"].as_array().unwrap() {
                     let found = got["detail"]["accessors"]
                         .as_array()
