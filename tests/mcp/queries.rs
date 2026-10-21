@@ -75,6 +75,54 @@ fn mcp_js_navigation_preserves_cli_identity_and_source() {
     );
 }
 
+#[cfg(feature = "backend-js")]
+#[test]
+fn mcp_js_member_writes_and_call_contexts_match_cli() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("loader.js");
+    let source = "runtime.p; runtime.p=document.querySelector('meta[name=AppPublic]').content;";
+    std::fs::write(&path, source).unwrap();
+    let mut client = Client::start(&["--root", dir.path().to_str().unwrap(), "--backends", "js"]);
+    client.initialize();
+    let catalog = client.request("tools/list", json!({}));
+    let tools = &catalog["result"]["tools"];
+    let members = checked(
+        &mut client,
+        tools,
+        "js_members",
+        json!({
+            "input":{"path":path}, "name":"p", "access":"write"
+        }),
+    );
+    assert_eq!(members["records"].as_array().unwrap().len(), 1);
+    assert_eq!(members["records"][0]["detail"]["write"], true);
+    assert_eq!(members["records"][0]["detail"]["read"], false);
+    let calls = checked(
+        &mut client,
+        tools,
+        "js_calls",
+        json!({
+            "input":{"path":path}, "name":"querySelector"
+        }),
+    );
+    assert_eq!(
+        calls["records"][0]["context_at"],
+        members["records"][0]["context_at"]
+    );
+    let context = checked(
+        &mut client,
+        tools,
+        "js_slice",
+        json!({
+            "input":{"path":path}, "at":members["records"][0]["context_at"]
+        }),
+    );
+    assert_eq!(
+        context["detail"]["source"],
+        "runtime.p=document.querySelector('meta[name=AppPublic]').content"
+    );
+}
+
 fn checked(client: &mut Client, tools: &Value, name: &str, arguments: Value) -> Value {
     let result = client.tool(name, arguments.clone());
     assert_ne!(result["isError"], true, "{name}: {result}");
@@ -100,6 +148,8 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("js_identifiers", "js", "identifiers"),
     ("js_calls", "js", "calls"),
     ("js_members", "js", "members"),
+    ("js_resources", "js", "resources"),
+    ("js_values", "js", "values"),
     ("js_locate", "js", "locate"),
     ("js_xref", "js", "xref"),
     ("js_symbols", "js", "symbols"),
@@ -107,6 +157,7 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("asar_entries", "asar", "entries"),
     ("asar_extract", "asar", "extract"),
     ("html_entries", "html", "entries"),
+    ("html_resources", "html", "resources"),
     ("html_extract", "html", "extract"),
     ("dex_entries", "dex", "entries"),
     ("dex_classes", "dex", "classes"),

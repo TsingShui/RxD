@@ -137,6 +137,7 @@ pub struct Collector<'s> {
     type_strings: HashSet<(u32, u32)>,
     type_templates: HashSet<(u32, u32)>,
     resolve_static: bool,
+    pub static_limits: static_eval::Limits,
 }
 
 impl<'s> Collector<'s> {
@@ -173,6 +174,7 @@ impl<'s> Collector<'s> {
             type_strings: HashSet::new(),
             type_templates: HashSet::new(),
             resolve_static,
+            static_limits: static_eval::Limits::default(),
         }
     }
 
@@ -563,11 +565,11 @@ impl<'a> Visit<'a> for Collector<'_> {
                     && static_eval::binary_can_yield_string(binary) =>
             {
                 if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_binary(binary, static_eval::Limits::default())
+                    static_eval::evaluate_binary(binary, self.static_limits)
                 {
                     self.literal(
                         binary.span,
-                        JsString::from(value.as_str()),
+                        value,
                         "static_expression",
                         false,
                         Some("static"),
@@ -580,15 +582,9 @@ impl<'a> Visit<'a> for Collector<'_> {
                     && static_eval::call_can_yield_string(call) =>
             {
                 if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_call(call, static_eval::Limits::default())
+                    static_eval::evaluate_call(call, self.static_limits)
                 {
-                    self.literal(
-                        call.span,
-                        JsString::from(value.as_str()),
-                        "static_expression",
-                        false,
-                        Some("static"),
-                    );
+                    self.literal(call.span, value, "static_expression", false, Some("static"));
                 }
             }
             AstKind::TemplateLiteral(template)
@@ -597,11 +593,11 @@ impl<'a> Visit<'a> for Collector<'_> {
                     && static_eval::template_can_yield_string(template) =>
             {
                 if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_template(template, static_eval::Limits::default())
+                    static_eval::evaluate_template(template, self.static_limits)
                 {
                     self.literal(
                         template.span,
-                        JsString::from(value.as_str()),
+                        value,
                         "static_expression",
                         false,
                         Some("static"),
@@ -614,11 +610,11 @@ impl<'a> Visit<'a> for Collector<'_> {
                     && static_eval::member_can_yield_string(member) =>
             {
                 if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_member(member, static_eval::Limits::default())
+                    static_eval::evaluate_member(member, self.static_limits)
                 {
                     self.literal(
                         member.span,
-                        JsString::from(value.as_str()),
+                        value,
                         "static_expression",
                         false,
                         Some("static"),

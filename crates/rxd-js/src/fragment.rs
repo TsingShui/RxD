@@ -29,6 +29,7 @@ pub fn key(node: AstKind<'_>) -> Option<Key> {
         AstKind::CatchParameter(_) => "catch_parameter",
         AstKind::ImportDeclaration(_) => "import_declaration",
         AstKind::ExportNamedDeclaration(_) => "export_named_declaration",
+        AstKind::ExportFromDeclaration(_) => "export_from_declaration",
         AstKind::ExportDefaultDeclaration(_) => "export_default_declaration",
         AstKind::ExportAllDeclaration(_) => "export_all_declaration",
         AstKind::ExpressionStatement(_) => "expression_statement",

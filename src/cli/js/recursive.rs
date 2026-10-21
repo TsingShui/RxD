@@ -105,8 +105,8 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
     if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
         return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
     }
-    if matches!(&query, Query::Identifiers { name, .. } if name.is_empty()) {
-        return Err(Error::new("INVALID_QUERY", "name must not be empty"));
+    if let Query::Resources(resources) = &query {
+        resources.validate()?;
     }
     if matches!(
         &query,
@@ -114,7 +114,8 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
             within: Some(_),
             ..
         }
-    ) {
+    ) || matches!(&query, Query::Resources(resources) if resources.within.is_some())
+    {
         return Err(Error::new(
             "INVALID_QUERY",
             "--within requires a single-file input",

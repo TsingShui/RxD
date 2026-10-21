@@ -58,9 +58,11 @@ struct Visitor<'a, 's> {
     locations: Locations<'a, 's>,
     contexts: Contexts,
     region: Span,
-    wanted: &'a str,
+    names: crate::names::Names<'a>,
     role: IdentifierRole,
     records: Vec<Identifier>,
+    budget: crate::names::RecordBudget,
+    error: Option<rxd_core::Error>,
 }
 
 impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
@@ -68,6 +70,9 @@ impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
         // Mirror the parser traversal's local-context tracking so each hit can
         // report the smallest enclosing syntax fragment.
         self.contexts.enter(node, 0);
+        if self.error.is_some() {
+            return;
+        }
         let (name, role, kind, span) = match node {
             AstKind::BindingIdentifier(identifier) => (
                 identifier.name.as_str(),
@@ -83,10 +88,14 @@ impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
             ),
             _ => return,
         };
-        if name != self.wanted || !role_matches(self.role, role) {
+        if !self.names.matches(&JsString::from(name)) || !role_matches(self.role, role) {
             return;
         }
         if span.start < self.region.start || span.end > self.region.end {
+            return;
+        }
+        if let Err(error) = self.budget.charge(&JsString::from(name)) {
+            self.error = Some(error);
             return;
         }
         let location = self.locations.get(span);
@@ -116,7 +125,7 @@ pub fn run(
     program: &Program<'_>,
     source: &Source,
     collector: &Collector<'_>,
-    wanted: &str,
+    names: &crate::NameQuery,
     role: IdentifierRole,
     within: Option<&str>,
     perf: &mut Perf,
@@ -135,11 +144,16 @@ pub fn run(
             locations: Locations::new(collector),
             contexts: Contexts::new(Target::Matches),
             region,
-            wanted,
+            names: names.compile(),
             role,
             records: Vec::new(),
+            budget: crate::names::RecordBudget::default(),
+            error: None,
         };
         visitor.visit_program(program);
+        if let Some(error) = visitor.error {
+            return Err(error);
+        }
         visitor
             .records
             .sort_by_key(|record| (record.start, record.end));

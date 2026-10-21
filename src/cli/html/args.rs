@@ -46,6 +46,28 @@ pub(crate) enum Command {
         #[command(flatten)]
         case: CaseArgs,
     },
+    /// List source-backed resources, inline code and unresolved references without fetching.
+    Resources {
+        #[command(flatten)]
+        common: Common,
+        /// Final HTTP(S) document URL used to resolve relative references and <base href>.
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Exact resource kind, not a claim that the resource is loaded at runtime.
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(rxd_html::RESOURCE_KINDS.iter().copied()))]
+        kind: Option<String>,
+        /// Inline bodies or external attribute references; external need not mean HTTP.
+        #[arg(long, value_parser = ["inline", "external"])]
+        location: Option<String>,
+        /// Substring over the decoded reference, or the tag name for inline bodies.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
+        /// Include exact inline source and its SHA-256; never fetch external URLs.
+        #[arg(long)]
+        include_content: bool,
+    },
     /// Fetch original bytes from an exact catalog record.
     Extract {
         #[command(flatten)]
@@ -62,12 +84,15 @@ impl Command {
     pub(crate) fn name(&self) -> &'static str {
         match self {
             Self::Entries { .. } => "entries",
+            Self::Resources { .. } => "resources",
             Self::Extract { .. } => "extract",
         }
     }
     pub(crate) fn perf(&self) -> bool {
         match self {
-            Self::Entries { common, .. } | Self::Extract { common, .. } => common.perf,
+            Self::Entries { common, .. }
+            | Self::Resources { common, .. }
+            | Self::Extract { common, .. } => common.perf,
         }
     }
 }

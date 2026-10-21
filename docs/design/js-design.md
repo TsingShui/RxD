@@ -4,21 +4,22 @@ Status: implemented.
 
 `rxd js` uses Rust and Oxc for compact bundles and ordinary JavaScript files without
 source maps. It provides `entities`/`functions`/`classes`/`methods`, `find`,
-`identifiers`, `calls`, `members`,
+`resources`, `values`, `identifiers`, `calls`, `members`,
 `locate`, `slice`, `xref --at`/`--byte` and `symbols`. The backend maps literals, identifiers,
 call sites and static member names to content-bound AST structures, lexical
 relationships and original source ranges. It never executes input, performs
 deobfuscation or string decryption, restores obfuscator intent, or promises runtime
 semantics.
 
-ASAR extraction is handled by `rxd asar`; see [ASAR](asar-design.md) and the
-[JavaScript examples](../demo/js.md).
+ASAR extraction is handled by `rxd asar`; see [ASAR](asar-design.md). HTML resource
+classification and inline source handoff use `rxd html resources`; see
+[HTML](html-design.md#resource-candidates) and the [JavaScript examples](../demo/js.md).
 
 ## Scope
 
 The backend handles local valid-UTF-8 JS, JSX, TS, TSX and TypeScript declaration
-files, both script and ESM. The four structure listings and `find` recurse into
-directories; files are
+files, both script and ESM. The four structure listings, `find` and `resources`
+recurse into directories; files are
 analyzed independently and cross-file modules/bindings are not resolved. Original
 source retains type annotations, JSX, modifiers and declaration syntax; it is never
 compiled, transformed or type-checked as a project.
@@ -57,6 +58,69 @@ For an existing `rg` hit, `locate` can be used directly. `slice` on a function p
 its access to outer variables; the fragment may not run independently. `parent_at`
 provides the closure context.
 
+## HTML → JavaScript → resource acquisition
+
+Keep deterministic local analysis separate from network acquisition. For a captured
+HTML page, start with one source-backed catalog rather than treating every script tag,
+link or string ending in `.js` as a download. This route needs only a CLI build with
+`--no-default-features --features backend-js,backend-html`; neither JVM nor MCP is
+required:
+
+```sh
+rxd html resources page.html --base-url 'https://example.org/app/' -o resources.jsonl
+rxd html resources page.html --kind script --location inline --include-content \
+  -o inline.jsonl
+```
+
+The document URL must be the capture's **final** URL after redirects. HTML resolves
+relative references and the first applicable lexical `base[href]`, distinguishes
+classic/module JS from import maps/data blocks, separates asset/preload references
+from connection hints, and retains load-condition evidence and unresolved references.
+It does not fetch, parse CSS dependencies, expand import maps or simulate a browser.
+An absolute resolved URL is still only a candidate; the Agent enforces permitted
+origins/schemes, credentials policy, redirects, MIME, size and content identity when
+using curl. Do not forward a page's cookies to CDN/other origins by default.
+
+`--include-content` returns each non-empty inline body's exact original text and
+`detail.content_source_id`. Decode the JSON string and write its UTF-8 bytes unchanged;
+name the artifact from the content hash, never an input URL or attribute. Preserve
+the container header's `source_id`, row `at`, and `content_start/content_end` as
+provenance. Use `.cjs` for classic scripts and `.mjs` for modules so JS auto mode
+preserves their intended source type. This materializes many inline scripts from one
+listing rather than issuing one extract query per script; `extract --at/--from
+--content` remains available for a single artifact. The JS source ID is the body
+hash, and JS offsets start at zero, not at the HTML offset. Import maps and other
+data blocks are deliberately not selected by `--kind script`.
+
+On downloaded JS, `resources` inventories recognized loading sites rather than all
+strings that resemble filenames. `--resolution unresolved` keeps dynamic expressions
+visible, with directly sliceable contexts. For example, on the saved login bundle,
+`resources --kind attribute -f 'c.p'` selects the actual script-src assignment and its
+complete chunk-name/hash construction; it does not execute or expand that function.
+Follow public-path setup with `members --name p --access write` and `slice` its
+`context_at`. Follow observed configuration reads back into
+`html entries --attr` (for example an `AppPublic` meta element). Use
+`find --resolve-static` for bounded literal construction and `symbols/xref` only
+when lexical binding identity matters. Chunk filename/hash tables and CSS loading
+conditions still require Agent interpretation; no general Webpack resolver or
+automatic runtime dependency closure is claimed. Record source identities,
+coordinates, configuration inputs, conditions and unresolved expressions for every
+derived edge, then fetch only the reviewed finite URL set.
+
+The saved anonymous Feishu login snapshot (92,565 bytes, not authenticated Drive)
+yields 2 external JS + 2 external CSS, 4 non-empty inline JS + 1 inline CSS,
+4 connection hints and one data-URI icon; one empty inline script is counted but
+omitted. The four inline scripts total 5,346 bytes and can be materialized together
+and scanned as one directory. The CLI-only walkthrough also fetched the four direct
+resources again with curl (4,436,195 bytes, HTTP/MIME/size/SHA-256 checked), parsed
+both fresh JS bundles, and reduced the public-path query to two directly sliceable
+writes plus one HTML `AppPublic` metadata match. All 54 local JS artifacts, including
+the previously captured chunks, parsed successfully. No browser, target-code
+execution, credentials or business-interface requests were used. These are HTML
+declarations and reviewed static evidence, not proof of runtime reachability.
+Neither a complete lexical catalog nor successful acquisition of the reviewed URLs
+is page coverage.
+
 ## Commands
 
 ```sh
@@ -69,10 +133,16 @@ rxd js entities bundle.js --kind object_method
 rxd js entities bundle.js --name checkFlag
 rxd js find bundle.js -f '/api/login'
 rxd js find bundle.js -f 'setInterval' --resolve-static
+rxd js resources bundle.js
+rxd js resources bundle.js --kind attribute --resolution unresolved
+rxd js resources assets/ --kind module --threads 2
 rxd js identifiers bundle.js --name '_0x4e3653'
 rxd js identifiers bundle.js --name '_0x4e3653' --role reference --within '<entity-id>'
 rxd js calls bundle.js --name 'AIS3'
+rxd js calls bundle.js -f 'load'
+rxd js values bundle.js --kind property --name hashes
 rxd js members bundle.js --name 'checkFlag'
+rxd js members bundle.js --name 'p' --access write
 rxd js locate bundle.js --byte 183240 --json
 rxd js xref bundle.js --byte 183240
 rxd js symbols bundle.js --within '<entity-id>'
@@ -88,9 +158,11 @@ rxd js slice bundle.js --at '<parent>' --json
 | `classes` | The same rows restricted to classes, interfaces, enums, aliases and namespaces. | JSONL |
 | `methods` | The same rows restricted to class/object members: methods, constructors, getters, setters. | JSONL |
 | `find -f PATTERN` | Literal substring over decoded string values, folded unless `--case sensitive`; returns containing structures. `--resolve-static` also matches bounded AST constant evaluation. | JSONL |
-| `identifiers` | Lexical identifier occurrences by exact name (declaration or reference). | JSONL |
-| `calls` | Call sites by callee name (direct, member or `new`). | JSONL |
-| `members` | Static member names, property keys, JSX attribute names and statically resolvable computed keys. | JSONL |
+| `resources` | Syntax-backed module/worker/request/URL/attribute candidates, optionally bounded local const strings; accepts files or directories. | JSONL |
+| `values` | Named object/array slots, variable initializers, call arguments and assignments, with source-backed values and explicit unknowns; single-file, optional `--within`. | JSONL |
+| `identifiers` | Lexical identifier occurrences (declaration or reference), optional own-name filters. | JSONL |
+| `calls` | Statically named call sites (direct, member or `new`); optional own-callee `--name`/`-f`. | JSONL |
+| `members` | Static member names, property keys, JSX attribute names and statically resolvable computed keys; `--access read\|write` narrows property accesses. | JSONL |
 | `locate` | Innermost structure and ancestors containing a byte position. | JSON |
 | `slice` | Validate a structure, symbol or fragment ID and extract original source. | Raw bytes |
 | `xref --at` | Single-file lexical binding and same-binding references at a name occurrence. `--byte` anchors on a raw offset instead, including one inside a multi-byte identifier. | JSONL |
@@ -116,23 +188,53 @@ fixed step/depth/value budgets. Hits set `detail.literal_kind: static_expression
 `detail.resolution: static` and `detail.raw` to the full original expression; ordinary
 literal hits leave these null. Supported evaluation covers literals, string/template
 concatenation, standard conversions such as `String.fromCharCode`/`fromCodePoint`,
-a small set of pure string methods (`slice`, `substring`, `substr`, `charAt`,
-`toUpperCase`, `toLowerCase`), static array/string indexes and numeric/bitwise
-operations, with all arguments statically evaluable. It does not read variable
-bindings, execute user functions, parse string arrays, resolve dynamic property names
-or rewrite source. Unprovable expressions produce no derived hit. The option is off by
-default. A cheap foldability precheck avoids evaluating impossible nodes; on a 3.4 MB
-obfuscated input the measured median overhead was about 6 ms, with P95 below 40 ms.
+a small set of string methods (`slice`, `substring`, `substr`, `charAt`,
+ASCII-only `toUpperCase`/`toLowerCase`), static array/string indexes and numeric/bitwise
+operations, with all arguments statically evaluable. All strings, indexes and method
+bounds use JS UTF-16 code units, including isolated surrogates. `fromCharCode`
+uses ToUint16, while `fromCodePoint` validates integral code points through U+10FFFF
+(including surrogate code points). Slice relative offsets, substring bound swapping
+and substr length semantics are distinct. Invalid code points, unsupported receivers
+and unsupported coercions produce no derived hit. Numeric formatting uses the pinned
+Oxc ECMAScript formatter; numeric string coercion is limited to ASCII decimal and
+Infinity forms. Step/depth limits cover quasi/array elements, and the 64 KiB value
+limit covers intermediate and aggregate values before concatenation/collection.
+
+This optional evaluator assumes standard, unmodified intrinsic operations. A bounded
+syntax prepass disables helper calls for any visible `String` binding, direct eval/with,
+or String/global-object uses outside the supported direct helpers. This intentionally
+includes conservative false negatives and does not prove external prototypes unmodified.
+Literal/operator-only folding remains available when helpers are disabled.
+It does not read bindings, execute user functions, interpret string tables or rewrite
+source. It is not a deobfuscator. The option is off by default; one-level foldability
+guards avoid repeatedly walking impossible operands.
 
 `locate` uses original UTF-8 byte offsets in half-open `[start, end)`; `--byte` must be
 less than the file length, and an empty file has no locatable position. The innermost
 covering structure wins; ancestors are ordered inner to outer. The program covers
 `[0, file_length)`.
 
-`identifiers`, `calls` and `members` are syntax-level location queries by exact name.
-They do not copy `find`'s literal semantics or infer bindings. Default is one file;
-empty queries are errors; names are case-sensitive full names with no regex/fuzzy
-mode.
+### Shared listing contract
+
+As in DEX/JAR/.NET, the listing itself comes first; selectors only narrow it.
+`identifiers/calls/members/symbols/values` accept optional `--name` (exact,
+case-sensitive), `-f/--filter` (substring, folded by default) and `--case sensitive`.
+Selectors AND together; omitting them lists every row in that command's declared
+profile. Empty exact names are errors; an empty substring matches all. Filters search
+only the row's own label, never its owner or a second payload field. Unicode folding
+uses the shared lowercase rule, preserving supplementary characters and lone UTF-16
+surrogates instead of replacing them.
+
+`--within` is a source-region restriction, not a second spelling of identity
+selection. `slice --at/--from` reads an identified source unit; `xref --at/--from`
+anchors a binding query. Both `--from` paths validate the hash and operate on the
+same fixed input buffer, with no hash-then-reopen race. JS retains native source
+spans and lexical identities rather than inventing bytecode tokens.
+
+`identifiers`, `calls` and `members` are single-file syntax-level location queries.
+They do not copy `find`'s literal semantics or infer bindings. Calls list statically
+named callees, not every dynamic call. Their filters use identifier name, callee name
+and member name respectively; no regex/fuzzy mode.
 
 - `identifiers` emits `record: identifier` with `detail.role` (`declaration` or
   `reference`) and `detail.syntax_kind` (`binding_identifier` or
@@ -141,19 +243,43 @@ mode.
   is. `parent_at` is the containing structure; `context_at` is the local fragment.
 - `calls` emits `record: call` with `callee`, `call_kind` (`direct`/`member`/`new`),
   `optional` and `argument_count`. It answers only where a name is called, not return
-  values, call graphs, cross-file resolution or alias propagation. Computed member
-  calls (`obj[key]()`) produce no call hit.
+  values, call graphs, cross-file resolution or alias propagation. Static string
+  computed names (`obj["load"]()`, `obj["lo" + "ad"]()`) use the same bounded key
+  projection as `members`; dynamic keys (`obj[key]()`) still produce no hit. Transparent
+  TS/parenthesis wrappers are supported. `optional` includes optional syntax along the
+  callee path, not in arguments; it is not a proof of runtime short-circuit behavior.
+  `context_at` routes directly to the nearest
+  supported original syntax fragment (for example the assignment that contains a call).
 - `members` emits `record: member` with `member_kind` (`static_member`,
   `property_key`, `object_method_key`, `class_field_key`, `class_method_key`,
   `jsx_attribute_name`, `computed_key`) and `key_resolution` (`literal` or `static`
   for computed keys, null otherwise). Computed keys match only string literals or
-  statically foldable expressions; variable keys and numeric indexes are handled by
+  statically foldable operator/index expressions; helper calls are never evaluated
+  to infer a key. The same rule covers object/class computed declaration keys.
+  Variable keys and numeric indexes are handled by
   `identifiers`/normal syntax, not as property names. This is a syntactic property
-  position, not runtime object/prototype/type resolution.
+  position, not runtime object/prototype/type resolution. `context_at` routes to the
+  local fragment without requiring a separate `locate` or extracting the whole owner.
+  `detail.read/write` are booleans for member accesses and null for declaration/property/
+  JSX keys. `--access all|read|write` defaults to all, preserving every existing match;
+  read/write filters exclude keys whose access flags are null. Simple assignment,
+  destructuring targets, for-in/of targets and `delete` are writes; compound/logical
+  assignment and increment/decrement are both reads and writes, matching either filter.
+  Only the actual target is written: `obj.p.child = rhs` and `obj[key.p] = rhs` read `p`.
+  Parentheses and TypeScript assertion/non-null wrappers do not change the target.
+  These are syntactic operations, not proof of execution, a particular receiver, getter/
+  setter behavior or runtime success. Definitions are not mislabeled as property writes.
 
 All three obey the record and output-byte budgets from `rxd_core::Budget`, sort by `(start, end)` and keep
 content-bound identity. They have no own ID; `parent_at` points at an extractable
-structure.
+structure. Their `context_at` is null at context boundaries with no local fragment (for
+example a shorthand arrow); use `parent_at` in that case. Context tracking is an AST-depth
+stack, not a whole-file fragment index or semantic pass.
+
+For a loader/public-path task, start with `members --name p --access write`, then
+`slice` each returned `context_at`. Follow the literal/configuration evidence into HTML
+metadata as needed. Use `symbols/xref` only when an actual lexical binding needs tracing;
+these queries do not resolve a property receiver or expand a chunk map automatically.
 
 `slice` accepts structure IDs, symbol IDs and context fragment IDs and emits the exact
 original range without reformatting or extra newlines. `--json` wraps source and
@@ -161,9 +287,188 @@ structure metadata in one JSON object. Every command supports `-o FILE` with byt
 identical to stdout. Diagnostics go to stderr; `--perf` reports phase timings as JSONL. Each
 invocation is independent, with no implicit background service or persistent index.
 
+## Structured value slots
+
+`values FILE [--within COORD] [--kind KIND] [--name NAME] [-f LABEL] [--case sensitive]`
+lists syntax-backed value slots. It is single-file, with
+`analysis: syntax` and `value_profile: syntax_value_slots_v1`. It does not evaluate
+objects, invoke getters/functions, expand spreads, decode JSON strings as objects,
+or determine final property values.
+
+Kinds are `initializer` (variable declarators), `property` (object-literal entries,
+including methods/accessors/spreads), `element` (array entries including holes),
+`argument` (calls, constructors and dynamic import source/options), and `assignment`.
+All matching nested slots are included in source order; this is not a shallow object
+view. Duplicate keys, source ordering, shorthand, computed keys, holes and spreads
+remain separate. `__proto__` is not converted into an ordinary JSON property or
+applied to an object.
+
+The slot's `detail.name` is its property key, binding pattern, assignment target or
+zero-based syntactic index for arguments/elements. Unknown computed keys and spreads
+use their original expression as the label. `-f` searches only this label, not values
+or owner names; `--kind` narrows the same listing. An index after a spread is not a
+runtime position. Key resolution is literal/static/unresolved; only closed string
+expressions are folded for computed keys.
+
+`--within` restricts listing to an existing structure, context fragment or canonical
+symbol's declaration, including contained slots. Nonexistent coordinates fail, never
+silently produce an empty listing. Symbol scopes use the existing bounded semantic
+index; other scopes are parser-only. The command does not overload `--at`/`--from`
+as scope selectors: read an identified source context with `slice` instead.
+
+Rows have null `at`, source-backed `start/end`, containing `parent_at` and sliceable
+`context_at` where available. Detail fields are
+`kind, name, syntax_kind, owner_start, owner_end, index, computed, spread, key_start,
+key_end, key_resolution, value`. Owner ranges identify the original object, array,
+call, declarator or assignment, not runtime object identities.
+
+The nested `value` always has `start, end, kind, resolution, value, source,
+unresolved_reason`. Literal primitive strings/numbers/booleans/null are decoded;
+closed string concatenations/templates can be static. Nonfinite numeric literals
+are unresolved. Objects/arrays have `resolution: container`, not a fabricated JSON
+value; holes have `resolution: hole`, distinct from null. Other expressions retain
+exact source and an unresolved reason. Getters/methods, spreads and compound
+assignments are explicitly unresolved. Resolved values/containers do not duplicate
+their source text; their original spans remain available. Strings preserve UTF-16.
+
+Collection is bounded by the shared work and metadata budgets; serialized bytes
+also obey the metadata ceiling, with atomic failure rather than truncated output.
+`complete` means all selected source slots were returned, not that the object's
+runtime value or dependency graph is known.
+
+## Resource-reference query
+
+`resources FILE|DIR` is a parser-only projection with
+`header.detail.analysis: syntax` and `resource_profile: syntax_load_sites_v1`.
+It lists syntactic reference **candidates**, not proven calls to built-ins, successful
+loads, a browser dependency graph or page coverage. No network, package resolver,
+import-map expansion or input-code execution is involved. Default queries are parser-only;
+`--resolve-bindings` optionally enables the narrowly bounded lexical projection below.
+
+Supported sites, with their exact `--kind` groups:
+
+| Kind | Supported syntax |
+| --- | --- |
+| `module` | import declarations, named/star re-exports, dynamic `import()`, direct `require()`, `module.require()`, `require.resolve()`, and TS external import-equals |
+| `script` | `importScripts()`, one candidate per supplied argument |
+| `worker` | `new Worker()`, `new SharedWorker()`, `navigator.serviceWorker.register()` |
+| `request` | `fetch()`, `navigator.sendBeacon()`, `new WebSocket()`, `new EventSource()` |
+| `url` | `new URL(value[, base])`, which constructs a value and does not itself load it |
+| `attribute` | Direct member assignments to lowercase `src/href`, and member `setAttribute("src"|"href", value)` calls |
+
+Web API names may have one explicit `window/self/globalThis` prefix, with static
+dot or string-literal computed member names. Other receiver aliases, arbitrary
+`object.fetch()` methods and dynamic computed names are not guessed. Matched names
+can still be shadowed: use lexical queries if binding identity matters.
+`src/href` receivers are **not** proven DOM elements, and `href` can mean navigation
+rather than an asset. Destructuring/updates, JSX props, object-literal props, XHR,
+`eval`, tagged templates, TS import types and bundler-specific loader APIs are not
+in this profile. The existing generic `members/calls/find` queries remain useful
+outside it. `require.resolve` is a resolution hint, not a module execution claim.
+
+### Values and filters
+
+Each candidate retains a target expression even when its value cannot be proved.
+`detail.name` is the decoded target string when known, otherwise the exact original
+target expression. `-f/--filter` searches this one label, folding case by default;
+`--case sensitive` disables folding. `--kind` is exact, and
+`--resolution resolved|unresolved` selects known versus unproved **strings**, not
+whether a URL has been resolved. `resolved` includes literal, folded and opt-in binding-derived values.
+All filters are ANDed. `--within` uses a real structure coordinate and selects
+contained loading sites, including nested structures; it requires a single file.
+
+Resolution is `literal|static|binding|unresolved` (`binding` requires opt-in). String literals and interpolation-free
+templates are literal. Closed string-only `+` and template interpolation are folded
+automatically; transparent parentheses/TS assertion wrappers do not change values.
+Folding operates on exact JS UTF-16 code units, including lone surrogates. It does
+not evaluate calls (including apparently pure helpers), coerce non-string values or
+interpret tables. By default it does not follow variables either. A function call,
+numeric interpolation or runtime public path remains unresolved.
+
+Optional folding has a per-expression depth bound of 32, 512 expression/quasi steps
+and at most 32,768 UTF-16 units (64 KiB) per intermediate/result value. Literal decoding
+remains bounded by the original input, not this derivation limit. An unavailable
+derivation retains the whole candidate with `unresolved_reason:
+not_closed_string|fold_limit`, rather than silently dropping it. Core input/AST/output
+failures still fail the whole query. Compound/logical assignments retain their RHS
+as unresolved `compound_assignment`, never mislabeling a suffix/default as the
+complete assigned URL. Spread arguments retain their original spelling and
+`spread_argument`, never treating the spread operand as one URL.
+
+### Optional local const strings
+
+`--resolve-bindings` builds Oxc's existing node-budgeted lexical index and echoes
+`resolve_bindings: true`; header `binding_profile` becomes
+`local_const_strings_v1` (null otherwise). Site recognition remains syntax-based:
+this does not prove that a named web API is a built-in.
+
+Only simple `const name = expression` bindings with no lexical write references,
+in the **same lexical scope** as each reference, with the initializer ending before
+that reference, are followed. Initializers must themselves close to strings using
+the existing literal/concatenation/template rules. No let/var/import/parameter/
+destructuring bindings, closure or outer-scope captures, object/array property reads,
+calls, control-flow interpretation or cross-file resolution. Direct eval/with makes
+binding derivation unavailable for the whole file. Source ordering and read-only
+bindings are not proofs of reachability or successful initialization.
+
+Success has `resolution: binding` and a bounded `bindings` list of
+`{at, initializer_start, initializer_end}` evidence; each `at` is the real canonical
+symbol coordinate accepted by `slice`. Non-binding results have an empty list.
+Explicit URL base expressions use the same projection. SetAttribute name recognition
+stays syntax-local. Failure retains the original expression; additional reasons are
+`binding_unavailable, not_local_const, binding_scope_boundary,
+binding_before_initializer, dynamic_scope`. The same depth/step/value ceilings
+bound the whole derivation, not each binding independently. No speculative values
+are returned when a derivation stops.
+
+### Records and URL context
+
+Each `resource` has null `at`, its target's original UTF-8 `start/end`,
+the containing structure's `parent_at`, and a local `context_at` accepted by
+`slice --at`. Use `parent_at` when no local fragment exists. Named re-exports use
+`fragment.export_from_declaration`. No synthetic resource coordinate or fabricated
+byte range is introduced.
+
+Fixed detail fields:
+
+- `kind/syntax_kind/name/resolution/unresolved_reason`.
+- `site_start/site_end`: the whole import, call, constructor or assignment.
+- `argument_index`: zero-based **syntactic** argument position, null for declarations
+  and assignments; spread arguments do not establish runtime argument positions.
+- `spread/optional/type_only`: syntax facts, not reachability. `type_only` records
+  the declaration-level TS import/export modifier, not compiler erasure inferred from
+  individual specifiers. `optional` reflects the matched call/member path, not all
+  surrounding conditions.
+- `attribute/operator`: matched src/href and assignment operator, null otherwise.
+- `bindings`: local const evidence, empty unless binding derivation succeeds.
+- `base`: `{kind, expression}`. Kind is `module|commonjs|worker|environment|
+  explicit|import_meta_url|none|unknown`; an explicit constructor base expression
+  carries `name/resolution/unresolved_reason/start/end`, otherwise expression is null.
+
+`base` records the context needed to interpret the value; it is **not an absolute
+URL**. Browser environment references can depend on document/worker state, while
+module references need their referrer and possibly import maps, and CommonJS needs
+host/package resolution. No URL is inferred from a local artifact path or one global
+base switch. `new URL("./worker.js", import.meta.url)` identifies the module-relative
+base explicitly. Nested `new Worker(new URL(...))` retains separate Worker and URL
+records, with spans and shared context linking them; no constructor is evaluated.
+
+The query echoes `kind/resolution/filter/case/within/resolve_bindings`. Summary detail counts
+selected `resolved/unresolved` candidates. Ordering is target start/end, then site
+start and syntactic argument index. Directory results retain each file's header and
+identity under the existing atomic scan contract. Completion means all selected
+sites in this profile were delivered, even when values remain unresolved.
+
+A literal string is not necessarily a valid URL, a network address or an authorized
+download. Request records can name business APIs; module names can be packages;
+attribute writes can navigate or use embedded data. **Do not pipe these labels
+directly to curl.** The Agent must interpret the base and context, review unresolved
+expressions and conditions, then apply the existing scheme/origin/credential/MIME
+policy to a finite asset list.
+
 ## Recursive scan
 
-`rxd js entities DIR` and `find DIR -f TEXT` recursively scan regular
+`rxd js entities DIR`, `find DIR -f TEXT` and `resources DIR` recursively scan regular
 `.js/.mjs/.cjs/.jsx/.ts/.mts/.cts/.tsx` files (case-sensitive), do not follow symlinks,
 and do not apply ignore rules (hidden directories and `node_modules` are included). A
 symlinked directory entry is not scanned. Files sort by path; with multiple files each
@@ -175,7 +480,7 @@ inputs, and therefore peak memory: each worker holds at most one input and AST. 
 and parallel `--perf` counters and phase totals agree (summed in one process; peak RSS
 is the maximum). `--depth`/`--kind`/`--name` apply per file; `--within` is single-file
 and returns `INVALID_QUERY` (exit 2) for directory input, including empty directories.
-`locate/slice/xref/symbols/identifiers/calls/members` remain single-file.
+`locate/slice/xref/symbols/identifiers/calls/members/values` remain single-file.
 
 Regular-file input keeps its single-file output and does not restrict extension. A
 directory is a scan and a file is one input: there is no flag to choose, so the same
@@ -312,18 +617,24 @@ is header → zero or more records → summary. Success requires exit 0 and
 
 The header contains `record, backend, command, source_id, input_bytes, schema_version,
 query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: entities/functions/classes/methods
-`within, depth, kind, name`; find `filter, case, resolve_static`; identifiers `name, role,
-within`; calls/members `name, within`; xref `byte`; symbols `within`.
+`within, depth, kind, name`; find `filter, case, resolve_static`; identifiers
+`name, filter, case, role, within`; calls `name, filter, case, within`; members
+`name, filter, case, access, within`; resources
+`kind, resolution, filter, case, within, resolve_bindings`; values `within, kind, name, filter, case`;
+xref echoes its chosen anchor; symbols `name, filter, case, within`.
 
 Header detail fields:
 
 | Command | Fields |
 | --- | --- |
 | entities/functions/classes/methods, find | `path, root_id, source_type, analysis, syntax, declaration_file, origin` |
+| resources | above plus `resource_profile, binding_profile` |
+| values | above plus `value_profile` |
 | xref | above plus `resolution, selected, declaration, declaration_ids` |
 | symbols | above plus `resolution, within_id` |
 
-`analysis` is `lexical` for xref/symbols and null otherwise. `source_type` is the final
+`analysis` is `lexical` for xref/symbols, `syntax` for resources/values, and null otherwise.
+Resource binding derivation is independently identified by `binding_profile`. `source_type` is the final
 script/module mode. `root_id` always points at program (`parent_id: null`,
 `detail.depth: 0`). `origin` is the container adapter's
 `container, format, entry, header_id` or null for a direct file; an entry path is the
@@ -331,7 +642,7 @@ archive path, while identity and offsets use the entry's original bytes. Refs
 `selected` is `name, role, start, end, entity_id, context_id, type_reference,
 value_reference`; `declaration` is `start, end, entity_id` or null. These header
 objects are not independent records. Summary is `record, records, complete, detail`
-with `detail: {}`.
+with `detail: {}` except resources' selected resolved/unresolved counts.
 
 Data records always contain `record, id, source_id, parent_id, context_id, start, end,
 detail`; all keys are present and inapplicable values are null. `source_id` is the
@@ -350,7 +661,9 @@ Fixed detail fields:
 | match | `literal_kind, value, dynamic, resolution, raw` |
 | identifier | `name, role, syntax_kind` |
 | call | `callee, call_kind, optional, argument_count` |
-| member | `name, member_kind` |
+| member | `name, member_kind, key_resolution, read, write` |
+| resource | `kind, syntax_kind, name, resolution, unresolved_reason, site_start, site_end, argument_index, spread, optional, type_only, attribute, operator, base, bindings` |
+| value | `kind, name, syntax_kind, owner_start, owner_end, index, computed, spread, key_start, key_end, key_resolution, value` |
 | reference | `read, write, member_write, type_reference, value_reference` |
 | symbol | `name, relation, space, declaration_ids` |
 | unresolved_reference | `name, type_reference, value_reference` |
@@ -362,8 +675,8 @@ Fixed detail fields:
 `flags` always contains `async, generator, static`. `key_span` is `start, end` or null.
 `space`, `declaration_ids` and type/value booleans are null when inapplicable. Match
 `resolution`/`raw` are non-null only for `literal_kind: static_expression`. Identifier/
-call/member have no own ID; identifier also carries `context_at`, while call/member
-`context_at` is null. Names/labels/values preserve JS UTF-16 code units; unpaired
+call/member have no own ID; identifier/call/member carry `context_at` when a local
+fragment exists, otherwise null. Names/labels/values preserve JS UTF-16 code units; unpaired
 surrogates remain valid JSON escapes and are never lossy-converted.
 
 `xref` takes one of three entries: `--at COORD` (a `symbols`/`identifiers` row's
@@ -477,9 +790,11 @@ complete original range, including its own declaration identifiers, parameters a
 nested structures. This is a source-region filter, not a "visible symbols in this
 lexical scope" query; external bindings not used in the region are not returned, and
 class/method keys and parameter defaults are analyzed in their original range. It is
-single-file only, with no recursion, depth or name filter.
+single-file only, with no recursion or depth option. Optional `--name`/`-f` match
+the symbol/unresolved-reference's own name, preserving binding identity and same-name
+separate scopes.
 
-Only this command builds the same Oxc Semantic index on demand. Header detail adds
+This command builds the same Oxc Semantic index on demand. Header detail adds
 `analysis: lexical`, `within_id` (program ID by default) and `resolution:
 static|dynamic`. A whole file containing `with` or direct `eval(...)` returns dynamic
 and zero records even if the eval is outside the selected region; the rule matches
@@ -657,6 +972,36 @@ AST-resident timing or one `--perf` phase cannot substitute. Hardware, input siz
 fresh-process and cache conditions are explicit. Large inputs/directories need
 separate scope, measurements and approval; results are never truncated or ID/resource
 checks weakened to meet the gate.
+
+### Property-navigation measurement (2026-10-20)
+
+The captured public Feishu sign-in loader (1,278,289 bytes, SHA-256
+`635f2f259e0c1ac2facc0a329a8cab4ccaae08d297fa1b86ea1ac78077258357`) and vendor
+bundle (2,632,211 bytes, SHA-256
+`93fa1a5a1a9a22c39e9e4aacef5e5031142139ca77c81062f336d177636b59f3`) were measured
+with release `backend-js,backend-html,backend-jvm`, before at `23d091e` and after the
+access/context change. Apple M3 Pro, 36 GiB, 12 logical CPUs, macOS 26.5.1 arm64;
+warm OS file cache, two warm-ups followed by 30 samples per workload, interleaved
+before/after, no concurrent build and no CPU isolation. Each sample starts fresh CLI/
+worker processes and includes parsing, serialization and atomic `-o` writes.
+
+| Query | Before median / P95 ms | After median / P95 ms | After rows |
+| --- | --- | --- | --- |
+| loader `members --name p` | 29.81 / 32.61 | 31.06 / 33.41 | 38 |
+| loader `members --name p --access write` | not available | 31.12 / 32.93 | 2 |
+| vendor `members --name src` | 59.25 / 62.56 | 63.55 / 65.68 | 47 |
+| vendor `members --name src --access write` | not available | 62.80 / 65.74 | 13 |
+| loader `calls --name querySelector` | 27.84 / 30.24 | 29.64 / 32.93 | 13 |
+| vendor `calls --name fetch` | 54.80 / 59.67 | 59.34 / 63.95 | 19 |
+
+Every measured workload/version had 0/30 samples above 150 ms. These are scoped
+observations, not a general speedup: tracking contexts adds roughly 1–5 ms here and
+unfiltered streams grow. The useful gain is selection/navigation: the loader's `.p`
+search goes from 38 candidates / 8,664 output bytes to 2 writes / 1,078 bytes, with
+local assignment coordinates ready for `slice`. No target JavaScript was executed;
+this is not a browser or resource-coverage measurement. Raw samples, binary identities
+and the runner are under ignored `target/bench/js-navigation/`; website bundles are not
+repository test fixtures.
 
 If repeated parsing dominates, compare batched queries, an explicit disk index and a
 resident session before choosing; startup cost and applicability remain part of the

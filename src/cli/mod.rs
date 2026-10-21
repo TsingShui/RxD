@@ -58,11 +58,17 @@ mod pyc;
 mod skill;
 #[cfg(feature = "backend-wasm")]
 mod wasm;
-/// The `xref` target surface shared by every backend that answers "who references this?".
+/// Identity selectors are shared by FETCH as well as reference queries.
 #[cfg(any(
+    feature = "backend-js",
+    feature = "backend-asar",
+    feature = "backend-html",
     feature = "backend-dex",
     feature = "backend-jvm",
-    feature = "backend-dotnet"
+    feature = "backend-dotnet",
+    feature = "backend-evm",
+    feature = "backend-wasm",
+    feature = "backend-pyc"
 ))]
 mod xref;
 

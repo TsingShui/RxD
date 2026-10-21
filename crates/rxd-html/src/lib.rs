@@ -1,4 +1,8 @@
 //! Bounded lexical HTML catalog. No DOM construction or input execution.
+mod resources;
+
+pub use resources::{RESOURCE_KINDS, ResourcesQuery, resources};
+
 use std::{
     cell::RefCell,
     collections::HashSet,
@@ -325,6 +329,35 @@ pub struct ExtractResponse {
     pub receipt: Vec<u8>,
 }
 
+/// One fixed source buffer for selector identity checks and subsequent extraction.
+/// This retains source bytes, not a persistent parser or browser state.
+pub struct Source {
+    path: String,
+    text: String,
+    hash: String,
+    limits: Limits,
+}
+
+impl Source {
+    pub fn read(input: &Path, limits: Limits, perf: &mut Perf) -> Result<Self> {
+        let path = input
+            .to_str()
+            .ok_or_else(|| invalid("HTML input path must be UTF-8"))?
+            .to_owned();
+        let (text, hash) = read_source(input, limits, perf)?;
+        Ok(Self {
+            path,
+            text,
+            hash,
+            limits,
+        })
+    }
+
+    pub fn source_id(&self) -> &str {
+        &self.hash
+    }
+}
+
 fn attribute_name_valid(name: &str) -> bool {
     !name.is_empty()
         && !name.chars().any(|ch| {
@@ -593,88 +626,100 @@ pub fn extract(
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<ExtractResponse> {
-    let path = input
-        .to_str()
-        .ok_or_else(|| invalid("HTML input path must be UTF-8"))?;
-    let destination_path = output
-        .to_str()
-        .ok_or_else(|| invalid("output path must be UTF-8"))?;
-    let (text, hash) = read_source(input, limits, perf)?;
-    let (catalog, ids) = parse_catalog(&text, &hash, limits, perf)?;
-    let index = validate_id(id, &hash, &ids)?;
-    let node = &catalog.nodes[index];
-    let (start, end, part) = if content {
-        match &node.detail {
-            Detail::Element {
-                content_start,
-                content_end,
-                ..
-            } => (*content_start, *content_end, "content"),
-            _ => {
-                return Err(Error::new(
-                    "INVALID_QUERY",
-                    "--content requires an element ID",
-                ));
-            }
-        }
-    } else {
-        (node.start, node.end, "outer")
-    };
-    if content && start == end {
-        return Err(Error::new("NOT_FOUND", "element has no content"));
-    }
-    // Never replace the container the selected bytes depend on, including path aliases.
-    if let Ok(destination) = fs::canonicalize(output)
-        && fs::canonicalize(input).is_ok_and(|source| source == destination)
-    {
-        return Err(Error::new(
-            "INVALID_QUERY",
-            "output must not replace an input file",
-        ));
-    }
-    let bytes = text.as_bytes()[start..end].to_vec();
-    let source_id = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
-    if perf.enabled() {
-        perf.source_id = Some(source_id.clone());
-    }
-    let mut receipt = Output { bytes: Vec::new() };
-    perf.measure("serialize", || -> Result<()> {
-        let mut receipt_record = envelope::record(
-            "file",
-            RecordMeta {
-                source_id: Some(&source_id),
-                start: Some(0),
-                end: Some(bytes.len()),
-                ..RecordMeta::default()
-            },
-            json!({
-                "complete": true,
-                "path": destination_path,
-                "file_bytes": bytes.len(),
-                "representation": "original",
-                "part": part,
-                "origin": {
-                    "container": path,
-                    "format": "html",
-                    "source_id": hash,
-                    "node_id": id,
-                    "kind": node.kind,
-                    "part": part,
-                    "start": start,
-                    "end": end,
+    Source::read(input, limits, perf)?.extract(id, content, output, perf)
+}
+
+impl Source {
+    /// Validate and select from the same bytes whose identity the caller checked.
+    pub fn extract(
+        &self,
+        id: &str,
+        content: bool,
+        output: &Path,
+        perf: &mut Perf,
+    ) -> Result<ExtractResponse> {
+        let path = &self.path;
+        let text = self.text.as_str();
+        let hash = self.hash.as_str();
+        let destination_path = output
+            .to_str()
+            .ok_or_else(|| invalid("output path must be UTF-8"))?;
+        let (catalog, ids) = parse_catalog(text, hash, self.limits, perf)?;
+        let index = validate_id(id, hash, &ids)?;
+        let node = &catalog.nodes[index];
+        let (start, end, part) = if content {
+            match &node.detail {
+                Detail::Element {
+                    content_start,
+                    content_end,
+                    ..
+                } => (*content_start, *content_end, "content"),
+                _ => {
+                    return Err(Error::new(
+                        "INVALID_QUERY",
+                        "--content requires an element ID",
+                    ));
                 }
-            })
-            .as_object()
-            .unwrap()
-            .clone(),
-        );
-        envelope::attach_protocol(&mut receipt_record, "html", "extract");
-        receipt.json(&receipt_record)
-    })?;
-    perf.counters.records = Some(1);
-    perf.counters.output_bytes = Some(bytes.len() + receipt.bytes.len());
-    Ok(ExtractResponse {
-        bytes,
-        receipt: receipt.bytes,
-    })
+            }
+        } else {
+            (node.start, node.end, "outer")
+        };
+        if content && start == end {
+            return Err(Error::new("NOT_FOUND", "element has no content"));
+        }
+        // Never replace the container the selected bytes depend on, including path aliases.
+        if let Ok(destination) = fs::canonicalize(output)
+            && fs::canonicalize(path).is_ok_and(|source| source == destination)
+        {
+            return Err(Error::new(
+                "INVALID_QUERY",
+                "output must not replace an input file",
+            ));
+        }
+        let bytes = text.as_bytes()[start..end].to_vec();
+        let source_id = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
+        if perf.enabled() {
+            perf.source_id = Some(source_id.clone());
+        }
+        let mut receipt = Output { bytes: Vec::new() };
+        perf.measure("serialize", || -> Result<()> {
+            let mut receipt_record = envelope::record(
+                "file",
+                RecordMeta {
+                    source_id: Some(&source_id),
+                    start: Some(0),
+                    end: Some(bytes.len()),
+                    ..RecordMeta::default()
+                },
+                json!({
+                    "complete": true,
+                    "path": destination_path,
+                    "file_bytes": bytes.len(),
+                    "representation": "original",
+                    "part": part,
+                    "origin": {
+                        "container": path,
+                        "format": "html",
+                        "source_id": hash,
+                        "node_id": id,
+                        "kind": node.kind,
+                        "part": part,
+                        "start": start,
+                        "end": end,
+                    }
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            );
+            envelope::attach_protocol(&mut receipt_record, "html", "extract");
+            receipt.json(&receipt_record)
+        })?;
+        perf.counters.records = Some(1);
+        perf.counters.output_bytes = Some(bytes.len() + receipt.bytes.len());
+        Ok(ExtractResponse {
+            bytes,
+            receipt: receipt.bytes,
+        })
+    }
 }

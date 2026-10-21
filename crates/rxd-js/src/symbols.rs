@@ -104,6 +104,7 @@ pub fn run(
     program: &Program<'_>,
     source: &Source,
     collector: &Collector<'_>,
+    names: &crate::NameQuery,
     within: Option<&str>,
     perf: &mut Perf,
 ) -> Result<Symbols> {
@@ -167,14 +168,19 @@ pub fn run(
                 }
             }
         }
+        let names = names.compile();
         let locations = Locations::new(collector);
         let mut records = Vec::with_capacity(bindings.len() + unresolved.len());
         for (symbol, declared) in bindings {
+            let name = lexical::name(&semantic, symbol);
+            if !names.matches(&name) {
+                continue;
+            }
             let span = scoping.symbol_span(symbol);
             let declaration_ids = lexical::declaration_ids(&semantic, symbol, source)?;
             records.push(Record::Symbol(Symbol {
                 id: source.entity_id("symbol", span.start, span.end),
-                name: lexical::name(&semantic, symbol),
+                name,
                 space: program
                     .source_type
                     .is_typescript()
@@ -185,6 +191,9 @@ pub fn run(
             }));
         }
         for (span, name, type_reference, value_reference) in unresolved {
+            if !names.matches(&JsString::from(name)) {
+                continue;
+            }
             records.push(Record::Unresolved(UnresolvedReference {
                 name: name.to_owned(),
                 location: locations.get(span),

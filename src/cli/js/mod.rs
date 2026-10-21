@@ -7,24 +7,19 @@ use rxd_core::perf::Perf;
 use rxd_core::{Limits, Result};
 use rxd_js::{SourceMode, Syntax};
 
-/// Resolve `--at`/`--from` into the name occurrence `xref` anchors on.
+/// Resolve a query/read anchor using the same input buffer as the analysis.
 ///
 /// The stream is checked against this file's content id, and the content hash is computed
-/// only on the `--from` path so a direct `--at` query still reads the file once.
-fn resolve_xref_anchor(
+/// on the `--from` path; direct coordinates retain the regular single read.
+fn resolve_anchor(
     input: &std::path::Path,
     selector: &super::xref::Selector,
+    units: &[&str],
+    frozen: Option<&rxd_core::Source>,
 ) -> Result<String> {
     use super::xref::Expect;
-    let id = if selector.from.is_some() {
-        let bytes = std::fs::read(input)
-            .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?;
-        Some(rxd_core::identity::content_id(input, &bytes))
-    } else {
-        None
-    };
-    let expected = match id.as_deref() {
-        Some(id) => Expect::Content(id),
+    let expected = match frozen {
+        Some(source) => Expect::Content(&source.id),
         None => Expect::Bytes(
             std::fs::metadata(input)
                 .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?
@@ -32,7 +27,7 @@ fn resolve_xref_anchor(
         ),
     };
     selector
-        .resolve(&["symbol", "identifier"], expected)
+        .resolve(units, expected)
         // The selector already reports its class (`SOURCE_MISMATCH`, `INVALID_QUERY`);
         // re-wrapping would print two codes for one failure.
         .map_err(super::classify)
@@ -64,6 +59,13 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let scan = command.scan().map(|s| s.threads);
     let mut perf = Perf::new(emit_perf, "analysis", "js", command.name());
     perf.limits = Some(limits);
+    // Validate --from and analyze/extract from this exact buffer, never a second read.
+    let frozen = if matches!(&command, Command::Slice { selector, .. } | Command::Xref { selector, .. } if selector.from.is_some())
+    {
+        Some(rxd_core::Source::read(&input, limits, &mut perf)?)
+    } else {
+        None
+    };
     let query = match &command {
         Command::Xref {
             selector,
@@ -89,37 +91,22 @@ pub(super) fn execute(command: Command) -> Result<()> {
                     case_sensitive: case.sensitive(),
                 }
             } else {
-                rxd_js::RefsTarget::Coordinate(resolve_xref_anchor(&input, selector)?)
+                rxd_js::RefsTarget::Coordinate(resolve_anchor(
+                    &input,
+                    selector,
+                    &["symbol", "identifier"],
+                    frozen.as_ref(),
+                )?)
             };
             rxd_js::Query::Refs { target }
         }
         Command::Slice { selector, json, .. } => {
-            // The stream is checked against this file's content id. The hash is computed
-            // only on the `--from` path, so a direct `--at` fetch still reads once.
-            let id = if selector.from.is_some() {
-                let bytes = std::fs::read(&input)
-                    .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?;
-                Some(rxd_core::identity::content_id(&input, &bytes))
-            } else {
-                None
-            };
-            let at = match id.as_deref() {
-                Some(id) => selector.resolve(
-                    &["entity", "symbol", "fragment"],
-                    super::xref::Expect::Content(id),
-                ),
-                None => selector.resolve(
-                    &["entity", "symbol", "fragment"],
-                    super::xref::Expect::Bytes(
-                        std::fs::metadata(&input)
-                            .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?
-                            .len(),
-                    ),
-                ),
-            }
-            // The selector already reports its class (`SOURCE_MISMATCH`, `INVALID_QUERY`);
-            // re-wrapping would print two codes for one failure.
-            .map_err(super::classify)?;
+            let at = resolve_anchor(
+                &input,
+                selector,
+                &["entity", "symbol", "fragment"],
+                frozen.as_ref(),
+            )?;
             rxd_js::Query::Slice {
                 id: at,
                 json: *json,
@@ -130,7 +117,9 @@ pub(super) fn execute(command: Command) -> Result<()> {
     let result = (|| {
         // A directory is a scan; a file is one input. There is no flag to choose,
         // because the same file must produce the same stream either way.
-        let bytes = if let Some(threads) = scan
+        let bytes = if let Some(source) = frozen {
+            rxd_js::run_source(source, mode, syntax, query, limits, &mut perf)?
+        } else if let Some(threads) = scan
             && input.symlink_metadata().is_ok_and(|m| m.is_dir())
         {
             recursive::run(

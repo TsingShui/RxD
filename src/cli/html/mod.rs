@@ -7,9 +7,9 @@ use std::io::{self, Write};
 
 pub(super) fn execute(command: Command) -> Result<()> {
     let (common, name) = match &command {
-        Command::Entries { common, .. } | Command::Extract { common, .. } => {
-            (common, command.name())
-        }
+        Command::Entries { common, .. }
+        | Command::Resources { common, .. }
+        | Command::Extract { common, .. } => (common, command.name()),
     };
     // One budget table for every backend; the CLI exposes no knobs for it.
     let budget = Budget::default();
@@ -48,6 +48,30 @@ pub(super) fn execute(command: Command) -> Result<()> {
             )?;
             perf.measure("write", || write_output(&bytes, common.output.as_deref()))
         }
+        Command::Resources {
+            common,
+            base_url,
+            kind,
+            location,
+            filter,
+            case,
+            include_content,
+        } => {
+            let bytes = rxd_html::resources(
+                &common.input,
+                rxd_html::ResourcesQuery {
+                    base_url,
+                    kind,
+                    location,
+                    filter,
+                    case_sensitive: case.sensitive(),
+                    include_content,
+                },
+                limits,
+                &mut perf,
+            )?;
+            perf.measure("write", || write_output(&bytes, common.output.as_deref()))
+        }
         Command::Extract {
             common,
             selector,
@@ -57,19 +81,16 @@ pub(super) fn execute(command: Command) -> Result<()> {
                 .output
                 .as_deref()
                 .ok_or_else(|| Error::new("INVALID_QUERY", "extract requires --output"))?;
-            // HTML hashes the file inside the query, so the stream is checked against the
-            // input size here; that is a mismatch guard, not a content identity.
-            let bytes = std::fs::metadata(&common.input)
-                .map_err(|error| Error::new("IO_ERROR", error.to_string()))?
-                .len();
+            // Bind --from to the very buffer extraction will use, not merely its length
+            // or a separate read that could change before the artifact is selected.
+            let source = rxd_html::Source::read(&common.input, limits, &mut perf)?;
             let at = selector
                 .resolve(
-                    &["element", "text", "comment", "doctype"],
-                    Expect::Bytes(bytes),
+                    &["element", "text", "comment", "doctype", "resource"],
+                    Expect::Content(source.source_id()),
                 )
                 .map_err(super::classify)?;
-            let response =
-                rxd_html::extract(&common.input, &at, content, destination, limits, &mut perf)?;
+            let response = source.extract(&at, content, destination, &mut perf)?;
             perf.measure("write", || {
                 write_output(&response.bytes, Some(destination))?;
                 io::stdout()

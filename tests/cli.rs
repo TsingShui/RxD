@@ -522,7 +522,38 @@ fn assert_js_record(row: &Value) {
         "match" => &["literal_kind", "value", "dynamic", "resolution", "raw"],
         "identifier" => &["name", "role", "syntax_kind"],
         "call" => &["callee", "call_kind", "optional", "argument_count"],
-        "member" => &["name", "member_kind", "key_resolution"],
+        "member" => &["name", "member_kind", "key_resolution", "read", "write"],
+        "resource" => &[
+            "kind",
+            "syntax_kind",
+            "name",
+            "resolution",
+            "unresolved_reason",
+            "site_start",
+            "site_end",
+            "argument_index",
+            "spread",
+            "optional",
+            "type_only",
+            "attribute",
+            "operator",
+            "base",
+            "bindings",
+        ],
+        "value" => &[
+            "kind",
+            "name",
+            "syntax_kind",
+            "owner_start",
+            "owner_end",
+            "index",
+            "computed",
+            "spread",
+            "key_start",
+            "key_end",
+            "key_resolution",
+            "value",
+        ],
         "reference" => &[
             "target",
             "read",
@@ -612,6 +643,8 @@ fn assert_js_stream(rows: &[Value]) {
     match rows[0]["command"].as_str().unwrap() {
         "xref" => fields.extend(["resolution", "selected", "declaration", "declaration_ids"]),
         "symbols" => fields.extend(["resolution", "within_id"]),
+        "resources" => fields.extend(["resource_profile", "binding_profile"]),
+        "values" => fields.push("value_profile"),
         _ => {}
     }
     assert_js_keys(&rows[0]["detail"], &fields);
@@ -622,7 +655,14 @@ fn assert_js_stream(rows: &[Value]) {
         rows.last().unwrap(),
         &["record", "records", "complete", "detail"],
     );
-    assert_js_keys(&rows.last().unwrap()["detail"], &[]);
+    assert_js_keys(
+        &rows.last().unwrap()["detail"],
+        if rows[0]["command"] == "resources" {
+            &["resolved", "unresolved"]
+        } else {
+            &[]
+        },
+    );
 }
 
 fn js_object(bytes: &[u8]) -> Value {
@@ -3132,6 +3172,30 @@ fn calls_find_direct_and_member_call_sites_without_runtime_semantics() {
     assert_eq!(ctor[1]["detail"]["call_kind"], "new");
     let optional = jsonl(&invoke("calls", &path, &["--name", "bar"]));
     assert_eq!(optional[1]["detail"]["optional"], true);
+    for (row, expected) in [
+        (&records[0], "foo(1);"),
+        (&records[1], "obj.foo(2,3);"),
+        (&ctor[1], "new Foo();"),
+        (&optional[1], "bar?.();"),
+    ] {
+        let extracted = invoke(
+            "slice",
+            &path,
+            &["--at", row["context_at"].as_str().unwrap()],
+        );
+        success(&extracted);
+        assert_eq!(extracted.stdout, expected.as_bytes());
+    }
+    // A shorthand arrow must not borrow the outer variable initializer as its context.
+    let (_dir, path) = fixture("const thunk=()=>foo();", "arrow-call.js");
+    let arrow = jsonl(&invoke("calls", &path, &["--name", "foo"]));
+    assert!(arrow[1]["context_at"].is_null());
+    assert!(
+        arrow[1]["parent_at"]
+            .as_str()
+            .unwrap()
+            .starts_with("arrow_function:")
+    );
 }
 
 #[test]
@@ -3143,9 +3207,27 @@ fn members_find_static_names_without_computed_dynamic_properties() {
     assert_eq!(delta.len(), 3);
     assert_eq!(delta[1]["detail"]["member_kind"], "static_member");
     assert_eq!(delta[1]["detail"]["key_resolution"], Value::Null);
+    assert_eq!(delta[1]["detail"]["read"], true);
+    assert_eq!(delta[1]["detail"]["write"], false);
+    let context = invoke(
+        "slice",
+        &path,
+        &["--at", delta[1]["context_at"].as_str().unwrap()],
+    );
+    success(&context);
+    assert_eq!(context.stdout, b"obj.delta;");
 
     let alpha = jsonl(&invoke("members", &path, &["--name", "alpha"]));
     assert_eq!(alpha[1]["detail"]["member_kind"], "property_key");
+    assert!(alpha[1]["detail"]["read"].is_null());
+    assert!(alpha[1]["detail"]["write"].is_null());
+    let context = invoke(
+        "slice",
+        &path,
+        &["--at", alpha[1]["context_at"].as_str().unwrap()],
+    );
+    success(&context);
+    assert_eq!(context.stdout, b"alpha:1");
 
     let beta = jsonl(&invoke("members", &path, &["--name", "beta"]));
     assert_eq!(beta[1]["detail"]["member_kind"], "object_method_key");
@@ -3184,6 +3266,85 @@ fn members_find_static_names_without_computed_dynamic_properties() {
     assert_eq!(computed.last().unwrap()["records"], 0);
     let numeric = jsonl(&invoke("members", &path, &["--name", "1"]));
     assert_eq!(numeric.last().unwrap()["records"], 0);
+}
+
+#[test]
+fn members_access_filters_real_targets_and_preserves_local_context() {
+    // One p occurrence per statement; expectations are source facts, not runtime inference.
+    let cases = [
+        ("plain.p;", true, false),
+        ("assigned.p = 1;", false, true),
+        ("compound.p += 1;", true, true),
+        ("logical.p ??= 1;", true, true),
+        ("updated.p++;", true, true),
+        ("delete removed?.p;", false, true),
+        ("[array.p] = items;", false, true),
+        ("({value: object.p = fallback} = input);", false, true),
+        ("[...rest.p] = items;", false, true),
+        ("for (loop.p of values) {}", false, true),
+        ("for (keys.p in values) {}", false, true),
+        ("base.p.child = 1;", true, false),
+        ("obj[key.p] = 1;", true, false),
+        ("[local = defaultValue.p] = values;", true, false),
+        ("(asserted.p as number) = 1;", false, true),
+        ("nullable.p!++;", true, true),
+        ("computed[\"p\"] = 1;", false, true),
+        ("folded[\"p\"+\"\"] += 1;", true, true),
+        ("delete (0, detached.p);", true, false),
+        ("delete (optional?.p!);", false, true),
+    ];
+    let source = format!(
+        "// café 😀\r\nfunction load(){{\r\n{}\r\n}}\r\nconst definition={{p:0}}; outside.p=2;",
+        cases
+            .iter()
+            .map(|case| case.0)
+            .collect::<Vec<_>>()
+            .join("\r\n")
+    );
+    let (_dir, path) = fixture(&source, "access.ts");
+    let all = jsonl(&invoke("members", &path, &["--name", "p"]));
+    assert_eq!(all[0]["query"]["access"], "all");
+    let members = &all[1..all.len() - 1];
+    assert_eq!(members.len(), cases.len() + 2);
+    for (row, (_, read, write)) in members.iter().zip(&cases) {
+        assert_eq!(row["detail"]["read"], *read, "{row}");
+        assert_eq!(row["detail"]["write"], *write, "{row}");
+        assert!(row["context_at"].as_str().unwrap().starts_with("fragment."));
+    }
+    assert!(members[cases.len()]["detail"]["read"].is_null());
+    assert!(members[cases.len()]["detail"]["write"].is_null());
+    let outline = outline_rows(&path, &["--name", "load"]);
+    let within = outline[1]["at"].as_str().unwrap();
+    for (access, expected) in [
+        ("read", cases.iter().map(|case| case.1).collect::<Vec<_>>()),
+        ("write", cases.iter().map(|case| case.2).collect::<Vec<_>>()),
+    ] {
+        let filtered = jsonl(&invoke(
+            "members",
+            &path,
+            &["--name", "p", "--access", access, "--within", within],
+        ));
+        assert_eq!(filtered[0]["query"]["access"], access);
+        let expected: Vec<_> = members
+            .iter()
+            .zip(expected)
+            .filter_map(|(row, keep)| keep.then_some(row))
+            .collect();
+        assert_eq!(
+            filtered[1..filtered.len() - 1].iter().collect::<Vec<_>>(),
+            expected
+        );
+    }
+    let assignment = invoke(
+        "slice",
+        &path,
+        &["--at", members[1]["context_at"].as_str().unwrap()],
+    );
+    success(&assignment);
+    assert_eq!(assignment.stdout, b"assigned.p = 1");
+    let bad = invoke("members", &path, &["--name", "p", "--access", "execute"]);
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(bad.stdout.is_empty());
 }
 
 #[test]
@@ -4819,6 +4980,333 @@ fn asar_extracted_production_sources_match_independent_acorn_expectations() {
                 && r["end"] == expected["end"]));
         }
     }
+}
+
+#[test]
+fn js_parser_static_values_preserve_utf16_and_string_method_semantics() {
+    let (_dir, path) = fixture(
+        r#"const a=String.fromCharCode(0x1f600); const b=String.fromCodePoint(0x1f600);
+        const c='prefix'+'😀x'[1]; const d='prefix'+String.fromCodePoint(0xd800);
+        const e='prefix'+'abcdef'.slice(-2); const f='prefix'+'abcdef'.substring(4,1);
+        const g='prefix'+'abcdef'.substr(2,3); const h='prefix'+'abc'.charAt(99);
+        const i=('pre'+'fix')+3; const j=String.fromCodePoint(65.5);
+        const k=(123).slice(1); const l='prefix'+('abc'[true]);"#,
+        "static.mjs",
+    );
+    let emoji = jsonl(&invoke("find", &path, &["-f", "😀", "--resolve-static"]));
+    let folded: Vec<_> = emoji
+        .iter()
+        .filter(|r| r["detail"]["resolution"] == "static")
+        .collect();
+    assert_eq!(folded.len(), 1);
+    assert_eq!(folded[0]["detail"]["raw"], "String.fromCodePoint(0x1f600)");
+    let unit = jsonl(&invoke(
+        "find",
+        &path,
+        &["-f", "\u{f600}", "--resolve-static"],
+    ));
+    assert_eq!(unit[1]["detail"]["value"], "\u{f600}");
+    let prefix = invoke("find", &path, &["-f", "prefix", "--resolve-static"]);
+    success(&prefix);
+    let raw = String::from_utf8(prefix.stdout).unwrap();
+    assert!(raw.contains("\\ude00\""));
+    assert!(raw.contains("\\ud800\""));
+    for expected in ["prefixef", "prefixbcd", "prefixcde", "prefix3"] {
+        assert!(raw.contains(&format!("\"value\":\"{expected}\"")), "{raw}");
+    }
+    assert!(!raw.contains("\"value\":\"prefixx\""));
+    assert!(!raw.contains("\"value\":\"prefixb\""));
+    let invalid = jsonl(&invoke(
+        "find",
+        &path,
+        &["-f", "A", "--case", "sensitive", "--resolve-static"],
+    ));
+    assert_eq!(invalid.last().unwrap()["records"], 0);
+}
+
+#[test]
+fn js_parser_name_filters_share_listing_case_and_owner_contracts() {
+    let source = r#"const Load=()=>{}; const load=()=>{}; Load(); obj.LOAD(); obj["load"](); owner.load();
+        const loadOwner={Other:"load"}; const İx=1; const 𐐀=2; const ΣΟΣ=3;
+        obj["İ"]=0; obj["𐐀"](); const table={["lo"+"ad"]:"value", get ["Load"](){return 1;}};
+        const lone={"prefix\uD800":0};"#;
+    let (_dir, path) = fixture(source, "names.mjs");
+    let calls = jsonl(&invoke("calls", &path, &["-f", "load"]));
+    assert_eq!(calls.last().unwrap()["records"], 4);
+    assert_eq!(calls[0]["query"]["case"], "insensitive");
+    assert_eq!(
+        jsonl(&invoke(
+            "calls",
+            &path,
+            &["-f", "load", "--case", "sensitive"]
+        ))
+        .last()
+        .unwrap()["records"],
+        2
+    );
+    assert_eq!(
+        jsonl(&invoke("calls", &path, &["--name", "load", "-f", "LOAD"]))
+            .last()
+            .unwrap()["records"],
+        2
+    );
+    assert_eq!(
+        jsonl(&invoke(
+            "calls",
+            &path,
+            &["--name", "load", "-f", "LOAD", "--case", "sensitive"]
+        ))
+        .last()
+        .unwrap()["records"],
+        0
+    );
+    let members = jsonl(&invoke("members", &path, &["-f", "load"]));
+    assert_eq!(members.last().unwrap()["records"], 5);
+    assert_eq!(
+        jsonl(&invoke(
+            "values",
+            &path,
+            &["--kind", "property", "--name", "Other"]
+        ))
+        .last()
+        .unwrap()["records"],
+        1
+    );
+    assert_eq!(
+        jsonl(&invoke("members", &path, &["-f", "owner"]))
+            .last()
+            .unwrap()["records"],
+        0
+    );
+    assert_eq!(
+        jsonl(&invoke("symbols", &path, &["--name", "Load"]))
+            .last()
+            .unwrap()["records"],
+        1
+    );
+    for (command, needle) in [
+        ("identifiers", "i\u{307}"),
+        ("symbols", "σος"),
+        ("members", "i\u{307}"),
+        ("calls", "𐐨"),
+    ] {
+        assert_eq!(
+            jsonl(&invoke(command, &path, &["-f", needle]))
+                .last()
+                .unwrap()["records"],
+            1,
+            "{command}"
+        );
+        assert_eq!(
+            jsonl(&invoke(
+                command,
+                &path,
+                &["-f", needle, "--case", "sensitive"]
+            ))
+            .last()
+            .unwrap()["records"],
+            0,
+            "{command}"
+        );
+    }
+    let lone = invoke("members", &path, &["-f", "PREFIX"]);
+    success(&lone);
+    let output = String::from_utf8(lone.stdout).unwrap();
+    assert!(output.contains("\\ud800"));
+    assert!(!output.contains('�'));
+    for command in ["calls", "members", "identifiers", "symbols"] {
+        success(&invoke(command, &path, &[]));
+        let empty = invoke(command, &path, &["--name", ""]);
+        assert!(!empty.status.success());
+        assert!(empty.stdout.is_empty());
+    }
+}
+
+#[test]
+fn js_parser_static_helpers_do_not_fold_visible_shadowing_or_dynamic_scope() {
+    for source in [
+        "const String={fromCharCode(){return 'other'}}; const a=String.fromCharCode(65);",
+        "const a=String.fromCharCode(65); const String=opaque;",
+        "String.fromCharCode=opaque; const a=String.fromCharCode(65);",
+        "const a=String.fromCharCode(65); eval('opaque');",
+        "globalThis.String=opaque; const a=String.fromCharCode(65);",
+    ] {
+        let (_dir, path) = fixture(source, "shadow.mjs");
+        let rows = jsonl(&invoke(
+            "find",
+            &path,
+            &["-f", "A", "--case", "sensitive", "--resolve-static"],
+        ));
+        assert_eq!(rows.last().unwrap()["records"], 0, "{source}");
+    }
+    let (_dir, path) = fixture(
+        "const String=opaque; const a='pre'+'fix'; obj[String.fromCharCode(65)]();",
+        "safe.mjs",
+    );
+    assert_eq!(
+        jsonl(&invoke(
+            "find",
+            &path,
+            &["-f", "prefix", "--resolve-static"]
+        ))
+        .last()
+        .unwrap()["records"],
+        1
+    );
+    assert_eq!(
+        jsonl(&invoke("calls", &path, &["--name", "A"]))
+            .last()
+            .unwrap()["records"],
+        0
+    );
+}
+
+#[test]
+fn js_parser_calls_include_static_computed_names_and_optional_paths() {
+    let source = r#"loader.load('a'); loader['load']('b'); loader['lo'+'ad']('c');
+        loader?.['load']?.('d'); new loader['load']('e'); loader[key]('skip');
+        loader[('load' as const)]('f'); loader[`load`]('g');"#;
+    let (_dir, path) = fixture(source, "calls.ts");
+    let rows = jsonl(&invoke("calls", &path, &["--name", "load"]));
+    assert_eq!(rows.last().unwrap()["records"], 7);
+    let calls: Vec<_> = rows.iter().filter(|r| r["record"] == "call").collect();
+    assert_eq!(calls[3]["detail"]["optional"], true);
+    assert_eq!(calls[4]["detail"]["call_kind"], "new");
+    for row in calls {
+        let context = row["context_at"].as_str().unwrap();
+        let extracted = invoke("slice", &path, &["--at", context]);
+        success(&extracted);
+        assert!(
+            source
+                .as_bytes()
+                .windows(extracted.stdout.len())
+                .any(|s| s == extracted.stdout)
+        );
+    }
+}
+
+#[test]
+fn js_parser_values_preserve_slots_unknowns_selection_and_source_identity() {
+    let source = "const table={Home:'a',Home:'b',nested:{items:['x',,...rest]},[key]:'v',['Guide']:'g',...more,get danger(){throw 1;}};\r\nsend(table,'/ready',...args);";
+    let (dir, path) = fixture(source, "values.mjs");
+    let home = jsonl(&invoke(
+        "values",
+        &path,
+        &["--kind", "property", "-f", "home"],
+    ));
+    assert_eq!(home.last().unwrap()["records"], 2);
+    assert_eq!(home[1]["detail"]["value"]["value"], "a");
+    assert_eq!(home[2]["detail"]["value"]["value"], "b");
+    let context = home[1]["context_at"].as_str().unwrap();
+    let one = jsonl(&invoke("values", &path, &["--within", context]));
+    assert_eq!(one.last().unwrap()["records"], 1);
+    let extracted = invoke("slice", &path, &["--at", context]);
+    success(&extracted);
+    assert_eq!(extracted.stdout, b"Home:'a'");
+    let elements = jsonl(&invoke("values", &path, &["--kind", "element"]));
+    assert_eq!(elements.last().unwrap()["records"], 3);
+    assert_eq!(elements[2]["detail"]["value"]["resolution"], "hole");
+    assert_eq!(elements[3]["detail"]["spread"], true);
+    assert_eq!(
+        elements[3]["detail"]["value"]["unresolved_reason"],
+        "spread"
+    );
+    let args = jsonl(&invoke("values", &path, &["--kind", "argument"]));
+    assert_eq!(args[1]["detail"]["value"]["resolution"], "unresolved");
+    assert_eq!(args[2]["detail"]["value"]["value"], "/ready");
+    assert_eq!(args[3]["detail"]["spread"], true);
+    let properties = jsonl(&invoke("values", &path, &["--kind", "property"]));
+    assert!(
+        properties
+            .iter()
+            .any(|r| r["detail"]["key_resolution"] == "unresolved")
+    );
+    assert!(
+        properties
+            .iter()
+            .any(|r| r["detail"]["syntax_kind"] == "get"
+                && r["detail"]["value"]["unresolved_reason"] == "method_or_accessor")
+    );
+    let absent = invoke(
+        "values",
+        &path,
+        &["--within", "fragment.object_property:1:2"],
+    );
+    assert!(!absent.status.success());
+    assert!(absent.stdout.is_empty());
+    let stream = dir.path().join("input.jsonl");
+    fs::write(
+        &stream,
+        invoke("entities", &path, &["--kind", "program"]).stdout,
+    )
+    .unwrap();
+    let original = invoke("slice", &path, &["--from", stream.to_str().unwrap()]);
+    success(&original);
+    assert_eq!(original.stdout, source.as_bytes());
+    let symbols = dir.path().join("symbols.jsonl");
+    fs::write(
+        &symbols,
+        invoke("symbols", &path, &["--name", "table"]).stdout,
+    )
+    .unwrap();
+    success(&invoke(
+        "xref",
+        &path,
+        &["--from", symbols.to_str().unwrap()],
+    ));
+    fs::write(&path, source.replacen("Home", "Hame", 1)).unwrap();
+    let output = dir.path().join("saved.jsonl");
+    fs::write(&output, b"unchanged").unwrap();
+    for (command, selected) in [("slice", &stream), ("xref", &symbols)] {
+        let stale = invoke(
+            command,
+            &path,
+            &[
+                "--from",
+                selected.to_str().unwrap(),
+                "-o",
+                output.to_str().unwrap(),
+            ],
+        );
+        assert!(!stale.status.success());
+        assert!(stale.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&stale.stderr).contains("SOURCE_MISMATCH"));
+        assert_eq!(fs::read(&output).unwrap(), b"unchanged");
+    }
+}
+
+#[test]
+fn js_parser_resources_follow_only_earlier_unwritten_same_scope_const_strings() {
+    let source = r#"const base='/assets/'; const name='entry.js'; const path=`${base}${name}`; import(path);
+        let mutable='skip'; import(mutable); { const base='/inside/'; import(base+'a.js'); }
+        function nested(){import(base+'outside');} import(later); const later='late';
+        const obj={src:'x'}; import(obj.src); const fn=()=> 'x'; import(fn());
+        const changed='old'; changed='new'; import(changed);"#;
+    let (_dir, path) = fixture(source, "bindings.mjs");
+    let plain = jsonl(&invoke("resources", &path, &[]));
+    assert_eq!(plain.last().unwrap()["detail"]["resolved"], 0);
+    let rows = jsonl(&invoke("resources", &path, &["--resolve-bindings"]));
+    assert_eq!(rows.last().unwrap()["detail"]["resolved"], 2);
+    assert_eq!(rows[1]["detail"]["name"], "/assets/entry.js");
+    assert_eq!(rows[1]["detail"]["resolution"], "binding");
+    for proof in rows[1]["detail"]["bindings"].as_array().unwrap() {
+        success(&invoke(
+            "slice",
+            &path,
+            &["--at", proof["at"].as_str().unwrap()],
+        ));
+    }
+    assert!(
+        rows.iter()
+            .any(|r| r["detail"]["unresolved_reason"] == "binding_scope_boundary")
+    );
+    assert!(
+        rows.iter()
+            .any(|r| r["detail"]["unresolved_reason"] == "binding_before_initializer")
+    );
+    let (_dynamic_dir, dynamic) = fixture("const p='a'; eval('opaque'); import(p);", "dynamic.mjs");
+    let rows = jsonl(&invoke("resources", &dynamic, &["--resolve-bindings"]));
+    assert_eq!(rows[1]["detail"]["unresolved_reason"], "dynamic_scope");
 }
 
 #[cfg(feature = "backend-dex")]

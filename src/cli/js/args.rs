@@ -26,9 +26,16 @@ pub(crate) enum IdentifierRoleArg {
     Reference,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum MemberAccessArg {
+    All,
+    Read,
+    Write,
+}
+
 #[derive(Args)]
 pub(crate) struct Common {
-    /// Local UTF-8 JavaScript file; outline/find also accept directories.
+    /// Local UTF-8 JavaScript file; structure/find/resources listings also accept directories.
     pub(super) input: PathBuf,
     #[arg(long, value_enum, default_value = "auto")]
     pub(super) source_type: Mode,
@@ -49,6 +56,28 @@ pub(crate) struct Scan {
     /// Workers for a directory scan; one parsed input per worker is held at a time.
     #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = positive)]
     pub(super) threads: usize,
+}
+
+/// Own-name selectors shared by syntax and lexical listings.
+#[derive(Args)]
+pub(crate) struct Names {
+    /// Match this exact name (case-sensitive), independently of the substring filter.
+    #[arg(long)]
+    name: Option<String>,
+    /// Substring of the row's own name; folded unless --case sensitive.
+    #[arg(short, long)]
+    filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
+}
+impl Names {
+    fn query(self) -> rxd_js::NameQuery {
+        rxd_js::NameQuery {
+            name: self.name,
+            filter: self.filter,
+            case_sensitive: self.case.sensitive(),
+        }
+    }
 }
 
 /// Selectors shared by the grouped structure listings.
@@ -124,26 +153,61 @@ pub(crate) enum Command {
         #[arg(long)]
         resolve_static: bool,
     },
-    /// Find exact lexical identifier occurrences (JSONL).
+    /// List syntax-backed loading candidates, including unresolved expressions (JSONL).
+    Resources {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        /// Select one source role; these are candidates, not a runtime dependency graph.
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(rxd_js::RESOURCE_KINDS.iter().copied()))]
+        kind: Option<String>,
+        /// Resolved means a known string, not a resolved URL or permission to fetch it.
+        #[arg(long, value_parser = ["resolved", "unresolved"])]
+        resolution: Option<String>,
+        /// Substring over the decoded reference, or original expression when unresolved.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
+        /// Follow earlier, unwritten const strings in the same lexical scope; no calls or object reads.
+        #[arg(long)]
+        resolve_bindings: bool,
+        /// Restrict loading sites to this structure and its descendants; single file only.
+        #[arg(long)]
+        within: Option<String>,
+    },
+    /// List source-backed object entries, array elements, initializers and arguments.
+    Values {
+        #[command(flatten)]
+        common: Common,
+        /// Scope to a real structure, source fragment or binding declaration.
+        #[arg(long)]
+        within: Option<String>,
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(rxd_js::VALUE_KINDS.iter().copied()))]
+        kind: Option<String>,
+        /// The row's own name is its property/binding, target or syntactic index.
+        #[command(flatten)]
+        names: Names,
+    },
+    /// List lexical identifier occurrences (JSONL).
     Identifiers {
         #[command(flatten)]
         common: Common,
-        /// Exact identifier spelling to resolve; not a substring.
-        #[arg(long)]
-        name: String,
+        #[command(flatten)]
+        names: Names,
         #[arg(long, value_enum, default_value = "all")]
         role: IdentifierRoleArg,
         /// Restrict occurrences to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
     },
-    /// Find call sites of a direct or member callee name (JSONL).
+    /// List statically named direct/member call and constructor sites (JSONL).
     Calls {
         #[command(flatten)]
         common: Common,
-        /// Exact identifier spelling to resolve; not a substring.
-        #[arg(long)]
-        name: String,
+        #[command(flatten)]
+        names: Names,
         /// Restrict call sites to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
@@ -152,9 +216,11 @@ pub(crate) enum Command {
     Members {
         #[command(flatten)]
         common: Common,
-        /// Exact identifier spelling to resolve; not a substring.
-        #[arg(long)]
-        name: String,
+        #[command(flatten)]
+        names: Names,
+        /// Select syntactic reads or writes; compound assignments and updates match both.
+        #[arg(long, value_enum, default_value = "all")]
+        access: MemberAccessArg,
         /// Restrict occurrences to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
@@ -190,6 +256,8 @@ pub(crate) enum Command {
     Symbols {
         #[command(flatten)]
         common: Common,
+        #[command(flatten)]
+        names: Names,
         /// Include declarations and dependencies in this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
@@ -256,10 +324,39 @@ impl Command {
                 case_sensitive: case.sensitive(),
                 resolve_static,
             },
+            Self::Resources {
+                kind,
+                resolution,
+                filter,
+                case,
+                within,
+                resolve_bindings,
+                ..
+            } => Query::Resources(rxd_js::ResourcesQuery {
+                kind,
+                resolution,
+                filter,
+                case_sensitive: case.sensitive(),
+                within,
+                resolve_bindings,
+            }),
+            Self::Values {
+                within,
+                kind,
+                names,
+                ..
+            } => Query::Values(rxd_js::ValuesQuery {
+                within,
+                kind,
+                names: names.query(),
+            }),
             Self::Identifiers {
-                name, role, within, ..
+                names,
+                role,
+                within,
+                ..
             } => Query::Identifiers {
-                name,
+                names: names.query(),
                 within,
                 role: match role {
                     IdentifierRoleArg::All => rxd_js::IdentifierRole::All,
@@ -267,8 +364,24 @@ impl Command {
                     IdentifierRoleArg::Reference => rxd_js::IdentifierRole::Reference,
                 },
             },
-            Self::Calls { name, within, .. } => Query::Calls { name, within },
-            Self::Members { name, within, .. } => Query::Members { name, within },
+            Self::Calls { names, within, .. } => Query::Calls {
+                names: names.query(),
+                within,
+            },
+            Self::Members {
+                names,
+                access,
+                within,
+                ..
+            } => Query::Members {
+                names: names.query(),
+                access: match access {
+                    MemberAccessArg::All => rxd_js::MemberAccess::All,
+                    MemberAccessArg::Read => rxd_js::MemberAccess::Read,
+                    MemberAccessArg::Write => rxd_js::MemberAccess::Write,
+                },
+                within,
+            },
             Self::Locate { byte, .. } => Query::Locate { byte },
             Self::Xref { byte, .. } => Query::Refs {
                 target: match byte {
@@ -276,7 +389,10 @@ impl Command {
                     None => unreachable!("xref needs a resolved selector or a byte offset"),
                 },
             },
-            Self::Symbols { within, .. } => Query::Symbols { within },
+            Self::Symbols { names, within, .. } => Query::Symbols {
+                names: names.query(),
+                within,
+            },
             Self::Slice { .. } => unreachable!("slice needs the resolved coordinate"),
         }
     }
@@ -288,6 +404,8 @@ impl Command {
             Self::Classes { .. } => "classes",
             Self::Methods { .. } => "methods",
             Self::Find { .. } => "find",
+            Self::Resources { .. } => "resources",
+            Self::Values { .. } => "values",
             Self::Identifiers { .. } => "identifiers",
             Self::Calls { .. } => "calls",
             Self::Members { .. } => "members",
@@ -303,7 +421,8 @@ impl Command {
             | Self::Functions { scan, .. }
             | Self::Classes { scan, .. }
             | Self::Methods { scan, .. }
-            | Self::Find { scan, .. } => Some(scan),
+            | Self::Find { scan, .. }
+            | Self::Resources { scan, .. } => Some(scan),
             _ => None,
         }
     }
@@ -314,6 +433,8 @@ impl Command {
             | Self::Classes { common, .. }
             | Self::Methods { common, .. }
             | Self::Find { common, .. }
+            | Self::Resources { common, .. }
+            | Self::Values { common, .. }
             | Self::Identifiers { common, .. }
             | Self::Calls { common, .. }
             | Self::Members { common, .. }

@@ -3,11 +3,11 @@
 Status: implemented.
 
 `rxd html` is the Agent-facing lexical container entry for local HTML. It provides
-`entries` and `extract`. It reads one bounded, valid-UTF-8 regular local file, enumerates
-element/text/comment/doctype records in source order, and extracts exact byte ranges
-by content-bound ID. `rxd-html` depends only on shared budgets, protocol and file
-reading; it does not depend on `rxd-js` or Oxc, execute page scripts, load external
-resources, or build a browser DOM. Inline JS/TS content is analyzed separately by
+`entries`, `resources` and `extract`. It reads one bounded, valid-UTF-8 regular local
+file, enumerates lexical nodes and source-backed resource candidates, and extracts
+exact byte ranges by content-bound ID. Resource URL resolution uses a pinned local URL
+parser, not a network client. It does not depend on `rxd-js` or Oxc, execute page
+scripts, load external resources, or build a browser DOM. Inline JS/TS content is analyzed separately by
 `rxd js`. See the [HTML examples](../demo/html.md).
 
 ## Inputs and identity
@@ -24,7 +24,8 @@ scans; HTML files are always handled by `rxd html`.
 | Command | Output and behavior |
 | --- | --- |
 | `html entries FILE [-f TEXT] [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: entries`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
-| `html extract FILE --at AT -o OUTPUT [--content]` | `--at` and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
+| `html resources FILE [--base-url URL] [-f TEXT] [-o CATALOG]` | header/resource/summary JSONL; classifies inline bodies and external references. `--kind`, `--location inline\|external`, and optional `--include-content` narrow or enrich the same listing. No requests or script execution. |
+| `html extract FILE (--at AT \| --from JSONL) -o OUTPUT [--content]` | One selector and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
 `schema_version=2`. `entries` format-specific fields are under `detail`; the `extract`
@@ -33,12 +34,13 @@ receipt is a single `file` record with `backend`/`command`/`schema_version` and
 
 ### Records and closed schema
 
-Record kinds are `element`/`text`/`comment`/`doctype`; an end tag is not a fifth
+For `entries`, record kinds are `element`/`text`/`comment`/`doctype`; an end tag is not a fifth
 record. Every data record carries the ADR 0003 navigation fields (`at, source_id, parent_at,
 context_at, start, end`); a field with no value is `null` or absent, and the field set
-never changes with input. IDs are
-`rxd1:html:<lowercase sha256>:<kind>:<start>:<end>`, where start/end are canonical
-decimal half-open UTF-8 byte ranges.
+never changes with input. Printed coordinates are `kind:start:end`; source identity
+lives in the header. The full content-bound spelling
+`rxd1:html:<lowercase sha256>:<kind>:<start>:<end>` remains accepted. Start/end are
+canonical decimal half-open UTF-8 byte ranges.
 
 Element detail: `tag` (ASCII lowercase), `attrs` (ordered object array with `name` and
 `value`, preserving duplicates), `self_closing`, `void`, `depth`, `end_tag`
@@ -121,9 +123,9 @@ from the catalog), `template.html` (`tr` remains a lexical child of `template`, 
 browser template-content fragment), and `contexts.html` (textarea/title/style/noscript/
 noframes/plaintext contexts and the unknown `noframe`).
 
-## Filters
+## Entry filters
 
-`--kind` selects exactly one of element/text/comment/doctype. `--tag` is an ASCII
+For `entries`, `--kind` selects exactly one of element/text/comment/doctype. `--tag` is an ASCII
 case-insensitive full-name match on elements only. `--attr NAME[=VALUE]` applies to
 elements only; the first `=` separates name and value. Without `=` it checks presence;
 with `=` it compares the reported decoded UTF-8 value byte-for-byte. Query values are
@@ -138,6 +140,89 @@ a silent zero.
 descendants, and fails other kinds with `INVALID_QUERY`. `--depth N` selects relative
 depth ≤ N; without `--within` the top level is depth 0; N=0 is valid. Filtering
 preserves original depth and parent/context IDs even when ancestors are filtered out.
+
+## Resource candidates
+
+`resources` projects the same fixed lexical catalog under
+`resource_profile: resource_candidates_v1`. It is not a browser dependency graph.
+The supported source forms are:
+
+- `script`: distinguish classic JavaScript, modules, import maps, speculation rules
+  and data blocks using HTML `type`/`language` rules. The JavaScript MIME essence
+  check accepts ASCII whitespace around an explicit MIME type, but not parameters;
+  `type="module "` and `type="text/javascript; charset=utf-8"` are data blocks.
+  Empty/absent type defaults follow HTML rules; JSON/TS/other data types are not JS.
+  Data blocks ignore `src`. External import maps/speculation rules retain an
+  unresolved `unsupported_script_src` reference rather than a fetch URL.
+- `style`: absent/empty type or `text/css` is `style`; other types are `data`.
+- `link href`: stylesheet, modulepreload, preload (classified by `as`), icon and
+  manifest; preconnect/dns-prefetch are `hint`, not asset downloads. Recognized
+  relation tokens are emitted once each, in their source order.
+- `img src`, image-input `src`, audio/video/source `src`, video `poster`,
+  track `src`, iframe `src`, embed `src` and object `data`.
+  `srcset` on img/source and preload `imagesrcset` remain a single unresolved
+  `compound` value; no comma splitting or responsive-image selection is guessed.
+  An iframe with `srcdoc` reports that decoded value as unresolved `embedded_html`
+  instead of its overridden `src`. It is not recursively parsed.
+
+The kind enum is `script|style|importmap|data|image|font|media|document|hint|other`.
+Non-empty inline bodies are emitted; zero-byte bodies are omitted and counted.
+Whitespace-only bodies remain non-empty. External means an attribute reference,
+**not** a network request: embedded HTML, compound references, `data:`, `file:`
+and other schemes are not converted into HTTP downloads.
+
+`--base-url` supplies the captured document's final absolute HTTP(S) URL, without
+credentials, at most 64 KiB. Never infer it from the local file path. The first
+lexical `base[href]` outside a lexical template wins; its value resolves against
+the supplied document URL. An invalid base or a data/javascript base falls back to
+the document URL, not a later base. Without a usable base, relative references stay
+unresolved while absolute URLs remain usable. URL parsing/normalization is WHATWG
+`url =2.5.8`; values are tokenizer-decoded before resolution. CSP, DOM insertion,
+script mutations, namespace behavior and runtime timing are not simulated.
+
+`--kind` and `--location` are exact selectors. `-f/--filter` matches
+`detail.name`: the decoded attribute value for external references, or the tag
+name for an inline body. Shared case folding is the default; `--case sensitive`
+disables it. Filters are ANDed and do not change base selection or source identity.
+
+Each `resource` row has the owning element's `at/context_at/start/end` and its
+lexical `parent_at`. These are element coordinates accepted directly by
+`extract --at`, not new resource IDs. Multiple relations on one element can share
+a coordinate. `extract --from` accepts resource streams too; use the ordinary
+catalog without included content when selecting one body. Detail has a closed schema:
+
+- `kind/name/tag/location/relation/attribute`; attribute is null for inline bodies.
+- `url`: normalized absolute URL or null. `resolution`: `absolute|base|empty|
+  invalid|unresolved|compound|embedded_html|unsupported_script_src`, or null for
+  inline bodies. A resolved URL is neither a permission to fetch nor proof of a
+  runtime request; the Agent applies scheme/origin/authorization policy.
+- `script_type`: `classic|module|importmap|speculationrules|data`, or null where
+  inapplicable; modulepreload uses `module`. `end_tag` preserves lexical recovery.
+- `content_start/content_end/content_bytes`: original inline range and size, null
+  for external references. `content/content_source_id` are null by default.
+  `--include-content` supplies the exact original inline UTF-8 slice as JSON text
+  plus its independent SHA-256. JSON decoding followed by UTF-8 encoding restores
+  the bytes without entity decoding, BOM removal or newline conversion.
+- `conditions`: decoded nullable `type/language/rel/as/media/crossorigin/integrity/
+  referrerpolicy/fetchpriority`, and boolean attribute-presence flags
+  `async/defer/nomodule/disabled`, plus lexical `in_template`. These are evidence,
+  not evaluated loading conditions, CORS decisions or integrity checks.
+
+Header detail extends the lexical parser fields with `resource_profile`,
+`duplicate_attributes: first` and `base`
+(`document_url/url/href/at/status`). Base status is `document|element|missing|
+unresolved|invalid_fallback|disallowed_scheme_fallback`. Attribute projections use
+the first duplicate; `entries` still preserves every attribute. Query echoes
+`base_url/kind/location/filter/case/include_content`.
+
+Summary detail contains total pre-filter `resources/empty_inline`, selected
+`inline/external/unresolved` counts, and the entire catalog's three recovery
+counters. Rows follow source order. `complete` means all selected candidates in
+this explicit profile were delivered, **not page coverage**. CSS imports/URLs,
+style attributes, event handlers, nested srcdoc, SVG references, navigation links,
+JS-created URLs, import-map expansion and responsive-image selection are outside
+this profile. Neither successful downloads nor these counts supply a browser
+resource-coverage denominator.
 
 ## Identity and extraction
 
@@ -157,8 +242,10 @@ claims. Extracted bytes are the selected half-open container range with independ
 SHA-256; no entity decode, newline conversion, BOM removal, pretty-printing or syntax
 insertion.
 
-CLI `extract` requires explicit `--at` and `-o`, one input, and forbids replacing the
-input with the target (including path aliases). Host output paths are never derived
+CLI `extract` requires `--at` or `--from` plus `-o`, one input, and forbids replacing
+the input with the target (including path aliases). `--from` compares the stream's
+content identity to the same frozen source buffer used for extraction, not merely
+its length or a separate read; same-size stale streams return `SOURCE_MISMATCH`. Host output paths are never derived
 from element attributes. The receipt is one schema-2 `file` record: outer `backend:
 html`, `command: extract`, `schema_version`, `source_id` (artifact SHA); `at`,
 `parent_at`, `context_at` are null; `start` 0, `end` file_bytes. `detail` has
@@ -182,12 +269,13 @@ persistent parse state are not implemented.
 
 ## Resource budgets
 
-reading; 32-bit spans keep actual addressable content below 4 GiB), no record ceiling
-(all catalog nodes before filtering, including extract's validation catalog), no output
-ceiling (complete JSONL for entries; raw artifact plus complete serialized receipt for
-extract) and lexical nesting depth 512 (distinct from the `--depth` selector). All four
-values live in `rxd_core::Budget`; the CLI exposes no budget flags. Node/depth limits are enforced during parsing, not by
-unbounded accumulation and truncation. Exceeding a limit returns `RESOURCE_LIMIT` and
+The shared input-byte budget applies before reading. There is no catalog-record
+ceiling (including extract's validation catalog) or CLI output ceiling (complete
+JSONL, or raw artifact plus receipt); lexical nesting is limited to 512, distinct
+from the `--depth` selector. The explicitly supplied document base URL is additionally
+limited to 64 KiB. Inline bodies and attribute values come from the bounded source
+buffer. The CLI exposes no budget knobs; nesting is checked during parsing, not by
+truncating an already accumulated catalog. Exceeding a limit returns `RESOURCE_LIMIT` and
 never silently truncates or skips nodes; arithmetic/range overflow is explicit.
 Diagnostics go to stderr. Exit 0 means complete success (including zero rows); 1 means
 input/ID/resource/I/O failure; 2 means command-line or query argument error (including
@@ -196,11 +284,11 @@ input/ID/resource/I/O failure; 2 means command-line or query argument error (inc
 ## Relationship to JavaScript (ADR 0002)
 
 Per [ADR 0002](../adr/0002-backend-capability-closure.md), HTML is a lexical container
-format: it provides ENUMERATE (`entries`) and node FETCH (`extract`); `--attr` provides a
-limited metadata SEARCH (exact decoded attribute value). General text/constant SEARCH
-and code XREF are explicitly exempt because payload semantics belong to the extracted
-content's code backend; this version does not parse external references or model a
-browser runtime. HTML is not called a complete code-analysis backend, and no hidden
+format: it provides ENUMERATE (`entries/resources`) and node FETCH (`extract`);
+`--attr` provides exact decoded attribute SEARCH and resource `-f` searches the
+reference label. General code text/constant SEARCH and code XREF are explicitly
+exempt because payload semantics belong to the extracted content's code backend.
+Resource classification and URL resolution do not model a browser runtime. HTML is not called a complete code-analysis backend, and no hidden
 capability claim is attached to the container label.
 
 Extracted artifacts have their own SHA-256 and offsets. The Agent chooses the syntax
@@ -211,12 +299,33 @@ and JS backends are independent; HTML does not depend on JS.
 
 ## Performance diagnostics
 
-`--perf` marks analysis and CLI records with `backend: html` and command `entries` or
-`extract`. Stages are `read/hash/utf8/tokenize/query/serialize/write`; `tokenize` is
+`--perf` marks analysis and CLI records with `backend: html` and command `entries`,
+`resources` or `extract`. Stages are `read/hash/utf8/tokenize/query/serialize/write`; `tokenize` is
 recorded by `Perf::measure("tokenize", ...)`. For extract, `analysis.output_bytes` is
 artifact plus receipt and `CLI.output_bytes` is the stdout receipt; `list -o` reports
 zero CLI output bytes. Extract `source_id` is the artifact identity; list `source_id`
 is the container hash.
+
+### Resource CLI measurement
+
+A CLI-only release build (`--no-default-features --features backend-js,backend-html`)
+was measured on the saved anonymous Feishu login HTML: 92,565 bytes, SHA-256
+`e410ca06f6f119ea1d21ab217a37039ba76ce886034ceabe1ccab27069075ad7`.
+Hardware: Apple M3 Pro, 36 GiB RAM, macOS 26.5.1 arm64. Each workload used 30 fresh
+CLI/analysis-worker processes after two warm-ups, warm OS file/binary caches, real
+atomic output writes, and nearest-rank P95. No workloads were pooled.
+
+| Workload | Median ms | P95 ms | >150 ms | Output bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Resource catalog with document URL | 13.10 | 15.96 | 0/30 (0%) | 14,852 |
+| Inline JS with original content | 9.05 | 9.90 | 0/30 (0%) | 9,570 |
+| All candidates with inline content | 9.81 | 11.24 | 0/30 (0%) | 104,041 |
+| Extract one body via resource stream | 9.18 | 11.15 | 0/30 (0%) | 4,308 + stdout receipt |
+
+Samples, commands, binary hash and separate phase profiles are under ignored
+`target/bench/html-resources/`. These separate batches are not a speedup comparison.
+Scope is one production capture and these four CLI operations, not arbitrary HTML or
+authenticated Drive; the optional npm HTML corpus was absent and was not downloaded.
 
 The HTML runner used fixed authored pages (ordinary and synthetic large/markup-dense),
 plus pinned real npm pages when `tests/corpus/node_modules` exists (`tslib` 2.8.1,
@@ -233,10 +342,13 @@ exception; any exception needs explicit scope, measurements and approval.
 
 ## MCP projection
 
-`html_entries`/`html_extract` reuse the same query and result construction. `html_entries`
-projects header/records/summary, preserving CLI values, identity, order and
-completeness (logical path restoration, not byte-identical JSONL). HTML capture is a
+`html_entries`/`html_resources`/`html_extract` reuse the same query and result
+construction. The listings project header/records/summary, preserving CLI values,
+identity, order and completeness (logical path restoration, not byte-identical JSONL). HTML capture is a
 regular immutable file (path or file target); directories/bundles are rejected.
+`html_resources` reflects `base_url/kind/location/filter/case/include_content` from
+the CLI. Included inline content does not create child targets or write host files;
+use `html_extract` on the returned element coordinate for an owned child artifact.
 `html_extract` reuses backend validation/selection/receipt/artifact identity, keeps
 `detail.path: null`, and adds `child_target`; `include_bytes` adds `bytes_base64` but
 does not copy by default. The child target owns extracted bytes and artifact source_id

@@ -23,10 +23,10 @@ pub struct ToolDefinition {
 /// shared CLI vocabulary, so a listing grouped by backend still classifies the same way.
 fn capability(command: &str) -> &'static str {
     match command {
-        "entities" | "functions" | "classes" | "methods" | "fields" | "entries" | "types"
-        | "imports" | "exports" | "tables" | "memories" | "globals" | "data" | "elements"
-        | "codes" | "blocks" | "analyze" | "interface" | "storage" | "disassemble"
-        | "basic-blocks" | "cfg" | "metadata" | "manifest" => "ENUMERATE",
+        "entities" | "functions" | "classes" | "methods" | "fields" | "entries" | "resources"
+        | "values" | "types" | "imports" | "exports" | "tables" | "memories" | "globals"
+        | "data" | "elements" | "codes" | "blocks" | "analyze" | "interface" | "storage"
+        | "disassemble" | "basic-blocks" | "cfg" | "metadata" | "manifest" => "ENUMERATE",
         "strings" | "find" | "identifiers" | "calls" | "members" | "locate" => "SEARCH",
         "xref" => "XREF",
         _ => "FETCH",

@@ -1,5 +1,6 @@
 //! JavaScript parsing and structure queries. Input is never executed.
 
+mod bindings;
 mod calls;
 mod definition;
 mod envelope;
@@ -7,14 +8,21 @@ mod fragment;
 mod identifiers;
 mod lexical;
 mod members;
+mod names;
 mod refs;
+mod resources;
 mod static_eval;
 mod strings;
 mod structure;
 mod symbols;
 mod syntax;
+mod values;
 
+pub use members::MemberAccess;
+pub use names::NameQuery;
+pub use resources::{RESOURCE_KINDS, ResourcesQuery};
 pub use syntax::Syntax;
+pub use values::{VALUE_KINDS, ValuesQuery};
 
 use std::{
     io::{self, Write},
@@ -82,17 +90,20 @@ pub enum Query {
         case_sensitive: bool,
         resolve_static: bool,
     },
+    Resources(ResourcesQuery),
+    Values(ValuesQuery),
     Identifiers {
-        name: String,
+        names: NameQuery,
         role: IdentifierRole,
         within: Option<String>,
     },
     Calls {
-        name: String,
+        names: NameQuery,
         within: Option<String>,
     },
     Members {
-        name: String,
+        names: NameQuery,
+        access: MemberAccess,
         within: Option<String>,
     },
     Locate {
@@ -103,6 +114,7 @@ pub enum Query {
         target: RefsTarget,
     },
     Symbols {
+        names: NameQuery,
         within: Option<String>,
     },
     Slice {
@@ -152,6 +164,8 @@ impl Query {
         match self {
             Self::Outline { group, .. } => group.unwrap_or("entities"),
             Self::Find { .. } => "find",
+            Self::Resources(_) => "resources",
+            Self::Values(_) => "values",
             Self::Identifiers { .. } => "identifiers",
             Self::Calls { .. } => "calls",
             Self::Members { .. } => "members",
@@ -198,10 +212,19 @@ fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
 /// Serialize into a bounded buffer before exposing any query result.
 struct Output {
     bytes: Vec<u8>,
+    limit: Option<usize>,
+    limit_hit: bool,
 }
 
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if self
+            .limit
+            .is_some_and(|limit| bytes.len() > limit.saturating_sub(self.bytes.len()))
+        {
+            self.limit_hit = true;
+            return Err(io::Error::other("JS value output budget exceeded"));
+        }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -213,13 +236,28 @@ impl Write for Output {
 impl Output {
     fn json(&mut self, value: &impl Serialize) -> Result<()> {
         if let Err(error) = serde_json::to_writer(&mut *self, value) {
-            return Err(Error::new("INVALID_INPUT", error.to_string()));
+            return Err(Error::new(
+                if self.limit_hit {
+                    "RESOURCE_LIMIT"
+                } else {
+                    "INVALID_INPUT"
+                },
+                error.to_string(),
+            ));
         }
         self.raw(b"\n")
     }
     fn raw(&mut self, bytes: &[u8]) -> Result<()> {
-        self.write_all(bytes)
-            .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))
+        self.write_all(bytes).map_err(|error| {
+            Error::new(
+                if self.limit_hit {
+                    "RESOURCE_LIMIT"
+                } else {
+                    "INVALID_INPUT"
+                },
+                error.to_string(),
+            )
+        })
     }
 }
 
@@ -266,8 +304,18 @@ pub fn run_source(
     if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
         return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
     }
-    if matches!(&query, Query::Identifiers { name, .. } if name.is_empty()) {
-        return Err(Error::new("INVALID_QUERY", "name must not be empty"));
+    if let Query::Identifiers { names, .. }
+    | Query::Calls { names, .. }
+    | Query::Members { names, .. }
+    | Query::Symbols { names, .. } = &query
+    {
+        names.validate()?;
+    }
+    if let Query::Resources(resources) = &query {
+        resources.validate()?;
+    }
+    if let Query::Values(values) = &query {
+        values.validate()?;
     }
     let parse_start = perf.start_stage();
     let source_type = syntax::select(Path::new(&source.path), mode, syntax);
@@ -324,8 +372,25 @@ pub fn run_source(
         } => {
             json!({"filter":filter,"case":if *case_sensitive {"sensitive"} else {"insensitive"},"resolve_static":resolve_static})
         }
-        Query::Identifiers { name, role, within } => json!({
-            "name": name,
+        Query::Resources(resources) => json!({
+            "kind": resources.kind,
+            "resolution": resources.resolution,
+            "filter": resources.filter,
+            "case": if resources.case_sensitive { "sensitive" } else { "insensitive" },
+            "within": resources.within,
+            "resolve_bindings": resources.resolve_bindings,
+        }),
+        Query::Values(values) => {
+            json!({"within": values.within, "kind": values.kind, "name": values.names.name, "filter": values.names.filter, "case": if values.names.case_sensitive { "sensitive" } else { "insensitive" }})
+        }
+        Query::Identifiers {
+            names,
+            role,
+            within,
+        } => json!({
+            "name": names.name,
+            "filter": names.filter,
+            "case": if names.case_sensitive { "sensitive" } else { "insensitive" },
             "within": within,
             "role": match role {
                 IdentifierRole::All => "all",
@@ -333,8 +398,16 @@ pub fn run_source(
                 IdentifierRole::Reference => "reference",
             }
         }),
-        Query::Calls { name, within } => json!({"name":name,"within":within}),
-        Query::Members { name, within } => json!({"name":name,"within":within}),
+        Query::Calls { names, within } => {
+            json!({"name":names.name,"filter":names.filter,"case":if names.case_sensitive {"sensitive"} else {"insensitive"},"within":within})
+        }
+        Query::Members {
+            names,
+            access,
+            within,
+        } => {
+            json!({"name":names.name,"filter":names.filter,"case":if names.case_sensitive {"sensitive"} else {"insensitive"},"access":access,"within":within})
+        }
         Query::Refs { target } => match target {
             RefsTarget::Coordinate(at) => json!({"at":at,"kind":"symbol"}),
             RefsTarget::Byte(byte) => json!({"byte":byte}),
@@ -346,65 +419,20 @@ pub fn run_source(
             }
         },
         Query::Locate { byte } => json!({"byte":byte}),
-        Query::Symbols { within } => json!({"within":within}),
+        Query::Symbols { names, within } => {
+            json!({"name":names.name,"filter":names.filter,"case":if names.case_sensitive {"sensitive"} else {"insensitive"},"within":within})
+        }
         Query::Slice { id, json } => json!({"id":id,"json":json}),
-    };
-    // Every id-shaped selector may arrive as the copy-only short coordinate a row prints
-    // (`kind:start:end`); expand it against the header identity exactly once here so the
-    // fragment, symbol and structure paths all see the content-bound form.
-    let query = match query {
-        Query::Slice { id, json } => Query::Slice { id, json },
-        Query::Outline {
-            within: Some(id),
-            group,
-            depth,
-            kind,
-            name,
-            contains,
-            contains_case_sensitive,
-        } => Query::Outline {
-            group,
-            within: Some(id),
-            depth,
-            kind,
-            name,
-            contains,
-            contains_case_sensitive,
-        },
-        Query::Identifiers {
-            name,
-            role,
-            within: Some(id),
-        } => Query::Identifiers {
-            name,
-            role,
-            within: Some(id),
-        },
-        Query::Calls {
-            name,
-            within: Some(id),
-        } => Query::Calls {
-            name,
-            within: Some(id),
-        },
-        Query::Members {
-            name,
-            within: Some(id),
-        } => Query::Members {
-            name,
-            within: Some(id),
-        },
-        Query::Symbols { within: Some(id) } => Query::Symbols { within: Some(id) },
-        // The xref anchor is a coordinate too: expand it here so every id-shaped selector
-        // goes through this one normalisation, not through the call sites behind it.
-        other => other,
     };
     let contexts = match &query {
         Query::Find { .. } | Query::Identifiers { .. } => {
             Some(fragment::Contexts::new(fragment::Target::Matches))
         }
         Query::Locate { byte } => Some(fragment::Contexts::new(fragment::Target::Byte(*byte))),
-        Query::Slice { id, .. }
+        Query::Values(ValuesQuery {
+            within: Some(id), ..
+        })
+        | Query::Slice { id, .. }
             if id
                 .split(':')
                 .next()
@@ -430,6 +458,10 @@ pub fn run_source(
         resolve_static,
     );
     let visited = catch_unwind(AssertUnwindSafe(|| {
+        if resolve_static {
+            collector.static_limits.allow_intrinsics =
+                static_eval::intrinsics_allowed(&parsed.program, limits.ast_depth);
+        }
         collector.visit_program(&parsed.program)
     }));
     perf.record("visit", visit_start);
@@ -448,7 +480,19 @@ pub fn run_source(
     } else {
         "script"
     };
-    let mut output = Output { bytes: Vec::new() };
+    let mut output = Output {
+        bytes: Vec::new(),
+        limit: matches!(
+            query,
+            Query::Values(_)
+                | Query::Identifiers { .. }
+                | Query::Calls { .. }
+                | Query::Members { .. }
+                | Query::Symbols { .. }
+        )
+        .then_some(rxd_core::Budget::default().metadata_bytes),
+        limit_hit: false,
+    };
     let header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
         json!({"path":source.path,"root_id":root.id.clone(),"source_type":final_mode,
             "analysis":null,"syntax":syntax_info.syntax,"declaration_file":syntax_info.declaration_file,"origin":source.origin})
@@ -555,13 +599,97 @@ pub fn run_source(
                 Ok(())
             })?;
         }
-        Query::Identifiers { name, role, within } => {
+        Query::Resources(resources) => {
+            perf.record("query", query_start);
+            let result = resources::run(
+                &parsed.program,
+                &source,
+                &collector,
+                &resources,
+                limits,
+                perf,
+            )?;
+            perf.counters.records = Some(result.len());
+            let unresolved = result
+                .iter()
+                .filter(|resource| resource.unresolved())
+                .count();
+            perf.measure("serialize", || -> Result<()> {
+                let mut header = header;
+                header["detail"]["analysis"] = json!("syntax");
+                header["detail"]["resource_profile"] = json!("syntax_load_sites_v1");
+                header["detail"]["binding_profile"] = if resources.resolve_bindings {
+                    json!("local_const_strings_v1")
+                } else {
+                    json!(null)
+                };
+                output.json(&header)?;
+                for resource in &result {
+                    output.json(&resource.envelope())?;
+                }
+                output.json(&summary(
+                    result.len(),
+                    true,
+                    json!({"resolved":result.len()-unresolved,"unresolved":unresolved})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ))
+            })?;
+        }
+        Query::Values(values) => {
+            perf.record("query", query_start);
+            let region = match values.within.as_deref() {
+                None => oxc_span::Span::new(0, source.text.len() as u32),
+                Some(id) if id.starts_with("fragment.") => {
+                    fragment::validate_id(&source, id)?;
+                    let f = collector
+                        .contexts
+                        .as_ref()
+                        .and_then(|c| c.selected(&collector, &source))
+                        .filter(|f| f.id == id)
+                        .ok_or_else(|| {
+                            Error::new(
+                                "NOT_FOUND",
+                                "coordinate does not identify a source fragment",
+                            )
+                        })?;
+                    oxc_span::Span::new(f.start, f.end)
+                }
+                Some(id) if id.starts_with("symbol:") => {
+                    let d =
+                        definition::run(&parsed.program, &source, &collector, id, limits, perf)?;
+                    oxc_span::Span::new(d.declaration.range.start, d.declaration.range.end)
+                }
+                Some(id) => {
+                    let e = &collector.entities[collector.by_id(id)?].entity;
+                    oxc_span::Span::new(e.start, e.end)
+                }
+            };
+            let result = values::run(&parsed.program, &source, &collector, &values, region, perf)?;
+            perf.counters.records = Some(result.len());
+            perf.measure("serialize", || -> Result<()> {
+                let mut header = header;
+                header["detail"]["analysis"] = json!("syntax");
+                header["detail"]["value_profile"] = json!("syntax_value_slots_v1");
+                output.json(&header)?;
+                for row in &result {
+                    output.json(&row.envelope())?;
+                }
+                output.json(&summary(result.len(), true, Default::default()))
+            })?;
+        }
+        Query::Identifiers {
+            names,
+            role,
+            within,
+        } => {
             perf.record("query", query_start);
             let result = identifiers::run(
                 &parsed.program,
                 &source,
                 &collector,
-                &name,
+                &names,
                 role,
                 within.as_deref(),
                 perf,
@@ -575,13 +703,13 @@ pub fn run_source(
                 output.json(&summary(result.len(), true, Default::default()))
             })?;
         }
-        Query::Calls { name, within } => {
+        Query::Calls { names, within } => {
             perf.record("query", query_start);
             let result = calls::run(
                 &parsed.program,
                 &source,
                 &collector,
-                &name,
+                &names,
                 within.as_deref(),
                 perf,
             )?;
@@ -594,13 +722,18 @@ pub fn run_source(
                 output.json(&summary(result.len(), true, Default::default()))
             })?;
         }
-        Query::Members { name, within } => {
+        Query::Members {
+            names,
+            access,
+            within,
+        } => {
             perf.record("query", query_start);
             let result = members::run(
                 &parsed.program,
                 &source,
                 &collector,
-                &name,
+                &names,
+                access,
                 within.as_deref(),
                 perf,
             )?;
@@ -676,12 +809,13 @@ pub fn run_source(
             .single("locate");
             perf.measure("serialize", || output.json(&located))?;
         }
-        Query::Symbols { within } => {
+        Query::Symbols { names, within } => {
             perf.record("query", query_start);
             let result = symbols::run(
                 &parsed.program,
                 &source,
                 &collector,
+                &names,
                 within.as_deref(),
                 perf,
             )?;

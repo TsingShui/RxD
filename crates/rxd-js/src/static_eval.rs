@@ -1,19 +1,18 @@
-//! Bounded evaluation of syntax-local constant expressions.
-//!
-//! This is intentionally not a JavaScript interpreter: it never executes user-defined
-//! functions, reads globals, follows bindings, or performs I/O. It only evaluates a small
-//! allowlist of literal expressions and pure string helpers whose arguments are themselves
-//! statically known.
+//! Bounded syntax-local evaluation under standard-intrinsic semantics.
+//! Never executes input, follows bindings, or performs I/O. Strings stay JS UTF-16.
 
+use crate::strings::JsString;
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BinaryExpression, Expression, TemplateLiteral,
 };
-use oxc_syntax::operator::{BinaryOperator, UnaryOperator};
-use std::borrow::Cow;
+use oxc_syntax::{
+    number::ToJsString,
+    operator::{BinaryOperator, UnaryOperator},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    String(String),
+    String(JsString),
     Number(f64),
     Bool(bool),
     Null,
@@ -23,30 +22,52 @@ pub enum Value {
 impl Value {
     fn as_number(&self) -> Option<f64> {
         match self {
-            Self::Number(value) => Some(*value),
-            Self::Bool(value) => Some(if *value { 1.0 } else { 0.0 }),
-            Self::String(value) => value.parse().ok(),
+            Self::Number(n) => Some(*n),
+            Self::Bool(b) => Some(u8::from(*b) as f64),
             Self::Null => Some(0.0),
+            Self::String(s) => {
+                let text = s.to_utf8()?;
+                // Only the unambiguous ASCII decimal subset. Do not substitute Rust's
+                // whitespace, radix or case-insensitive infinity rules for ECMAScript.
+                if !text.is_ascii() {
+                    return None;
+                }
+                let text = text.trim_matches([' ', '\t', '\r', '\n', '\u{b}', '\u{c}']);
+                match text {
+                    "" => Some(0.0),
+                    "Infinity" | "+Infinity" => Some(f64::INFINITY),
+                    "-Infinity" => Some(f64::NEG_INFINITY),
+                    _ if text
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || b"+-.eE".contains(&b)) =>
+                    {
+                        text.parse().ok()
+                    }
+                    _ => None,
+                }
+            }
             Self::Array(_) => None,
         }
     }
 
-    /// Borrow the text form without allocating for the common string case.
-    fn as_cow(&self) -> Option<Cow<'_, str>> {
+    fn string(&self) -> Option<JsString> {
+        Some(match self {
+            Self::String(s) => s.clone(),
+            Self::Number(n) => JsString::from(n.to_js_string().as_str()),
+            Self::Bool(b) => JsString::from(if *b { "true" } else { "false" }),
+            Self::Null => JsString::from("null"),
+            Self::Array(_) => return None,
+        })
+    }
+
+    fn bytes(&self) -> usize {
         match self {
-            Self::String(value) => Some(Cow::Borrowed(value.as_str())),
-            Self::Number(value) => {
-                if !value.is_finite() {
-                    None
-                } else if value.fract() == 0.0 {
-                    Some(Cow::Owned(format!("{value:.0}")))
-                } else {
-                    Some(Cow::Owned(value.to_string()))
-                }
-            }
-            Self::Bool(value) => Some(Cow::Borrowed(if *value { "true" } else { "false" })),
-            Self::Null => Some(Cow::Borrowed("null")),
-            Self::Array(_) => None,
+            Self::String(s) => s.len_utf16() * 2,
+            Self::Array(a) => a
+                .iter()
+                .map(|v| v.as_ref().map_or(0, Self::bytes) + 8)
+                .sum(),
+            _ => 8,
         }
     }
 }
@@ -56,104 +77,109 @@ pub struct Limits {
     pub depth: usize,
     pub steps: usize,
     pub value_bytes: usize,
+    pub allow_intrinsics: bool,
 }
-
 impl Default for Limits {
     fn default() -> Self {
         Self {
             depth: 32,
             steps: 512,
             value_bytes: 64 * 1024,
+            allow_intrinsics: true,
         }
     }
 }
 
-#[allow(dead_code)]
 pub fn evaluate(expression: &Expression<'_>, limits: Limits) -> Option<Value> {
-    let mut evaluator = Evaluator { limits, steps: 0 };
-    evaluator.expression(expression, 0)
+    Evaluator { limits, steps: 0 }.expression(expression, 0)
 }
-
 pub fn evaluate_binary(binary: &BinaryExpression<'_>, limits: Limits) -> Option<Value> {
-    let mut evaluator = Evaluator { limits, steps: 0 };
-    evaluator.binary(binary, 0)
+    Evaluator { limits, steps: 0 }.binary(binary, 0)
 }
-
 pub fn evaluate_call(call: &oxc_ast::ast::CallExpression<'_>, limits: Limits) -> Option<Value> {
-    let mut evaluator = Evaluator { limits, steps: 0 };
-    evaluator.call(call, 0)
+    Evaluator { limits, steps: 0 }.call(call, 0)
 }
-
 pub fn evaluate_template(template: &TemplateLiteral<'_>, limits: Limits) -> Option<Value> {
-    let mut evaluator = Evaluator { limits, steps: 0 };
-    evaluator.template(template, 0)
+    Evaluator { limits, steps: 0 }.template(template, 0)
 }
-
 pub fn evaluate_member(
     member: &oxc_ast::ast::ComputedMemberExpression<'_>,
     limits: Limits,
 ) -> Option<Value> {
-    let mut evaluator = Evaluator { limits, steps: 0 };
-    evaluator.member(member, 0)
+    Evaluator { limits, steps: 0 }.member(member, 0)
 }
 
 struct Evaluator {
     limits: Limits,
     steps: usize,
 }
-
 impl Evaluator {
     fn step(&mut self, depth: usize) -> Option<()> {
-        if depth > self.limits.depth {
+        if depth > self.limits.depth || self.steps >= self.limits.steps {
             return None;
         }
-        self.steps = self.steps.checked_add(1)?;
-        (self.steps <= self.limits.steps).then_some(())
+        self.steps += 1;
+        Some(())
     }
-
+    fn bounded(&self, value: Value) -> Option<Value> {
+        (value.bytes() <= self.limits.value_bytes).then_some(value)
+    }
+    fn decoded(&self, text: &str, lone: bool) -> Option<JsString> {
+        if text.len() > self.limits.value_bytes.saturating_mul(4) {
+            return None;
+        }
+        let s = JsString::decoded(text, lone);
+        (s.len_utf16() <= self.limits.value_bytes / 2).then_some(s)
+    }
     fn expression(&mut self, expression: &Expression<'_>, depth: usize) -> Option<Value> {
         self.step(depth)?;
-        let value = match expression.without_parentheses() {
-            Expression::StringLiteral(literal) => Value::String(literal.value.as_str().to_owned()),
-            Expression::NumericLiteral(literal) => Value::Number(literal.value),
-            Expression::BooleanLiteral(literal) => Value::Bool(literal.value),
+        let value = match expression.get_inner_expression() {
+            Expression::StringLiteral(l) => {
+                Value::String(self.decoded(l.value.as_str(), l.lone_surrogates)?)
+            }
+            Expression::NumericLiteral(l) => Value::Number(l.value),
+            Expression::BooleanLiteral(l) => Value::Bool(l.value),
             Expression::NullLiteral(_) => Value::Null,
-            Expression::TemplateLiteral(template) => self.template(template, depth + 1)?,
-            Expression::ArrayExpression(array) => {
-                let mut values = Vec::with_capacity(array.elements.len());
-                for element in &array.elements {
+            Expression::TemplateLiteral(t) => self.template(t, depth + 1)?,
+            Expression::ArrayExpression(a) => {
+                if a.elements.len() > self.limits.steps.saturating_sub(self.steps) {
+                    return None;
+                }
+                let mut values = Vec::new();
+                let mut bytes = 0;
+                for element in &a.elements {
+                    self.step(depth + 1)?;
                     let value = match element {
                         ArrayExpressionElement::Elision(_) => None,
                         ArrayExpressionElement::SpreadElement(_) => return None,
-                        element => Some(self.expression(element.as_expression()?, depth + 1)?),
+                        e => Some(self.expression(e.as_expression()?, depth + 1)?),
                     };
+                    bytes += value.as_ref().map_or(0, Value::bytes) + 8;
+                    if bytes > self.limits.value_bytes {
+                        return None;
+                    }
                     values.push(value);
                 }
                 Value::Array(values)
             }
-            Expression::ComputedMemberExpression(member) => self.member(member, depth + 1)?,
-            Expression::UnaryExpression(unary) => {
-                let value = self.expression(&unary.argument, depth + 1)?;
-                match unary.operator {
-                    UnaryOperator::UnaryPlus => Value::Number(value.as_number()?),
-                    UnaryOperator::UnaryNegation => Value::Number(-value.as_number()?),
-                    UnaryOperator::LogicalNot => Value::Bool(!truthy(&value)),
+            Expression::ComputedMemberExpression(m) => self.member(m, depth + 1)?,
+            Expression::UnaryExpression(u) => {
+                let v = self.expression(&u.argument, depth + 1)?;
+                match u.operator {
+                    UnaryOperator::UnaryPlus => Value::Number(v.as_number()?),
+                    UnaryOperator::UnaryNegation => Value::Number(-v.as_number()?),
+                    UnaryOperator::LogicalNot => Value::Bool(!truthy(&v)),
                     UnaryOperator::BitwiseNot => {
-                        Value::Number((!(value.as_number()? as i32)) as f64)
+                        Value::Number((!(uint32(v.as_number()?) as i32)) as f64)
                     }
                     _ => return None,
                 }
             }
-            Expression::BinaryExpression(binary) => self.binary(binary, depth + 1)?,
-            Expression::CallExpression(call) => self.call(call, depth + 1)?,
+            Expression::BinaryExpression(b) => self.binary(b, depth + 1)?,
+            Expression::CallExpression(c) => self.call(c, depth + 1)?,
             _ => return None,
         };
-        if let Value::String(value) = &value
-            && value.len() > self.limits.value_bytes
-        {
-            return None;
-        }
-        Some(value)
+        self.bounded(value)
     }
 
     fn member(
@@ -163,156 +189,238 @@ impl Evaluator {
     ) -> Option<Value> {
         self.step(depth)?;
         let object = self.expression(&member.object, depth + 1)?;
-        let index = self
-            .expression(&member.expression, depth + 1)?
-            .as_number()?;
-        if index < 0.0 || index.fract() != 0.0 {
+        let key = self.expression(&member.expression, depth + 1)?;
+        let index = match &key {
+            Value::Number(n) => *n,
+            Value::String(s) => {
+                let n = key.as_number()?;
+                if !s.equals_str(&n.to_js_string()) {
+                    return None;
+                }
+                n
+            }
+            _ => return None,
+        };
+        if !index.is_finite() || index < 0.0 || index.fract() != 0.0 {
             return None;
         }
         match object {
-            Value::Array(values) => Some(values.get(index as usize)?.clone()?),
-            Value::String(value) => Some(Value::String(
-                value.chars().nth(index as usize)?.to_string(),
-            )),
+            Value::Array(a) => a.get(index as usize)?.clone(),
+            Value::String(s) => Some(Value::String(JsString::from_units(vec![
+                *s.units().get(index as usize)?,
+            ]))),
             _ => None,
         }
     }
 
     fn binary(&mut self, binary: &BinaryExpression<'_>, depth: usize) -> Option<Value> {
-        // Reject unsupported operators before touching either operand: minified input is
-        // full of comparisons that can never be folded, and their operands are pointless work.
+        self.step(depth)?;
         if !binary_operator_supported(binary.operator) {
             return None;
         }
-        let string_addition = is_string_addition(binary);
-        let left = self.expression(&binary.left, depth)?;
-        let right = self.expression(&binary.right, depth)?;
-        match binary.operator {
-            BinaryOperator::Addition => {
-                let (left_text, right_text) = (left.as_cow(), right.as_cow());
-                if string_addition
-                    && let (Some(left_text), Some(right_text)) = (&left_text, &right_text)
-                {
-                    let mut output = String::with_capacity(left_text.len() + right_text.len());
-                    output.push_str(left_text);
-                    output.push_str(right_text);
-                    Some(Value::String(output))
-                } else {
-                    Some(Value::Number(left.as_number()? + right.as_number()?))
-                }
-            }
-            BinaryOperator::Subtraction => {
-                Some(Value::Number(left.as_number()? - right.as_number()?))
-            }
-            BinaryOperator::Multiplication => {
-                Some(Value::Number(left.as_number()? * right.as_number()?))
-            }
-            BinaryOperator::Division => Some(Value::Number(left.as_number()? / right.as_number()?)),
-            BinaryOperator::Remainder => {
-                Some(Value::Number(left.as_number()? % right.as_number()?))
-            }
-            BinaryOperator::BitwiseOR => Some(Value::Number(
-                ((left.as_number()? as i32) | (right.as_number()? as i32)) as f64,
-            )),
-            BinaryOperator::BitwiseXOR => Some(Value::Number(
-                ((left.as_number()? as i32) ^ (right.as_number()? as i32)) as f64,
-            )),
-            BinaryOperator::BitwiseAnd => Some(Value::Number(
-                ((left.as_number()? as i32) & (right.as_number()? as i32)) as f64,
-            )),
-            BinaryOperator::ShiftLeft => Some(Value::Number(
-                ((left.as_number()? as i32) << (right.as_number()? as u32 & 31)) as f64,
-            )),
-            BinaryOperator::ShiftRight => Some(Value::Number(
-                ((left.as_number()? as i32) >> (right.as_number()? as u32 & 31)) as f64,
-            )),
-            BinaryOperator::ShiftRightZeroFill => Some(Value::Number(
-                ((left.as_number()? as u32) >> (right.as_number()? as u32 & 31)) as f64,
-            )),
-            _ => None,
+        let l = self.expression(&binary.left, depth + 1)?;
+        let r = self.expression(&binary.right, depth + 1)?;
+        if binary.operator == BinaryOperator::Addition
+            && (matches!(l, Value::String(_)) || matches!(r, Value::String(_)))
+        {
+            let mut value = l.string()?;
+            value.append_bounded(&r.string()?, self.limits.value_bytes / 2)?;
+            return Some(Value::String(value));
         }
+        let (l, r) = (l.as_number()?, r.as_number()?);
+        let n = match binary.operator {
+            BinaryOperator::Addition => l + r,
+            BinaryOperator::Subtraction => l - r,
+            BinaryOperator::Multiplication => l * r,
+            BinaryOperator::Division => l / r,
+            BinaryOperator::Remainder => l % r,
+            BinaryOperator::BitwiseOR => ((uint32(l) | uint32(r)) as i32) as f64,
+            BinaryOperator::BitwiseXOR => ((uint32(l) ^ uint32(r)) as i32) as f64,
+            BinaryOperator::BitwiseAnd => ((uint32(l) & uint32(r)) as i32) as f64,
+            BinaryOperator::ShiftLeft => ((uint32(l) << (uint32(r) & 31)) as i32) as f64,
+            BinaryOperator::ShiftRight => ((uint32(l) as i32) >> (uint32(r) & 31)) as f64,
+            BinaryOperator::ShiftRightZeroFill => (uint32(l) >> (uint32(r) & 31)) as f64,
+            _ => return None,
+        };
+        self.bounded(Value::Number(n))
     }
 
     fn template(&mut self, template: &TemplateLiteral<'_>, depth: usize) -> Option<Value> {
-        let mut output = String::new();
-        for (index, quasi) in template.quasis.iter().enumerate() {
-            output.push_str(quasi.value.cooked?.as_str());
-            if let Some(expression) = template.expressions.get(index) {
-                output.push_str(&self.expression(expression, depth)?.as_cow()?);
+        self.step(depth)?;
+        let mut result = JsString::from("");
+        for (i, q) in template.quasis.iter().enumerate() {
+            self.step(depth + 1)?;
+            result.append_bounded(
+                &self.decoded(q.value.cooked?.as_str(), q.lone_surrogates)?,
+                self.limits.value_bytes / 2,
+            )?;
+            if let Some(e) = template.expressions.get(i) {
+                result.append_bounded(
+                    &self.expression(e, depth + 1)?.string()?,
+                    self.limits.value_bytes / 2,
+                )?;
             }
         }
-        Some(Value::String(output))
+        Some(Value::String(result))
     }
 
     fn call(&mut self, call: &oxc_ast::ast::CallExpression<'_>, depth: usize) -> Option<Value> {
-        // Resolve the callee allowlist before evaluating arguments. A minified bundle is
-        // mostly calls into user functions that can never fold, so folding their arguments
-        // first would be the dominant cost of the whole query.
-        if !is_string_call_callee(call) {
+        self.step(depth)?;
+        if !self.limits.allow_intrinsics
+            || !is_string_call_callee(call)
+            || call.arguments.len() > self.limits.steps.saturating_sub(self.steps)
+        {
             return None;
         }
-        let from_code = call
-            .callee
-            .is_specific_member_access("String", "fromCharCode")
-            || call
-                .callee
-                .is_specific_member_access("String", "fromCodePoint");
-        let args: Vec<_> = call
+        let args = call
             .arguments
             .iter()
-            .map(|argument| self.expression(argument.as_expression()?, depth + 1))
-            .collect::<Option<_>>()?;
-        if from_code {
-            let mut output = String::new();
-            for argument in args {
-                let code = argument.as_number()? as u32;
-                output.push(char::from_u32(code)?);
+            .map(|a| self.expression(a.as_expression()?, depth + 1))
+            .collect::<Option<Vec<_>>>()?;
+        let from_unit = call
+            .callee
+            .is_specific_member_access("String", "fromCharCode");
+        let from_point = call
+            .callee
+            .is_specific_member_access("String", "fromCodePoint");
+        if from_unit || from_point {
+            let mut units = Vec::new();
+            for arg in args {
+                let n = arg.as_number()?;
+                if from_unit {
+                    units.push(uint32(n) as u16);
+                } else {
+                    if !n.is_finite() || !(0.0..=0x10ffff as f64).contains(&n) || n.fract() != 0.0 {
+                        return None;
+                    }
+                    let n = n as u32;
+                    if n <= 0xffff {
+                        units.push(n as u16);
+                    } else {
+                        units.push(0xd800 + ((n - 0x10000) >> 10) as u16);
+                        units.push(0xdc00 + ((n - 0x10000) & 1023) as u16);
+                    }
+                }
+                if units.len() > self.limits.value_bytes / 2 {
+                    return None;
+                }
             }
-            return Some(Value::String(output));
+            return Some(Value::String(JsString::from_units(units)));
         }
-        let Expression::StaticMemberExpression(member) = call.callee.without_parentheses() else {
+        let Expression::StaticMemberExpression(m) = call.callee.get_inner_expression() else {
             return None;
         };
-        let receiver = self.expression(&member.object, depth + 1)?;
-        let object = receiver.as_cow()?;
-        let name = member.property.name.as_str();
-        match name {
-            "toUpperCase" if args.is_empty() => Some(Value::String(object.to_uppercase())),
-            "toLowerCase" if args.is_empty() => Some(Value::String(object.to_lowercase())),
-            "charAt" if args.len() == 1 => Some(Value::String(
-                object
-                    .chars()
-                    .nth(args[0].as_number()? as usize)?
-                    .to_string(),
-            )),
-            "slice" | "substring" | "substr" if (1..=2).contains(&args.len()) => {
-                let start = args[0].as_number()? as usize;
-                let count = object.chars().count();
-                let end = args
-                    .get(1)
-                    .and_then(Value::as_number)
-                    .map(|value| value as usize)
-                    .unwrap_or(count)
-                    .min(count);
-                let start = start.min(end);
-                Some(Value::String(
-                    object.chars().skip(start).take(end - start).collect(),
-                ))
+        // A Number/Boolean/Array does not acquire String's prototype methods through
+        // ToString. Only a known primitive string is a supported receiver.
+        let Value::String(object) = self.expression(&m.object, depth + 1)? else {
+            return None;
+        };
+        let units = object.units();
+        let len = units.len();
+        let result = match m.property.name.as_str() {
+            "toUpperCase" | "toLowerCase" if args.is_empty() => {
+                // Unicode case tables and contextual casing are not approximated.
+                if units.iter().any(|u| *u > 127) {
+                    return None;
+                }
+                JsString::from_units(
+                    units
+                        .iter()
+                        .map(|u| {
+                            let c = *u as u8;
+                            if m.property.name == "toUpperCase" {
+                                c.to_ascii_uppercase() as u16
+                            } else {
+                                c.to_ascii_lowercase() as u16
+                            }
+                        })
+                        .collect(),
+                )
             }
-            _ => None,
-        }
+            "charAt" if args.len() <= 1 => {
+                let i = integer(
+                    args.first()
+                        .map(Value::as_number)
+                        .transpose_option()?
+                        .unwrap_or(0.0),
+                );
+                let unit = if i >= 0.0 && i < len as f64 {
+                    units.get(i as usize).copied()
+                } else {
+                    None
+                };
+                JsString::from_units(unit.into_iter().collect())
+            }
+            "slice" | "substring" | "substr" if args.len() <= 2 => {
+                let a = args
+                    .first()
+                    .map(Value::as_number)
+                    .transpose_option()?
+                    .unwrap_or(0.0);
+                let b = args.get(1).map(Value::as_number).transpose_option()?;
+                let (start, end) = match m.property.name.as_str() {
+                    "slice" => (relative(a, len), b.map_or(len, |b| relative(b, len))),
+                    "substring" => {
+                        let a = clamp(a, len);
+                        let b = b.map_or(len, |b| clamp(b, len));
+                        (a.min(b), a.max(b))
+                    }
+                    _ => {
+                        let a = relative(a, len);
+                        (a, a + b.map_or(len - a, |b| clamp(b, len - a)))
+                    }
+                };
+                JsString::from_units(units[start..end.max(start)].to_vec())
+            }
+            _ => return None,
+        };
+        self.bounded(Value::String(result))
     }
 }
 
-/// Whether `Evaluator::expression` can fold this expression's *shape* at all.
-///
-/// Mirrors that method's match arms exactly: keep both in sync. Deliberately one level
-/// deep and allocation-free. A recursive variant was measured and rejected: minified `+`
-/// chains make every nested parent re-walk its whole left spine, which costs more than the
-/// evaluation it avoids.
-fn is_foldable(expression: &Expression<'_>) -> bool {
+// Keep absent arguments distinct from supplied expressions we cannot evaluate.
+trait TransposeOption<T> {
+    fn transpose_option(self) -> Option<Option<T>>;
+}
+impl<T> TransposeOption<T> for Option<Option<T>> {
+    fn transpose_option(self) -> Option<Option<T>> {
+        self.map_or(Some(None), |v| v.map(Some))
+    }
+}
+fn integer(n: f64) -> f64 {
+    if n.is_nan() { 0.0 } else { n.trunc() }
+}
+fn clamp(n: f64, len: usize) -> usize {
+    integer(n).max(0.0).min(len as f64) as usize
+}
+fn relative(n: f64, len: usize) -> usize {
+    let n = integer(n);
+    if n < 0.0 {
+        (len as f64 + n).max(0.0) as usize
+    } else {
+        clamp(n, len)
+    }
+}
+fn uint32(n: f64) -> u32 {
+    if !n.is_finite() || n == 0.0 {
+        0
+    } else {
+        n.trunc().rem_euclid(4294967296.0) as u32
+    }
+}
+fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Bool(b) => *b,
+        Value::Null => false,
+        Value::Number(n) => *n != 0.0 && !n.is_nan(),
+        Value::String(s) => s.len_utf16() != 0,
+        Value::Array(_) => true,
+    }
+}
+
+fn is_foldable(e: &Expression<'_>) -> bool {
     matches!(
-        expression.without_parentheses(),
+        e.get_inner_expression(),
         Expression::StringLiteral(_)
             | Expression::NumericLiteral(_)
             | Expression::BooleanLiteral(_)
@@ -325,17 +433,9 @@ fn is_foldable(expression: &Expression<'_>) -> bool {
             | Expression::CallExpression(_)
     )
 }
-
-fn is_string_shaped(expression: &Expression<'_>) -> bool {
+fn binary_operator_supported(op: BinaryOperator) -> bool {
     matches!(
-        expression.without_parentheses(),
-        Expression::StringLiteral(_) | Expression::TemplateLiteral(_)
-    )
-}
-
-fn binary_operator_supported(operator: BinaryOperator) -> bool {
-    matches!(
-        operator,
+        op,
         BinaryOperator::Addition
             | BinaryOperator::Subtraction
             | BinaryOperator::Multiplication
@@ -349,94 +449,109 @@ fn binary_operator_supported(operator: BinaryOperator) -> bool {
             | BinaryOperator::ShiftRightZeroFill
     )
 }
-
-/// Shallow structural test used by the evaluator itself: does `+` concatenate here?
-fn is_string_addition(binary: &BinaryExpression<'_>) -> bool {
-    binary.operator == BinaryOperator::Addition
-        && (is_string_shaped(&binary.left) || is_string_shaped(&binary.right))
-}
-
-/// Shallow structural test used by the evaluator itself: is this callee one it can fold?
-fn is_string_call_callee(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
-    if call.optional || call.arguments.iter().any(Argument::is_spread) {
+fn is_string_call_callee(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
+    if c.optional || c.arguments.iter().any(Argument::is_spread) {
         return false;
     }
-    if call
-        .callee
-        .is_specific_member_access("String", "fromCharCode")
-        || call
-            .callee
+    if c.callee.is_specific_member_access("String", "fromCharCode")
+        || c.callee
             .is_specific_member_access("String", "fromCodePoint")
     {
         return true;
     }
-    match call.callee.without_parentheses() {
-        Expression::StaticMemberExpression(member) => matches!(
-            member.property.name.as_str(),
-            "toUpperCase" | "toLowerCase" | "charAt" | "slice" | "substring" | "substr"
-        ),
-        _ => false,
+    matches!(c.callee.get_inner_expression(), Expression::StaticMemberExpression(m) if matches!(m.property.name.as_str(), "toUpperCase" | "toLowerCase" | "charAt" | "slice" | "substring" | "substr"))
+}
+/// Disable helper assumptions for syntactically visible shadowing/dynamic scope,
+/// or String/global-object uses other than the supported direct constructor helpers.
+/// This is conservative, not a proof that external code leaves prototypes untouched.
+pub(crate) fn intrinsics_allowed(program: &oxc_ast::ast::Program<'_>, max_depth: usize) -> bool {
+    use oxc_ast::AstKind;
+    use oxc_ast_visit::Visit;
+    use oxc_span::GetSpan;
+    struct Guard<'a> {
+        parents: Vec<AstKind<'a>>,
+        allowed: bool,
+        max_depth: usize,
     }
+    impl<'a> Visit<'a> for Guard<'a> {
+        fn enter_node(&mut self, node: AstKind<'a>) {
+            if self.parents.len() >= self.max_depth {
+                std::panic::panic_any(rxd_core::Error::new(
+                    "RESOURCE_LIMIT",
+                    "AST depth budget exceeded",
+                ));
+            }
+            match node {
+                AstKind::BindingIdentifier(id) if id.name == "String" => self.allowed = false,
+                AstKind::WithStatement(_) => self.allowed = false,
+                AstKind::CallExpression(c)
+                    if c.callee.get_inner_expression().is_specific_id("eval") =>
+                {
+                    self.allowed = false
+                }
+                AstKind::IdentifierReference(id)
+                    if matches!(id.name.as_str(), "globalThis" | "window" | "self") =>
+                {
+                    self.allowed = false
+                }
+                AstKind::IdentifierReference(id) if id.name == "String" => {
+                    let direct = match (self.parents.last(), self.parents.iter().rev().nth(1)) {
+                        (
+                            Some(AstKind::StaticMemberExpression(m)),
+                            Some(AstKind::CallExpression(c)),
+                        ) => {
+                            m.object.span() == id.span
+                                && c.callee.span() == m.span
+                                && matches!(
+                                    m.property.name.as_str(),
+                                    "fromCharCode" | "fromCodePoint"
+                                )
+                        }
+                        _ => false,
+                    };
+                    self.allowed &= direct;
+                }
+                _ => {}
+            }
+            self.parents.push(node);
+        }
+        fn leave_node(&mut self, _: AstKind<'a>) {
+            self.parents.pop();
+        }
+    }
+    let mut guard = Guard {
+        parents: Vec::new(),
+        allowed: true,
+        max_depth,
+    };
+    guard.visit_program(program);
+    guard.allowed
 }
 
-/// Visitor-side guard: can this `+` node possibly fold to a string?
-pub fn binary_can_yield_string(binary: &BinaryExpression<'_>) -> bool {
-    is_string_addition(binary) && is_foldable(&binary.left) && is_foldable(&binary.right)
+// One-level guards only: recursive prechecks re-walk minified concatenation spines.
+pub fn binary_can_yield_string(b: &BinaryExpression<'_>) -> bool {
+    b.operator == BinaryOperator::Addition && is_foldable(&b.left) && is_foldable(&b.right)
 }
-
-/// Visitor-side guard: can this call possibly fold to a string value?
-///
-/// Sound as a skip condition: [`Evaluator::call`] produces a string only through
-/// `String.fromCharCode`/`fromCodePoint` or one of the string-method names, and in every
-/// case all arguments and (for methods) the receiver must fold first.
-pub fn call_can_yield_string(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
-    if !is_string_call_callee(call) {
-        return false;
-    }
-    if !call
-        .arguments
-        .iter()
-        .all(|argument| argument.as_expression().is_some_and(is_foldable))
+pub fn call_can_yield_string(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
+    if !is_string_call_callee(c)
+        || !c
+            .arguments
+            .iter()
+            .all(|a| a.as_expression().is_some_and(is_foldable))
     {
         return false;
     }
-    // `String.fromCharCode`/`fromCodePoint` read only their arguments, so their receiver
-    // is never evaluated; a string method must additionally fold its receiver.
-    if call
-        .callee
-        .is_specific_member_access("String", "fromCharCode")
-        || call
-            .callee
+    if c.callee.is_specific_member_access("String", "fromCharCode")
+        || c.callee
             .is_specific_member_access("String", "fromCodePoint")
     {
         return true;
     }
-    match call.callee.without_parentheses() {
-        Expression::StaticMemberExpression(member) => is_foldable(&member.object),
-        _ => true,
-    }
+    matches!(c.callee.get_inner_expression(), Expression::StaticMemberExpression(m) if is_foldable(&m.object))
 }
-
-/// Visitor-side guard: can this computed access possibly fold to a string value?
-pub fn member_can_yield_string(member: &oxc_ast::ast::ComputedMemberExpression<'_>) -> bool {
-    is_foldable(&member.object) && is_foldable(&member.expression)
+pub fn member_can_yield_string(m: &oxc_ast::ast::ComputedMemberExpression<'_>) -> bool {
+    is_foldable(&m.object) && is_foldable(&m.expression)
 }
-
-/// Visitor-side guard: can this template literal possibly fold to a string value?
-pub fn template_can_yield_string(template: &TemplateLiteral<'_>) -> bool {
-    template
-        .quasis
-        .iter()
-        .all(|quasi| quasi.value.cooked.is_some())
-        && template.expressions.iter().all(is_foldable)
-}
-
-fn truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(value) => *value,
-        Value::Null => false,
-        Value::Number(value) => *value != 0.0 && !value.is_nan(),
-        Value::String(value) => !value.is_empty(),
-        Value::Array(_) => true,
-    }
+pub fn template_can_yield_string(t: &TemplateLiteral<'_>) -> bool {
+    t.quasis.iter().all(|q| q.value.cooked.is_some()) && t.expressions.iter().all(is_foldable)
 }

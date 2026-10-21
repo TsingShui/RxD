@@ -2,7 +2,9 @@
 
 `rxd html` enumerates lexical records in a local HTML file and extracts exact byte ranges
 by content-bound ID. It never executes page scripts, loads external resources or builds a
-DOM. Only `entries` and `extract` exist; extracted inline JS/TS is passed to `rxd js`.
+DOM. `entries` lists lexical nodes; `resources` classifies resource candidates and can
+include inline bodies; `extract` fetches one original range. JS content is passed to
+`rxd js` with its own source identity.
 `lexical_naive_v1` is a lexical approximation, not a browser parser. See the
 [HTML design](../design/html-design.md).
 
@@ -56,6 +58,80 @@ subtree; `--depth` is relative depth.
 "$RXD" html entries "$DEMO/page.html" --kind text --within '<MAIN_ID>' --depth 2
 ```
 
+## Resource discovery and batch inline handoff
+
+This local example performs no requests. The document URL is explicit; an HTTP
+capture should supply its final URL after redirects.
+
+```sh
+set -eu
+printf '%s' \
+  '<base href="/assets/"><script src="app.js" defer></script>' \
+  '<link rel="stylesheet" href="app.css"><link rel="preconnect" href="https://cdn.example.org">' \
+  '<script type="application/json">{"notJavaScript":true}</script>' \
+  '<script type="module">export const answer = 42;</script>' \
+  '<script>const label = "λ";</script>' > "$DEMO/resources.html"
+
+"$RXD" html resources "$DEMO/resources.html" \
+  --base-url 'https://example.org/account/start' -o "$DEMO/resources.jsonl"
+"$RXD" html resources "$DEMO/resources.html" \
+  --kind script --location inline --include-content -o "$DEMO/inline-bodies.jsonl"
+```
+
+The URLs for app.js/app.css resolve under `https://example.org/assets/`. The
+preconnect is `kind: hint`, not an asset to download; application/json is `data`,
+not JS. `detail.conditions` retains declared loading conditions, not their runtime
+truth. Relative references without a base, srcset and unsupported external import
+maps stay unresolved. Filter by kind/location/name without changing source identity.
+
+The next step writes trusted, hash-derived filenames from one result stream, not
+one CLI extraction call per inline script. It never evaluates the returned text.
+
+```sh
+python3 - "$DEMO/inline-bodies.jsonl" "$DEMO/inline-batch" <<'PY'
+import hashlib, json, pathlib, sys
+rows = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+if rows[-1].get("complete") is not True:
+    raise SystemExit("incomplete catalog")
+out = pathlib.Path(sys.argv[2])
+out.mkdir(parents=True, exist_ok=True)
+manifest = []
+for row in rows[1:-1]:
+    detail = row["detail"]
+    body = detail["content"].encode("utf-8")
+    source_id = hashlib.sha256(body).hexdigest()
+    if source_id != detail["content_source_id"]:
+        raise SystemExit("inline content identity mismatch")
+    extension = ".mjs" if detail["script_type"] == "module" else ".cjs"
+    artifact = out / (source_id + extension)
+    artifact.write_bytes(body)
+    manifest.append({
+        "path": str(artifact), "source_id": source_id,
+        "origin": {"source_id": rows[0]["source_id"], "at": row["at"],
+                   "start": detail["content_start"], "end": detail["content_end"]},
+    })
+(out / "origin.json").write_text(json.dumps(manifest, indent=2))
+PY
+"$RXD" js entities "$DEMO/inline-batch" --depth 0 --threads 2
+```
+
+Both scripts parse without execution; the JSON data block is excluded. The JSON
+manifest is not a JS scan input. JS offsets are artifact-relative, and its header
+identity matches `content_source_id`, not the HTML container identity.
+
+For one body, the resource coordinate also works with ordinary extraction:
+
+```sh
+"$RXD" html resources "$DEMO/resources.html" --kind script --location inline \
+  -o "$DEMO/inline-nodes.jsonl"
+"$RXD" html extract "$DEMO/resources.html" --from "$DEMO/inline-nodes.jsonl" \
+  --content -o "$DEMO/one-inline.mjs"
+```
+
+`--from` checks the catalog's SHA-256 against the very source buffer used for
+extraction, including same-length changed inputs. No HTML-to-JS coordinate guessing
+or synthetic resource ID is needed. A complete catalog is not browser page coverage.
+
 ## extract
 
 ```sh
@@ -65,7 +141,7 @@ subtree; `--depth` is relative depth.
 cat "$DEMO/inline.js"
 ```
 
-Both `--at` and `-o` are required. `--content` is element-only and selects the content
+One of `--at`/`--from` and `-o` are required. `--content` is element-only and selects the content
 range (the default outer range otherwise). The file contains the original slice of the
 selected half-open container range with an independent SHA-256. Stdout is a single
 receipt, not the file content:
