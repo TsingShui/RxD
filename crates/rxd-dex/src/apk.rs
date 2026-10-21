@@ -1146,7 +1146,10 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(rows, ["app.dex | LFixture0;->m0()V | matched=(Authorization)"]);
+        assert_eq!(
+            rows,
+            ["app.dex | LFixture0;->m0()V | matched=(Authorization)"]
+        );
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -1186,7 +1189,10 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(rows, ["app.dex | LFixture0;->m0()V | matched=(Authorization)"]);
+        assert_eq!(
+            rows,
+            ["app.dex | LFixture0;->m0()V | matched=(Authorization)"]
+        );
         std::fs::remove_file(&path).unwrap();
     }
 
