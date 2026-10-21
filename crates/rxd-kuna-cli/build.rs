@@ -101,21 +101,23 @@ fn main() {
     write_changed(&output.join("output.rs"), &boundary);
 
     // Path-qualified parent modules need explicit locations for their child files.
-    let relocated = [
-        ("callgraph", "plan"),
-        ("decompile", "script"),
-        ("decompile_all", "callee_first"),
-        ("fid", "archive"),
-        ("strings", "filter"),
-        ("test", "baseline"),
+    let relocated: &[(&str, &[&str])] = &[
+        ("callgraph", &["arm_closure", "plan"]),
+        ("decompile", &["script"]),
+        ("decompile_all", &["callee_first"]),
+        ("fid", &["archive"]),
+        ("strings", &["filter"]),
+        ("test", &["baseline"]),
     ];
-    for (parent, child) in relocated {
+    for (parent, children) in relocated {
         let mut module = fs::read_to_string(source.join(format!("{parent}.rs"))).unwrap();
-        replace_once(
-            &mut module,
-            &format!("mod {child};"),
-            &module_path(&source.join(parent).join(format!("{child}.rs")), child),
-        );
+        for child in *children {
+            replace_once(
+                &mut module,
+                &format!("mod {child};"),
+                &module_path(&source.join(parent).join(format!("{child}.rs")), child),
+            );
+        }
         write_changed(&output.join(format!("{parent}.rs")), &module);
     }
 

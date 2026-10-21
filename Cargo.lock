@@ -2234,6 +2234,7 @@ dependencies = [
  "kuna-num",
  "kuna-sleigh",
  "object",
+ "unicode-ident",
 ]
 
 [[package]]

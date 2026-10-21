@@ -51,7 +51,7 @@ traverses upstream path dependencies and must not be used.
 
 ## Pinned release
 
-rxd pins Kuna `v1.876` (`a219af9ead94fd58bdb07f602f888498b1eb08e5`). The default
+rxd pins Kuna `v1.978` (`fd71d996be867356394675a42dbadd951f5ce424`). The default
 `kuna catalog` comes from the linked engine in-process and needs neither `decomp_dbg` nor
 a specs cache; an explicitly selected external console keeps upstream handling.
 `scripts/check-kuna-latest.py` compares the gitlink with upstream formal tags, so a new
