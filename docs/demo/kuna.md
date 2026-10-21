@@ -1,7 +1,7 @@
 # Directly linked Kuna CLI
 
-`backend-kuna` is a default feature, so the `rxd kuna` namespace exists in an
-ordinary build. The engine is a separate opt-in: only `bundled-kuna` links the
+`backend-kuna` is a default feature, so the `rxd kuna` namespace (alias
+`rxd bin`) exists in an ordinary build. The engine is a separate opt-in: only `bundled-kuna` links the
 pinned `third_party/kuna` checkout through the generated adapter. Without it the
 command reports `KUNA_NOT_BUNDLED`; `--no-default-features` omits the namespace
 entirely. Default and reduced builds therefore never need the upstream toolchain,
@@ -25,6 +25,8 @@ optional dependency metadata.
 
 ```sh
 target/release/rxd kuna --version
+# `bin` is the same dispatcher under a shorter, tool-neutral name.
+target/release/rxd bin --version
 target/release/rxd kuna functions ./app --summary --json
 target/release/rxd kuna decompile ./app main --json
 target/release/rxd kuna decompile ./app main

@@ -24,7 +24,7 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 | Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref` / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at/--from` (a `strings` row), `xref --kind name --at NAME/-f TEXT`, `get-code --at`, whole-module `decompile` |
-| Native binary (optional engine) | `rxd kuna` | native `functions` / engine-specific evidence / `decompile` |
+| Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
 conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR is a

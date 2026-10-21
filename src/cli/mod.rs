@@ -98,7 +98,7 @@ enum Backend {
     },
     #[cfg(feature = "backend-kuna")]
     /// Run the bundled Kuna CLI with native arguments.
-    #[command(disable_help_flag = true)]
+    #[command(disable_help_flag = true, visible_alias = "bin")]
     Kuna {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<std::ffi::OsString>,

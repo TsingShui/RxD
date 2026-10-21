@@ -29,7 +29,10 @@ fn main() -> ExitCode {
         return mcp::worker::entry(limit);
     }
     #[cfg(feature = "backend-kuna")]
-    if std::env::args_os().nth(1).is_some_and(|arg| arg == "kuna") {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "kuna" || arg == "bin")
+    {
         return ExitCode::from(cli::kuna::run(std::env::args_os().skip(2).collect()) as u8);
     }
     // Every CLI process, parent or isolated worker, writes to a possibly closed
