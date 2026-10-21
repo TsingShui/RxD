@@ -27,7 +27,11 @@ preserved; argument positions and exit-code semantics are.
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `--name` (exact), `-f/--filter`. |
 
 `get-class` and `get-method` select by `--at` (the coordinate a `classes`/`methods` row
-prints) or `--from JSONL`, which reads that coordinate from a previous stream. The stream
+prints) or `--from JSONL`, which reads that coordinate from a previous stream.
+A method prototype includes its return descriptor after `)`, for example
+`Lx/y;->run()V` or `Lx/y;->read(I)[Ljava/lang/String;`. It is copied unchanged;
+missing/invalid return types, void parameters and trailing descriptor bytes are
+`INVALID_QUERY`, whereas a valid coordinate naming no member is `NOT_FOUND`. The stream
 is checked against the archive size, because a DEX header carries no content hash; that is
 a mismatch guard, not an identity. The positional Dalvik-name form was removed so every
 FETCH has one selector spelling. APK/DEX commands

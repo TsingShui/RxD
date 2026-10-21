@@ -326,10 +326,36 @@ fn dex_get_method_renders_one_method_from_its_methods_coordinate() {
     let rendered = query("get-method", &path, &["--at", &coordinate]);
     success(&rendered);
     assert!(!text(&rendered).trim().is_empty(), "{coordinate}");
-    let missing = query("get-method", &path, &["--at", "LNo/Such;->f()V"]);
-    assert_ne!(missing.status.code(), Some(0));
-    let malformed = query("get-method", &path, &["--at", "not-a-coordinate"]);
-    assert_ne!(malformed.status.code(), Some(0));
+    let (stream_dir, stream) = fixture(&listed.stdout, "methods.jsonl");
+    let from = query("get-method", &path, &["--from", stream.to_str().unwrap()]);
+    success(&from);
+    assert_eq!(from.stdout, rendered.stdout);
+    drop(stream_dir);
+    for at in [
+        "LNo/Such;->f()V",
+        "LNo/Such;-><init>()V",
+        "LNo/Such;-><clinit>()V",
+        "LNo/Such;->f(IJLjava/lang/String;[[I)[Ljava/lang/Object;",
+    ] {
+        failure(query("get-method", &path, &["--at", at]), 2, "NOT_FOUND");
+    }
+    for at in [
+        "not-a-coordinate",
+        "LFixture0;->f()",
+        "LFixture0;-><init>()",
+        "LFixture0;->f(V)V",
+        "LFixture0;->f(I)VV",
+        "LFixture0;->f()[V",
+        "LFixture0;->f(L;)V",
+        "LFixture0;->f(I)Vextra",
+        "LFixture0;->f([)V",
+    ] {
+        failure(
+            query("get-method", &path, &["--at", at]),
+            2,
+            "INVALID_QUERY",
+        );
+    }
 }
 
 #[test]

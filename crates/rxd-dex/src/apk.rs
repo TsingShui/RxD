@@ -398,7 +398,7 @@ pub fn list_classes(path: &Path, threads: usize, debug: bool) -> Result<Vec<Clas
     list_classes_with_policy(path, ArchivePolicy::default(), threads, debug)
 }
 
-/// Split `Lx/y;->name(proto)` into its class, name and prototype.
+/// Split `Lx/y;->name(parameters)return` without dropping the return descriptor.
 pub fn parse_method_coordinate(coordinate: &str) -> Result<(String, String, String)> {
     let malformed = || {
         rxd_core::Error::failure(
@@ -409,8 +409,35 @@ pub fn parse_method_coordinate(coordinate: &str) -> Result<(String, String, Stri
     let (class, rest) = coordinate.split_once("->").ok_or_else(malformed)?;
     let open = rest.find('(').ok_or_else(malformed)?;
     let (name, prototype) = rest.split_at(open);
-    if class.is_empty() || name.is_empty() || !prototype.ends_with(')') {
+    // A DEX prototype ends in its return type, not ')'. Consume descriptors
+    // iteratively so malformed/trailing types cannot masquerade as missing members.
+    fn field_tail(mut value: &str) -> Option<&str> {
+        let mut dimensions = 0;
+        while let Some(tail) = value.strip_prefix('[') {
+            dimensions += 1;
+            if dimensions > 255 {
+                return None;
+            }
+            value = tail;
+        }
+        match *value.as_bytes().first()? {
+            b'B' | b'C' | b'D' | b'F' | b'I' | b'J' | b'S' | b'Z' => Some(&value[1..]),
+            b'L' => {
+                let (name, tail) = value[1..].split_once(';')?;
+                if name.is_empty() || name.contains(['[', '(', ')']) {
+                    return None;
+                }
+                Some(tail)
+            }
+            _ => None,
+        }
+    }
+    let (mut parameters, returns) = prototype[1..].split_once(')').ok_or_else(malformed)?;
+    if class.is_empty() || name.is_empty() || !(returns == "V" || field_tail(returns) == Some("")) {
         return Err(malformed().into());
+    }
+    while !parameters.is_empty() {
+        parameters = field_tail(parameters).ok_or_else(malformed)?;
     }
     Ok((class.to_owned(), name.to_owned(), prototype.to_owned()))
 }
