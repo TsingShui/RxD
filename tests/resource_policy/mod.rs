@@ -158,10 +158,7 @@ fn input_scaled_jvm_keeps_format_valid_metadata_above_four_kib() {
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
     assert_eq!(rows.len(), 3);
-    assert_eq!(
-        rows[0]["source_id"],
-        format!("{:x}", Sha256::digest(&bytes))
-    );
+    assert_eq!(rows[0]["source_id"], rxd_core::identity::input_id(&bytes));
     assert_eq!(rows[1]["at"], format!("L{name};"));
     assert_eq!(rows[2]["complete"], true);
 }

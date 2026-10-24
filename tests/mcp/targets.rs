@@ -38,7 +38,10 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
     fs::write(&path, "function replacement(){return 0;}\n").unwrap();
     let entities = client.tool("js_entities", json!({"input":input}));
     let entities = success(&entities);
-    assert_eq!(entities["header"]["source_id"], info["source_id"]);
+    assert_eq!(
+        entities["header"]["source_id"],
+        rxd_core::identity::input_id(source.as_bytes())
+    );
     assert_eq!(entities["header"]["detail"]["path"], json!(path));
     let entity = entities["records"]
         .as_array()
@@ -52,7 +55,10 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
         "function original(){return \"你好\";}"
     );
     let changed = client.tool("js_entities", json!({"input":{"path":path}}));
-    assert_ne!(success(&changed)["header"]["source_id"], info["source_id"]);
+    assert_ne!(
+        success(&changed)["header"]["source_id"],
+        rxd_core::identity::input_id(source.as_bytes())
+    );
     let wrong_identity = client.tool("js_slice", json!({"input":{"path":path},"at":entity["at"]}));
     assert_eq!(wrong_identity["isError"], true, "{wrong_identity}");
     success(&client.tool("rxd_close", json!({"target_id":target})));
@@ -431,7 +437,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
             let result = success(&result);
             assert_eq!(
                 result["header"]["source_id"],
-                format!("{:x}", Sha256::digest(source.as_bytes()))
+                rxd_core::identity::input_id(source.as_bytes())
             );
             assert!(
                 result["records"]
@@ -446,7 +452,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
     let result = client.tool("js_entities", json!({"input":{"path":input_path}}));
     assert_eq!(
         success(&result)["header"]["source_id"],
-        format!("{:x}", Sha256::digest(source.as_bytes()))
+        rxd_core::identity::input_id(source.as_bytes())
     );
 }
 
@@ -534,7 +540,7 @@ fn mcp_closing_a_target_keeps_already_acquired_worker_bytes_available() {
     assert_eq!(completed["id"], 100);
     assert_eq!(
         success(&completed["result"])["header"]["source_id"],
-        format!("{:x}", Sha256::digest(source.as_bytes()))
+        rxd_core::identity::input_id(source.as_bytes())
     );
 }
 

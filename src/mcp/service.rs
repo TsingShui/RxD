@@ -314,6 +314,7 @@ impl AnalysisService {
             };
             let store = self.store.clone();
             let check = self.capture_check(start, &cancellation);
+            let expected_artifact_source_id = rxd_core::identity::input_id(&artifact.bytes);
             let child_name = artifact
                 .name
                 .rsplit(['/', '\\'])
@@ -330,7 +331,10 @@ impl AnalysisService {
                 let _ = self.store.close(&info.target_id);
                 return Err(error);
             }
-            if info.source_id != artifact.source_id {
+            // MCP target identity is a whole-file SHA-256; an extract receipt's
+            // `source_id` is the sampled stream identity. Check the receipt against its
+            // own bytes instead of comparing the two different identity domains.
+            if artifact.source_id != expected_artifact_source_id {
                 let _ = self.store.close(&info.target_id);
                 return Err(QueryError::new(
                     "WORKER_ERROR",

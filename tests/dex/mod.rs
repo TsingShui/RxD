@@ -566,9 +566,9 @@ fn dex_getclass_preserves_source_debug_and_missing_class_status() {
         String::from_utf8_lossy(&wrapped_out.stderr)
     );
     let missing = query("get-class", &bare, &["--at", "Absent"]);
-    assert_eq!(missing.status.code(), Some(1));
+    assert_eq!(missing.status.code(), Some(2));
     assert!(missing.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&missing.stderr).contains("Class LAbsent; not found in APK."));
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("no class LAbsent; in this input"));
 }
 
 #[test]
@@ -613,7 +613,7 @@ fn dex_inflate_budget_preserves_environment_defaults_and_error_bytes() {
             assert!(output.stdout.is_empty());
             assert_eq!(
                 output.stderr,
-                b"Error: AndroidManifest.xml inflates past the 1024 bytes entry limit\n"
+                b"INVALID_INPUT: AndroidManifest.xml inflates past the 1024 bytes entry limit\n"
             );
         } else {
             success(&output);
@@ -676,7 +676,7 @@ fn dex_malformed_inputs_return_diagnostics_without_success_output() {
             let output = query(command, &path, args);
             assert_eq!(output.status.code(), Some(1));
             assert!(output.stdout.is_empty());
-            assert!(String::from_utf8_lossy(&output.stderr).contains("Error:"));
+            assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT:"));
         }
     }
 }

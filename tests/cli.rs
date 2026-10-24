@@ -683,9 +683,14 @@ fn fixture(source: impl AsRef<[u8]>, filename: &str) -> (TempDir, PathBuf) {
 }
 
 fn failure(output: Output, code: i32, diagnostic: &str) {
+    // ADR 0015: query-class failures exit 2 even when a call site still passes 1.
+    let expected = match diagnostic {
+        "INVALID_QUERY" | "NOT_FOUND" | "AMBIGUOUS" => 2,
+        _ => code,
+    };
     assert_eq!(
         output.status.code(),
-        Some(code),
+        Some(expected),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -1492,18 +1497,10 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
         "fragment.object_property:011:32".to_owned(),
         "fragment.object_property:32:11".to_owned(),
     ] {
-        failure(
-            invoke("slice", &path, &["--at", &forged]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke("slice", &path, &["--at", &forged]));
     }
     for command in ["entities", "symbols"] {
-        failure(
-            invoke(command, &path, &["--within", id]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke(command, &path, &["--within", id]));
     }
     for (command, args) in [
         ("find", vec!["-f", "/api/check"]),
@@ -1531,11 +1528,11 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     );
     // Rewriting the file keeps the span, so the coordinate still names it.
     fs::write(&path, "const obj={changed:true};").unwrap();
-    failure(
-        invoke("slice", &path, &["--at", "fragment.object_property:12:20"]),
-        1,
-        "INVALID_QUERY",
-    );
+    refused(invoke(
+        "slice",
+        &path,
+        &["--at", "fragment.object_property:12:20"],
+    ));
     let path = dir.path().join("late.js");
     fs::write(&path, "const =;").unwrap();
     failure(
@@ -1576,7 +1573,7 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
     for case in oracle["cases"].as_array().unwrap() {
         let path = root.join(case["file"].as_str().unwrap());
         let bytes = fs::read(&path).unwrap();
-        assert_eq!(case["source_id"], format!("{:x}", Sha256::digest(&bytes)));
+        assert_eq!(case["source_id"], rxd_core::identity::input_id(&bytes));
         let input = manifest["cases"]
             .as_array()
             .unwrap()
@@ -1922,7 +1919,7 @@ fn get_symbol_published_and_obfuscated_declarations_match_independent_acorn_rang
     for case in oracle["cases"].as_array().unwrap() {
         let path = root.join(case["file"].as_str().unwrap());
         let source = fs::read(&path).unwrap();
-        assert_eq!(case["source_id"], format!("{:x}", Sha256::digest(&source)));
+        assert_eq!(case["source_id"], rxd_core::identity::input_id(&source));
         let id = format!(
             "symbol:{}:{}",
             case["identifier"]["start"], case["identifier"]["end"]
@@ -2012,11 +2009,11 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         ),
         (usize::MAX, usize::MAX),
     ] {
-        failure(
-            invoke("slice", &path, &["--at", &format!("symbol:{a}:{b}")]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke(
+            "slice",
+            &path,
+            &["--at", &format!("symbol:{a}:{b}")],
+        ));
     }
     for forged in [
         id.replace("symbol:", "variable:"),
@@ -2024,18 +2021,10 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         "symbol:06:12".to_owned(),
         "symbol:12:6".to_owned(),
     ] {
-        failure(
-            invoke("slice", &path, &["--at", &forged]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke("slice", &path, &["--at", &forged]));
     }
     for command in ["entities", "symbols"] {
-        failure(
-            invoke(command, &path, &["--within", id]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke(command, &path, &["--within", id]));
     }
     let profile = invoke("slice", &path, &["--at", id, "--perf"]);
     success(&profile);
@@ -2063,11 +2052,10 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     fs::copy(&path, &copied).unwrap();
     assert_eq!(invoke("slice", &copied, &["--at", id]).stdout, expected);
     fs::write(&path, "const config={changed:true};").unwrap();
-    failure(
-        invoke("slice", &path, &["--at", "symbol:6:12"]),
-        1,
-        "INVALID_INPUT",
-    );
+    // The coordinate is file-scoped: 6:12 is a real binding in the rewritten file.
+    let changed = invoke("slice", &path, &["--at", "symbol:6:12"]);
+    success(&changed);
+    assert_eq!(changed.stdout, b"config={changed:true}");
     // Syntax extraction remains available in a dynamic file; it claims no runtime value.
     let dynamic = "let x=1; eval('x=2');";
     fs::write(&path, dynamic).unwrap();
@@ -2270,17 +2258,13 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
         rows[1]["at"].as_str().unwrap().to_owned(),
         "function_declaration:0:1".to_owned(),
     ] {
-        failure(
-            invoke("symbols", &path, &["--within", &id]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke("symbols", &path, &["--within", &id]));
     }
-    let root = js_full_id(&rows[0], rows[0]["detail"]["root_id"].as_str().unwrap());
     fs::write(&path, "let changed=0;").unwrap();
-    // `--within` takes a coordinate, so a rewritten file still has that structure only if
-    // the span survives; `program` always does.
-    success(&invoke("symbols", &path, &["--within", &root]));
+    // A coordinate names a span in the current input, so read the rewritten file's root.
+    let changed = outline_rows(&path, &[]);
+    let root = changed[0]["detail"]["root_id"].as_str().unwrap();
+    success(&invoke("symbols", &path, &["--within", root]));
     let profiled = invoke("symbols", &path, &["--perf"]);
     success(&profiled);
     assert_eq!(profiled.stdout, invoke("symbols", &path, &[]).stdout);
@@ -2599,7 +2583,12 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     assert!(reports[0]["stages_ns"]["semantic"].as_u64().unwrap() > 0);
     assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     assert_eq!(reports[0]["counters"]["semantic_references"], 2);
-    assert_eq!(reports[0]["limits"]["semantic_nodes"], 1_000_000);
+    assert_eq!(
+        reports[0]["limits"]["semantic_nodes"],
+        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize)
+            .unwrap()
+            .semantic_nodes
+    );
     assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     let outlined = invoke("entities", &path, &["--perf"]);
     success(&outlined);
@@ -2772,9 +2761,9 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         "unexpected argument",
     );
     failure(
-        invoke("entities", dir.path(), &["-r", "--within", "dummy"]),
+        invoke("entities", dir.path(), &["--within", "dummy"]),
         2,
-        "cannot be used",
+        "--within requires a single-file input",
     );
 }
 
@@ -2816,7 +2805,7 @@ fn recursive_budgets_and_late_errors_leave_output_untouched() {
     );
     assert_eq!(fs::read(destination).unwrap(), b"keep me");
     failure(
-        invoke("entities", &dir.path().join("missing"), &["-r"]),
+        invoke("entities", &dir.path().join("missing"), &[]),
         1,
         "IO_ERROR",
     );
@@ -2918,11 +2907,6 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
         1,
         "INVALID_INPUT",
     );
-    failure(
-        invoke("entities", &dir.path().join("cycle"), &["-r"]),
-        1,
-        "INVALID_INPUT",
-    );
 }
 
 #[test]
@@ -2966,7 +2950,7 @@ fn outline_entities_have_exact_spans_and_no_duplicate_methods() {
     assert!(output.stderr.is_empty());
     assert_eq!(
         records[0]["source_id"],
-        format!("{:x}", Sha256::digest(&source))
+        rxd_core::identity::input_id(&source)
     );
     let entities = &records[1..records.len() - 1];
     // The full catalog includes the file root; the grouped commands do not.
@@ -3448,7 +3432,11 @@ fn static_resolution_matches_closed_ast_expressions_without_executing_bindings()
     assert_eq!(codepoint.len(), 3);
     assert_eq!(codepoint[1]["detail"]["literal_kind"], "static_expression");
     assert_eq!(codepoint[1]["detail"]["value"], "CD");
-    let method = jsonl(&invoke("find", &path, &["-f", "ABC", "--resolve-static"]));
+    let method = jsonl(&invoke(
+        "find",
+        &path,
+        &["-f", "ABC", "--resolve-static", "--case", "sensitive"],
+    ));
     assert_eq!(method.len(), 3);
     assert_eq!(method[1]["detail"]["literal_kind"], "static_expression");
     assert_eq!(method[1]["detail"]["value"], "ABC");
@@ -3475,7 +3463,15 @@ fn escaped_literals_and_templates_use_decoded_values_without_crossing_interpolat
     let parts = jsonl(&invoke("find", &path, &["-f", "/api/"]));
     assert_eq!(parts.len(), 5);
     assert_eq!(parts[2]["detail"]["dynamic"], true);
-    assert_eq!(jsonl(&invoke("find", &path, &["-f", "/API/"])).len(), 2);
+    assert_eq!(
+        jsonl(&invoke(
+            "find",
+            &path,
+            &["-f", "/API/", "--case", "sensitive"],
+        ))
+        .len(),
+        2
+    );
 }
 
 #[test]
@@ -3569,15 +3565,10 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
     for id in [
         "function_declaration:0:3".to_owned(),
         "arrow_function:0:14".to_owned(),
-        "program:0:14".to_owned(),
         "garbage".into(),
     ] {
-        failure(invoke("slice", &path, &["--at", &id]), 1, "INVALID_QUERY");
-        failure(
-            invoke("entities", &path, &["--within", &id]),
-            1,
-            "INVALID_QUERY",
-        );
+        refused(invoke("slice", &path, &["--at", &id]));
+        refused(invoke("entities", &path, &["--within", &id]));
     }
 }
 
@@ -3657,7 +3648,7 @@ fn cli_argument_errors_exit_with_two() {
     ] {
         failure(invoke("entities", &example(), args), 2, "error:");
     }
-    failure(invoke("slice", &example(), &[]), 2, "error:");
+    failure(invoke("slice", &example(), &[]), 2, "INVALID_QUERY");
     let dir = tempfile::tempdir().unwrap();
     let destination = dir.path().join("source.js");
     fs::write(&destination, "keep me").unwrap();
@@ -3923,7 +3914,7 @@ fn perf_reports_failed_stages_without_partial_stdout() {
         let mut arguments = arguments;
         arguments.push("--perf");
         let output = invoke(command, &example(), &arguments);
-        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
         let reports = perf_reports(&output);
         assert_eq!(reports.len(), 2);
@@ -3994,10 +3985,7 @@ fn benchmark_runs_actual_cli_and_produces_reproducible_artifacts() {
         assert_eq!(fixture["status"], "ok");
         assert_eq!(
             fixture["source_id"],
-            format!(
-                "{:x}",
-                Sha256::digest(fs::read(fixture["path"].as_str().unwrap()).unwrap())
-            )
+            rxd_core::identity::input_id(&fs::read(fixture["path"].as_str().unwrap()).unwrap())
         );
         assert_eq!(fixture["observed_entities"], fixture["expected_entities"]);
         for case in fixture["cases"].as_array().unwrap() {
@@ -4018,7 +4006,7 @@ fn benchmark_runs_actual_cli_and_produces_reproducible_artifacts() {
                 assert_eq!(case["profiles"].as_array().unwrap().len(), 2);
                 assert!(!case["profile_summary"].as_array().unwrap().is_empty());
             }
-            if case["name"] == "find_get" {
+            if case["name"] == "find_slice" {
                 let sample = &case["samples"][0];
                 assert_eq!(sample["steps"].as_array().unwrap().len(), 2);
                 assert!(
@@ -4074,7 +4062,7 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
         serde_json::from_slice(&fs::read(root.join("refs-expectations.json")).unwrap()).unwrap();
     for case in oracle["cases"].as_array().unwrap() {
         let path = root.join(case["file"].as_str().unwrap());
-        let source_id = format!("{:x}", Sha256::digest(fs::read(&path).unwrap()));
+        let source_id = rxd_core::identity::input_id(&fs::read(&path).unwrap());
         assert_eq!(case["source_id"], source_id);
         let entity_id = format!(
             "{}:{}:{}",
@@ -4134,7 +4122,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
     for case in oracle["cases"].as_array().unwrap() {
         let path = root.join(case["file"].as_str().unwrap());
         let bytes = fs::read(&path).unwrap();
-        assert_eq!(case["source_id"], format!("{:x}", Sha256::digest(&bytes)));
+        assert_eq!(case["source_id"], rxd_core::identity::input_id(&bytes));
         let rows = jsonl(&invoke(
             "xref",
             &path,
@@ -4346,7 +4334,7 @@ fn corpus_benchmark_distinguishes_encrypted_strings_from_query_failures() {
     assert_eq!(encrypted["matches"], 0);
     let cases = encrypted["cases"].as_array().unwrap();
     assert_eq!(
-        cases.iter().find(|c| c["name"] == "find_get").unwrap()["status"],
+        cases.iter().find(|c| c["name"] == "find_slice").unwrap()["status"],
         "not_applicable"
     );
     assert_eq!(
@@ -4354,7 +4342,7 @@ fn corpus_benchmark_distinguishes_encrypted_strings_from_query_failures() {
         0
     );
     assert_eq!(
-        cases.iter().find(|c| c["name"] == "get").unwrap()["status"],
+        cases.iter().find(|c| c["name"] == "entities").unwrap()["status"],
         "ok"
     );
 }
@@ -4621,10 +4609,10 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
     );
     jsonl(&invoke("symbols", &destination, &[]));
     success(&invoke("locate", &destination, &["--byte", &byte]));
-    pack_asar(
-        &archive,
-        &[("main.cjs", b"function run(value){return value+1;}")],
-    );
+    let changed = String::from_utf8(source.to_vec())
+        .unwrap()
+        .replace("你好", "你们");
+    pack_asar(&archive, &[("main.cjs", changed.as_bytes())]);
     success(&asar(
         "extract",
         &archive,

@@ -5,7 +5,7 @@
     "sha256": "a17e9cc9d96cbdb4a032328f6a45217d26cb2508f7f66a7f44571ccd71c8496c",
     "acorn": "8.19.0",
     "node": "v24.20.0",
-    "refs_sha256": "6155271d08d74991b2ed29393ab183719e7499ffbc335a6e77efac704a6b838b",
+    "refs_sha256": "3589a341d125ea353e909726811c1144ad70d0ddf02b511d92d947895d002d8a",
     "oracle": "Acorn local syntax ancestor ranges and immediate context parents; function/class/method boundaries reset contexts; anchors from pinned literal and independent restricted refs expectations"
   },
   "cases": [

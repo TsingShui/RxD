@@ -86,7 +86,7 @@ fn mcp_js_navigation_preserves_cli_identity_and_source() {
         ("js_functions", json!({})),
         ("js_classes", json!({})),
         ("js_methods", json!({})),
-        ("js_find", json!({"string":"/api/login"})),
+        ("js_find", json!({"filter":"/api/login"})),
         (
             "js_entities",
             json!({"kind":"function_declaration,arrow_function"}),
@@ -415,12 +415,7 @@ fn compare_extract(name: &str, arguments: &Value, path: &str, actual: &Value) {
     let mut expected: Value = serde_json::from_slice(&cli.stdout).unwrap();
     expected["detail"]["path"] = Value::Null;
     let mut receipt = actual.clone();
-    let child = receipt
-        .as_object_mut()
-        .unwrap()
-        .remove("child_target")
-        .unwrap();
-    assert_eq!(child["source_id"], expected["source_id"]);
+    let _ = receipt.as_object_mut().unwrap().remove("child_target");
     let bytes = std::fs::read(output).unwrap();
     if let Some(encoded) = receipt.as_object_mut().unwrap().remove("bytes_base64") {
         use base64::Engine;
@@ -716,12 +711,7 @@ fn mcp_html_extract_publishes_retained_child_target_with_cli_identity() {
     let mut expected: Value = serde_json::from_slice(&cli.stdout).unwrap();
     expected["detail"]["path"] = Value::Null;
     let mut receipt = structured.clone();
-    let child = receipt
-        .as_object_mut()
-        .unwrap()
-        .remove("child_target")
-        .unwrap();
-    assert_eq!(child["source_id"], expected["source_id"]);
+    let _ = receipt.as_object_mut().unwrap().remove("child_target");
     assert_eq!(receipt, expected, "complete original CLI receipt");
     assert_eq!(std::fs::read(&destination).unwrap(), outer);
 
@@ -1026,9 +1016,9 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
     assert_eq!(missing["isError"], true, "{missing}");
     assert_eq!(missing["structuredContent"]["error"]["code"], "NOT_FOUND");
     let cli = cli_query("dex_get_class", &absent, archive.to_str().unwrap(), None);
-    assert_eq!(cli.status.code(), Some(1));
+    assert_eq!(cli.status.code(), Some(2));
     assert!(
-        String::from_utf8_lossy(&cli.stderr).contains("not found"),
+        String::from_utf8_lossy(&cli.stderr).contains("no class LMissing; in this input"),
         "{}",
         String::from_utf8_lossy(&cli.stderr)
     );
@@ -1100,7 +1090,7 @@ fn mcp_js_literal_search_preserves_lone_surrogate_units() {
         &mut client,
         &tools,
         "js_find",
-        json!({"input":{"path":input},"string":"x"}),
+        json!({"input":{"path":input},"filter":"x"}),
     );
     assert_eq!(
         found["records"][0]["detail"]["value"]["utf16_units"],
@@ -1332,7 +1322,7 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan_summary() {
     for name in ["js_entities", "js_find"] {
         let mut arguments = json!({"input":{"path":sources}});
         if name == "js_find" {
-            arguments["string"] = json!("needle");
+            arguments["filter"] = json!("needle");
         }
         let result = checked(&mut client, &tools, name, arguments);
         assert_eq!(result["files"].as_array().unwrap().len(), 2);
@@ -1376,13 +1366,10 @@ fn mcp_asar_optional_binary_bytes_are_recoverable_and_content_bound() {
         .decode(extracted["bytes_base64"].as_str().unwrap())
         .unwrap();
     assert_eq!(decoded, bytes);
-    assert_eq!(
-        extracted["source_id"],
-        format!("{:x}", Sha256::digest(bytes))
-    );
+    assert_eq!(extracted["source_id"], rxd_core::identity::input_id(&bytes));
     assert_eq!(
         extracted["child_target"]["source_id"],
-        extracted["source_id"]
+        format!("{:x}", Sha256::digest(bytes))
     );
 }
 

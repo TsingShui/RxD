@@ -344,7 +344,7 @@ fn evm_outline_ids_fetch_exact_blocks_across_raw_and_hex_carriers() {
 }
 
 #[test]
-fn evm_block_ids_survive_copy_and_reject_stale_sources_encodings_and_forged_bounds() {
+fn evm_block_ids_survive_copy_and_reject_encodings_and_forged_bounds() {
     let (directory, path) = fixture("6003565b00", "original.hex");
     let rows = jsonl(&run("blocks", &path, "hex", &[]));
     let id = rows[1]["at"].as_str().unwrap();
@@ -353,8 +353,8 @@ fn evm_block_ids_survive_copy_and_reject_stale_sources_encodings_and_forged_boun
     let copy_rows = jsonl(&run("blocks", &copy, "hex", &[]));
     assert_eq!(copy_rows[1]["at"], id);
     success(&run("get-block", &copy, "hex", &["--at", id]));
-    // The copy-only coordinate is relative to the carrier it was read from; a whole
-    // content-bound ID keeps the original identity and must reject another carrier.
+    // The copy-only coordinate names a block in whichever carrier is queried; it does
+    // not bind the content it was read from.
     let full = id.to_owned();
     let destination = directory.path().join("keep.json");
     fs::write(&destination, "preserved").unwrap();
@@ -385,17 +385,9 @@ fn evm_block_ids_survive_copy_and_reject_stale_sources_encodings_and_forged_boun
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, "6004565b00").unwrap();
-    failure(
-        run("get-block", &copy, "hex", &["--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    success(&run("get-block", &copy, "hex", &["--at", &full]));
     fs::write(&path, "6003565b01").unwrap();
-    failure(
-        run("get-block", &path, "hex", &["--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    success(&run("get-block", &path, "hex", &["--at", &full]));
 }
 
 #[test]
@@ -450,8 +442,8 @@ fn evm_block_navigation_reports_effective_limits_and_publishes_atomically() {
     assert_eq!(profiled.stdout, plain.stdout);
     let reports = perf_reports(&profiled);
     // The shared budget table supplies every ceiling; no CLI flag overrides one.
-    assert_eq!(reports[0]["resource_limits"]["work"], 1_000_000);
-    assert_eq!(reports[0]["resource_limits"]["records"], 100_000);
+    assert_eq!(reports[0]["resource_limits"]["work"], 1_001_280);
+    assert!(reports[0]["resource_limits"].get("records").is_none());
     // Five decoded bytes, four complete instructions, two native blocks.
     assert_eq!(reports[0]["counters"]["work"], 11);
     assert_eq!(reports[0]["counters"]["instructions"], 4);
@@ -928,11 +920,7 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, SHARED_HELPER).unwrap();
-    failure(
-        run("get-function", &copy, "hex", &["--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    success(&run("get-function", &copy, "hex", &["--at", &full]));
     for selector in ["", "0x0011", "gg223344"] {
         failure(
             run("get-function", &path, "hex", &["--selector", selector]),
@@ -1714,7 +1702,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
 }
 
 #[test]
-fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery() {
+fn evm_code_refs_reject_wrong_kind_and_forged_ids_without_partial_delivery() {
     let (directory, path) = fixture(SHARED_HELPER, "identity-refs.hex");
     let rows = jsonl(&run("interface", &path, "hex", &[]));
     let function = rows
@@ -1754,11 +1742,7 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, format!("{SHARED_HELPER}00")).unwrap();
-    failure(
-        run("xref", &copy, "hex", &["--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    success(&run("xref", &copy, "hex", &["--at", &full]));
     let blocks = jsonl(&run("blocks", &path, "hex", &[]));
     let block = blocks
         .iter()
@@ -2451,11 +2435,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
         "SOURCE_MISMATCH",
     );
     fs::write(&copy, format!("{SHARED_HELPER}00")).unwrap();
-    failure(
-        run("xref", &copy, "hex", &["--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
-    );
+    success(&run("xref", &copy, "hex", &["--at", &full]));
     for (kind, query) in [
         ("text", ""),
         ("bytes", "0"),
@@ -3118,8 +3098,8 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     fs::write(&copy, b"\x60\x04\x60\x07\x5f\x39\x00CHANGED").unwrap();
     failure(
         run("xref", &copy, "raw", &["--at", &full]),
-        1,
-        "SOURCE_MISMATCH",
+        2,
+        "INVALID_QUERY",
     );
     let profiled = run(
         "strings",

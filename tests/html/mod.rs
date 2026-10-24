@@ -51,8 +51,11 @@ fn rows(output: &Output) -> Vec<Value> {
         .collect()
 }
 fn fails(output: Output, code: &str) {
-    // A refused query exits 1; an unknown flag is clap's exit 2.
-    let expected = if code == "unexpected argument" { 2 } else { 1 };
+    // ADR 0015: query-class codes and clap usage errors exit 2; input/resource failures exit 1.
+    let expected = match code {
+        "unexpected argument" | "INVALID_QUERY" | "NOT_FOUND" | "AMBIGUOUS" => 2,
+        _ => 1,
+    };
     assert_eq!(
         output.status.code(),
         Some(expected),
