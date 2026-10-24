@@ -39,16 +39,15 @@ python3 -m http.server --directory site 8000
 
 Keep these aligned with the repository:
 
-- performance claims come from `benches/README.md` and the root README; do not
-  invent benchmark numbers on the site;
+- performance claims come from `benches/README.md`; do not invent benchmark
+  numbers on the site;
 - cross-platform claims match the release targets: macOS arm64, Linux
   x86_64/arm64 (glibc ≥ 2.39), Windows x86_64;
 - example commands come from `docs/demo/*.md`; `<id>` placeholders are always
   outputs of the preceding query, never invented offsets;
 - Arxd claims come from `apps/arxd/README.md` and `docs/design/arxd-design.md`;
   it remains an Android preview without a published APK;
-- install commands come from `docs/demo/install.md`, `docs/demo/ci.md`, and the
-  root README;
+- install commands come from `docs/demo/install.md` and `docs/demo/ci.md`;
 - backend provenance names the actual upstream engine or states that the
   component is RxD-owned; versions and licenses stay in NOTICE and the design
   docs;

@@ -210,7 +210,7 @@ or virtual dispatch. See the [.NET design](../design/dotnet-design.md#commands-a
 ## Android App embedding
 
 The ARM64 Bionic engine, private OpenSSL, reference metadata, headers and licenses are in
-[`prebuilt/android-ilspy/`](../../prebuilt/android-ilspy/README.md):
+[`prebuilt/android-ilspy/`](../../prebuilt/android-ilspy/):
 
 ```sh
 python3 scripts/prebuilt-ilspy.py --android-app check
