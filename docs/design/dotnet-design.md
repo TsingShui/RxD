@@ -36,6 +36,10 @@ producer command. macOS supports ARM64 only, not x64.
 Desktop release builds run the producer on each native target and then embed the
 engine, reference metadata and licenses into the single rxd executable.
 
+An opt-in `RxdIlspySize=true` MSBuild property selects NativeAOT size mode and disables
+unused runtime diagnostics. It is not the release default: get-method/get-class release
+latency must be measured before adopting it.
+
 `bundled-ilspy` implies `csharp-decompiler`. The first C# FETCH validates and atomically
 extracts `<cache-base>/rxd-ilspy/<archive-sha256>/` through `rxd-core::bundle`, then
 loads and validates the library on demand with `libloading`. Metadata queries and

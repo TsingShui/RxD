@@ -24,6 +24,14 @@
     <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
     <PublishDir>$(NativeArtifactsRoot)publish/</PublishDir>
   </PropertyGroup>
+  <!-- Opt-in size profile: benchmark get-method/get-class latency before release. -->
+  <PropertyGroup Condition="'$(RxdIlspySize)' == 'true'">
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+    <StackTraceSupport>false</StackTraceSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <DebuggerSupport>false</DebuggerSupport>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../crates/rxd-dotnet/native/Exports.cs" Link="Exports.cs" />
     <PackageReference Include="ICSharpCode.Decompiler" Version="[11.1.0.9782]" />
