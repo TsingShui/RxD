@@ -86,7 +86,7 @@ pub struct XrefOptions {
     #[arg(long, conflicts_with = "filter")]
     at: Option<String>,
     /// Substring over the target's selector, block coordinate or literal value; requires --kind.
-    #[arg(short = 'f', long, requires = "kind", conflicts_with = "at")]
+    #[arg(short = 'm', long = "match", requires = "kind", conflicts_with = "at")]
     filter: Option<String>,
     /// Target kind for a content search: function, block or literal.
     #[arg(long, value_enum, requires = "filter")]
@@ -336,7 +336,7 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                     let (at, search) = match (&refs.at, &refs.filter) {
                         (Some(at), None) => (at.clone(), None),
                         (None, Some(filter)) => {
-                            let kind = refs.kind.expect("clap requires --kind with --filter");
+                            let kind = refs.kind.expect("clap requires --kind with --match");
                             let at = resolve_xref_search(
                                 &navigation,
                                 functions.as_ref().unwrap(),
@@ -429,13 +429,13 @@ fn resolve_xref_search(
     match targets.len() {
         0 => Err(Error::failure(
             rxd_core::Failure::NotFound,
-            format!("no {} target matches filter {filter:?}", kind.as_str()),
+            format!("no {} target matches --match {filter:?}", kind.as_str()),
         )),
         1 => Ok(targets.pop().expect("one target")),
         count => Err(Error::failure(
             rxd_core::Failure::Ambiguous,
             format!(
-                "filter {filter:?} matches {count} {} targets; narrow it or use --at",
+                "--match {filter:?} matches {count} {} targets; narrow it or use --at",
                 kind.as_str()
             ),
         )),

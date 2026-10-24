@@ -18,7 +18,7 @@ $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --raw
 $rxd dotnet strings tests/fixtures/dotnet/Fixture.dll -f hello
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
-$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -f hello --kind string
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -m hello --kind string
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --perf
 ```
 
@@ -43,7 +43,7 @@ caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("targe
 owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["parent_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
 $rxd dotnet get-method "$fixture" --at "$caller" --raw
 $rxd dotnet get-class "$fixture" --at "$owner" --raw
-$rxd dotnet xref "$fixture" -f $'hello\nlambda' --kind string
+$rxd dotnet xref "$fixture" -m $'hello\nlambda' --kind string
 ```
 
 `string.detail.il_offsets` lists every original `ldstr` offset of that heap entry in the
@@ -98,7 +98,7 @@ selected method retains its original IL and EH. The following complete whole-mod
 scan now also succeeds instead of hitting the former one-million work quota:
 
 ```sh
-$rxd dotnet xref "$dll" --kind string -f __rxd_nonexistent_budget_probe__ --perf
+$rxd dotnet xref "$dll" --kind string -m __rxd_nonexistent_budget_probe__ --perf
 # Complete zero-match stream; this still validates the scanned original IL.
 ```
 
@@ -181,7 +181,7 @@ original bodies/EH.
 ```sh
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x0a000001
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
-$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -f hello --kind string
+$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -m hello --kind string
 ```
 
 `-f ... --kind string` matches every heap entry that *contains* the pattern, and every

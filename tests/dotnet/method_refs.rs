@@ -201,7 +201,7 @@ fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_out
     for args in [
         vec!["--at", "0x06000006"],
         vec!["--at", "0x70000001"],
-        vec!["-f", "世界\nλ", "--kind", "string"],
+        vec!["-m", "世界\nλ", "--kind", "string"],
     ] {
         let rows = jsonl(&run("xref", &path, &args));
         for row in &rows[1..rows.len() - 1] {

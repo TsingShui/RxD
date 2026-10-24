@@ -111,7 +111,7 @@ rxd dotnet get-method app.dll --at 0x06000001 --raw
 rxd dotnet get-class app.dll --at 0x02000002 --raw
 rxd dotnet strings app.dll -f 'example'
 rxd dotnet xref app.dll --at 0x0a000001
-rxd dotnet xref app.dll -f example --kind string
+rxd dotnet xref app.dll -m example --kind string
 rxd dotnet xref app.dll --at 0x06000001
 ```
 
@@ -212,7 +212,7 @@ rxd dotnet xref app.dll --at 0x06000001
   back. A name is not unique across assemblies, so it cannot replace the token. `super`
   is omitted when it is `System.Object`, and a generic instantiation prints its
   constructed form (`IContract`1<!0>`), because a constructed type has no single name.
-- `xref -f/--filter PATTERN --kind string` matches UTF-16 values containing the pattern,
+- `xref -m/--match PATTERN --kind string` matches UTF-16 values containing the pattern,
   case-sensitively, across every heap entry and its original `ldstr` sites, ordered by
   method token then IL offset. The search face is a substring on every backend, so a
   pattern inside a longer literal still finds its load sites. When CLI UTF-8 argv cannot
@@ -221,11 +221,11 @@ rxd dotnet xref app.dll --at 0x06000001
   methods even with zero hits; corrupt/resource failures never become a complete zero
   result.
 - `xref` takes exactly one target: `--at` (the metadata token of a member or type, which
-  also covers external `MemberRef`, `TypeSpec`, `MethodSpec` and `#US` targets), or `-f
+  also covers external `MemberRef`, `TypeSpec`, `MethodSpec` and `#US` targets), or `-m
   PATTERN --kind KIND` (a content search). A token says its own kind through its table (`0x70` string, `0x01/0x02/0x1b`
   type, `0x04` field, `0x06/0x2b` method; `0x0a` covers both member kinds, so it asserts
   nothing), and a contradicting `--kind` is an argument error naming both kinds.
-  `-f` accepts only `--kind string`: a .NET member or type identity is a token, not a
+  `--match` accepts only `--kind string`: a .NET member or type identity is a token, not a
   name, so a name search is a different capability rather than a spelling of this one,
   and the error says so. There is one matching algorithm:
   operands are resolved to provable member/type identity, so a `MethodDef` token also

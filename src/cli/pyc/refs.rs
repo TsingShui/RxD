@@ -14,7 +14,7 @@ pub struct Target {
     #[command(flatten)]
     selector: super::super::xref::Selector,
     /// Substring over referenced names; requires --kind name.
-    #[arg(short, long, requires = "kind", conflicts_with = "at")]
+    #[arg(short = 'm', long = "match", requires = "kind", conflicts_with = "at")]
     filter: Option<String>,
     /// name for an exact literal name or content search; constant is inferred from --at.
     #[arg(long)]
@@ -72,7 +72,7 @@ pub fn run(
     if target.filter.is_some() && kind != "name" {
         return Err(Error::failure(
             rxd_core::Failure::Query,
-            "--filter requires --kind name; select a constant with strings then --at",
+            "--match requires --kind name; select a constant with strings then --at",
         ));
     }
     let filter = target
@@ -139,7 +139,7 @@ pub fn run(
     let bytes = perf.measure("serialize", || -> Result<_> {
         let mut out = Output::new(options.common.budget.output_bytes);
         append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            json!({"at":at,"kind":kind,"filter":target.filter,"case":if target.case.sensitive() {"sensitive"} else {"insensitive"},"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
+            json!({"at":at,"kind":kind,"match":target.filter,"case":if target.case.sensitive() {"sensitive"} else {"insensitive"},"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;

@@ -342,7 +342,7 @@ listener.
 EVM navigation uses the current CLI's fixed nullable stream fields and carrier/encoding
 bound coordinates: `evm_interface` lists function candidates,
 `evm_blocks` lists basic blocks, and `evm_get_block`/`evm_get_function`/
-`evm_xref` take the `at` a row prints; `evm_xref` also accepts `-f` with
+`evm_xref` take the `at` a row prints; `evm_xref` also accepts `-m` with
 `--kind function|block|literal` and requires a unique match. `evm_strings` accepts explicit text/bytes/number
 interpretations; `evm_xref` preserves PUSH-use, CODECOPY and code-flow evidence;
 `evm_get_function` requires exactly one `at` or `selector` and keeps raw/default

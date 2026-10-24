@@ -103,10 +103,10 @@ pub enum Command {
         #[arg(long, value_name = "TOKEN", conflicts_with = "filter")]
         at: Option<String>,
         /// Substring of a decoded user-string literal; folded unless `--case sensitive`.
-        #[arg(short = 'f', long, value_name = "PATTERN")]
+        #[arg(short = 'm', long = "match", value_name = "PATTERN")]
         filter: Option<String>,
         /// Target kind: read off the token's table when it names one; required with
-        /// `--filter`, which can only search literals.
+        /// `--match`, which can only search literals.
         #[arg(long, value_enum)]
         kind: Option<Kind>,
         /// Whether `-f` folds case: `insensitive` (default) or `sensitive`.
@@ -121,7 +121,7 @@ pub enum Command {
 /// Which kind of target a reference query names.
 ///
 /// The kind is read off a token's table, so it is only needed where the token cannot say:
-/// a `--filter` content search, and asserting a table that covers two kinds (`MemberRef`).
+/// a `--match` content search, and asserting a table that covers two kinds (`MemberRef`).
 type Kind = crate::cli::xref::Kind;
 
 #[derive(Args)]
@@ -433,7 +433,7 @@ fn execute_inner(
             Command::Xref { at, filter, .. } => json!({
                 "kind": xref_target.as_ref().map(Target::kind).map(Kind::as_str),
                 "at": at,
-                "filter": filter,
+                "match": filter,
                 "class": Value::Null,
             }),
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
@@ -1129,7 +1129,7 @@ fn dotnet_target(
         anyhow::ensure!(
             kind == Some(crate::cli::xref::Kind::String),
             "INVALID_QUERY: a .NET member or type identity is a metadata token, not a name, so \
-             `-f` can only search literals: give `--kind string`, or anchor with `--at TOKEN`"
+             `--match` can only search literals: give `--kind string`, or anchor with `--at TOKEN"
         );
         return Ok(Target::Literal {
             pattern: pattern.to_owned(),

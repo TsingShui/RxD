@@ -6,7 +6,7 @@
 //! - `--at COORD` names one identity, exactly as a row prints it. The coordinate says what
 //!   kind it is (`Lx/y;` a type, `Lx/y;->m()V` a method), so `--kind` is only needed to read
 //!   `--at` as a literal, which is the one target that cannot describe itself.
-//! - `-f/--filter PATTERN` searches content: a case-sensitive substring, where an empty
+//! - `-m/--match PATTERN` searches content: a case-sensitive substring, where an empty
 //!   answer is a true answer rather than a failure. A content search cannot say what kind it
 //!   looks for, so `--kind` is required here.
 //!
@@ -130,7 +130,7 @@ impl Target {
         serde_json::json!({
             "kind": self.kind.as_str(),
             "at": anchor,
-            "filter": self.filter,
+            "match": self.filter,
             "class": self.class,
             "case": if self.case_sensitive { "sensitive" } else { "insensitive" },
         })
@@ -166,10 +166,10 @@ pub struct TargetArgs {
     #[arg(long, value_name = "COORD", conflicts_with = "filter")]
     pub at: Option<String>,
     /// Substring of the target's value, name or type; folded unless `--case sensitive`.
-    #[arg(short = 'f', long, value_name = "PATTERN")]
+    #[arg(short = 'm', long = "match", value_name = "PATTERN")]
     pub filter: Option<String>,
     /// Target kind: inferred from `--at` when the coordinate carries one, required with
-    /// `--filter`, and required to read `--at` as a literal.
+    /// `--match`, and required to read `--at` as a literal.
     #[arg(long, value_enum)]
     pub kind: Option<Kind>,
     /// Owner class, one exact class: `Lpkg/Name;`, `pkg/Name` or `pkg.Name`. A member
@@ -177,7 +177,7 @@ pub struct TargetArgs {
     #[arg(long = "class", value_name = "CLASS")]
     pub class_name: Option<String>,
     /// Whether matching folds case: `insensitive` (default) or `sensitive`. A coordinate's
-    /// own identity and `--class` are always exact; this governs only `-f`.
+    /// own identity and `--class` are always exact; this governs only `--match`.
     #[arg(long, value_enum, default_value_t = CaseMode::Insensitive)]
     pub case: CaseMode,
 }
@@ -185,10 +185,10 @@ pub struct TargetArgs {
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl TargetArgs {
     pub fn resolve(&self) -> Result<Target> {
-        // Clap rejects `--at` with `--filter`; keep the check for direct callers.
+        // Clap rejects `--at` with `--match`; keep the check for direct callers.
         if self.at.is_some() && self.filter.is_some() {
             bail!(
-                "--at names one identity and --filter searches content; give one of them, \
+                "--at names one identity and --match searches content; give one of them, \
                  not both"
             );
         }
@@ -196,8 +196,8 @@ impl TargetArgs {
             (Some(coordinate), None) => self.anchor(coordinate),
             (None, Some(pattern)) => self.search(pattern),
             (None, None) => bail!(
-                "xref needs --at COORD to take references to one identity, or -f PATTERN \
-                 --kind KIND to search them by content"
+                "xref needs --at COORD to take references to one identity, or --match \
+                 PATTERN --kind KIND to search them by content"
             ),
             (Some(_), Some(_)) => unreachable!("rejected above"),
         }
@@ -293,10 +293,10 @@ impl TargetArgs {
     /// A content search: a case-sensitive substring of the target's value, name or type.
     fn search(&self, pattern: &str) -> Result<Target> {
         let Some(kind) = self.kind else {
-            bail!("--filter searches content, so it needs --kind: string, type, method or field");
+            bail!("--match searches content, so it needs --kind: string, type, method or field");
         };
-        // An empty pattern is the substring every value contains, which is how the listing
-        // commands already read an empty `--filter`: no restriction.
+        // An empty pattern is the substring every value contains, matching the listing
+        // commands' empty `--filter`: no restriction.
         let class = self
             .class_name
             .as_deref()
@@ -371,7 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn a_filter_needs_a_kind() {
+    fn a_match_needs_a_kind() {
         let error = args(None, Some("m"), None)
             .resolve()
             .unwrap_err()

@@ -152,7 +152,7 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
                 &[
                     "--thread",
                     threads,
-                    "-f",
+                    "-m",
                     "Authorization",
                     "--kind",
                     "string",
@@ -175,11 +175,11 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     success(&output);
     assert_eq!(dex_records(&output).len(), 1);
     assert!(text(&output).contains("LFixture1;"));
-    let output = query("xref", &bare, &["-f", "no-match", "--kind", "string"]);
+    let output = query("xref", &bare, &["-m", "no-match", "--kind", "string"]);
     success(&output);
     assert!(dex_records(&output).is_empty());
     for kind in ["type", "method", "field"] {
-        let output = query("xref", &bare, &["-f", "no-match", "--kind", kind]);
+        let output = query("xref", &bare, &["-m", "no-match", "--kind", kind]);
         success(&output);
         assert!(dex_records(&output).is_empty());
     }
@@ -191,7 +191,7 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
 fn dex_xref_separates_coordinate_anchors_from_content_searches() {
     let dex = const_string_dex(3);
     let (_dir, path) = fixture(&dex, "input.dex");
-    let searched = query("xref", &path, &["-f", "Authorization", "--kind", "string"]);
+    let searched = query("xref", &path, &["-m", "Authorization", "--kind", "string"]);
     success(&searched);
     let anchored = query(
         "xref",
@@ -235,15 +235,15 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
         "already names the owner class",
     );
     failure(
-        query("xref", &path, &["-f", "Authorization"]),
+        query("xref", &path, &["-m", "Authorization"]),
         1,
-        "--filter searches content, so it needs --kind",
+        "--match searches content, so it needs --kind",
     );
     failure(
         query(
             "xref",
             &path,
-            &["-f", "Authorization", "--kind", "type", "--class", "F"],
+            &["-m", "Authorization", "--kind", "type", "--class", "F"],
         ),
         1,
         "it needs --kind method or --kind field",
@@ -253,7 +253,7 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
         query(
             "xref",
             &path,
-            &["--at", "LFixture0;", "-f", "m", "--kind", "method"],
+            &["--at", "LFixture0;", "-m", "m", "--kind", "method"],
         ),
         2,
         "cannot be used",

@@ -278,7 +278,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
     );
     assert_js_keys(
         &stream[0]["query"],
-        &["at", "kind", "filter", "case", "within", "version"],
+        &["at", "kind", "match", "case", "within", "version"],
     );
     assert_js_keys(
         &stream[0]["detail"],
@@ -291,7 +291,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         ],
     );
     assert!(stream[0]["query"]["within"].is_null());
-    assert!(stream[0]["query"]["filter"].is_null());
+    assert!(stream[0]["query"]["match"].is_null());
     assert_eq!(stream[0]["query"]["kind"], "name");
     assert!(stream[0]["query"]["version"].is_null());
     assert_eq!(stream[0]["query"]["at"], "value");

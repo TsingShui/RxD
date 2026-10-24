@@ -136,7 +136,7 @@ source_call_graph_complete.
 
 Query echoes are fixed: blocks `{encoding, filter}`; interface `{encoding, filter}`;
 strings `{encoding, kind, query, match_mode, filter}`; xref `{encoding, at,
-reference_scope}` plus `kind`/`filter` when `-f` resolved the anchor. Null does not mean
+reference_scope}` plus `kind`/`match` when `-m` resolved the anchor. Null does not mean
 an analysis ran or a count is zero. `blocks.basic_block_end=exclusive` and
 `boundary_status=producer_candidate`; xref keeps source_call_graph/ABI false. Function
 inventory and `function_code` FETCH use different discriminators; identity kind stays
@@ -308,7 +308,7 @@ timed separately.
 
 ## `xref`
 
-`evm xref INPUT --encoding raw|hex (--at COORDINATE | -f FILTER --kind
+`evm xref INPUT --encoding raw|hex (--at COORDINATE | -m MATCH --kind
 function|block|literal)` accepts the block, function or literal coordinate a listing row
 prints, or resolves one by content. A search matches the value the target row is named
 by: the selector for a function, the block coordinate for a block, and the decoded value
@@ -363,7 +363,7 @@ abi_verified false. Data, metadata and unknown ownership are never promoted to e
 function calls.
 
 `xref` header query is `{encoding, at, reference_scope}` (the copy-only coordinate), plus
-`kind`/`filter` for a content search; code scope is `static_control_flow`. Header detail uses the common nullable schema with target_kind
+`kind`/`match` for a content search; code scope is `static_control_flow`. Header detail uses the common nullable schema with target_kind
 block/function, target_decoded_offset (target PC), target_semantics (exact_block_start/
 validated_candidate_entry/unvalidated_candidate_entry), coverage
 (contextual_and_block_local), source_call_graph_complete=false, abi_verified=false;

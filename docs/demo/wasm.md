@@ -59,7 +59,7 @@ $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at"
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --raw
 $rxd wasm strings tests/fixtures/wasm/fixture.wasm -f hello
 $rxd wasm xref tests/fixtures/wasm/fixture.wasm --at "$at"
-$rxd wasm xref tests/fixtures/wasm/fixture.wasm --kind function -f ENV.LOG
+$rxd wasm xref tests/fixtures/wasm/fixture.wasm --kind function -m ENV.LOG
 $rxd wasm functions tests/fixtures/wasm/fixture.wasm --at "$at"
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --perf
 ```

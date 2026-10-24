@@ -47,7 +47,7 @@ pub(crate) fn header(
         "reference_scope":if detail.target_kind=="literal"{"exact_literal_occurrence"}else{"static_control_flow"}});
     if let Some((kind, filter)) = listing.search {
         query["kind"] = json!(kind);
-        query["filter"] = json!(filter);
+        query["match"] = json!(filter);
     }
     envelope::header(
         "evm",

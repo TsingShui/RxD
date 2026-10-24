@@ -50,10 +50,10 @@ Search cross-class references (string/type/method/field; method/field may use `-
 owner substring):
 
 ```sh
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -f toJson --kind method
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -f JsonReader --kind type
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -f append --kind method --class java/lang/StringBuilder
-target/release/rxd jar xref tests/fixtures/jvm/flow-deflated.jar -f hello --kind string
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -m toJson --kind method
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -m JsonReader --kind type
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -m append --kind method --class java/lang/StringBuilder
+target/release/rxd jar xref tests/fixtures/jvm/flow-deflated.jar -m hello --kind string
 # An identity, exactly: one method overload, as a `xref` row prints it.
 target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar --at 'Lcom/google/gson/Gson;->toJson(Ljava/lang/Object;)Ljava/lang/String;' 
 ```

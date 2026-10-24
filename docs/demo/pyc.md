@@ -142,7 +142,7 @@ Use the row coordinate, not filenames/names.
 
 ```sh
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --kind name --at shared
-target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --kind name -f SHARED --within code:4
+target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --kind name -m SHARED --within code:4
 target/debug/rxd pyc strings tests/corpus/pyc/3.12.14/graph.timestamp.pyc -f shared-container-marker
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc \
   --at 'const:<code-index>:<path>'

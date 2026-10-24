@@ -376,7 +376,7 @@ fn pyc_final_versions_trace_every_explicit_name_and_packed_target_to_fetch() {
             for name in names {
                 let all = rows(&command("xref", &path, &["--kind", "name", "--at", name]));
                 assert_eq!(all[0]["query"]["at"], name);
-                assert!(all[0]["query"]["filter"].is_null());
+                assert!(all[0]["query"]["match"].is_null());
                 assert_eq!(all.last().unwrap()["complete"], true);
                 let hits: Vec<_> = all.iter().filter(|r| r["record"] == "reference").collect();
                 let mut wanted = Vec::new();

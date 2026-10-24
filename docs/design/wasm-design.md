@@ -40,7 +40,7 @@ rxd wasm functions module.wasm --name run
 rxd wasm get-function module.wasm --at func:42
 rxd wasm strings module.wasm -f 'example'
 rxd wasm xref module.wasm --at func:42
-rxd wasm xref module.wasm --kind function -f log
+rxd wasm xref module.wasm --kind function -m log
 ```
 
 One command emits one record kind; there is no mixed structural stream. `types`,
@@ -60,8 +60,8 @@ there is no separate numeric `--func` selector. Exact name, coordinate and subst
 selectors AND together. Coordinate existence is validated before filtering: an
 out-of-range index, or an imported function with no defined-function row, is
 `NOT_FOUND`, never an empty-success listing. Unmatched content/name searches may
-return an empty complete listing. `query` echoes `filter, case`, plus `at, name`
-for functions or `at, kind` for references.
+return an empty complete listing. `query` echoes `filter, case` for listings (plus
+`at, name` for functions) and `at, kind, match, case` for xref.
 
 Import rows retain their import-entry identity and expose a nullable
 `detail.target_at` (`func:N` for function imports). Export rows expose
@@ -98,10 +98,10 @@ stripped module with no name section. Export names do not become function names.
   that explicitly reference the target function index (`call`, `return_call`,
   `ref.func`), including imported targets. `--kind function` is optional for an
   identity; a contradictory kind is `INVALID_QUERY`, naming both kinds.
-  `xref --kind function -f TEXT [--case sensitive]` selects target labels: defined
+  `xref --kind function -m TEXT [--case sensitive]` selects target labels: defined
   function name-section labels (otherwise `func:N`) and imported `module.name`.
-  It never searches callers, signatures or export aliases. An empty filter selects
-  all target functions; an unmatched filter returns an empty complete scan.
+  It never searches callers, signatures or export aliases. An empty match selects
+  all target functions; an unmatched match returns an empty complete scan.
   Multiple selected targets use one bounded body scan, with references in caller
   index/instruction order and no duplicate rows from overlapping target selection.
   Only function targets are supported. The caller coordinate and code-body offset

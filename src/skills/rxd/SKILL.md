@@ -18,12 +18,12 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 | JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `get --at` |
 | Electron ASAR | `rxd asar` | `entries` / extract a selected file with `extract --at`, then use its code backend |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
-| Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-f PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
-| JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-f … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
-| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-f … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
-| Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref --at` or `-f … --kind function|block|literal` / `get-function`/`get-block --at` |
-| Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
-| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-f TEXT`, `get-code --at`, whole-module `decompile` |
+| Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
+| JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
+| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
+| Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref --at` or `-m … --kind function|block|literal` / `get-function`/`get-block --at` |
+| Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
+| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
@@ -140,12 +140,12 @@ rxd js entities inline.js
 
 ```sh
 rxd dex strings app.apk -f Authorization --limit 20
-rxd dex xref app.apk -f Authorization --kind string
+rxd dex xref app.apk -m Authorization --kind string
 rxd dex xref app.apk --at "$METHOD_AT"
 rxd dex manifest app.apk
 rxd dex get-method app.apk --at "$METHOD_AT"
 rxd jar strings library.jar -f Authorization
-rxd jar xref library.jar -f Authorization --kind string
+rxd jar xref library.jar -m Authorization --kind string
 rxd jar xref library.jar --at "$METHOD_AT"
 rxd jar get-method library.jar --at "$METHOD_AT" --raw
 rxd jar get-method library.jar --at "$METHOD_AT"
@@ -172,7 +172,7 @@ contain unsupported-method stubs; inspect bytecode when necessary.
 
 ```sh
 rxd dotnet strings library.dll -f Authorization
-rxd dotnet xref library.dll -f Authorization --kind string
+rxd dotnet xref library.dll -m Authorization --kind string
 rxd dotnet xref library.dll --at "$METHOD_AT"
 rxd dotnet methods library.dll
 rxd dotnet get-method library.dll --at "$METHOD_AT" --raw
@@ -201,7 +201,7 @@ explicit fallback information; do not report fallback IL as reconstructed C#.
 rxd wasm functions module.wasm -f hello
 rxd wasm strings module.wasm -f hello
 rxd wasm xref module.wasm --at "$FUNCTION_AT"
-rxd wasm xref module.wasm --kind function -f hello
+rxd wasm xref module.wasm --kind function -m hello
 rxd wasm get-function module.wasm --at "$CALLER_AT"
 rxd wasm get-function module.wasm --at "$CALLER_AT" --raw
 ```
@@ -226,7 +226,7 @@ rxd pyc strings module.pyc -f Authorization
 rxd pyc xref module.pyc --at "$CONSTANT_AT"
 rxd pyc get-code module.pyc --at "$CODE_AT"
 rxd pyc xref module.pyc --kind name --at token --within "$CODE_AT"
-rxd pyc xref module.pyc --kind name -f token
+rxd pyc xref module.pyc --kind name -m token
 rxd pyc decompile module.pyc --json
 ```
 
@@ -247,7 +247,7 @@ rxd evm blocks runtime.hex --encoding hex
 rxd evm interface runtime.hex --encoding hex
 rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
 rxd evm xref runtime.hex --encoding hex --at "$LITERAL_AT"
-rxd evm xref runtime.hex --encoding hex -f 1ba64846 --kind function
+rxd evm xref runtime.hex --encoding hex -m 1ba64846 --kind function
 rxd evm get-function runtime.hex --at "$CONTEXT_AT" --encoding hex --raw
 rxd evm get-block runtime.hex --at "$BLOCK_AT" --encoding hex
 ```

@@ -147,7 +147,7 @@ pub enum Command {
         #[command(flatten)]
         selector: Selector,
         /// Substring over the target function label; never caller names.
-        #[arg(short, long, requires = "kind", conflicts_with = "at")]
+        #[arg(short = 'm', long = "match", requires = "kind", conflicts_with = "at")]
         filter: Option<String>,
         /// Only function references are supported; inferred from --at.
         #[arg(long)]
@@ -403,7 +403,7 @@ fn execute_inner(
                 kind.as_deref() == Some("function"),
                 rxd_core::Error::failure(
                     rxd_core::Failure::Query,
-                    "xref filter requires --kind function"
+                    "xref --match requires --kind function"
                 )
             );
             let needle = rxd_core::filter::Contains::new(filter, command.case_sensitive());
@@ -602,7 +602,7 @@ fn command_query(command: &Command) -> Value {
             filter,
             ..
         } => {
-            json!({"at": selector.at, "kind": kind, "filter": filter, "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
+            json!({"at": selector.at, "kind": kind, "match": filter, "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
         }
         _ => {
             json!({"filter": command.filter(), "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})

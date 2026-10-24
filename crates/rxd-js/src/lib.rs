@@ -415,7 +415,7 @@ pub fn run_source(
                 pattern,
                 case_sensitive,
             } => {
-                json!({"kind":"symbol","filter":pattern,"case":if *case_sensitive {"sensitive"} else {"insensitive"}})
+                json!({"kind":"symbol","match":pattern,"case":if *case_sensitive {"sensitive"} else {"insensitive"}})
             }
         },
         Query::Locate { byte } => json!({"byte":byte}),

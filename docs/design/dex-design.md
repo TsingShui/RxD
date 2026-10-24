@@ -22,7 +22,7 @@ preserved; argument positions and exit-code semantics are.
 | `extract INPUT --all [-f PATTERN] -o DIR` | Every matching entry under `DIR`, preserving entry-relative paths; unsafe names (`..`, absolute, separators) and duplicate destinations are rejected. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
 | `xref INPUT --at COORD` | References to one identity, matched exactly: `Lx/y;` a type, `Lx/y;->name(proto)` a method, `Lx/y;->name:type` a field, and, with `--kind string`, a literal. `--kind` is inferred from the coordinate and must agree with it. `context_at` is the referring member, `detail.target` the matched coordinate, `detail.entry` the DEX it lives in. One row is one (caller, target) pair, so `detail.target` is always a single coordinate. |
-| `xref INPUT -f PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` narrows to one exact owner class (descriptor, dotted or slashed form; never a pattern). `--kind` is required because a content search cannot say what kind it looks for. Rows keep the one-target-per-row shape, so a caller that matches several targets is reported once per target. |
+| `xref INPUT -m PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` narrows to one exact owner class (descriptor, dotted or slashed form; never a pattern). `--kind` is required because a content search cannot say what kind it looks for. Rows keep the one-target-per-row shape, so a caller that matches several targets is reported once per target. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `--class` selects one exact class, `-f/--filter` is a substring over the dotted name, folded unless `--case sensitive`. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `--name` (exact), `-f/--filter`. |
@@ -95,7 +95,7 @@ The header contains `record, backend, command, source_id, input_bytes, schema_ve
 query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}`.
 `input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
 `query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
-`xref`=`kind, at, filter, class`;
+`xref`=`kind, at, match, class`;
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 
@@ -241,7 +241,7 @@ median:
 | `classes` | 928,795 | 78 MB | 0.165 s |
 | `methods` | 5,194,250 | 679 MB | 0.36 s |
 | `methods --class <one class>` | 1 | tiny | 0.11 s |
-| `xref -f java/lang/String --kind type` | 108,126 | 15 MB | 0.20 s |
+| `xref -m java/lang/String --kind type` | 108,126 | 15 MB | 0.20 s |
 
 `xref` matches the member name as a substring and `--class` as one exact owner class
 (ADR 0014). These numbers were taken while `--class` still folded into the same substring
@@ -251,11 +251,11 @@ parentheses):
 
 | command | wall |
 | --- | ---: |
-| `xref -f LIZ --class 'Lkotlinx/coroutines/internal/StackTraceRecoveryKt;' --kind method` | 0.156 s (0.148 s) |
-| `xref -f LIZ --class a/a --kind method` (wide substring; no longer reachable) | 0.219 s (0.196 s) |
-| `xref -f Toast --kind method` (name only) | 0.206 s (0.185 s) |
-| `xref -f String --kind type` | 0.250 s (0.245 s) |
-| `xref -f Authorization --kind string` | 0.196 s (0.165 s) |
+| `xref -m LIZ --class 'Lkotlinx/coroutines/internal/StackTraceRecoveryKt;' --kind method` | 0.156 s (0.148 s) |
+| `xref -m LIZ --class a/a --kind method` (wide substring; no longer reachable) | 0.219 s (0.196 s) |
+| `xref -m Toast --kind method` (name only) | 0.206 s (0.185 s) |
+| `xref -m String --kind type` | 0.250 s (0.245 s) |
+| `xref -m Authorization --kind string` | 0.196 s (0.165 s) |
 | `classes` (same run, for reference) | 0.180 s (0.172 s) |
 
 The class-constrained query stays the cheap shape (0.156 s against 0.206 s for a name-only

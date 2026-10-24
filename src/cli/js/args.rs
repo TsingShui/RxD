@@ -244,7 +244,7 @@ pub(crate) enum Command {
         #[arg(long, conflicts_with_all = ["at", "filter"])]
         byte: Option<u64>,
         /// Substring over binding names, folded unless `--case sensitive`.
-        #[arg(short, long, conflicts_with_all = ["at", "byte"], requires = "kind")]
+        #[arg(short = 'm', long = "match", conflicts_with_all = ["at", "byte"], requires = "kind")]
         filter: Option<String>,
         /// Only `symbol`: the one reference kind JS has is a lexical binding.
         #[arg(long, value_name = "KIND", requires = "filter")]

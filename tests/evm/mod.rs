@@ -3373,10 +3373,10 @@ fn evm_xref_content_search_resolves_one_target() {
         "xref",
         &path,
         "hex",
-        &["-f", "11223344", "--kind", "function"],
+        &["-m", "11223344", "--kind", "function"],
     ));
     assert_eq!(searched[0]["query"]["kind"], "function");
-    assert_eq!(searched[0]["query"]["filter"], "11223344");
+    assert_eq!(searched[0]["query"]["match"], "11223344");
     assert_eq!(searched[0]["query"]["at"], function_at);
     assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
 
@@ -3391,7 +3391,7 @@ fn evm_xref_content_search_resolves_one_target() {
         "xref",
         &path,
         "hex",
-        &["-f", block_at, "--kind", "block"],
+        &["-m", block_at, "--kind", "block"],
     ));
     assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
 
@@ -3406,7 +3406,7 @@ fn evm_xref_content_search_resolves_one_target() {
         "xref",
         &path,
         "hex",
-        &["-f", "11223344", "--kind", "literal"],
+        &["-m", "11223344", "--kind", "literal"],
     ));
     assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
 
@@ -3423,28 +3423,28 @@ fn evm_xref_content_search_resolves_one_target() {
         "xref",
         &copy,
         "raw",
-        &["-f", "CLUE", "--kind", "literal"],
+        &["-m", "CLUE", "--kind", "literal"],
     ));
     assert_eq!(searched[0]["query"]["kind"], "literal");
     assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
 
     failure(
-        run("xref", &path, "hex", &["-f", "<", "--kind", "literal"]),
+        run("xref", &path, "hex", &["-m", "<", "--kind", "literal"]),
         2,
         "AMBIGUOUS",
     );
     failure(
-        run("xref", &path, "hex", &["-f", "zzzz", "--kind", "function"]),
+        run("xref", &path, "hex", &["-m", "zzzz", "--kind", "function"]),
         2,
         "NOT_FOUND",
     );
-    failure(run("xref", &path, "hex", &["-f", "11223344"]), 2, "--kind");
+    failure(run("xref", &path, "hex", &["-m", "11223344"]), 2, "--kind");
     failure(
         run(
             "xref",
             &path,
             "hex",
-            &["--at", function_at, "-f", "x", "--kind", "function"],
+            &["--at", function_at, "-m", "x", "--kind", "function"],
         ),
         2,
         "cannot be used",

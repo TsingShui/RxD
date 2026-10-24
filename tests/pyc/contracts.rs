@@ -27,7 +27,7 @@ fn hits(rows: &[Value]) -> Vec<Value> {
 #[test]
 fn pyc_contract_name_content_search_keeps_payloads_order_case_and_scope() {
     let path = path();
-    let filtered = rows(&query("xref", &path, &["--kind", "name", "-f", "VAL"]));
+    let filtered = rows(&query("xref", &path, &["--kind", "name", "-m", "VAL"]));
     assert_eq!(filtered[0]["query"]["case"], "insensitive");
     let found = hits(&filtered);
     assert!(!found.is_empty());
@@ -52,14 +52,14 @@ fn pyc_contract_name_content_search_keeps_payloads_order_case_and_scope() {
     let strict = rows(&query(
         "xref",
         &path,
-        &["--kind", "name", "-f", "VAL", "--case", "sensitive"],
+        &["--kind", "name", "-m", "VAL", "--case", "sensitive"],
     ));
     assert!(hits(&strict).is_empty());
     let owner = found[0]["context_at"].as_str().unwrap();
     let scoped = hits(&rows(&query(
         "xref",
         &path,
-        &["--kind", "name", "-f", "VAL", "--within", owner],
+        &["--kind", "name", "-m", "VAL", "--within", owner],
     )));
     assert_eq!(
         scoped,
@@ -69,9 +69,9 @@ fn pyc_contract_name_content_search_keeps_payloads_order_case_and_scope() {
             .cloned()
             .collect::<Vec<_>>()
     );
-    failure(query("xref", &path, &["-f", "value"]), 2, "--kind");
+    failure(query("xref", &path, &["-m", "value"]), 2, "--kind");
     failure(
-        query("xref", &path, &["--kind", "constant", "-f", "value"]),
+        query("xref", &path, &["--kind", "constant", "-m", "value"]),
         2,
         "INVALID_QUERY",
     );

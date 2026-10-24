@@ -35,7 +35,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | `jar get-class INPUT --at CLASS [-o FILE]` | One `class_body` record: whole-class Java in `detail.code` (fields, constructors, all method bodies) by internal/dotted/descriptor name |
 | `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
 | `jar xref INPUT --at COORD` | header/reference/summary JSONL; the coordinate is an exact identity (`Lx/y;`, `Lx/y;->name(proto)`, `Lx/y;->name:type`); `context_at` is the caller, `detail.target` the matched coordinate, `detail.byte_offset`/`detail.mnemonic` the reference site |
-| `jar xref INPUT -f PATTERN --kind KIND` | the same rows for a substring search over the target's value, name or type, with `--class` narrowing to one exact owner class; `--kind` is required |
+| `jar xref INPUT -m PATTERN --kind KIND` | the same rows for a substring search over the target's value, name or type, with `--class` narrowing to one exact owner class; `--kind` is required |
 
 `classes`/`methods`/`fields` filter exactly by internal name, dotted name or descriptor,
 and methods exactly by name while retaining all overloads; a method filter omits field

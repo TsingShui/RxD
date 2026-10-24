@@ -15,7 +15,7 @@ fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
         .args([
             "--kind",
             "string",
-            "-f",
+            "-m",
             "__rxd_nonexistent_budget_probe__",
             "--perf",
             "-o",
@@ -72,7 +72,7 @@ fn input_scaled_pyc_output_policy_covers_static_and_source_json() {
     let commands: &[(&str, &[&str])] = &[
         ("codes", &[]),
         ("strings", &[]),
-        ("xref", &["--kind", "name", "-f", "print"]),
+        ("xref", &["--kind", "name", "-m", "print"]),
         ("get-code", &["--at", "code:0"]),
         ("decompile", &["--json"]),
     ];

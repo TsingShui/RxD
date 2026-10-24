@@ -979,16 +979,13 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
             "dex_strings",
             json!({"filter":"Authorization","limit":1,"offset":0}),
         ),
+        ("dex_xref", json!({"kind":"string","match":"Authorization"})),
+        ("dex_xref", json!({"kind":"type","match":"Fixture"})),
         (
             "dex_xref",
-            json!({"kind":"string","filter":"Authorization"}),
+            json!({"kind":"method","match":"m0","class":"Fixture0"}),
         ),
-        ("dex_xref", json!({"kind":"type","filter":"Fixture"})),
-        (
-            "dex_xref",
-            json!({"kind":"method","filter":"m0","class":"Fixture0"}),
-        ),
-        ("dex_xref", json!({"kind":"field","filter":"missing"})),
+        ("dex_xref", json!({"kind":"field","match":"missing"})),
         ("dex_manifest", json!({})),
         ("dex_get_class", json!({"at":"LFixture0;"})),
         ("dex_get_method", json!({"at":method})),
@@ -1058,10 +1055,10 @@ fn mcp_jvm_navigation_preserves_original_instruction_fetch() {
             json!({"class":"Lfixture/FlowFixture;","filter":"v"}),
         ),
         ("jar_strings", json!({"filter":""})),
-        ("jar_xref", json!({"kind":"string","filter":""})),
-        ("jar_xref", json!({"kind":"type","filter":"Object"})),
-        ("jar_xref", json!({"kind":"method","filter":"println"})),
-        ("jar_xref", json!({"kind":"field","filter":"counter"})),
+        ("jar_xref", json!({"kind":"string","match":""})),
+        ("jar_xref", json!({"kind":"type","match":"Object"})),
+        ("jar_xref", json!({"kind":"method","match":"println"})),
+        ("jar_xref", json!({"kind":"field","match":"counter"})),
         ("jar_get_method", json!({"at":method["at"],"raw":true})),
         ("jar_get_method", json!({"at":method["at"]})),
         ("jar_get_class", json!({"at":"Lfixture/FlowFixture;"})),
@@ -1135,7 +1132,7 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
         ("dotnet_fields", json!({"filter":"Count"})),
         ("dotnet_strings", json!({"filter":""})),
         ("dotnet_xref", json!({"at":method["at"]})),
-        ("dotnet_xref", json!({"filter":"missing","kind":"string"})),
+        ("dotnet_xref", json!({"match":"missing","kind":"string"})),
         ("dotnet_get_method", json!({"at":method["at"],"raw":true})),
         ("dotnet_get_class", json!({"at":declaring_type,"raw":true})),
     ] {
@@ -1388,7 +1385,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     ]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","filter":format!("--output={}",victim.display())}));
+    let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","match":format!("--output={}",victim.display())}));
     assert!(
         !victim.exists(),
         "a typed filter was incorrectly interpreted as a host output destination: {result}"
@@ -1397,7 +1394,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
         &mut client,
         &tools,
         "dex_xref",
-        json!({"input":{"path":input},"kind":"string","filter":"-needle"}),
+        json!({"input":{"path":input},"kind":"string","match":"-needle"}),
     );
 }
 

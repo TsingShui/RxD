@@ -438,11 +438,11 @@ are not scanned and no AST is built.
 
 ```sh
 rxd pyc xref module.pyc --kind name --at marker
-rxd pyc xref module.pyc --kind name -f MARK --within code:9
+rxd pyc xref module.pyc --kind name -m MARK --within code:9
 rxd pyc xref graph.marshal --version 3.12 --kind name --at cell -o target/xref.jsonl
 ```
 
-Exactly one of `--at` or `-f/--filter` is required. `--kind name --at NAME`
+Exactly one of `--at` or `-m/--match` is required. `--kind name --at NAME`
 interprets the anchor as a literal name (not a coordinate) and compares the original
 payload against query UTF-8 bytes exactly. Empty names are allowed; `--case` does not
 alter exact anchors. `--kind name -f TEXT` searches name payloads with the shared
@@ -453,7 +453,7 @@ matched UTF-8 `detail.target_name`, including for exact anchors; constant hits h
 that field null. A filter selecting multiple names still scans each body once.
 Empty filters match all representable names; ordinary zero hits return a complete
 empty stream. Constant content search remains `strings -f` followed by `xref --at`;
-`xref -f` supports only `--kind name`.
+`xref -m` supports only `--kind name`.
 
 `--within` accepts the `code:<index>` coordinate a row prints. Malformed scope is
 `INVALID_QUERY`, missing scope is `NOT_FOUND` (both exit 2).
@@ -494,7 +494,7 @@ table operands and produce no name hit.
 
 ### Refs schema v2
 
-Header/reference/summary JSONL per ADR 0003. Header query: at/kind/filter/case/within/version
+Header/reference/summary JSONL per ADR 0003. Header query: at/kind/match/case/within/version
 (optional null; kind=`name`/`constant`, case=`insensitive`/`sensitive`); detail: analysis/python_version/code_count/scope/instruction_validation;
 analysis=`explicit_name_references`; scope=`all_codes`/`selected_code`; instruction_
 validation=`scanned_scope`.
@@ -581,7 +581,7 @@ in different slots/owners are not linked; multiple nested leaves in one containi
 share instruction evidence, but each query echoes only the selected occurrence. Ordering is
 code index then instruction offset.
 
-The common xref query retains at/kind/filter/case/within/version with absent selectors null;
+The common xref query retains at/kind/match/case/within/version with absent selectors null;
 constant header/summary detail.analysis=`explicit_constant_references`; the rest of the
 fixed schema is shared with name selectors. Summary/perf records count only real hits;
 unsupported evidence is counted separately and remains subject to the selected
@@ -602,7 +602,7 @@ Control-flow deflattening, deobfuscation and decryption are permanent non-goals.
 `pyc_codes/strings/xref/get_code/decompile` reuse the fixed input/evidence/index and
 preserve native source/fallback/completeness. JSONL projects to header/records/summary;
 single FETCH keeps its original record. Unsolvable raw text, code IDs and original spans
-remain unchanged. The MCP `xref` tool mirrors at/kind/filter selectors and within scope;
+remain unchanged. The MCP `xref` tool mirrors at/kind/match selectors and within scope;
 resource limits map to input/entities/work/records/output/instructions where supported.
 
 Shared snapshot, quota, cancellation and complete-response rules are in the
