@@ -19,7 +19,7 @@ pub use functions::{
     AbstractState, AbstractValue, Context, Edge, Evidence, FunctionCandidate, FunctionNavigation,
     FunctionSelection, MemoryWord,
 };
-pub use literals::{LiteralInventory, LiteralKind, LiteralQuery};
+pub use literals::{LiteralInventory, LiteralKind, LiteralQuery, matching_targets};
 pub use navigation::{BasicBlock, Instruction, Listing, Navigation};
 
 pub const ENGINE_VERSION: &str = "0.9.4";

@@ -184,6 +184,21 @@ impl DataInventory {
         result
     }
 
+    pub(crate) fn matching_coordinates(
+        &self,
+        navigation: &Navigation,
+        filter: &rxd_core::filter::Contains,
+    ) -> Vec<String> {
+        self.literals
+            .iter()
+            .filter(|literal| {
+                let bytes = &navigation.carrier.bytecode[literal.start..literal.end];
+                filter.matches(&crate::literals::literal_value(bytes))
+            })
+            .map(|literal| self.coordinate(navigation, literal))
+            .collect()
+    }
+
     /// The copy-only coordinate a row prints and `--at` accepts.
     fn coordinate(&self, navigation: &Navigation, literal: &DataLiteral) -> String {
         format!(

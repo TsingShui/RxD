@@ -43,13 +43,18 @@ pub(crate) fn header(
     listing: Listing<'_>,
     detail: HeaderDetail,
 ) -> Value {
+    let mut query = json!({"encoding":navigation.carrier.encoding,"at":id,
+        "reference_scope":if detail.target_kind=="literal"{"exact_literal_occurrence"}else{"static_control_flow"}});
+    if let Some((kind, filter)) = listing.search {
+        query["kind"] = json!(kind);
+        query["filter"] = json!(filter);
+    }
     envelope::header(
         "evm",
         "xref",
         Some(&navigation.carrier.source_id),
         Some(navigation.carrier.bytes.len()),
-        json!({"encoding":navigation.carrier.encoding,"at":id,
-            "reference_scope":if detail.target_kind=="literal"{"exact_literal_occurrence"}else{"static_control_flow"}}),
+        query,
         header_detail(object(json!({
             "carrier":navigation.carrier_detail(),"bytecode":navigation.bytecode_detail(listing.include_bytecode),
             "offset_unit":"decoded_bytecode_byte","target_kind":detail.target_kind,

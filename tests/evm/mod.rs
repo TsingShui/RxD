@@ -3358,3 +3358,95 @@ fn evm_data_ownerless_block_refs_preserve_observed_incoming_copy_preconditions()
 }
 
 mod acceptance;
+
+#[test]
+fn evm_xref_content_search_resolves_one_target() {
+    let (_directory, path) = fixture(SHARED_HELPER, "search.hex");
+    let interface = jsonl(&run("interface", &path, "hex", &[]));
+    let function = interface
+        .iter()
+        .find(|row| row["record"] == "function" && row["detail"]["selector"] == "11223344")
+        .unwrap();
+    let function_at = function["at"].as_str().unwrap();
+    let direct = jsonl(&run("xref", &path, "hex", &["--at", function_at]));
+    let searched = jsonl(&run(
+        "xref",
+        &path,
+        "hex",
+        &["-f", "11223344", "--kind", "function"],
+    ));
+    assert_eq!(searched[0]["query"]["kind"], "function");
+    assert_eq!(searched[0]["query"]["filter"], "11223344");
+    assert_eq!(searched[0]["query"]["at"], function_at);
+    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+
+    let blocks = jsonl(&run("blocks", &path, "hex", &[]));
+    let block = blocks
+        .iter()
+        .find(|row| row["record"] == "basic_block")
+        .unwrap();
+    let block_at = block["at"].as_str().unwrap();
+    let direct = jsonl(&run("xref", &path, "hex", &["--at", block_at]));
+    let searched = jsonl(&run(
+        "xref",
+        &path,
+        "hex",
+        &["-f", block_at, "--kind", "block"],
+    ));
+    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+
+    let strings = jsonl(&run("strings", &path, "hex", &["--kind", "text"]));
+    let literal = strings
+        .iter()
+        .find(|row| row["record"] == "literal" && row["detail"]["value"] == "11223344")
+        .unwrap();
+    let literal_at = literal["at"].as_str().unwrap();
+    let direct = jsonl(&run("xref", &path, "hex", &["--at", literal_at]));
+    let searched = jsonl(&run(
+        "xref",
+        &path,
+        "hex",
+        &["-f", "11223344", "--kind", "literal"],
+    ));
+    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+
+    // Data candidates are literals too.
+    let (_copy_directory, copy) = fixture(b"\x60\x04\x60\x07\x5f\x39\x00CLUE", "copy.bin");
+    let strings = jsonl(&run("strings", &copy, "raw", &["--kind", "text"]));
+    let data = strings
+        .iter()
+        .find(|row| row["record"] == "data_literal" && row["detail"]["value"] == "CLUE")
+        .unwrap();
+    let data_at = data["at"].as_str().unwrap();
+    let direct = jsonl(&run("xref", &copy, "raw", &["--at", data_at]));
+    let searched = jsonl(&run(
+        "xref",
+        &copy,
+        "raw",
+        &["-f", "CLUE", "--kind", "literal"],
+    ));
+    assert_eq!(searched[0]["query"]["kind"], "literal");
+    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+
+    failure(
+        run("xref", &path, "hex", &["-f", "<", "--kind", "literal"]),
+        2,
+        "AMBIGUOUS",
+    );
+    failure(
+        run("xref", &path, "hex", &["-f", "zzzz", "--kind", "function"]),
+        2,
+        "NOT_FOUND",
+    );
+    failure(run("xref", &path, "hex", &["-f", "11223344"]), 2, "--kind");
+    failure(
+        run(
+            "xref",
+            &path,
+            "hex",
+            &["--at", function_at, "-f", "x", "--kind", "function"],
+        ),
+        2,
+        "cannot be used",
+    );
+}

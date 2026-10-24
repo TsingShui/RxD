@@ -234,6 +234,23 @@ impl LiteralInventory {
         result
     }
 
+    fn matching_coordinates(
+        &self,
+        navigation: &Navigation,
+        filter: &rxd_core::filter::Contains,
+    ) -> Vec<String> {
+        self.literals
+            .iter()
+            .filter(|literal| {
+                let instruction = &navigation.instructions[literal.instruction];
+                let bytes = &navigation.carrier.bytecode
+                    [instruction.decoded_offset + 1..instruction.decoded_end];
+                filter.matches(&literal_value(bytes))
+            })
+            .map(|literal| self.coordinate(navigation, literal))
+            .collect()
+    }
+
     /// The copy-only coordinate a row prints and `--at` accepts.
     fn coordinate(&self, navigation: &Navigation, literal: &Literal) -> String {
         format!(
@@ -655,4 +672,23 @@ impl LiteralInventory {
         perf.record("serialize", stage);
         result
     }
+}
+
+/// Coordinates of PUSH and data literals whose row value matches `filter`.
+pub fn matching_targets(
+    navigation: &Navigation,
+    functions: &FunctionNavigation,
+    filter: &rxd_core::filter::Contains,
+    limits: Limits,
+    perf: &mut Perf,
+) -> Result<Vec<String>> {
+    let mut targets = LiteralInventory::discover(navigation, limits, perf)?
+        .matching_coordinates(navigation, filter);
+    targets.extend(
+        crate::data::DataInventory::discover(navigation, functions, limits, perf)?
+            .matching_coordinates(navigation, filter),
+    );
+    targets.sort();
+    targets.dedup();
+    Ok(targets)
 }

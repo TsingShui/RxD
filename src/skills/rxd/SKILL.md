@@ -21,7 +21,7 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-f PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-f … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-f … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
-| Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref` / `get-function`/`get-block --at` |
+| Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref --at` or `-f … --kind function|block|literal` / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-f TEXT`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
@@ -247,6 +247,7 @@ rxd evm blocks runtime.hex --encoding hex
 rxd evm interface runtime.hex --encoding hex
 rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
 rxd evm xref runtime.hex --encoding hex --at "$LITERAL_AT"
+rxd evm xref runtime.hex --encoding hex -f 1ba64846 --kind function
 rxd evm get-function runtime.hex --at "$CONTEXT_AT" --encoding hex --raw
 rxd evm get-block runtime.hex --at "$BLOCK_AT" --encoding hex
 ```

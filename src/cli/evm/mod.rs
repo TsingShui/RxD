@@ -60,13 +60,39 @@ pub struct StringsOptions {
     case: CaseArgs,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum XrefKind {
+    Function,
+    Block,
+    Literal,
+}
+
+impl XrefKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Function => "function",
+            Self::Block => "block",
+            Self::Literal => "literal",
+        }
+    }
+}
+
 #[derive(Args)]
+#[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
 pub struct XrefOptions {
     #[command(flatten)]
     options: Options,
     /// The coordinate a block, function or literal row prints.
-    #[arg(long)]
-    at: String,
+    #[arg(long, conflicts_with = "filter")]
+    at: Option<String>,
+    /// Substring over the target's selector, block coordinate or literal value; requires --kind.
+    #[arg(short = 'f', long, requires = "kind", conflicts_with = "at")]
+    filter: Option<String>,
+    /// Target kind for a content search: function, block or literal.
+    #[arg(long, value_enum, requires = "filter")]
+    kind: Option<XrefKind>,
+    #[command(flatten)]
+    case: CaseArgs,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -300,23 +326,44 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                             include_bytecode: options.include_bytecode,
                             filter: strings.filter.as_deref(),
                             case_sensitive: strings.case.sensitive(),
+                            search: None,
                         },
                         limits,
                         &mut perf,
                     )
                 }
-                Command::Xref(refs) => rxd_evm::references::refs_json(
-                    &navigation,
-                    functions.as_ref().unwrap(),
-                    &refs.at,
-                    Listing {
-                        include_bytecode: options.include_bytecode,
-                        filter: None,
-                        case_sensitive: false,
-                    },
-                    limits,
-                    &mut perf,
-                ),
+                Command::Xref(refs) => {
+                    let (at, search) = match (&refs.at, &refs.filter) {
+                        (Some(at), None) => (at.clone(), None),
+                        (None, Some(filter)) => {
+                            let kind = refs.kind.expect("clap requires --kind with --filter");
+                            let at = resolve_xref_search(
+                                &navigation,
+                                functions.as_ref().unwrap(),
+                                kind,
+                                filter,
+                                refs.case.sensitive(),
+                                limits,
+                                &mut perf,
+                            )?;
+                            (at, Some((kind.as_str(), filter.as_str())))
+                        }
+                        _ => unreachable!("clap enforces exactly one xref anchor"),
+                    };
+                    rxd_evm::references::refs_json(
+                        &navigation,
+                        functions.as_ref().unwrap(),
+                        &at,
+                        Listing {
+                            include_bytecode: options.include_bytecode,
+                            filter: None,
+                            case_sensitive: false,
+                            search,
+                        },
+                        limits,
+                        &mut perf,
+                    )
+                }
                 Command::GetBlock(block) => {
                     let at = block.selector.resolve().map_err(super::classify)?;
                     navigation.block_json(&at, &mut perf)
@@ -348,4 +395,49 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
         })
     })();
     super::finish(perf, options.perf, result)
+}
+
+fn resolve_xref_search(
+    navigation: &rxd_evm::Navigation,
+    functions: &rxd_evm::FunctionNavigation,
+    kind: XrefKind,
+    filter: &str,
+    case_sensitive: bool,
+    limits: rxd_evm::Limits,
+    perf: &mut Perf,
+) -> Result<String> {
+    let needle = rxd_core::filter::Contains::new(filter, case_sensitive);
+    let mut targets: Vec<String> = match kind {
+        XrefKind::Function => functions
+            .functions
+            .iter()
+            .filter(|function| needle.matches(&function.selector))
+            .map(|function| functions.function_coordinate(navigation, function))
+            .collect(),
+        XrefKind::Block => navigation
+            .blocks
+            .iter()
+            .filter(|block| needle.matches(&navigation.block_coordinate(block)))
+            .map(|block| navigation.block_coordinate(block))
+            .collect(),
+        XrefKind::Literal => {
+            rxd_evm::matching_targets(navigation, functions, &needle, limits, perf)?
+        }
+    };
+    targets.sort();
+    targets.dedup();
+    match targets.len() {
+        0 => Err(Error::failure(
+            rxd_core::Failure::NotFound,
+            format!("no {} target matches filter {filter:?}", kind.as_str()),
+        )),
+        1 => Ok(targets.pop().expect("one target")),
+        count => Err(Error::failure(
+            rxd_core::Failure::Ambiguous,
+            format!(
+                "filter {filter:?} matches {count} {} targets; narrow it or use --at",
+                kind.as_str()
+            ),
+        )),
+    }
 }

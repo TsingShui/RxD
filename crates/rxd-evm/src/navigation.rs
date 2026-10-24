@@ -37,6 +37,8 @@ pub struct Listing<'a> {
     pub filter: Option<&'a str>,
     /// Whether `filter` folds case; the CLI's `--case` decides it.
     pub case_sensitive: bool,
+    /// Echo the target search that resolved an xref anchor: `(kind, filter)`.
+    pub search: Option<(&'a str, &'a str)>,
 }
 
 pub struct Navigation {

@@ -136,8 +136,8 @@ source_call_graph_complete.
 
 Query echoes are fixed: blocks `{encoding, filter}`; interface `{encoding, filter}`;
 strings `{encoding, kind, query, match_mode, filter}`; xref `{encoding, at,
-reference_scope}`. Null does not mean an analysis
-ran or a count is zero. `blocks.basic_block_end=exclusive` and
+reference_scope}` plus `kind`/`filter` when `-f` resolved the anchor. Null does not mean
+an analysis ran or a count is zero. `blocks.basic_block_end=exclusive` and
 `boundary_status=producer_candidate`; xref keeps source_call_graph/ABI false. Function
 inventory and `function_code` FETCH use different discriminators; identity kind stays
 `function`, and FETCH adds the original bytecode/instructions/reconstruction fields while
@@ -308,9 +308,13 @@ timed separately.
 
 ## `xref`
 
-`evm xref INPUT --encoding raw|hex --at COORDINATE` accepts the block,
-function or literal coordinate a listing row prints and emits a schema-v2 JSONL header,
-zero or more reference records and a summary. Grammar/canonical validation/carrier/
+`evm xref INPUT --encoding raw|hex (--at COORDINATE | -f FILTER --kind
+function|block|literal)` accepts the block, function or literal coordinate a listing row
+prints, or resolves one by content. A search matches the value the target row is named
+by: the selector for a function, the block coordinate for a block, and the decoded value
+for a PUSH/data literal. It must resolve to exactly one target: zero is `NOT_FOUND`,
+more than one is `AMBIGUOUS` (narrow the filter or use `--at`). Filters fold case by
+default; `--case sensitive` makes them exact. Grammar/canonical validation/carrier/
 encoding/unit validation follow the corresponding FETCH; a coordinate that no catalogued
 unit carries is an error, not a zero-hit result. Copy/rename remains valid for the
 copy-only coordinate.
@@ -358,8 +362,8 @@ source_call_verified/abi_call_verified are always false and source_call_graph_co
 abi_verified false. Data, metadata and unknown ownership are never promoted to executed
 function calls.
 
-`xref` header query is `{encoding, at, reference_scope}` (the copy-only coordinate);
-code scope is `static_control_flow`. Header detail uses the common nullable schema with target_kind
+`xref` header query is `{encoding, at, reference_scope}` (the copy-only coordinate), plus
+`kind`/`filter` for a content search; code scope is `static_control_flow`. Header detail uses the common nullable schema with target_kind
 block/function, target_decoded_offset (target PC), target_semantics (exact_block_start/
 validated_candidate_entry/unvalidated_candidate_entry), coverage
 (contextual_and_block_local), source_call_graph_complete=false, abi_verified=false;
