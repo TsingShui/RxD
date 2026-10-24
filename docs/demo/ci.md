@@ -126,10 +126,9 @@ python3 scripts/test-release.py
 
 Build order: native ILSpy production, pinned Kuna specs, linked Kuna CLI, then
 complete rxd release. Every native runner installs the pinned .NET 10 SDK and builds
-the engine once on that OS; no desktop ILSpy prebuilt is checked in or prepared. See
-[ADR 0019](../adr/0019-native-desktop-ilspy.md) and
-[prebuilt policy](../../prebuilt/README.md). The separate Android App bundle is
-validated independently and is not part of the desktop CLI build. macOS is ARM64
+the engine once on that OS; no ILSpy prebuilt is checked in or prepared. See
+[ADR 0019](../adr/0019-native-desktop-ilspy.md). Android App engines are produced
+separately from source and are not part of the desktop CLI build. macOS is ARM64
 only. Submodule checkout includes full history for Kuna version calculation. Rust
 dependencies and Kuna compiler/spec outputs are cached per platform/toolchain. Newer
 PR runs cancel stale runs of that PR; main commits have separate concurrency groups

@@ -2,8 +2,8 @@
 
 Status: accepted. Amended by [ADR 0006](0006-linked-kuna-cli.md) and
 [ADR 0019](0019-native-desktop-ilspy.md); the single-file runtime contract
-remains unchanged. Desktop ILSpy is now built per release target rather than
-read from a checked-in prebuilt.
+remains unchanged. ILSpy is now built per release target rather than read from a
+checked-in prebuilt.
 
 CI builds the entire rxd on Linux x86_64/arm64, Windows x86_64 and macOS arm64.
 Each native runner builds the pinned ILSpy NativeAOT library and the unmodified

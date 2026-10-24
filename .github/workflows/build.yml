@@ -70,10 +70,6 @@ jobs:
         run: |
           python3 -B -m unittest discover -s devtools/testing -p 'test_*.py'
           python3 -B -m unittest discover -s devtools/upstream -p 'test_*.py'
-          python3 -B -m unittest discover -s devtools/prebuilt -p 'test_*.py'
-      - name: Verify the Android App prebuilt identity
-        if: steps.scope.outputs.full == 'true'
-        run: python3 scripts/prebuilt-ilspy.py --android-app check
 
   quick:
     name: Quick checks (${{ matrix.scope }})

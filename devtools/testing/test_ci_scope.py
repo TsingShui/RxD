@@ -90,10 +90,10 @@ class ScopeCli(unittest.TestCase):
         self.put("crates/rxd-dotnet/native/Exports.cs")
         report, _ = self.discover()
         self.assertTrue(report["full"])
-        self.put("prebuilt/android-ilspy/aarch64-linux-android/manifest.json")
+        self.put("devtools/android-ilspy/Engine.csproj")
         report, _ = self.discover()
         self.assertTrue(report["full"])
-        self.assertTrue(report["tools"])
+        self.assertFalse(report["tools"])
         report, _ = self.discover("--full")
         self.assertEqual(self.scopes(report), ["dex", "dotnet", "jvm", "shared"])
 

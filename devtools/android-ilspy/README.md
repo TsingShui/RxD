@@ -32,7 +32,8 @@ mkdir -p target/android-ilspy
 Verify downloaded/restored NuGet bytes against the official fixed package hash
 in `crates/rxd-dotnet/native/NOTICE`. NuGet restores use the normal global package
 cache (`NUGET_PACKAGES` or `~/.nuget/packages`); native build intermediates stay under
-`target/`. No build happens during consumption of the prebuilt package.
+`target/`. No Android ILSpy runtime is checked in; each consumer produces its own
+engine and packages it with the App.
 
 ## Private OpenSSL
 
@@ -53,13 +54,10 @@ is not asserted to work; two libraries are intentionally shipped.
 
 Stage engine, private OpenSSL, the same 167 .NET10.0.12 reference DLLs, applicable
 licenses and this C ABI header as a bounded runtime bundle with source/package
-identities. The archive's native build records `source_inputs` for the production
-Exports/NOTICE and this Engine project/loader. Import the Android collection with:
-
-```sh
-python3 scripts/prebuilt-ilspy.py --android-app add android-arm64 --source target/android-ilspy/bundle
-python3 scripts/prebuilt-ilspy.py --android-app check
-```
+identities. The archive's native build should record `source_inputs` for the
+production Exports/NOTICE and this Engine project/loader. No prebuilt archive is
+checked in; the produced `.so` and its adjacent OpenSSL/reference metadata are
+passed directly to the App build.
 
 The producer inputs and archive metadata are reviewed provenance, not proof that
 an arbitrary third-party binary was built from the declared source. Test the exact

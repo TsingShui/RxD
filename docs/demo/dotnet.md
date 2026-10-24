@@ -118,12 +118,11 @@ RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
 The producer creates the deterministic engine archive, reference metadata, manifest
 and `embed.rs` under `target/dotnet-native/<rid>/`; Cargo embeds that explicit include
 and never calls dotnet. There is no checked-in desktop ILSpy bundle; `bundled-ilspy`
-without `RXD_ILSPY_EMBED_RS` fails with the producer command. The Android App bundle
-under `prebuilt/android-ilspy/` is separate and is not a desktop CLI runtime.
+without `RXD_ILSPY_EMBED_RS` fails with the producer command.
 
-The pinned engine is ILSpy `11.1.0.9782`; see [ADR 0009](../adr/0009-dotnet-ilspy-v11.md)
-and [`prebuilt/README.md`](../../prebuilt/README.md). Native builds need .NET 10 SDK and
-the platform toolchain. Analysis only reads assemblies.
+The pinned engine is ILSpy `11.1.0.9782`; see
+[ADR 0009](../adr/0009-dotnet-ilspy-v11.md). Native builds need .NET 10 SDK and the
+platform toolchain. Analysis only reads assemblies.
 
 ```sh
 sugar=tests/fixtures/dotnet/sugar/Sugar.dll
@@ -140,7 +139,7 @@ do not disguise MoveNext offsets as the entry method; mapping may be empty. Reco
 not semantic equivalence or a recompilation proof.
 
 `get` always includes original IL and instruction offsets. With `csharp-decompiler` and a
-prebuilt engine, success returns `csharp`, `decompiled: true`, code and an IL→line
+produced engine, success returns `csharp`, `decompiled: true`, code and an IL→line
 mapping; a default build or missing runtime library returns complete `il`,
 `decompiled: false`, `code: null`, `engine_unavailable` and a `reason_detail` explaining
 the state. `representation: il` with `reason: null` means IL was requested with `--raw`,
@@ -209,16 +208,12 @@ or virtual dispatch. See the [.NET design](../design/dotnet-design.md#commands-a
 
 ## Android App embedding
 
-The ARM64 Bionic engine, private OpenSSL, reference metadata, headers and licenses are in
-[`prebuilt/android-ilspy/`](../../prebuilt/android-ilspy/):
-
-```sh
-python3 scripts/prebuilt-ilspy.py --android-app check
-```
-
-Place both `.so` files in the App according to that directory and call the C ABI from
-your own JNI/NDK adapter. It is not a generic AAR or the complete rxd Android CLI; do not
-substitute GNU/Linux ARM64 libraries for Bionic.
+There is no checked-in Android ILSpy runtime. Build the ARM64 Bionic engine and
+private OpenSSL from source with
+[`devtools/android-ilspy/`](../../devtools/android-ilspy/README.md), then place the
+engine, OpenSSL, reference metadata and header in your App-owned JNI/NDK adapter. It
+is not a generic AAR or the complete rxd Android CLI; do not substitute GNU/Linux
+ARM64 libraries for Bionic.
 
 ## MCP
 

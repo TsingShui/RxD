@@ -33,9 +33,9 @@ RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
 
 Cargo embeds only the explicit producer include and never downloads or invokes
 .NET. `bundled-ilspy` without `RXD_ILSPY_EMBED_RS` fails with the producer command.
-macOS is ARM64 only. See [`prebuilt/README.md`](../../prebuilt/README.md) and
-[ADR 0019](../../docs/adr/0019-native-desktop-ilspy.md). The only checked-in ILSpy
-prebuilt is the separate Android App C ABI bundle.
+macOS is ARM64 only. See
+[ADR 0019](../../docs/adr/0019-native-desktop-ilspy.md). No ILSpy runtime is checked
+in; Android App engines are produced separately from source.
 
 ## Build the NativeAOT shared library
 
@@ -227,7 +227,7 @@ Prepare the pinned runtime assemblies as described in
 Reports and atomic output workloads stay under ignored `target/benchmarks/`.
 The latency runner builds Rust with `csharp-decompiler` unless `--binary` is
 supplied; it never builds .NET or launches an external managed runner. Override
-`--native-library` to select a trusted prebuilt dylib; its path, size and SHA-256
+`--native-library` to select a trusted produced dylib; its path, size and SHA-256
 are recorded and applied to every CLI invocation. `RXD_REFDIR` is also recorded.
 It preserves all per-workload samples and stops on unexpected recovery failure
 or a >150 ms latency sample instead of accepting a fallback as latency evidence.

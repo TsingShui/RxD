@@ -13,7 +13,7 @@ FULL_FILES = {
     "Cargo.toml", "Cargo.lock", "build.rs", ".gitmodules", "install.sh",
     ".github/workflows/build.yml", "scripts/build-bundled.py", "scripts/build-ilspy.py",
     "scripts/runtime_bundle.py", "scripts/package-release.py", "scripts/verify-release.py",
-    "scripts/test-release.py", "scripts/test-install.py", "scripts/prebuilt-ilspy.py",
+    "scripts/test-release.py", "scripts/test-install.py",
     "crates/rxd-dotnet/build.rs", "crates/rxd-dotnet/Cargo.toml",
 }
 TOOL_FILES = {"scripts/ci-scope.py", "scripts/check-upstream.py", "scripts/check-kuna-latest.py"}
@@ -30,15 +30,15 @@ def plan(paths):
         if path.startswith(("apps/arxd/", "third_party/termux-exec/")):
             reasons[path] = "archived Arxd app; no product checks"
         elif path in FULL_FILES or path.startswith((
-            ".cargo/", ".github/workflows/", "crates/rxd-dotnet/native/", "prebuilt/", "devtools/android-ilspy/",
+            ".cargo/", ".github/workflows/", "crates/rxd-dotnet/native/", "devtools/android-ilspy/",
             "crates/rxd-kuna-cli/", "third_party/kuna", "src/cli/kuna/",
             "src/query/kuna", "src/mcp/", "tests/mcp/", "tests/kuna/",
         )):
             full = True
             reasons[path] = "complete native/packaging validation"
-            if path.startswith(".github/") or path == "scripts/prebuilt-ilspy.py" or path.startswith("prebuilt/"):
+            if path.startswith(".github/"):
                 tools = True
-        elif path in TOOL_FILES or path.startswith(("devtools/upstream/", "devtools/testing/", "devtools/prebuilt/")):
+        elif path in TOOL_FILES or path.startswith(("devtools/upstream/", "devtools/testing/")):
             tools = True
             reasons[path] = "maintenance tooling contracts"
         elif path.endswith(".md") and (

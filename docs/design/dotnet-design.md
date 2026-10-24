@@ -18,8 +18,8 @@ dependency enabled by `csharp-decompiler`; the default Cargo build does not invo
 .NET. It only decompiles and never loads/executes the analyzed assembly.
 
 See [ADR 0009](../adr/0009-dotnet-ilspy-v11.md) for the current engine pin and
-[ADR 0019](../adr/0019-native-desktop-ilspy.md) for native desktop production and
-the separate Android prebuilt.
+[ADR 0019](../adr/0019-native-desktop-ilspy.md) for source-built desktop and
+Android production. No ILSpy runtime is checked in.
 
 ## Distribution and engine loading
 
@@ -31,11 +31,10 @@ the engine, .NET 10 reference assemblies and licenses. It writes
 generated `embed.rs`; there is no checked-in desktop fallback. Cargo never downloads,
 invokes .NET or produces NativeAOT. `scripts/build-bundled.py --features
 bundled-ilspy` auto-selects the host's prepared include and otherwise fails with the
-producer command. macOS supports ARM64 only, not x64. See `prebuilt/README.md`.
+producer command. macOS supports ARM64 only, not x64.
 
 Desktop release builds run the producer on each native target and then embed the
-engine, reference metadata and licenses into the single rxd executable. The only
-checked-in ILSpy prebuilt is the separate Android App C ABI collection below.
+engine, reference metadata and licenses into the single rxd executable.
 
 `bundled-ilspy` implies `csharp-decompiler`. The first C# FETCH validates and atomically
 extracts `<cache-base>/rxd-ilspy/<archive-sha256>/` through `rxd-core::bundle`, then
@@ -48,12 +47,11 @@ changing process environment or probing input directories. Explicit
 development mode remains available. Reference assemblies are for static metadata
 resolution only; runtime does not depend on a .NET SDK/runtime.
 
-`prebuilt/android-ilspy/` separately stores the only checked-in ILSpy prebuilt: an
-ARM64 Bionic engine, private OpenSSL, reference metadata, C ABI headers and licenses
-for App embedding. It is validated with
-`scripts/prebuilt-ilspy.py --android-app check`, is not a desktop CLI runtime, and
-does not enable a full rxd Android build. Consumers provide their own App JNI/NDK
-adapter; probe APKs and signing material are not distributed.
+Android App embedding is source-built only. `devtools/android-ilspy/` documents the
+ARM64 Bionic engine, private OpenSSL, reference metadata and C ABI header produced
+for an App-owned adapter. No checked-in runtime, AAR, APK or signing material is
+distributed, and this does not enable a full rxd Android build. Consumers build the
+engine with .NET 10 and the Android NDK and package their own JNI/NDK adapter.
 
 ## Inputs and identity
 
@@ -406,7 +404,7 @@ The production path produces structured, source-like C# by calling the pinned IL
 
 The shared library is an in-process self-contained native library (dlopen/link), not a
 subprocess tool, and does not add a CoreCLR runtime dependency. Rust enables the C ABI
-via `csharp-decompiler`; `build.rs` only locates the prebuilt library and never calls
+via `csharp-decompiler`; `build.rs` only locates the produced library and never calls
 dotnet. To keep the CLI starting without the library, the engine is not hard-linked;
 render dlopens/dlsyms on demand and returns `engine_unavailable` with complete IL/EH
 when missing or disabled. See `benches/ilspy/README.md`.

@@ -197,12 +197,12 @@ them by name, which is why the module filter is not used as evidence for those t
   acceptance command stays green; the all-backends run (`mcp,all-backends`: 59 passed) is
   the one used for the final gate.
 
-## Rebuilding the prebuilt bundles
+## Rebuilding the native engines
 
-Desktop ILSpy runtimes are no longer checked in; build them from the final commit
-with `scripts/build-ilspy.py <rid>`. The separate Android App bundle under
-`prebuilt/android-ilspy/` must be re-produced from the final shared native sources
-(`prebuilt/README.md` has the manifest/licence contract).
+No ILSpy runtime is checked in. Desktop engines are built from the final commit
+with `scripts/build-ilspy.py <rid>`. Android App engines are produced from source
+with `devtools/android-ilspy/`; they are not part of the repository or desktop
+distribution.
 
 ## Notes for future work
 

@@ -1,9 +1,8 @@
 # ADR 0010: Consume verified NativeAOT runtimes from prebuilt/
 
-Status: accepted; its desktop ILSpy prebuilt decision is superseded by
-[ADR 0019](0019-native-desktop-ilspy.md). The desktop import/prepare instructions
-below are retained as history. The Android App collection and runtime semantics
-remain current.
+Status: superseded by [ADR 0019](0019-native-desktop-ilspy.md). No checked-in
+ILSpy prebuilt, desktop or Android, remains current. This record is retained for
+history.
 
 ## Problem
 
@@ -64,4 +63,4 @@ without that explicit collection flag, Android imports are rejected. It cannot
 be prepared as a CLI include. The complete rxd Android CLI remains unsupported;
 no generic JNI library, AAR, probe APK or signing material is distributed.
 
-Usage and artifact policy: [`prebuilt/README.md`](../../prebuilt/README.md).
+Usage and artifact policy are no longer current; see [ADR 0019](0019-native-desktop-ilspy.md).

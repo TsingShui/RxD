@@ -196,9 +196,10 @@ and reports `KUNA_NOT_BUNDLED` when it runs; release bundles and
 `scripts/build-bundled.py` opt in, while `--no-default-features` removes the
 namespace entirely.
 
-The only checked-in native prebuilt is the separate Android App bundle documented
-in [`prebuilt/README.md`](prebuilt/README.md); the full maintenance and release
-flow is in
+No native engine is checked in. Desktop ILSpy is produced per target with
+`scripts/build-ilspy.py`; Android App engines are produced from source with the
+instructions in [`devtools/android-ilspy/`](devtools/android-ilspy/). The full
+maintenance and release flow is in
 [Build and verification](docs/demo/ci.md#build-and-verification-details).
 
 **Agent skills**: after installing the binary, use the root entry point to select

@@ -39,11 +39,13 @@ kunaData.target = target;
 writeFileSync(join(androidKuna, 'manifest.json'), `${JSON.stringify(kunaData, null, 2)}\n`);
 writeFileSync(join(androidKuna, 'embed.rs'), `pub const DATA: &[u8] = include_bytes!(r#"${join(androidKuna, 'bundle.tar.gz')}"#);\npub const MANIFEST: &str = include_str!(r#"${join(androidKuna, 'manifest.json')}"#);\npub const TARGET: &str = r#"${target}"#;\n`);
 const kunaEmbed = join(androidKuna, 'embed.rs');
-const ilspyCheck = spawnSync('python3', ['scripts/prebuilt-ilspy.py', '--android-app', 'check'], { cwd: root, stdio: 'inherit' });
-if (ilspyCheck.status !== 0) process.exit(ilspyCheck.status ?? 1);
-const ilspyBundle = join(root, 'prebuilt/android-ilspy', target, 'bundle.tar.gz');
-const ilspyManifest = join(root, 'prebuilt/android-ilspy', target, 'manifest.json');
-if (!existsSync(ilspyBundle) || !existsSync(ilspyManifest)) throw new Error(`Android ILSpy bundle is missing for ${target}`);
+// No Android ILSpy prebuilt is checked in. Produce and stage a local bundle
+// according to devtools/android-ilspy/README.md before building the App.
+const ilspyBundle = join(root, 'target/android-ilspy/bundle/bundle.tar.gz');
+const ilspyManifest = join(root, 'target/android-ilspy/bundle/manifest.json');
+if (!existsSync(ilspyBundle) || !existsSync(ilspyManifest)) {
+  throw new Error(`Build and stage the Android ILSpy bundle at target/android-ilspy/bundle (see devtools/android-ilspy/README.md)`);
+}
 const androidIlspy = join(root, 'target/ilspy', target);
 mkdirSync(androidIlspy, { recursive: true });
 const ilspyEmbed = join(androidIlspy, 'embed.rs');

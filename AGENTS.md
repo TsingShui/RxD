@@ -79,22 +79,20 @@ affected examples in the matching `docs/demo/*.md`. Keep cross-backend
 architecture in this file and `docs/adr/`; there is no separate root-level
 design document.
 
-Build binaries, benchmark reports, and demo outputs belong under ignored
-`target/`, not in source or documentation directories. Curated, verified
-Android runtime bundles under `prebuilt/` are the only exception; keep their
-manifests, source/package identities and licenses, but never SDKs, caches or
-intermediates. Desktop ILSpy is built per target under `target/`. See
-`prebuilt/README.md`.
+Build binaries, benchmark reports, demo outputs and native runtime bundles belong
+under ignored `target/`, not in source or documentation directories. No compiled
+ILSpy runtime is checked in; desktop engines are built per target and Android App
+engines are produced from source by `devtools/android-ilspy/`.
 
 ## Build, Test, and Development Commands
 
 - `cargo build`: compile the complete development binary with default
   `all-feature` (all backend namespaces and MCP; Kuna and desktop ILSpy remain
   explicitly optional). Initialize `third_party/kuna` for Cargo path
-  resolution. Desktop ILSpy has no checked-in prebuilt: run
+  resolution. No ILSpy runtime is checked in: run
   `python3 scripts/build-ilspy.py <rid>` and set `RXD_ILSPY_EMBED_RS` to its
-  `embed.rs` when building `bundled-ilspy`. Only the separate Android App
-  bundle is prebuilt. Use `--no-default-features` for reduced builds.
+  `embed.rs` when building `bundled-ilspy`. Android App engines follow
+  `devtools/android-ilspy/`. Use `--no-default-features` for reduced builds.
 - `cargo test --test cli`: run all-backend CLI E2E for shared product changes,
   not every commit. During backend development prefer the real focused CLI,
   for example
