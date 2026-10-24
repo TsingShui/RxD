@@ -55,13 +55,13 @@ the rendered signature for `types`, `module.name` for `imports`, the export name
 for `exports`, the decoded literal for `strings`, and otherwise the row's own `at`
 coordinate. Filters fold case by default; `--case sensitive` makes them exact-case.
 `functions --name NAME` matches the name section exactly (duplicates preserved).
-`functions --at func:N | --from JSONL` selects an existing defined-function row;
+`functions --at func:N` selects an existing defined-function row;
 there is no separate numeric `--func` selector. Exact name, coordinate and substring
 selectors AND together. Coordinate existence is validated before filtering: an
 out-of-range index, or an imported function with no defined-function row, is
 `NOT_FOUND`, never an empty-success listing. Unmatched content/name searches may
 return an empty complete listing. `query` echoes `filter, case`, plus `at, name`
-for functions or `at, kind` for references; a stream anchor echoes its resolved `at`.
+for functions or `at, kind` for references.
 
 Import rows retain their import-entry identity and expose a nullable
 `detail.target_at` (`func:N` for function imports). Export rows expose
@@ -69,14 +69,12 @@ Import rows retain their import-entry identity and expose a nullable
 import positions: copy the target coordinate to query a function, including in a
 stripped module with no name section. Export names do not become function names.
 
-- `get-function --at COORD | --from JSONL` takes the `at` a `functions` row prints (`func:42`).
+- `get-function --at COORD` takes the `at` a `functions` row prints (`func:42`).
   A coordinate names only a position, so a malformed one is `INVALID_QUERY` rather
   than guessed and nothing is expanded against a hash. Indices must use canonical
-  unsigned decimal spelling. A well-formed missing index is `NOT_FOUND`. A foreign
-  stream is caught by the `--from` source-identity check, not by the coordinate.
-  Imported function indices have no code body and are `INVALID_QUERY`. `--from` consumes a
-  function listing and validates its source identity against the same fixed Module
-  buffer used by the subsequent listing, reference scan or extraction.
+  unsigned decimal spelling. A well-formed missing index is `NOT_FOUND`. A coordinate
+  copied from another module is not checked; re-run the listing for this module.
+  Imported function indices have no code body and are `INVALID_QUERY`.
 - `get-function` emits one JSON `function_view` record. It first tries structured
   decompilation: on success it returns `representation: clike`, `decompiled: true`,
   language-neutral C-like code, a `mapping` from output lines to code-body byte
@@ -96,7 +94,7 @@ stripped module with no name section. Export names do not become function names.
   without lossy replacement, and `-f/--filter` then matches their lossy text.
   Data-segment linear-memory layout is reported as the declared offset expression;
   no constant folding or runtime evaluation is performed.
-- `xref --at func:N | --from JSONL` finds instructions in all defined function bodies
+- `xref --at func:N` finds instructions in all defined function bodies
   that explicitly reference the target function index (`call`, `return_call`,
   `ref.func`), including imported targets. `--kind function` is optional for an
   identity; a contradictory kind is `INVALID_QUERY`, naming both kinds.
@@ -112,8 +110,8 @@ stripped module with no name section. Export names do not become function names.
 
 `-o` atomically writes exactly the stdout content. Failures emit no partial stdout
 and never overwrite an existing output. Diagnostics go to stderr. `INVALID_QUERY`,
-`NOT_FOUND` and argument errors exit 2; `SOURCE_MISMATCH`, input, resource and I/O
-failures exit 1 (ADR 0015).
+`NOT_FOUND` and argument errors exit 2; input, resource and I/O failures exit 1
+(ADR 0015).
 
 ## Envelope (schema_version=2)
 

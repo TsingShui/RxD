@@ -104,10 +104,9 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
 }
 
 /// `--at` is an identity whose table names its kind; `-f` is a content search and can only
-/// look at literals, because a .NET member is a token rather than a name; `--from` takes the
-/// coordinate a previous stream printed.
+/// look at literals, because a .NET member is a token rather than a name.
 #[test]
-fn dotnet_xref_takes_a_token_a_literal_search_or_a_previous_stream() {
+fn dotnet_xref_takes_a_token_or_a_literal_search() {
     let path = string_input();
     let method = method_id(&path, "Unicode");
     let mismatched = run("xref", &path, &["--at", &method, "--kind", "field"]);
@@ -123,23 +122,6 @@ fn dotnet_xref_takes_a_token_a_literal_search_or_a_previous_stream() {
     let no_names = run("xref", &path, &["-f", "Unicode", "--kind", "method"]);
     assert_eq!(no_names.status.code(), Some(2));
     rejected(no_names);
-
-    // A stream is only another spelling of `--at`, so the rows must be identical.
-    let methods = jsonl(&run("methods", &path, &[]));
-    let row = methods
-        .iter()
-        .find(|row| row["at"] == method.as_str())
-        .unwrap();
-    let stream = tempfile::NamedTempFile::new().unwrap();
-    fs::write(stream.path(), format!("{row}\n")).unwrap();
-    let anchored = jsonl(&run("xref", &path, &["--at", &method]));
-    let streamed = jsonl(&run(
-        "xref",
-        &path,
-        &["--from", stream.path().to_str().unwrap()],
-    ));
-    assert_eq!(streamed[1..], anchored[1..]);
-    assert!(streamed[0]["query"]["from"].as_str().is_some());
 
     // A literal is addressed exactly by `--at '<literal>' --kind string`, the same shape dex
     // and jar take, and a substring search reports the literal it matched.

@@ -21,10 +21,9 @@ modules are never instantiated.
 | `get-function` | One function: structured C-like source, or the instruction view |
 
 Every listing takes `-f/--filter` (folded unless `--case sensitive`); `get-function`
-and `xref` take `--at func:N` or `--from` a previous stream whose `source_id` is
-checked against the current input. `-o` writes the stream atomically and `--perf`
-reports stages and resource use. Rows carry coordinates, not hashes, so the module
-identity is stated once in the header `source_id`.
+and `xref` take `--at func:N`. `-o` writes the stream atomically and `--perf` reports
+stages and resource use. Rows carry coordinates, not hashes, so the module identity is
+stated once in the header `source_id`.
 
 Decompilation is per requested function, never a whole-module pass: listings do
 not enter the decompiler. `get-function` emits C-like code with a line-to-byte
@@ -54,16 +53,12 @@ Each `functions` row prints a short `at` coordinate (`func:1`); pass that back w
 ```sh
 at=$($rxd wasm functions tests/fixtures/wasm/fixture.wasm --name sum | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="function"))')
 # Default get tries structured C-like decompilation, then falls back to instructions.
-$rxd wasm functions tests/fixtures/wasm/fixture.wasm | \
-  $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --from -
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at"
 # --raw is the one flag for the original instruction view (opcode + immediates +
 # code-body offsets); there is no separate --bytecode/--instructions spelling.
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --raw
 $rxd wasm strings tests/fixtures/wasm/fixture.wasm -f hello
 $rxd wasm xref tests/fixtures/wasm/fixture.wasm --at "$at"
-$rxd wasm functions tests/fixtures/wasm/fixture.wasm --name sum | \
-  $rxd wasm xref tests/fixtures/wasm/fixture.wasm --from -
 $rxd wasm xref tests/fixtures/wasm/fixture.wasm --kind function -f ENV.LOG
 $rxd wasm functions tests/fixtures/wasm/fixture.wasm --at "$at"
 $rxd wasm get-function tests/fixtures/wasm/fixture.wasm --at "$at" --perf
@@ -86,8 +81,8 @@ function in `detail.target`, and report only direct calls and `ref.func`;
 Export rows expose `detail.target_at` for direct navigation to the exported function;
 function imports expose the same field for caller queries, but have no fetchable body.
 Names are not identities, and export aliases do not become name-section labels.
-Coordinates refer to the current input; use a listing's `--from` stream to detect
-changed input bytes, including same-size changes.
+Coordinates refer to the current input; re-run the listing for changed input bytes,
+including same-size changes.
 A nonexistent coordinate is `NOT_FOUND`; an unmatched name filter is a complete
 empty result. Contradictory kinds are argument errors, never silent empty scans. Budgets come from the shared
 `rxd_core::Budget` table, so there is no `--max-*` flag. Whole-function decompilation

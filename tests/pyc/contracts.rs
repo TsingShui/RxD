@@ -88,16 +88,11 @@ fn pyc_contract_name_content_search_keeps_payloads_order_case_and_scope() {
 }
 
 #[test]
-fn pyc_contract_listing_and_constant_streams_bind_to_the_same_input() {
+fn pyc_contract_listing_and_constant_coordinates() {
     let path = path();
-    let dir = tempfile::tempdir().unwrap();
-    let code_stream = dir.path().join("codes.jsonl");
     let selected = query("codes", &path, &["--name", "same"]);
     let code_rows = rows(&selected);
     let at = code_rows[1]["at"].as_str().unwrap();
-    fs::write(&code_stream, &selected.stdout).unwrap();
-    let from = query("codes", &path, &["--from", code_stream.to_str().unwrap()]);
-    assert_eq!(from.stdout, query("codes", &path, &["--at", at]).stdout);
     let intersected = rows(&query(
         "codes",
         &path,
@@ -116,66 +111,14 @@ fn pyc_contract_listing_and_constant_streams_bind_to_the_same_input() {
         "unexpected argument",
     );
 
-    let constant_stream = dir.path().join("strings.jsonl");
     let constants = query("strings", &path, &["-f", "shared-container-marker"]);
     let literal_rows = rows(&constants);
     let literal = literal_rows[1]["at"].as_str().unwrap();
-    fs::write(&constant_stream, &constants.stdout).unwrap();
-    let from = query(
-        "xref",
-        &path,
-        &["--from", constant_stream.to_str().unwrap()],
-    );
-    let references = rows(&from);
+    let references = rows(&query("xref", &path, &["--at", literal]));
     assert_eq!(references[0]["query"]["kind"], "constant");
-    assert_eq!(from.stdout, query("xref", &path, &["--at", literal]).stdout);
     assert!(
         hits(&references)
             .iter()
             .all(|r| r["detail"]["target_name"].is_null())
     );
-    failure(
-        query(
-            "xref",
-            &path,
-            &[
-                "--kind",
-                "name",
-                "--from",
-                constant_stream.to_str().unwrap(),
-            ],
-        ),
-        2,
-        "constant",
-    );
-
-    // Timestamp-only mutation is still valid, same-sized input with a different hash.
-    let mut changed = fs::read(&path).unwrap();
-    changed[8] ^= 1;
-    let changed_path = dir.path().join("changed.pyc");
-    fs::write(&changed_path, changed).unwrap();
-    success(&query("codes", &changed_path, &[]));
-    let dest = dir.path().join("keep.jsonl");
-    for (command, stream) in [
-        ("codes", &code_stream),
-        ("get-code", &code_stream),
-        ("xref", &constant_stream),
-    ] {
-        fs::write(&dest, b"keep").unwrap();
-        failure(
-            query(
-                command,
-                &changed_path,
-                &[
-                    "--from",
-                    stream.to_str().unwrap(),
-                    "-o",
-                    dest.to_str().unwrap(),
-                ],
-            ),
-            1,
-            "SOURCE_MISMATCH",
-        );
-        assert_eq!(fs::read(&dest).unwrap(), b"keep");
-    }
 }

@@ -1,5 +1,4 @@
 mod args;
-use super::xref::Expect;
 use super::{finish, write_output};
 pub(crate) use args::Command;
 use rxd_core::{Error, Limits, Result, perf::Perf};
@@ -75,15 +74,8 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
                 .output
                 .as_deref()
                 .ok_or_else(|| Error::new("INVALID_QUERY", "extract requires --output"))?;
-            // Bind --from to the very buffer extraction will use, not merely its length
-            // or a separate read that could change before the artifact is selected.
+            let at = selector.resolve().map_err(super::classify)?;
             let source = rxd_html::Source::read(&common.input, limits, &mut perf)?;
-            let at = selector
-                .resolve(
-                    &["element", "text", "comment", "doctype", "resource"],
-                    Expect::Content(source.source_id()),
-                )
-                .map_err(super::classify)?;
             let response = source.extract(&at, content, destination, &mut perf)?;
             perf.measure("write", || {
                 write_output(&response.bytes, Some(destination))?;

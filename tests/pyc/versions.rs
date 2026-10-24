@@ -992,38 +992,6 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
             2,
             "INVALID_QUERY",
         );
-        // Short coordinates have no digest. Foreign identity belongs to the
-        // original stream header, not to an invented suffix on code:N.
-        let code_stream = dir.path().join("codes.jsonl");
-        let constant_stream = dir.path().join("strings.jsonl");
-        for (cmd, stream) in [("codes", &code_stream), ("strings", &constant_stream)] {
-            let output = command(cmd, &original, &[]);
-            success(&output);
-            fs::write(stream, output.stdout).unwrap();
-        }
-        for (cmd, stream) in [
-            ("codes", &code_stream),
-            ("get-code", &code_stream),
-            ("xref", &constant_stream),
-        ] {
-            fs::write(&dest, b"keep").unwrap();
-            failure(
-                command(
-                    cmd,
-                    &path,
-                    &[
-                        "--from",
-                        stream.to_str().unwrap(),
-                        "-o",
-                        dest.to_str().unwrap(),
-                    ],
-                ),
-                1,
-                "SOURCE_MISMATCH",
-            );
-            assert_eq!(fs::read(&dest).unwrap(), b"keep");
-            assert_eq!(fs::read(&path).unwrap(), changed);
-        }
         let zero = rows(&command(
             "xref",
             &original,

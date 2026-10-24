@@ -241,10 +241,10 @@ pub(crate) enum Command {
         #[command(flatten)]
         selector: super::super::xref::Selector,
         /// A byte offset to anchor on instead, including one inside a multi-byte identifier.
-        #[arg(long, conflicts_with_all = ["at", "from", "filter"])]
+        #[arg(long, conflicts_with_all = ["at", "filter"])]
         byte: Option<u64>,
         /// Substring over binding names, folded unless `--case sensitive`.
-        #[arg(short, long, conflicts_with_all = ["at", "from", "byte"], requires = "kind")]
+        #[arg(short, long, conflicts_with_all = ["at", "byte"], requires = "kind")]
         filter: Option<String>,
         /// Only `symbol`: the one reference kind JS has is a lexical binding.
         #[arg(long, value_name = "KIND", requires = "filter")]

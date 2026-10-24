@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::filter::CaseArgs;
-use super::xref::{Expect, Selector};
+use super::xref::Selector;
 use clap::{Args, Subcommand, ValueEnum};
 use rxd_core::{Error, Result, perf::Perf};
 use rxd_evm::{
@@ -95,20 +95,12 @@ pub struct FunctionOptions {
     /// The coordinate an interface row prints.
     #[arg(
         long,
-        required_unless_present_any = ["selector", "from"],
-        conflicts_with_all = ["selector", "from"]
+        required_unless_present = "selector",
+        conflicts_with = "selector"
     )]
     at: Option<String>,
-    /// Read the coordinate from a previous stream; `--selector` stays the ABI alternative.
-    #[arg(
-        long,
-        value_name = "JSONL",
-        required_unless_present_any = ["at", "selector"],
-        conflicts_with_all = ["at", "selector"]
-    )]
-    from: Option<PathBuf>,
     /// Select exactly one candidate by its four-byte selector.
-    #[arg(long, conflicts_with_all = ["at", "from"])]
+    #[arg(long, conflicts_with = "at")]
     selector: Option<String>,
     /// Return original byte segments/instructions without requesting reconstruction.
     #[arg(long)]
@@ -331,36 +323,14 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                     &mut perf,
                 ),
                 Command::GetBlock(block) => {
-                    let at = block
-                        .selector
-                        .resolve(
-                            &["basic_block"],
-                            Expect::Content(&navigation.carrier.source_id),
-                        )
-                        .map_err(super::classify)?;
+                    let at = block.selector.resolve().map_err(super::classify)?;
                     navigation.block_json(&at, &mut perf)
                 }
                 Command::GetFunction(function) => {
-                    // `--at`, `--from` and `--selector` all name one candidate; the stream is
-                    // only another spelling of `--at`.
-                    let from = function
-                        .from
-                        .as_deref()
-                        .map(|path| {
-                            crate::cli::xref::selector_stream(
-                                path,
-                                &["function", "interface_function"],
-                                Expect::Content(&navigation.carrier.source_id),
-                            )
-                            .map_err(|error| Error::new("INVALID_QUERY", format!("{error:#}")))
-                        })
-                        .transpose()?;
-                    let selection = match (&function.at, from.as_deref()) {
-                        (Some(at), _) => FunctionSelection::At(at),
-                        (None, Some(at)) => FunctionSelection::At(at),
-                        (None, None) => {
-                            FunctionSelection::Selector(function.selector.as_deref().unwrap())
-                        }
+                    // `--at` and `--selector` name one candidate.
+                    let selection = match &function.at {
+                        Some(at) => FunctionSelection::At(at),
+                        None => FunctionSelection::Selector(function.selector.as_deref().unwrap()),
                     };
                     functions.as_ref().unwrap().function_json(
                         &navigation,

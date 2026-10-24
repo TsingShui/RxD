@@ -25,7 +25,7 @@ scans; HTML files are always handled by `rxd html`.
 | --- | --- |
 | `html entries FILE [-f TEXT] [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: entries`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
 | `html resources FILE [--base-url URL] [-f TEXT] [-o CATALOG]` | header/resource/summary JSONL; classifies inline bodies and external references. `--kind`, `--location inline\|external`, and optional `--include-content` narrow or enrich the same listing. No requests or script execution. |
-| `html extract FILE (--at AT \| --from JSONL) -o OUTPUT [--content]` | One selector and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
+| `html extract FILE --at AT -o OUTPUT [--content]` | One selector and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
 `schema_version=2`. `entries` format-specific fields are under `detail`; the `extract`
@@ -187,8 +187,8 @@ disables it. Filters are ANDed and do not change base selection or source identi
 Each `resource` row has the owning element's `at/context_at/start/end` and its
 lexical `parent_at`. These are element coordinates accepted directly by
 `extract --at`, not new resource IDs. Multiple relations on one element can share
-a coordinate. `extract --from` accepts resource streams too; use the ordinary
-catalog without included content when selecting one body. Detail has a closed schema:
+a coordinate. Use the ordinary catalog without included content when selecting one
+body. Detail has a closed schema:
 
 - `kind/name/tag/location/relation/attribute`; attribute is null for inline bodies.
 - `url`: normalized absolute URL or null. `resolution`: `absolute|base|empty|
@@ -228,8 +228,8 @@ resource-coverage denominator.
 ID validation is two layers: syntax (one of four kinds, then canonical decimal
 start/end), then exact catalog membership. Malformed, non-canonical or unknown
 coordinates return `INVALID_QUERY`; a coordinate carries no hash, so use on another
-input fails as "does not exist" and the stream-level `source_id` check is what detects
-a foreign stream. Bounds checks never replace membership lookup. Content ranges derive
+input fails as "does not exist". Re-run the listing for a different input. Bounds checks
+never replace membership lookup. Content ranges derive
 from the matched element, never from invented IDs or caller ranges.
 
 By default `extract` accepts all four kinds: elements select the entire outer range
@@ -241,11 +241,10 @@ claims. Extracted bytes are the selected half-open container range with independ
 SHA-256; no entity decode, newline conversion, BOM removal, pretty-printing or syntax
 insertion.
 
-CLI `extract` requires `--at` or `--from` plus `-o`, one input, and forbids replacing
-the input with the target (including path aliases). `--from` compares the stream's
-content identity to the same frozen source buffer used for extraction, not merely
-its length or a separate read; same-size stale streams return `SOURCE_MISMATCH`. Host output paths are never derived
-from element attributes. The receipt is one schema-2 `file` record: outer `backend:
+CLI `extract` requires `--at` plus `-o`, one input, and forbids replacing the input
+with the target (including path aliases). The coordinate is validated against the same
+frozen source buffer used for extraction. Host output paths are never derived from
+element attributes. The receipt is one schema-2 `file` record: outer `backend:
 html`, `command: extract`, `schema_version`, `source_id` (artifact SHA); `at`,
 `parent_at`, `context_at` are null; `start` 0, `end` file_bytes. `detail` has
 `complete`, `path`, `file_bytes`, `representation: original`, `part` (outer|content)

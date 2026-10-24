@@ -29,8 +29,6 @@ rxd evm interface tests/corpus/evm/authored-navigation.runtime.hex --encoding he
 rxd evm interface tests/corpus/evm/authored-navigation.runtime.hex --encoding hex -f 1ba64846
 rxd evm interface runtime.hex --encoding hex --include-bytecode -o target/interface.jsonl
 FUNCTION_AT=$(jq -r 'select(.record=="function") | .at' target/evm-interface.jsonl | head -n 1)
-rxd evm interface tests/corpus/evm/authored-navigation.runtime.hex --encoding hex | \
-  rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --from -
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --at "$FUNCTION_AT"
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --at "$FUNCTION_AT" --raw
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --selector 1ba64846 --raw --perf

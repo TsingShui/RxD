@@ -126,9 +126,9 @@ The code index uses the same bounded fixed input and one marshal reader. Root in
 set/frozenset/slice participates; dict uses alternating key/value positions. A distinct
 code object is indexed once; its coordinate is `code:<decimal-index>`, and the input
 identity lives in the stream header's `source_id` rather than inside the id. `get-code
---at` and `xref --within` take that coordinate as printed; a `--from` stream is what
-carries identity, so a stream describing another input is `SOURCE_MISMATCH`. Rename/new process/filtering
-does not change the ID or renumber. The first discovery containment determines
+--at` and `xref --within` take that coordinate as printed. A coordinate is file-scoped:
+re-run the listing for a different input. Rename/new process/filtering does not change
+the ID or renumber. The first discovery containment determines
 `parent_at`; this does not prove unique runtime ownership. `kind` is always `unknown`;
 name/compile mode/flags are not inferred as class/function identity.
 
@@ -150,7 +150,7 @@ later single-code FETCH rejects an unreadable body.
 
 `-f/--filter` is a substring over the code name (folded unless `--case sensitive`) and `--name` matches
 the original UTF-8 name exactly, both preserving global indexes; zero matches is a
-complete empty result. `--at code:N | --from JSONL` selects an existing code row;
+complete empty result. `--at code:N` selects an existing code row;
 there is no numeric `--index` flag. Coordinate, exact name and substring selectors
 AND together. A missing coordinate is `NOT_FOUND` (exit 2), validated before name
 filtering, not an empty result. Stream identity is checked against the same fixed
@@ -165,7 +165,8 @@ stay separate.
 
 ADR 0003 three-part JSONL: exactly one header, zero or more `record: code` sorted by
 global index, exactly one summary. Header query is `filter/case/name/at/version` (null
-when absent; case is `insensitive` or `sensitive`; `at` is the resolved stream anchor); detail is `analysis/python_version/code_count/instruction_validation`.
+when absent; case is `insensitive` or `sensitive`; `at` is the echoed anchor); detail is
+`analysis/python_version/code_count/instruction_validation`.
 Summary records/complete describe data records; detail is `code_count/analysis/
 instruction_validation`; analysis is always `metadata`.
 
@@ -331,9 +332,8 @@ rxd pyc get-code raw.marshal --at code:0 --version 3.12
 any enumerated module root, class body, function, lambda or comprehension code; a class
 body is code evidence, not a complete runtime class definition. `--at` takes the
 `code:<index>` a codes row prints; nothing is expanded, and an index past the table is
-`NOT_FOUND` (exit 2). A malformed coordinate is `INVALID_QUERY`; a `--from` stream
-from another input is `SOURCE_MISMATCH`. Missing readable body is `INVALID_INPUT`; readable empty bytecode differs from
-unavailable.
+`NOT_FOUND` (exit 2). A malformed coordinate is `INVALID_QUERY`. Missing readable body
+is `INVALID_INPUT`; readable empty bytecode differs from unavailable.
 
 Default output is one schema-2 `code_view` JSON envelope without header/summary. Outer
 keys: schema_version/backend/command/record/at/source_id/parent_at/context_at/start/end/
@@ -442,7 +442,7 @@ rxd pyc xref module.pyc --kind name -f MARK --within code:9
 rxd pyc xref graph.marshal --version 3.12 --kind name --at cell -o target/xref.jsonl
 ```
 
-Exactly one of `--at`, `--from`, or `-f/--filter` is required. `--kind name --at NAME`
+Exactly one of `--at` or `-f/--filter` is required. `--kind name --at NAME`
 interprets the anchor as a literal name (not a coordinate) and compares the original
 payload against query UTF-8 bytes exactly. Empty names are allowed; `--case` does not
 alter exact anchors. `--kind name -f TEXT` searches name payloads with the shared
@@ -452,14 +452,11 @@ lossy replacement, and names are never Unicode-normalized. Hits carry the actual
 matched UTF-8 `detail.target_name`, including for exact anchors; constant hits have
 that field null. A filter selecting multiple names still scans each body once.
 Empty filters match all representable names; ordinary zero hits return a complete
-empty stream. Constant content search remains `strings -f` followed by
-`xref --from`; `xref -f` supports only `--kind name`.
+empty stream. Constant content search remains `strings -f` followed by `xref --at`;
+`xref -f` supports only `--kind name`.
 
 `--within` accepts the `code:<index>` coordinate a row prints. Malformed scope is
-`INVALID_QUERY`, missing scope is `NOT_FOUND` (both exit 2). `--from` accepts a
-strings stream, infers a constant target, and rejects a contradictory name kind;
-its identity is checked against the same analysis buffer. A stream from another
-input is `SOURCE_MISMATCH`.
+`INVALID_QUERY`, missing scope is `NOT_FOUND` (both exit 2).
 With it, only that code body is scanned; without it, all
 distinct codes are scanned by global index and shared aliases are not rescanned. Same-name
 owners and multiple real instructions in one owner are retained, ordered by code index then
@@ -545,8 +542,8 @@ do not replace output or modify input; failed perf preserves actual work/instruc
 
 ```sh
 rxd pyc xref module.pyc --at 'const:9:2.0'
-rxd pyc strings module.pyc -f marker -o target/strings.jsonl
-rxd pyc xref module.pyc --from target/strings.jsonl
+rxd pyc strings module.pyc -f marker
+rxd pyc xref module.pyc --at 'const:9:2.0'
 rxd pyc xref graph.marshal --version 3.12 --at "$CONST_AT" --within "$CODE_AT"
 ```
 
@@ -556,8 +553,8 @@ kind=const, an existing owner code, canonical decimal top-level slot and every p
 component. The path may traverse only tuple/frozenset and end at str/bytes;
 containers, code, other literal kinds and mutable containers are outside the selected
 str/bytes profile (`INVALID_QUERY`). Malformed IDs are `INVALID_QUERY`; a canonical
-missing owner or path slot is `NOT_FOUND`, and a full-form digest mismatch is
-`SOURCE_MISMATCH`. Path syntax is validated before looking up an owner. The selected path is located from the
+missing owner or path slot is `NOT_FOUND`. Path syntax is validated before looking up an
+owner. The selected path is located from the
 same parser evidence definition/children; equal literals are not traversed and all shared
 aliases are not expanded; work scales with actual path depth. Shared payload keeps distinct
 owner/slot/path identity. `.pyc` and raw marshal compute full digest and file spans

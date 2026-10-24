@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::filter::CaseArgs;
-use super::xref::{Expect, Selector};
+use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::Result;
 use rxd_core::envelope::{RecordMeta, attach_protocol, header, record, summary};
@@ -147,9 +147,9 @@ pub enum Command {
         #[command(flatten)]
         selector: Selector,
         /// Substring over the target function label; never caller names.
-        #[arg(short, long, requires = "kind", conflicts_with_all = ["at", "from"])]
+        #[arg(short, long, requires = "kind", conflicts_with = "at")]
         filter: Option<String>,
-        /// Only function references are supported; inferred for --at/--from.
+        /// Only function references are supported; inferred from --at.
         #[arg(long)]
         kind: Option<String>,
         #[command(flatten)]
@@ -316,7 +316,7 @@ fn execute_inner(
 
     // `get` returns exactly one function_view record, not a header/records/summary stream.
     if let Command::Get { selector, raw, .. } = &command {
-        let at = selector.resolve(&["function"], Expect::Content(&module.source_id))?;
+        let at = selector.resolve()?;
         let position = module.defined_position_at(&at)?;
         let view = perf.measure("decode", || rxd_wasm::get_view(&module, position, *raw))?;
         let mut value = record(
@@ -373,8 +373,8 @@ fn execute_inner(
     // Resolve identity anchors before filtering: a nonexistent coordinate is never
     // disguised as a successful empty listing. The Module owns the checked bytes.
     let selected_function = if let Command::Functions { selector, .. } = &command {
-        if selector.at.is_some() || selector.from.is_some() {
-            let at = selector.resolve(&["function"], Expect::Content(&module.source_id))?;
+        if selector.at.is_some() {
+            let at = selector.resolve()?;
             let index = module.function_index_at(&at)?;
             anyhow::ensure!(
                 index >= module.imported_func_count(),
@@ -430,7 +430,7 @@ fn execute_inner(
             );
             Some(targets)
         } else {
-            let at = selector.resolve(&["function"], Expect::Content(&module.source_id))?;
+            let at = selector.resolve()?;
             let index = module.function_index_at(&at)?;
             anyhow::ensure!(
                 kind.as_deref().is_none_or(|k| k == "function"),

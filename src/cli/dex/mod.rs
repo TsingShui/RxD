@@ -10,7 +10,6 @@ use output::{emit, emit_rows};
 use rxd_core::envelope::{header, summary};
 use serde_json::{Map, Value, json};
 
-use crate::cli::xref::Expect;
 use anyhow::{Result, bail};
 pub(crate) use args::Command;
 use rayon::prelude::*;
@@ -335,10 +334,7 @@ fn run_command(
             emit(&payload, args.output.as_deref())?;
         }
         Command::GetMethod(args) => {
-            // A DEX archive carries no content hash, so the stream is checked against the
-            // archive size; that is a mismatch guard, not an identity.
-            let bytes = std::fs::metadata(&args.apk_path)?.len();
-            let at = args.selector.resolve(&["method"], Expect::Bytes(bytes))?;
+            let at = args.selector.resolve()?;
             let (class, name, prototype) = apk::parse_method_coordinate(&at)?;
             let source = apk::decompile_method_with_policy(
                 &args.apk_path,
@@ -560,12 +556,7 @@ fn run_command(
             emit(&xml, args.output.as_deref())?;
         }
         Command::Getclass(args) => {
-            // A DEX archive carries no content hash, so the stream is checked against the
-            // archive size; that is a mismatch guard, not an identity.
-            let archive_bytes = std::fs::metadata(&args.apk_path)?.len();
-            let at = args
-                .selector
-                .resolve(&["class"], Expect::Bytes(archive_bytes))?;
+            let at = args.selector.resolve()?;
             let class_name = query::format_class_name(&at)?;
             if status == 0 {
                 let hit = apk::decompile_class_with_policy(
@@ -617,9 +608,9 @@ fn fetch_record(
     record.insert("backend".into(), serde_json::json!("dex"));
     record.insert("command".into(), serde_json::json!(command));
     record.insert("schema_version".into(), serde_json::json!(2));
-    // A DEX archive carries no content hash, so the record names no input identity. Its
-    // size is only the `--from` mismatch guard; putting it here would make the same DEX
-    // print two different records depending on whether it sits in a bare file or an APK.
+    // A DEX archive carries no content hash, so the record names no input identity.
+    // Putting the carrier's size here would make the same DEX print two different records
+    // depending on whether it sits in a bare file or an APK.
     record.insert("detail".into(), detail);
     let mut line = serde_json::to_string(&serde_json::Value::Object(record))?;
     line.push('\n');
@@ -628,7 +619,7 @@ fn fetch_record(
 
 /// A DEX data record. No DEX unit has a copy-only coordinate, so the envelope's six
 /// nullable navigation keys would be `null` on every row; they are omitted instead of
-/// repeated, and the header carries the stream identity once.
+/// repeated, and the header carries the stream-wide facts once.
 /// One detail value written without a `serde_json::Value`.
 enum Field<'a> {
     Text(&'a str),

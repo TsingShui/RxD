@@ -22,20 +22,18 @@ preserved; argument positions and exit-code semantics are.
 | `extract INPUT --all [-f PATTERN] -o DIR` | Every matching entry under `DIR`, preserving entry-relative paths; unsafe names (`..`, absolute, separators) and duplicate destinations are rejected. |
 | `strings INPUT` | String-table order with entry, index and value; keeps `--filter`, `--offset`, `--limit`. |
 | `xref INPUT --at COORD` | References to one identity, matched exactly: `Lx/y;` a type, `Lx/y;->name(proto)` a method, `Lx/y;->name:type` a field, and, with `--kind string`, a literal. `--kind` is inferred from the coordinate and must agree with it. `context_at` is the referring member, `detail.target` the matched coordinate, `detail.entry` the DEX it lives in. One row is one (caller, target) pair, so `detail.target` is always a single coordinate. |
-| `xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type`/`string` record. The stream header's `input_bytes` is checked against this archive: that catches a stream from another file, but it is a mismatch guard, not a content identity. |
 | `xref INPUT -f PATTERN --kind KIND` | Content search over the target's value, name or type, and `--class` narrows to one exact owner class (descriptor, dotted or slashed form; never a pattern). `--kind` is required because a content search cannot say what kind it looks for. Rows keep the one-target-per-row shape, so a caller that matches several targets is reported once per target. |
 | `manifest INPUT` | Decode AndroidManifest.xml to XML; ordinary XML keeps its original bytes. |
 | `classes INPUT` | Class descriptors; `--class` selects one exact class, `-f/--filter` is a substring over the dotted name, folded unless `--case sensitive`. |
 | `fields INPUT` | Field declarations as `Lclass;->name:type`; `--class`, `--name` (exact), `-f/--filter`. |
 
-`get-class` and `get-method` select by `--at` (the coordinate a `classes`/`methods` row
-prints) or `--from JSONL`, which reads that coordinate from a previous stream.
+`get-class` and `get-method` select by `--at`, the coordinate a `classes`/`methods` row
+prints.
 A method prototype includes its return descriptor after `)`, for example
 `Lx/y;->run()V` or `Lx/y;->read(I)[Ljava/lang/String;`. It is copied unchanged;
 missing/invalid return types, void parameters and trailing descriptor bytes are
-`INVALID_QUERY`, whereas a valid coordinate naming no member is `NOT_FOUND`. The stream
-is checked against the archive size, because a DEX header carries no content hash; that is
-a mismatch guard, not an identity. The positional Dalvik-name form was removed so every
+`INVALID_QUERY`, whereas a valid coordinate naming no member is `NOT_FOUND`. A coordinate names a member in the DEX being queried; it is not content-bound, so re-run
+the listing for a different build. The positional Dalvik-name form was removed so every
 FETCH has one selector spelling. APK/DEX commands
 keep `--threads` / `--thread`
 alias and supported range. The default thread count comes from
@@ -105,8 +103,8 @@ Data records contain exactly `record` and `detail`, plus the one navigation key 
 applies (`at` for a class/method/field row, `context_at` for a reference row). The other
 nullable keys of ADR 0003 are omitted, not repeated as `null`; the ADR's
 "absent and null are equivalent" rule is what makes that legal, and it saves 39% of a
-class row and ~10 MB on a wide `xref`. The header still carries
-backend/command/source_id once, and DEX deliberately does not rehash large archives,
+class row and ~10 MB on a wide `xref`. The header still carries backend/command and the
+input size once, and DEX deliberately does not rehash large archives,
 avoiding extra reads against the 150 ms budget. Class identity and routing come from
 detail `descriptor`/`name` (and `entry`); `xref.detail.member` carries the referring
 member's Dalvik descriptor, directly usable with `get-class`, and its declaring class is

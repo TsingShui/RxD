@@ -87,8 +87,8 @@ name the artifact from the content hash, never an input URL or attribute. Preser
 the container header's `source_id`, row `at`, and `content_start/content_end` as
 provenance. Use `.cjs` for classic scripts and `.mjs` for modules so JS auto mode
 preserves their intended source type. This materializes many inline scripts from one
-listing rather than issuing one extract query per script; `extract --at/--from
---content` remains available for a single artifact. The JS source ID is the body
+listing rather than issuing one extract query per script; `extract --at --content`
+remains available for a single artifact. The JS source ID is the body
 hash, and JS offsets start at zero, not at the HTML offset. Import maps and other
 data blocks are deliberately not selected by `--kind script`.
 
@@ -226,10 +226,9 @@ uses the shared lowercase rule, preserving supplementary characters and lone UTF
 surrogates instead of replacing them.
 
 `--within` is a source-region restriction, not a second spelling of identity
-selection. `slice --at/--from` reads an identified source unit; `xref --at/--from`
-anchors a binding query. Both `--from` paths validate the hash and operate on the
-same fixed input buffer, with no hash-then-reopen race. JS retains native source
-spans and lexical identities rather than inventing bytecode tokens.
+selection. `slice --at` reads an identified source unit; `xref --at` anchors a binding
+query. A coordinate is a span in the current input, with no hash-then-reopen race. JS
+retains native source spans and lexical identities rather than inventing bytecode tokens.
 
 `identifiers`, `calls` and `members` are single-file syntax-level location queries.
 They do not copy `find`'s literal semantics or infer bindings. Calls list statically
@@ -313,8 +312,8 @@ expressions are folded for computed keys.
 `--within` restricts listing to an existing structure, context fragment or canonical
 symbol's declaration, including contained slots. Nonexistent coordinates fail, never
 silently produce an empty listing. Symbol scopes use the existing bounded semantic
-index; other scopes are parser-only. The command does not overload `--at`/`--from`
-as scope selectors: read an identified source context with `slice` instead.
+index; other scopes are parser-only. The command does not overload `--at`
+as a scope selector: read an identified source context with `slice` instead.
 
 Rows have null `at`, source-backed `start/end`, containing `parent_at` and sliceable
 `context_at` where available. Detail fields are
@@ -582,9 +581,8 @@ An entity coordinate is the span and its kind:
 
 The hash is not repeated inside ids: a coordinate names a range, not a file, so the same
 coordinate means the same range in any input while the header says which input the rows
-describe. That is also why there is no stale-coordinate error on a rewritten file -
-identity is enforced where it can be, on a `--from` stream, whose header carries the
-`source_id` and is compared with the file being fetched. `slice` and `entities --within`
+describe. That is also why there is no stale-coordinate error on a rewritten file.
+`slice` and `entities --within`
 validate kind and real structure boundaries; a syntactically valid range without a
 matching entity is still an error. Paths are display metadata, not identity.
 
@@ -645,13 +643,13 @@ value_reference`; `declaration` is `start, end, entity_id` or null. These header
 objects are not independent records. Summary is `record, records, complete, detail`
 with `detail: {}` except resources' selected resolved/unresolved counts.
 
-Data records always contain `record, id, source_id, parent_id, context_id, start, end,
-detail`; all keys are present and inapplicable values are null. `source_id` is the
-owning source identity digest. Entity and symbol coordinates carry no hash, so the same
-coordinate in two inputs is the same position, not the same bytes; match/reference/
-unresolved records have `id: null` and use `parent_at` for the containing structure,
-which can be passed to `slice`. `symbol.parent_id` is the canonical declaration's
-containing structure. Entity `parent_at` keeps the structural parent. Match/reference
+Data records always contain `record, at, source_id, parent_at, context_at, start, end,
+detail`; all keys are present and inapplicable values are null. `source_id` is null (the
+header carries the input identity). Entity and symbol coordinates carry no hash, so the
+same coordinate in two inputs is the same position, not the same bytes;
+match/reference/unresolved records have `at: null` and use `parent_at` for the containing
+structure, which can be passed to `slice`. `symbol.parent_at` is the canonical
+declaration's containing structure. Entity `parent_at` keeps the structural parent. Match/reference
 `context_at` is the local fragment; entity/symbol/unresolved use null. Start/end are
 original half-open UTF-8 byte ranges.
 
@@ -684,8 +682,7 @@ surrogates remain valid JSON escapes and are never lossy-converted.
 `xref` takes one of three entries: `--at COORD` (a `symbols`/`identifiers` row's
 coordinate), `--byte OFFSET` (a position, possibly inside a multi-byte identifier), or
 `-f PATTERN --kind symbol` (every binding whose name matches, one `reference` row per
-target and site, each row naming its own `detail.target`). `--from JSONL` reads the anchor
-from a previous stream and refuses one from another input.
+target and site, each row naming its own `detail.target`).
 
 `locate` returns one `record=locate`; `slice --json` returns one `record=source`; neither
 has header/summary and both add `backend=js, command, schema_version=2` outside.
@@ -1030,7 +1027,6 @@ isolation exists. `slice` is subject to the same parse depth and output checks.
 | `INVALID_QUERY` | Malformed coordinate, byte position out of range, contradictory flags |
 | `NOT_FOUND` | A well-formed coordinate that names no structure, fragment or binding |
 | `INVALID_INPUT` | Invalid UTF-8, unsupported input mode, parser error or semantic diagnostic |
-| `SOURCE_MISMATCH` | A `--from` stream describes a different input |
 | `RESOURCE_LIMIT` | Input/index/output budget exceeded |
 | `IO_ERROR` | Read or write failure |
 

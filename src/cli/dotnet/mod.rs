@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use super::filter::CaseArgs;
 use super::xref::Selector;
@@ -103,7 +100,7 @@ pub enum Command {
         /// Exact target: the metadata token of a member or type, such as `0x0a00001f`; it
         /// also covers external members, generic instantiations and `#US` string tokens
         /// (`0x70…`).
-        #[arg(long, value_name = "TOKEN", conflicts_with_all = ["filter", "from"])]
+        #[arg(long, value_name = "TOKEN", conflicts_with = "filter")]
         at: Option<String>,
         /// Substring of a decoded user-string literal; folded unless `--case sensitive`.
         #[arg(short = 'f', long, value_name = "PATTERN")]
@@ -115,10 +112,6 @@ pub enum Command {
         /// Whether `-f` folds case: `insensitive` (default) or `sensitive`.
         #[arg(long, value_enum, default_value_t = crate::cli::filter::CaseMode::Insensitive)]
         case: crate::cli::filter::CaseMode,
-        /// Read the target from a previous JSONL stream (a file, or `-` for stdin);
-        /// `method`, `field`, `class` and `string` records are accepted.
-        #[arg(long, value_name = "JSONL", conflicts_with_all = ["at", "filter"])]
-        from: Option<PathBuf>,
 
         #[command(flatten)]
         options: Options,
@@ -226,20 +219,12 @@ fn execute_inner(
         filter,
         kind,
         case,
-        from,
         ..
     } = &command
     {
         Some(
-            dotnet_target(
-                at.as_deref(),
-                filter.as_deref(),
-                *kind,
-                *case,
-                from.as_deref(),
-                &input.source_id,
-            )
-            .map_err(super::classify)?,
+            dotnet_target(at.as_deref(), filter.as_deref(), *kind, *case)
+                .map_err(super::classify)?,
         )
     } else {
         None
@@ -284,10 +269,7 @@ fn execute_inner(
         },
     };
     if let Command::Get { selector, raw, .. } = &command {
-        let at = selector.resolve(
-            &["method"],
-            crate::cli::xref::Expect::Content(&input.source_id),
-        )?;
+        let at = selector.resolve()?;
         // FETCH resolves and decodes only the selected method; unrelated signatures
         // are not parsed on this path.
         let token = input.method_by_id(&at)?.token;
@@ -354,10 +336,7 @@ fn execute_inner(
         );
         append(&mut output, &value)?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
-        let at = selector.resolve(
-            &["class"],
-            crate::cli::xref::Expect::Content(&input.source_id),
-        )?;
+        let at = selector.resolve()?;
         let root = perf.measure("prepare", || input.prepare_class(&at))?;
         if *raw {
             input.prepare_class_fields(root)?;
@@ -451,14 +430,11 @@ fn execute_inner(
             Command::Fields { class, name, .. } => json!({"class":class,"name":name}),
             Command::Methods { class, name, .. } => json!({"class":class,"name":name}),
             Command::Strings { filter, .. } => json!({"filter":filter}),
-            Command::Xref {
-                at, filter, from, ..
-            } => json!({
+            Command::Xref { at, filter, .. } => json!({
                 "kind": xref_target.as_ref().map(Target::kind).map(Kind::as_str),
                 "at": at,
                 "filter": filter,
                 "class": Value::Null,
-                "from": from.as_ref().map(|path| path.display().to_string()),
             }),
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
         };
@@ -498,7 +474,7 @@ fn execute_inner(
                     });
                     record(&mut output, &mut records, options, &{
                         // The `#US` token is the literal's identity, so it is the row's
-                        // `at`: that is what `--at`/`--from` take back, and what the
+                        // `at`: that is what `--at` takes back, and what the
                         // reference rows point at.
                         let token = format!("0x{:08x}", 0x7000_0000u32 | literal.offset);
                         let context = method.map(|method| coordinate(method.token));
@@ -1136,28 +1112,24 @@ impl Target {
 ///
 /// A token says its own kind through its table, so `--kind` is only an assertion here. That
 /// matters because a token is a per-module row number: `0x0600000b` is a different method in
-/// every assembly, which is why a `--from` stream is checked against this input's identity.
+/// every assembly, so a coordinate only means something against the input it came from.
 fn dotnet_target(
     at: Option<&str>,
     filter: Option<&str>,
     kind: Option<Kind>,
     case: crate::cli::filter::CaseMode,
-    from: Option<&Path>,
-    source_id: &str,
 ) -> anyhow::Result<Target> {
-    let faces =
-        usize::from(at.is_some()) + usize::from(filter.is_some()) + usize::from(from.is_some());
+    let faces = usize::from(at.is_some()) + usize::from(filter.is_some());
     anyhow::ensure!(
         faces == 1,
-        "INVALID_QUERY: exactly one reference target is required (`--at TOKEN`, `-f PATTERN \
-         --kind string`, or `--from JSONL`)"
+        "INVALID_QUERY: exactly one reference target is required (`--at TOKEN` or `-f \
+         PATTERN --kind string`)"
     );
     if let Some(pattern) = filter {
         anyhow::ensure!(
             kind == Some(crate::cli::xref::Kind::String),
             "INVALID_QUERY: a .NET member or type identity is a metadata token, not a name, so \
-             `-f` can only search literals: give `--kind string`, or anchor with `--at TOKEN` / \
-             `--from JSONL`"
+             `-f` can only search literals: give `--kind string`, or anchor with `--at TOKEN`"
         );
         return Ok(Target::Literal {
             pattern: pattern.to_owned(),
@@ -1165,15 +1137,7 @@ fn dotnet_target(
             case_sensitive: case.is_sensitive(),
         });
     }
-    let coordinate = match (at, from) {
-        (Some(coordinate), _) => coordinate.to_owned(),
-        (None, Some(path)) => crate::cli::xref::selector_stream(
-            path,
-            &["method", "field", "class", "string"],
-            crate::cli::xref::Expect::Content(source_id),
-        )?,
-        (None, None) => unreachable!("checked above"),
-    };
+    let coordinate = at.expect("checked above").to_owned();
     // `--kind string` reads `--at` as a literal, which is the one target that cannot
     // describe itself. A token still wins when it parses as one: `0x0600000b --kind string`
     // is a contradiction to report, not a search for the text `0x0600000b`.

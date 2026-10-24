@@ -22,10 +22,6 @@ target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfi
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' --raw
 target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --at 'Lfixture/FlowFixture;->add(II)I' -o target/add.json
 jq -r '.detail.code' target/add.json
-# locate → fetch without copying a coordinate: pipe the whole stream, header included,
-# so the fetch can refuse a stream that describes another archive
-target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar | \
-  target/release/rxd jar get-method tests/fixtures/jvm/flow-deflated.jar --from -
 ```
 
 Every FETCH is one JSON record: `get-method` and `get-class` answer with

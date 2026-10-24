@@ -5,8 +5,7 @@ mod mcp;
 mod query;
 
 use std::{
-    ffi::OsStr,
-    io::{self, Read, Seek, SeekFrom, Write},
+    io::{self, Seek, SeekFrom, Write},
     process::{Command, ExitCode, Stdio},
     time::Instant,
 };
@@ -38,7 +37,6 @@ fn main() -> ExitCode {
     // Every CLI process, parent or isolated worker, writes to a possibly closed
     // consumer; make `| head` terminate quietly like a standard Unix filter.
     cli::restore_default_sigpipe();
-    capture_selector_stream();
     let process_start = Instant::now();
     let cli = cli::Cli::parse();
     let args_ns = ns(process_start.elapsed());
@@ -101,31 +99,8 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// The isolated worker deliberately has no stdin, so a `--from -` selector stream is
-/// read here and handed to the worker in `RXD_SELECTOR_STDIN`. A selector stream is
-/// not analysis input: it never becomes a parsed buffer.
-fn capture_selector_stream() {
-    const LIMIT: u64 = 64 * 1024;
-    if std::env::args_os().any(|arg| arg == "--internal-worker") {
-        return;
-    }
-    let mut args = std::env::args_os().skip(1);
-    while let Some(arg) = args.next() {
-        if arg != OsStr::new("--from") || args.next().as_deref() != Some(OsStr::new("-")) {
-            continue;
-        }
-        let mut text = String::new();
-        if io::stdin().take(LIMIT).read_to_string(&mut text).is_err() {
-            return;
-        }
-        // SAFETY: this runs before the CLI starts any thread.
-        unsafe {
-            std::env::set_var("RXD_SELECTOR_STDIN", text);
-        }
-        return;
-    }
-}
-
+/// The isolated worker deliberately has no stdin; analysis input is never a selector
+/// stream that some other command produced.
 fn run_worker(perf: &mut Perf) -> Result<i32> {
     // Do not retain another whole result in the parent. Publish the private spool
     // only after successful completion, and discard it on worker failure.

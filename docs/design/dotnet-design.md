@@ -67,12 +67,9 @@ whose table does not fit the command is refused with the table it is in. A
 coordinate is unique inside one input and meaningless outside it: the same
 coordinate addresses the same metadata row in two versions of an assembly, which is
 what makes version comparison possible. Content identity lives in
-`header.source_id` and in each record's `source_id`. FETCH commands also accept
-`--from <jsonl|->`, which reads the coordinate **and** its `source_id` from a
-previous stream and fails closed when that stream came from a different input; a
-stale or foreign coordinate is therefore reported on the one path where an Agent
-copies it across calls, while a direct `--at` query stays file-scoped. Lookup still
-validates kind, token table and row range.
+`header.source_id`; records do not repeat it. `--at` stays file-scoped: it validates
+kind, token table and row range against the fixed input, but a token copied from another
+assembly is not detected. Re-run the listing for the input being fetched.
 
 Parsing reads the PE/metadata headers, then validates each table/heap entry and token at
 the point of use and reads a method body on demand; it does not build a whole-assembly `CilObject`, SSA or decode
@@ -116,27 +113,20 @@ rxd dotnet strings app.dll -f 'example'
 rxd dotnet xref app.dll --at 0x0a000001
 rxd dotnet xref app.dll -f example --kind string
 rxd dotnet xref app.dll --at 0x06000001
-rxd dotnet xref app.dll --from target/methods.jsonl
-rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
 ```
 
-- `get-method` and `get-class` take exactly one selector: `--at <token>` or
-  `--from <jsonl|->`. `--from` takes the first record whose `record` kind matches
-  the command (`method` for `get-method`, `class` for `get-class`; `xref` accepts
-  `method`/`field`/`class`/`string`) and which carries an `at` coordinate; the stream is
-  bounded to 64 KiB and a mismatched `source_id` is `SOURCE_MISMATCH` (exit 1).
+- `get-method` and `get-class` take exactly one selector: `--at <token>`.
   A token/`--kind` contradiction is `INVALID_QUERY` (exit 2). The analyzed
-  input itself remains a regular file: only the selector stream may be piped.
+  input is a regular file.
   A `class` row still denotes a type token (`--kind type`), not a `--kind class`
-  spelling. Select a fetchable class before piping: an unfiltered listing can start
-  with `<Module>`, which `get-class` deliberately rejects. `--from` selects one
-  anchor; it does not skip that row or execute a batch.
+  spelling. Select a fetchable class first: an unfiltered listing can start
+  with `<Module>`, which `get-class` deliberately rejects.
 
 - `classes`/`fields`/`methods` each emit a header, their own records and a summary JSONL
   (one object kind per command). Header echoes filters;
   order follows metadata tokens. `--class` matches the full type name exactly;
   `--name` matches a method name exactly and preserves overloads.
-- `get-method` emits one JSON record with method, source_id, representation, reconstructed
+- `get-method` emits one JSON record with method, representation, reconstructed
   C#, line mapping and the original file range. Original IL evidence (`il_hex`,
   `instructions`, exception handlers, locals) is returned only with `--raw`. Instruction `offset` is the IL
   byte offset within the method code; file offsets are separate and never mixed.
@@ -231,9 +221,8 @@ rxd dotnet methods app.dll --name Run | rxd dotnet get-method app.dll --from -
   methods even with zero hits; corrupt/resource failures never become a complete zero
   result.
 - `xref` takes exactly one target: `--at` (the metadata token of a member or type, which
-  also covers external `MemberRef`, `TypeSpec`, `MethodSpec` and `#US` targets), `-f
-  PATTERN --kind KIND` (a content search), or `--from` (read the target from a previous
-  stream). A token says its own kind through its table (`0x70` string, `0x01/0x02/0x1b`
+  also covers external `MemberRef`, `TypeSpec`, `MethodSpec` and `#US` targets), or `-f
+  PATTERN --kind KIND` (a content search). A token says its own kind through its table (`0x70` string, `0x01/0x02/0x1b`
   type, `0x04` field, `0x06/0x2b` method; `0x0a` covers both member kinds, so it asserts
   nothing), and a contradicting `--kind` is an argument error naming both kinds.
   `-f` accepts only `--kind string`: a .NET member or type identity is a token, not a

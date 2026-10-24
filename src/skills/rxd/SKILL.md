@@ -20,10 +20,10 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-f PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-f … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
-| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-f … --kind string` or `--from` / `get-method`/`get-class --at`, `--raw` for original IL |
+| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-f … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref` / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` / `get-function --at` |
-| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at/--from` (a `strings` row), `xref --kind name --at NAME/-f TEXT`, `get-code --at`, whole-module `decompile` |
+| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-f TEXT`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
@@ -51,9 +51,8 @@ and binwalk integration are planned, not available commands.
   set only on the stream header. Not every row has a usable coordinate or range.
   Parse actual responses, never manufacture coordinates.
 - A coordinate names a range in the input you are querying, not the file itself: reuse
-  it with the same bytes and interpretation options. Identity is checked where it can be
-  - a `--from` stream whose header describes another input fails with
-  `SOURCE_MISMATCH`.
+  it only with the same bytes and interpretation options. A coordinate copied from
+  another input is not checked; re-run the listing for the file you are fetching.
   CLI inputs must remain fixed for the entire call. JS offsets are UTF-8 byte offsets, not characters or lines. Other offsets
   retain their backend meaning: JVM instruction offsets, .NET metadata tokens,
   DEX member indices/code units, WASM code-body offsets, PYC code-relative bytes,
@@ -175,18 +174,17 @@ contain unsupported-method stubs; inspect bytecode when necessary.
 rxd dotnet strings library.dll -f Authorization
 rxd dotnet xref library.dll -f Authorization --kind string
 rxd dotnet xref library.dll --at "$METHOD_AT"
-rxd dotnet methods library.dll > target/methods.jsonl && rxd dotnet xref library.dll --from target/methods.jsonl
+rxd dotnet methods library.dll
 rxd dotnet get-method library.dll --at "$METHOD_AT" --raw
 rxd dotnet get-method library.dll --at "$METHOD_AT"
+rxd dotnet classes library.dll --class "$TYPE_NAME"
 rxd dotnet get-class library.dll --at "$TYPE_AT" --raw
-rxd dotnet classes library.dll --class "$TYPE_NAME" -o target/class.jsonl
-rxd dotnet get-class library.dll --from target/class.jsonl --raw
-rxd dotnet xref library.dll --from target/class.jsonl
+rxd dotnet xref library.dll --at "$TYPE_AT"
 ```
 
-A `classes` stream carries `record: class`; pass it directly to class FETCH or
-type XREF without rewriting it as `type`. Select a real type before piping:
-unfiltered listings can start with the non-fetchable `<Module>` row.
+A `classes` row carries `record: class`; copy its `at` to class FETCH or type
+XREF without rewriting it as `type`. Select a real type first: unfiltered listings
+can start with the non-fetchable `<Module>` row.
 
 Use the `context_at`/`parent_at` a `strings` or `xref` row prints, and the `at` a
 `classes` row prints; `.NET` coordinates are bare metadata tokens (`0x06000025`).

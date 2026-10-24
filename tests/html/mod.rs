@@ -1,5 +1,4 @@
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::Path,
@@ -174,10 +173,6 @@ fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
     let text_id = all.iter().find(|r| r["record"] == "text").unwrap()["at"]
         .as_str()
         .unwrap();
-    let different = dir.path().join("different.html");
-    fs::write(&different, b"<div><p>other</p></div>").unwrap();
-    let other_rows = rows(&run(&different, &[]));
-    let _hash = all[0]["source_id"].as_str().unwrap();
     for candidate in [
         "not-an-id".to_owned(),
         id.replace(":0:", ":00:"),
@@ -389,11 +384,7 @@ fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
     fs::write(&path, b"<div><p>hi</p></div>").unwrap();
     let catalog = rows(&run(&path, &[]));
     let id = catalog[1]["at"].as_str().unwrap();
-    let _hash = catalog[0]["source_id"].as_str().unwrap();
     let destination = dir.path().join("artifact");
-    let other = dir.path().join("other.html");
-    fs::write(&other, b"<div><p>other</p></div>").unwrap();
-    let other_rows = rows(&run(&other, &[]));
     fs::write(&destination, b"old").unwrap();
     for candidate in [
         "not-an-id".to_owned(),

@@ -1,8 +1,6 @@
 use super::super::default_threads;
 use super::super::filter::CaseArgs;
-use super::super::xref::{
-    Anchor, Expect, Kind as XrefKind, Selector, Target, TargetArgs, selector_stream,
-};
+use super::super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rxd_dex::query::{MemberQuery, Pattern, Query, format_class_name};
@@ -272,23 +270,9 @@ impl XrefArgs {
         target_query(target)
     }
 
-    /// Resolve the anchor, reading it from `--from` when that face was used.
-    ///
-    /// A DEX archive's header carries no content identity, so the stream is checked against
-    /// the archive size: that catches a stream from another file, which is the mistake worth
-    /// catching, but it is a mismatch guard rather than an identity.
+    /// Resolve the anchor from its coordinate.
     pub fn target(&self) -> Result<Target> {
-        match self.target.selector() {
-            Some(path) => {
-                let bytes = std::fs::metadata(&self.apk_path)?.len();
-                self.target.resolve_from(selector_stream(
-                    path,
-                    &["method", "field", "type", "string"],
-                    Expect::Bytes(bytes),
-                )?)
-            }
-            None => self.target.resolve(),
-        }
+        self.target.resolve()
     }
 
     pub fn output_path(&self) -> Option<&Path> {

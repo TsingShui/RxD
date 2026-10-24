@@ -14,9 +14,9 @@ pub struct Target {
     #[command(flatten)]
     selector: super::super::xref::Selector,
     /// Substring over referenced names; requires --kind name.
-    #[arg(short, long, requires = "kind", conflicts_with_all = ["at", "from"])]
+    #[arg(short, long, requires = "kind", conflicts_with = "at")]
     filter: Option<String>,
-    /// name for an exact literal name or content search; constant is inferred from --at/--from.
+    /// name for an exact literal name or content search; constant is inferred from --at.
     #[arg(long)]
     kind: Option<String>,
     #[command(flatten)]
@@ -58,15 +58,7 @@ pub fn run(
         .insert("instructions", options.common.budget.instructions);
     let mut analysis = loaded?;
     let at = if target.filter.is_none() {
-        Some(
-            target
-                .selector
-                .resolve(
-                    &["string"],
-                    super::super::xref::Expect::Content(&analysis.source_id),
-                )
-                .map_err(super::super::classify)?,
-        )
+        Some(target.selector.resolve().map_err(super::super::classify)?)
     } else {
         None
     };
@@ -77,16 +69,10 @@ pub fn run(
             format!("xref supports name or constant targets, got {kind}"),
         ));
     }
-    if target.selector.from.is_some() && kind != "constant" {
-        return Err(Error::failure(
-            rxd_core::Failure::Query,
-            "--kind name contradicts constant coordinate from a strings stream",
-        ));
-    }
     if target.filter.is_some() && kind != "name" {
         return Err(Error::failure(
             rxd_core::Failure::Query,
-            "--filter requires --kind name; select a constant with strings then --from",
+            "--filter requires --kind name; select a constant with strings then --at",
         ));
     }
     let filter = target

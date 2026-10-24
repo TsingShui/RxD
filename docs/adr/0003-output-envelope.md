@@ -125,6 +125,10 @@ The same glue works for every structure listing; only `detail` differs.
 
 ## Amendment: the FETCH handle is a coordinate, not a hash
 
+> Superseded in part by [ADR 0018](0018-remove-from-selectors.md): `--from` and its
+> stream-identity check were removed. A coordinate is still copy-only and file-scoped;
+> no FETCH path re-reads a previous stream.
+
 The `id` key is being replaced by `at`, and `parent_id`/`context_id` by
 `parent_at`/`context_at`. Values are the backend's own coordinate
 (`0x06000003`, `func:42`, `1234..5678`); the hash lives once in `header.source_id`.
@@ -138,14 +142,11 @@ Rationale: an Agent had to copy 80-103 character handles in which about 70% of t
 bytes were a hash repeated 1-4 times per record. Measured on a 168 KB production
 bundle, `id`/`source_id`/`parent_id`/`context_id` were 49% of an entity stream.
 
-Content binding moves to the paths where it can still fail closed: the header carries
-`source_id`, and FETCH commands accept `--from <jsonl|->`, which re-reads the coordinate
-from the producing stream and rejects a mismatched `source_id`. The removed guarantee is
-that a handle alone identifies its input; a coordinate is deliberately file-scoped so the
-same coordinate can address the same metadata row in two versions of an input. No
-content-bound spelling remains: a handle that still carries an input digest is rejected
-as `INVALID_QUERY` rather than rewritten, so a stale handle fails closed instead of
-silently naming a row in the wrong input.
+The removed guarantee is that a handle alone identifies its input; a coordinate is
+deliberately file-scoped so the same coordinate can address the same metadata row in two
+versions of an input. No content-bound spelling remains: a handle that still carries an
+input digest is rejected as `INVALID_QUERY` rather than rewritten. A coordinate copied
+from another input is not checked; re-run the listing for the input being fetched.
 
 Every backend is migrated: dex, jar, dotnet, js, wasm, pyc, evm, html and asar print
 `at`/`parent_at`/`context_at` as coordinates and never repeat `source_id` on a record.
@@ -156,8 +157,8 @@ Every backend is migrated: dex, jar, dotnet, js, wasm, pyc, evm, html and asar p
 identifies (`rxd_core::identity::input_id`), not a whole-file SHA-256. Hashing every byte
 cost one pass over the input on every query — 5.5 ms on a 16 MB assembly — to answer a
 question that only needs one input told apart from another. The value keeps both
-properties the envelope relies on: a copy or rename is the same identity, and a
-`--from` stream from another input is still `SOURCE_MISMATCH`. The weakening is explicit:
+properties the envelope relies on: a copy or rename is the same identity. The weakening
+is explicit:
 an edit that preserves length and both ends is not detected, and detecting a substituted
 artifact is not this tool's job.
 An id nested inside `detail` (a caller id, a symbol or owner id, a reference target) uses

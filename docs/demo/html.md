@@ -124,13 +124,13 @@ For one body, the resource coordinate also works with ordinary extraction:
 ```sh
 "$RXD" html resources "$DEMO/resources.html" --kind script --location inline \
   -o "$DEMO/inline-nodes.jsonl"
-"$RXD" html extract "$DEMO/resources.html" --from "$DEMO/inline-nodes.jsonl" \
-  --content -o "$DEMO/one-inline.mjs"
+at=$(python3 -c 'import json,sys; rows=[json.loads(line) for line in open(sys.argv[1])]; print(next(r["at"] for r in rows if r["record"]=="resource"))' "$DEMO/inline-nodes.jsonl")
+"$RXD" html extract "$DEMO/resources.html" --at "$at" --content -o "$DEMO/one-inline.mjs"
 ```
 
-`--from` checks the catalog's identity digest against the very source buffer used for
-extraction, including same-length changed inputs. No HTML-to-JS coordinate guessing
-or synthetic resource ID is needed. A complete catalog is not browser page coverage.
+A resource row's `at` is its owning element coordinate; pass it to `extract --at`. No
+HTML-to-JS coordinate guessing or synthetic resource ID is needed. A complete catalog
+is not browser page coverage.
 
 ## extract
 
@@ -141,7 +141,7 @@ or synthetic resource ID is needed. A complete catalog is not browser page cover
 cat "$DEMO/inline.js"
 ```
 
-One of `--at`/`--from` and `-o` are required. `--content` is element-only and selects the content
+`--at` and `-o` are required. `--content` is element-only and selects the content
 range (the default outer range otherwise). The file contains the original slice of the
 selected half-open container range with an independent SHA-256. Stdout is a single
 receipt, not the file content:
@@ -194,8 +194,6 @@ selected by the Agent's syntax; arbitrary script content is not promised to pars
 ```sh
 "$RXD" html entries "$DEMO/page.html" --depth 2 \
   --kind element
-"$RXD" html entries "$DEMO/page.html" | \
-  "$RXD" html extract "$DEMO/page.html" --from - --content -o "$DEMO/inline.js"
 "$RXD" html extract "$DEMO/page.html" --at '<SCRIPT_AT>' --content \
   -o "$DEMO/profile-inline.js" --perf
 # The HTML runner was removed; see benches/README.md "Removed per-backend runners".

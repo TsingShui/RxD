@@ -10,19 +10,15 @@ rxd=target/release/rxd
 $rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --name Add
 ```
 
-Copy the `at` coordinate from a `method` record and query; the stream can also be
-piped straight into the FETCH command, which validates that it came from this input:
+Copy the `at` coordinate from a `method` record and query:
 
 ```sh
 at=$($rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --name Add | python3 -c 'import json,sys; print(next(r["at"] for r in map(json.loads,sys.stdin) if r["record"]=="method"))')
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at"
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --raw
-$rxd dotnet methods tests/fixtures/dotnet/Fixture.dll --name Add | $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --from -
 $rxd dotnet strings tests/fixtures/dotnet/Fixture.dll -f hello
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -f hello --kind string
-$rxd dotnet methods tests/fixtures/dotnet/Fixture.dll > target/methods.jsonl
-$rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --from target/methods.jsonl
 $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$at" --perf
 ```
 
@@ -87,10 +83,12 @@ These queries use the input-scaled CLI policy, with no budget overrides
 dll=tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll
 $rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader -f ReadAsInt32
 $rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader --name ReadAsInt32 -o target/newtonsoft-method.jsonl
-$rxd dotnet get-method "$dll" --from target/newtonsoft-method.jsonl --raw
+method_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/newtonsoft-method.jsonl")]; print(rows[1]["at"])')
+$rxd dotnet get-method "$dll" --at "$method_at" --raw
 $rxd dotnet classes "$dll" --class Newtonsoft.Json.JsonConverter -o target/newtonsoft-class.jsonl
-$rxd dotnet get-class "$dll" --from target/newtonsoft-class.jsonl --raw
-$rxd dotnet xref "$dll" --from target/newtonsoft-class.jsonl
+type_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/newtonsoft-class.jsonl")]; print(rows[1]["at"])')
+$rxd dotnet get-class "$dll" --at "$type_at" --raw
+$rxd dotnet xref "$dll" --at "$type_at"
 ```
 
 The `class` row is consumed directly by both class FETCH and type XREF; it does
@@ -149,21 +147,20 @@ the state. `representation: il` with `reason: null` means IL was requested with 
 not that reconstruction failed. See [the engine guide](../../benches/ilspy/README.md).
 
 Coordinates are file-scoped: `0x0600000b` names metadata row 11 in *this* input, so
-the same coordinate addresses the same row in another version, and a coordinate copied
-from a different stream is caught by `--from` (which compares `source_id`) rather than by
-the handle itself. Outline/xref follow the header/records/summary completeness contract.
+the same coordinate addresses the same row in another version. A coordinate copied from
+another assembly is not detected; re-run the listing for the input being fetched. Outline/xref follow the header/records/summary completeness contract.
 
 ## Type to complete original IL
 
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
 $rxd dotnet classes "$closure" --class 'Rxd.Closure.Root`1' -o target/closure-classes.jsonl
-$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl --raw
-$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl --raw -o target/closure-il.json --perf
-$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl
-$rxd dotnet get-class "$closure" --from target/closure-classes.jsonl -o target/closure-csharp.json --perf
-$rxd dotnet classes "$closure" --class 'Rxd.Closure.Root`1' | $rxd dotnet get-class "$closure" --from - --raw
-$rxd dotnet xref "$closure" --from target/closure-classes.jsonl
+type_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/closure-classes.jsonl")]; print(rows[1]["at"])')
+$rxd dotnet get-class "$closure" --at "$type_at" --raw
+$rxd dotnet get-class "$closure" --at "$type_at" --raw -o target/closure-il.json --perf
+$rxd dotnet get-class "$closure" --at "$type_at"
+$rxd dotnet get-class "$closure" --at "$type_at" -o target/closure-csharp.json --perf
+$rxd dotnet xref "$closure" --at "$type_at"
 ```
 
 A body the engine reconstructs with caveats is returned together with those caveats;

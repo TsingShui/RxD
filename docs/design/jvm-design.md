@@ -34,10 +34,7 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 | `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | The same `method_body` record with `representation: bytecode`: opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT --at CLASS [-o FILE]` | One `class_body` record: whole-class Java in `detail.code` (fields, constructors, all method bodies) by internal/dotted/descriptor name |
 | `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
-| `jar get-method INPUT --at COORD \| --from JSONL` | One method as Java, or its original instructions with `--raw`; `--from` reads the coordinate from a previous stream (header included) and refuses a stream from another input |
-| `jar get-class INPUT --at COORD \| --from JSONL` | One class as Java, same selector |
 | `jar xref INPUT --at COORD` | header/reference/summary JSONL; the coordinate is an exact identity (`Lx/y;`, `Lx/y;->name(proto)`, `Lx/y;->name:type`); `context_at` is the caller, `detail.target` the matched coordinate, `detail.byte_offset`/`detail.mnemonic` the reference site |
-| `jar xref INPUT --from JSONL` | The same anchor, read from a previous stream's first `method`/`field`/`type` record, with the stream's content identity checked against this archive |
 | `jar xref INPUT -f PATTERN --kind KIND` | the same rows for a substring search over the target's value, name or type, with `--class` narrowing to one exact owner class; `--kind` is required |
 
 `classes`/`methods`/`fields` filter exactly by internal name, dotted name or descriptor,
@@ -60,17 +57,15 @@ Release selection does not verify runtime compatibility.
 `get-class` parses only the class its coordinate names: the entry is located from
 the archive directory and its `ClassFile` is the only one read. Archives with
 multi-release layouts, duplicate candidate entries, entry paths that disagree with
-the declared class name, raw `.class` inputs, and `--from` streams (whose identity is
-checked before selection) fall back to the complete reader, which stays the
-authority. Listings, `strings`, `xref` and `get-method` keep the complete parse.
+the declared class name and raw `.class` inputs fall back to the complete reader, which
+stays the authority. Listings, `strings`, `xref` and `get-method` keep the complete parse.
 Scoped and full reads produce byte-identical `class_body` output.
 
-`header.source_id` is the input file identity digest; class/method `source_id` is the
-actual class bytes' identity digest. JAR records retain the physical entry. A method's identity is its
-JVM coordinate `Lx/y;->name(proto)`, printed as the row's `at`; no row carries a hash.
-The same class in different containers has the same coordinates. `get` validates the
-coordinate against the fixed input; malformed or unknown coordinates return
-`INVALID_QUERY`, and a foreign stream is caught by the header `source_id` check.
+`header.source_id` is the input file identity digest. JAR records retain the physical
+entry. A method's identity is its JVM coordinate `Lx/y;->name(proto)`, printed as the
+row's `at`; no row carries a hash. The same class in different containers has the same
+coordinates. `get` validates the coordinate against the fixed input; malformed or unknown
+coordinates return `INVALID_QUERY`.
 
 `--raw` outer `start/end` point at Code bytes inside the class file, not the
 compressed JAR. `byte_offset` is the original JVM byte offset within the method; bytes
@@ -134,12 +129,11 @@ query, detail`. Streaming commands set `header.detail` to `analysis, release` wi
 records, complete, detail`; `classes` sets `summary.detail.classes`, while
 strings/xref use `{}`.
 
-Data records contain `record, id, source_id, parent_id, context_id, start, end,
-detail`; inapplicable values are null. `source_id` is the actual owning class-byte
-SHA-256. Class/field/string/reference have no FETCH coordinate (`at: null`); method/bytecode use
-the method coordinate. There are no invented class coordinates, so `parent_at` is always
-null. `reference.context_id` is the owning method ID and can be passed to `get-method`;
-other records have `context_id: null`. Streaming `start/end` are null; method-relative
+Data records contain `record, at, source_id, parent_at, context_at, start, end,
+detail`; inapplicable values are null. `source_id` is null on records (the header carries
+the input identity). Class, field and method rows carry their descriptor coordinate;
+string and reference rows have no `at`. `parent_at` is null. `reference.context_at` is the
+owning method coordinate and can be passed to `get-method`. Streaming `start/end` are null; method-relative
 `byte_offset` is never treated as a class/JAR file range.
 
 Fixed detail fields:

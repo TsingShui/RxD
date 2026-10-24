@@ -39,7 +39,7 @@ set. A code never appears in a message; a message never decides a code.
 | | `AMBIGUOUS` | a name matches several identities | use a coordinate |
 | change the input | `INVALID_INPUT` | bytes are corrupt or are not this format | different input |
 | | `UNSUPPORTED_INPUT` | well formed, not implemented here | different approach |
-| | `SOURCE_MISMATCH` | a coordinate or stream came from another input | re-run the listing |
+| | `SOURCE_MISMATCH` | a backend-internal unit or carrier came from another input | use a coordinate from this input |
 | | `RESOURCE_LIMIT` | a declared budget was reached | narrow the query |
 | | `DECOMPILE_ERROR` | the input parsed and source recovery failed | read the original |
 | environment | `IO_ERROR` | file, pipe or device failure | retry |
@@ -72,7 +72,7 @@ parser produces when the bytes do not make sense. Backends override that default
 ## Consequences
 
 - The same two probes now answer `INVALID_QUERY` / 2 and `NOT_FOUND` / 2 on every backend,
-  `SOURCE_MISMATCH` / 1 for a stream from another input, `IO_ERROR` / 1 for an unreadable
+  `SOURCE_MISMATCH` / 1 for a backend-internal unit or carrier mismatch, `IO_ERROR` / 1 for an unreadable
   file, and `INVALID_INPUT` / 1 for corrupt bytes.
 - "Exit 2" now means "your query was wrong", so a script can retry the query instead of
   the whole run; a coordinate that names nothing is included because re-running the

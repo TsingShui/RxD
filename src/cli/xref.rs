@@ -24,11 +24,6 @@ use clap::Args;
     feature = "backend-dotnet"
 ))]
 use clap::ValueEnum;
-use serde_json::Value;
-use std::{
-    io::{self, Read},
-    path::{Path, PathBuf},
-};
 
 /// Which kind of target a reference query names.
 #[cfg(any(
@@ -142,37 +137,23 @@ impl Target {
     }
 }
 
-/// One FETCH selector: a coordinate copied from a row, or a previous JSONL stream.
-///
-/// The same two paths FE TCH already had on dotnet; every backend that fetches one unit
-/// takes it, so `locate | fetch` works without a hand-copied coordinate.
+/// One FETCH selector: the coordinate a row printed.
 #[derive(Debug, Args)]
 pub struct Selector {
     /// Coordinate copied from a record, exactly as that row printed it.
     ///
     /// Not marked required by clap: a command may offer another way in (`--byte`, a
     /// content search), and `resolve` then reports the missing selector itself.
-    #[arg(long, value_name = "COORD", conflicts_with = "from")]
+    #[arg(long, value_name = "COORD")]
     pub at: Option<String>,
-    /// Read the coordinate from a previous JSONL stream (a file, or `-` for stdin). The
-    /// stream must describe this input, so a stale stream cannot fetch from another file.
-    #[arg(long, value_name = "JSONL", conflicts_with = "at")]
-    pub from: Option<PathBuf>,
 }
 
 impl Selector {
-    /// Resolve the coordinate to fetch; `units` are the record kinds the stream may carry
-    /// and `expect` is the identity evidence this backend has for its input.
-    pub fn resolve(&self, units: &[&str], expect: Expect<'_>) -> anyhow::Result<String> {
-        match (&self.at, self.from.as_deref()) {
-            (Some(at), _) => Ok(at.clone()),
-            (None, Some(from)) => selector_stream(from, units, expect),
-            (None, None) => Err(rxd_core::Error::failure(
-                rxd_core::Failure::Query,
-                "--at <COORD> or --from <JSONL> is required",
-            )
-            .into()),
-        }
+    /// Resolve the coordinate to fetch.
+    pub fn resolve(&self) -> anyhow::Result<String> {
+        self.at.clone().ok_or_else(|| {
+            rxd_core::Error::failure(rxd_core::Failure::Query, "--at <COORD> is required").into()
+        })
     }
 }
 
@@ -199,46 +180,23 @@ pub struct TargetArgs {
     /// own identity and `--class` are always exact; this governs only `-f`.
     #[arg(long, value_enum, default_value_t = CaseMode::Insensitive)]
     pub case: CaseMode,
-    /// Read the target from a previous JSONL stream instead: a file, or `-` for stdin. The
-    /// first record carrying an `at` for this backend is used.
-    #[arg(long, value_name = "JSONL", conflicts_with_all = ["at", "filter"])]
-    pub from: Option<PathBuf>,
 }
 
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl TargetArgs {
-    /// The selector stream this query names, if any.
-    pub fn selector(&self) -> Option<&Path> {
-        self.from.as_deref()
-    }
-
-    /// Resolve a query whose coordinate came from `--from`.
-    ///
-    /// The stream is only a way to spell `--at`, so it lands on the same resolution path:
-    /// one identity, matched exactly.
-    pub fn resolve_from(&self, coordinate: String) -> Result<Target> {
-        let at = Some(coordinate);
-        self.resolve_with(&at)
-    }
-
     pub fn resolve(&self) -> Result<Target> {
-        self.resolve_with(&self.at)
-    }
-
-    fn resolve_with(&self, at: &Option<String>) -> Result<Target> {
-        if at.is_some() && self.filter.is_some() {
+        if self.at.is_some() && self.filter.is_some() {
             bail!(
                 "--at names one identity and --filter searches content; give one of them, \
                  not both"
             );
         }
-        match (at, &self.filter) {
+        match (&self.at, &self.filter) {
             (Some(coordinate), None) => self.anchor(coordinate),
             (None, Some(pattern)) => self.search(pattern),
             (None, None) => bail!(
-                "xref needs --at COORD to take references to one identity, --from JSONL to \
-                 take one from a previous stream, or -f PATTERN --kind KIND to search them \
-                 by content"
+                "xref needs --at COORD to take references to one identity, or -f PATTERN \
+                 --kind KIND to search them by content"
             ),
             (Some(_), Some(_)) => unreachable!("rejected above"),
         }
@@ -361,125 +319,6 @@ impl TargetArgs {
     }
 }
 
-/// What a selector stream promises about the input it came from.
-#[derive(Clone, Copy, Debug)]
-pub enum Expect<'a> {
-    /// The content identity the stream header carries. A token coordinate is a per-module
-    /// row number, so a stream from another assembly would otherwise resolve to a different
-    /// member and answer with rows that look right.
-    Content(&'a str),
-    /// The input size, when the backend's header carries no content identity. This is a
-    /// mismatch guard, not an identity: a same-size different archive passes it. It still
-    /// catches the common mistake, which is feeding a stream from a different file.
-    Bytes(u64),
-}
-
-/// The first coordinate a previous JSONL stream carries for one of `units`.
-///
-/// A stream is a way to spell `--at`, so it is read as data: rows are matched by `record`
-/// and `at`, and the header supplies the identity a row's own `source_id` is checked
-/// against. Anything else in the stream — diagnostics, other record kinds — is skipped.
-pub fn selector_stream(path: &Path, units: &[&str], expect: Expect<'_>) -> Result<String> {
-    const LIMIT: u64 = 64 * 1024;
-    let mut text = String::new();
-    if path == Path::new("-") {
-        // The parent reads stdin because the isolated worker has none; a direct
-        // invocation (no worker) falls back to reading it here.
-        match std::env::var("RXD_SELECTOR_STDIN") {
-            Ok(stream) => text = stream,
-            Err(_) => {
-                io::stdin()
-                    .take(LIMIT)
-                    .read_to_string(&mut text)
-                    .context("INVALID_QUERY: cannot read --from stdin")?;
-            }
-        }
-    } else {
-        std::fs::File::open(path)
-            .and_then(|file| file.take(LIMIT).read_to_string(&mut text).map(|_| ()))
-            .with_context(|| format!("IO_ERROR: cannot read --from {}", path.display()))?;
-    }
-    // Identity is carried once by the stream header, so a record's own `source_id` is
-    // normally null: the header supplies the binding a unit row is checked against.
-    let mut header_source: Option<String> = None;
-    for line in text.lines() {
-        let Ok(row) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let record = row
-            .get("record")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if record == "header" {
-            check_identity(&row, expect)?;
-            header_source = row
-                .get("source_id")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            continue;
-        }
-        if !units.contains(&record) {
-            continue;
-        }
-        let Some(at) = row.get("at").and_then(Value::as_str) else {
-            continue;
-        };
-        let found = row
-            .get("source_id")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| header_source.clone());
-        if let (Some(found), Expect::Content(expected)) = (found, expect) {
-            ensure_same(&found, expected)?;
-        }
-        return Ok(at.to_string());
-    }
-    bail!(
-        "INVALID_QUERY: --from stream carries no {} record with an `at` coordinate",
-        units.join("/")
-    )
-}
-
-fn check_identity(row: &Value, expect: Expect<'_>) -> Result<()> {
-    match expect {
-        Expect::Content(expected) => match row.get("source_id").and_then(Value::as_str) {
-            Some(found) => ensure_same(found, expected),
-            // A header with no identity cannot be checked; the units still carry the check
-            // when a row repeats it.
-            None => Ok(()),
-        },
-        Expect::Bytes(expected) => match row.get("input_bytes").and_then(Value::as_u64) {
-            Some(found) if found != expected => Err(rxd_core::Error::failure(
-                rxd_core::Failure::Mismatch,
-                format!(
-                    "--from stream describes a {found}-byte input, but this input is \
-                     {expected} bytes; re-run the listing for this file"
-                ),
-            )
-            .into()),
-            _ => Ok(()),
-        },
-    }
-}
-
-fn ensure_same(found: &str, expected: &str) -> Result<()> {
-    if found == expected {
-        return Ok(());
-    }
-    // The stream is well formed and describes another input: that is a mismatch, not a
-    // malformed query (ADR 0015).
-    Err(rxd_core::Error::failure(
-        rxd_core::Failure::Mismatch,
-        format!(
-            "--from stream came from a different input (stream {}…, this input {}…); \
-             re-run the listing for this file",
-            found.get(..12).unwrap_or(found),
-            expected.get(..12).unwrap_or(expected)
-        ),
-    )
-    .into())
-}
-
 #[cfg(all(test, any(feature = "backend-dex", feature = "backend-jvm")))]
 mod tests {
     use super::*;
@@ -490,7 +329,6 @@ mod tests {
             filter: filter.map(str::to_owned),
             kind,
             class_name: None,
-            from: None,
             case: CaseMode::Insensitive,
         }
     }

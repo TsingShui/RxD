@@ -225,7 +225,7 @@ The measurement contract above is unchanged and still applies to every backend: 
 processes, complete stdout/stderr, real output writes, raw samples with median and
 nearest-rank P95, the >150 ms share, input/output sizes and hashes, hardware and cache
 conditions, and validation after timing. A backend that needs a runner gets one written
-against the current command surface (`entries`/`classes`/`codes`, `--at`/`--from`,
+against the current command surface (`entries`/`classes`/`codes`, `--at`,
 `-f`/`--case`, `--name`) rather than a resurrected copy of the removed generation.
 
 `benches/dotnet_strings_oracle.py` and `benches/pyc_oracle.py` are not runners: they

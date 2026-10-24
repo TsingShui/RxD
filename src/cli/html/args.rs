@@ -72,7 +72,7 @@ pub(crate) enum Command {
     Extract {
         #[command(flatten)]
         common: Common,
-        /// The coordinate an entries row prints, or `--from JSONL`.
+        /// The coordinate an entries row prints.
         #[command(flatten)]
         selector: Selector,
         /// Extract only element content rather than its outer range.

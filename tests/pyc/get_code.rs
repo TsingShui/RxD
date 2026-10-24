@@ -135,7 +135,7 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     assert_eq!(fs::read(&dest).unwrap(), b"keep");
     assert_eq!(fs::read(&damaged).unwrap(), broken);
     // A coordinate names a code object, not a file: it resolves in whatever input holds
-    // that index. Identity is checked on `--from` streams instead.
+    // that index.
     success(&fetch(&damaged, id, &[]));
     // Every corruption is inside evidence from one independently produced code object.
     for (code, field, offset, value) in [

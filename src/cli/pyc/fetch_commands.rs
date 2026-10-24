@@ -54,13 +54,7 @@ pub fn fetch(
         .unwrap()
         .insert("instructions", options.common.budget.instructions);
     let mut analysis = loaded?;
-    // The stream is checked against the analysis identity (the pyc header's content hash).
-    let at = selector
-        .resolve(
-            &["code"],
-            super::super::xref::Expect::Content(&analysis.source_id),
-        )
-        .map_err(super::super::classify)?;
+    let at = selector.resolve().map_err(super::super::classify)?;
     let selected = perf.measure("query", || analysis.parse_code_id(&at));
     perf.counters.work = Some(analysis.evidence.work);
     let selected = selected?;

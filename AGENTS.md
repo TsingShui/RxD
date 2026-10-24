@@ -63,7 +63,7 @@ The current layout is:
   the pinned ILSpy build in `benches/ilspy/`, and measurement/perf contracts in
   `benches/README.md`. The per-backend runners written for the earlier CLI
   generation were removed; a backend that needs one gets it written against the
-  current surface (`entries`/`classes`/`codes`, `--at`/`--from`, `-f`/`--case`,
+  current surface (`entries`/`classes`/`codes`, `--at`, `-f`/`--case`,
   `--name`).
 - `docs/design/`: one `*-design.md` per backend plus the app, MCP and
   external-tools contracts, scope, command semantics, output contracts,
@@ -219,11 +219,10 @@ kind, so `--kind` is only needed to read `--at` as a literal. `-f/--filter` sear
 (case-sensitive substring), which cannot say what kind it looks for, so it requires `--kind`.
 A coordinate that no table carries is `NOT_FOUND`, never an empty result; a `--kind` that
 contradicts the coordinate is an argument error naming both kinds, never an empty result.
-`--from JSONL` is the third way to name that anchor: the same coordinate, read from a
-previous stream's first unit record instead of typed, with the stream's identity checked
-against the input it is applied to. A nullable outer key (`at`, `parent_at`, `context_at`,
-`start`, `end`, `source_id`) is `null` or absent, and consumers treat the two alike
-(ADR 0003).
+A nullable outer key (`at`, `parent_at`, `context_at`, `start`, `end`, `source_id`) is
+`null` or absent, and consumers treat the two alike (ADR 0003). A coordinate names a
+position in the input being queried; it carries no content identity, so re-run the
+listing for a different input instead of reusing a coordinate across inputs.
 
 Original instructions versus reconstructed source is one flag, `--raw`, on every
 backend that can emit both; `--bytecode`, `--il` and future spellings are not separate

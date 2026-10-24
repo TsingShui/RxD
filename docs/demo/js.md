@@ -305,7 +305,7 @@ before constructing a finite curl candidate list.
 `values` lists named data slots without executing expressions or converting objects
 into JSON. As with other name-based listings, `-f` matches the **slot name**, not
 its value; `--name` is exact. `--within` limits a source region, whereas
-`slice --at/--from` reads an identified source unit:
+`slice --at` reads an identified source unit:
 
 ```sh
 printf '%s\n' \

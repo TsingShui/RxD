@@ -62,8 +62,7 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.marshal --version 3.12
 and both `-f/--filter` (substring, `--case sensitive` for exact case) and `--name` (exact) preserve the
 matching results with their original indices. Zero matches still returns complete
 header/summary; a missing `--at code:N` exits 2 with `NOT_FOUND`.
-`--at`, `--name` and `-f` intersect; `codes --from JSONL` selects the first code
-record after validating the stream's input identity. Each row prints the copy-only
+`--at`, `--name` and `-f` intersect. Each row prints the copy-only
 `at: code:<index>`; the header carries the input identity digest, so coordinates do not
 change on rename. Parent is first containment; kind is `unknown`, not a runtime type
 judgment. Original marshal definition/field/payload and alias sites use real half-open
@@ -128,16 +127,14 @@ validates unscanned bytecode.
 ## Single-code FETCH
 
 ```sh
-target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc | \
-  target/debug/rxd pyc get-code tests/corpus/pyc/3.12.14/graph.timestamp.pyc --from -
 target/debug/rxd pyc get-code tests/corpus/pyc/3.12.14/graph.timestamp.pyc --at code:11
 ```
 
 `get-code` accepts any enumerated module/class/function/lambda/comprehension code and
 returns one schema-v2 `code_view` envelope (no header/summary) with original body,
 instruction rows, tables, values, line mapping and exceptions. `--at` takes the short
-`code:<index>` a codes row prints. Use `--from` to carry and check source identity;
-code coordinates do not embed a digest. `complete: true` means original body bytes were accounted
+`code:<index>` a codes row prints. Code coordinates do not embed a digest; re-run the
+listing for a different input. `complete: true` means original body bytes were accounted
 for and supported evidence validated, not full opcode semantics or source equivalence.
 Use the row coordinate, not filenames/names.
 
@@ -146,23 +143,21 @@ Use the row coordinate, not filenames/names.
 ```sh
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --kind name --at shared
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --kind name -f SHARED --within code:4
-target/debug/rxd pyc strings tests/corpus/pyc/3.12.14/graph.timestamp.pyc -f shared-container-marker | \
-  target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc --from -
+target/debug/rxd pyc strings tests/corpus/pyc/3.12.14/graph.timestamp.pyc -f shared-container-marker
 target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc \
   --at 'const:<code-index>:<path>'
 ```
 
-Use exactly one of `--at`, `--from`, or `-f`. `--kind name --at NAME` is exact
+Use exactly one of `--at` or `-f`. `--kind name --at NAME` is exact
 original-payload equality. `--kind name -f TEXT` is substring matching, folded unless
 `--case sensitive`; each hit preserves its actual `detail.target_name`. It searches
 referenced names, not enclosing code names or opcodes. No normalization or lossy
-replacement is used. Constant coordinates infer their kind; `--from` reads the first
-strings row with its source identity checked against the same analyzed buffer.
+replacement is used. Constant coordinates infer their kind from the printed `const:` path.
 Constant IDs come from actual `strings` output; their path may traverse only tuple/
 frozenset and end at str/bytes. Without `--within`, only the constant's owner is scanned;
 with `--within`, the selected code is scanned. Both selectors accept only the coordinate
-a row prints; it carries no hash, so a foreign stream is caught by the `--from`
-`source_id` check and a coordinate absent from this input is `INVALID_QUERY`. Reference
+a row prints; it carries no hash, so a coordinate absent from this input is
+`INVALID_QUERY`. Reference
 `context_at` routes to `get-code --at`.
 Name references describe explicit name-bearing opcodes, not runtime dispatch; constant
 references preserve the containing top-level slot and never claim a nested leaf was

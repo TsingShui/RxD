@@ -73,8 +73,8 @@ exposes `--max-*`.
 - `xref` two faces: `src/cli/xref.rs` (shared surface) + dex/jar projection, `detail.target`
   became a full coordinate, js `--at`/`--byte`, wasm `xref --at func:N`, pyc `xref --at`,
   and the MCP subcommand-selector machinery removed.
-- `--from` for dex/jar, dotnet `--string` folded into `-f … --kind string` (substring), and
-  the dotnet token-table kind inference; `src/cli/xref.rs` also owns the stream reader now.
+- dotnet `--string` folded into `-f … --kind string` (substring), and the dotnet
+  token-table kind inference.
 
 ## MCP surface (done, merge `a3068e1`)
 
@@ -154,13 +154,10 @@ them by name, which is why the module filter is not used as evidence for those t
    is `src/cli/xref.rs`; dex and jar both project it, and the MCP subcommand-selector
    machinery in `src/query/reflect.rs` was deleted because no command has subcommands any
    more (`dex_xref`/`jar_xref` are one tool each, down from four).
-6. **`--from` is the third way to name an anchor.** dex and jar gained it (dotnet already
-   had it), through one shared reader (`src/cli/xref.rs::selector_stream`): the first
-   `method`/`field`/`type`/`string` record carrying an `at` wins, and the stream is checked
-   against the input it is applied to. dotnet and jar compare the content identity
-   (`SOURCE_MISMATCH`); dex compares `input_bytes`, because a DEX header carries no content
-   identity and hashing a 523 MiB archive would break the latency budget. That is a
-   mismatch guard, documented as such, not an identity.
+6. **Anchors are coordinates only.** `--from` was added for dex/jar/dotnet, then removed
+   by [ADR 0018](../adr/0018-remove-from-selectors.md): it took the first unit record, its
+   identity check only accepted the exact same input, and ASAR/DEX carried no content
+   identity at all. `--at` is the only anchor; a coordinate is file-scoped.
 7. **dotnet `--string` became `-f … --kind string`.** Resolved: the search face is a
    case-sensitive substring on every backend, so `--string`'s exact-equality semantics was
    the odd one out and is gone (an empty pattern is "no restriction", as everywhere else).
@@ -172,7 +169,7 @@ them by name, which is why the module filter is not used as evidence for those t
    the single flag that turns folding off; it exists on all 39 filter-bearing commands and on
    the three `xref` target selectors. The rule and its folding primitive live in
    `rxd_core::filter` (`Contains`/`equals`), so the CLI and the nine libraries cannot drift.
-   A coordinate (`--at`, `--from`) is always matched exactly: folding one could select a
+   A coordinate (`--at`) is always matched exactly: folding one could select a
    different overload.
 9. **dex rows are one (caller, target) pair.** Resolved: `xref` used to join a caller's
    matched targets into one `detail.target` as `A; B`, which made the field a list rather than
@@ -208,9 +205,8 @@ predate every one of these surface changes and must be rebuilt from the final co
 
 ## Notes for future work
 
-- `--from <jsonl|->` exists for source-checked re-reads on the backends that have it; the
-  unified surface makes it optional rather than required, because `at` is file-scoped and
-  the header carries the identity.
+- `--at` is file-scoped and keeps no digest; the header carries the stream identity.
+  Re-run the listing for a different input.
 - Directory scans, semantic index sizes and AST depth are bounded by the shared budget, so
   a caller cannot tighten them per invocation any more. If that becomes necessary, add the
   ceiling to `Budget` (one table) rather than a CLI flag.

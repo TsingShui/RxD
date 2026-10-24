@@ -572,51 +572,16 @@ fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
 }
 
 #[test]
-fn wasm_function_streams_are_content_bound_and_fail_atomically() {
+fn wasm_function_coordinates_select_existing_rows() {
     let path = input();
-    let dir = tempfile::tempdir().unwrap();
-    let stream = dir.path().join("functions.jsonl");
-    let functions = run("functions", &path, &["--name", "sum"]);
-    success(&functions);
-    fs::write(&stream, &functions.stdout).unwrap();
-    for command in ["functions", "xref"] {
-        let from = wasm_jsonl(&run(command, &path, &["--from", stream.to_str().unwrap()]));
-        let direct = wasm_jsonl(&run(command, &path, &["--at", "func:1"]));
-        assert_eq!(from, direct);
-    }
-    let fetched = run("get-function", &path, &["--from", stream.to_str().unwrap()]);
+    let functions = wasm_jsonl(&run("functions", &path, &["--at", "func:1"]));
+    assert_eq!(functions.last().unwrap()["records"], 1);
+    let fetched = run("get-function", &path, &["--at", "func:1"]);
     success(&fetched);
     assert_eq!(
         serde_json::from_slice::<Value>(&fetched.stdout).unwrap()["at"],
         "func:1"
     );
-
-    // Change only a name byte: valid module, identical size, different identity.
-    let mut changed = fs::read(&path).unwrap();
-    let pos = changed.windows(3).rposition(|s| s == b"sum").unwrap();
-    changed[pos] = b'S';
-    let changed_path = dir.path().join("changed.wasm");
-    fs::write(&changed_path, &changed).unwrap();
-    success(&run("functions", &changed_path, &[]));
-    let destination = dir.path().join("keep.jsonl");
-    for command in ["functions", "xref", "get-function"] {
-        fs::write(&destination, b"keep").unwrap();
-        failure(
-            run(
-                command,
-                &changed_path,
-                &[
-                    "--from",
-                    stream.to_str().unwrap(),
-                    "-o",
-                    destination.to_str().unwrap(),
-                ],
-            ),
-            1,
-            "SOURCE_MISMATCH",
-        );
-        assert_eq!(fs::read(&destination).unwrap(), b"keep");
-    }
 }
 
 #[test]

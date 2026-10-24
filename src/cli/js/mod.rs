@@ -7,32 +7,6 @@ use rxd_core::perf::Perf;
 use rxd_core::{Limits, Result};
 use rxd_js::{SourceMode, Syntax};
 
-/// Resolve a query/read anchor using the same input buffer as the analysis.
-///
-/// The stream is checked against this file's content id, and the content hash is computed
-/// on the `--from` path; direct coordinates retain the regular single read.
-fn resolve_anchor(
-    input: &std::path::Path,
-    selector: &super::xref::Selector,
-    units: &[&str],
-    frozen: Option<&rxd_core::Source>,
-) -> Result<String> {
-    use super::xref::Expect;
-    let expected = match frozen {
-        Some(source) => Expect::Content(&source.id),
-        None => Expect::Bytes(
-            std::fs::metadata(input)
-                .map_err(|error| rxd_core::Error::new("IO_ERROR", error.to_string()))?
-                .len(),
-        ),
-    };
-    selector
-        .resolve(units, expected)
-        // The selector already reports its class (`SOURCE_MISMATCH`, `INVALID_QUERY`);
-        // re-wrapping would print two codes for one failure.
-        .map_err(super::classify)
-}
-
 pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let common = command.common();
     let input = common.input.clone();
@@ -61,13 +35,6 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
     let limits = Limits::from(budget);
     let mut perf = Perf::new(emit_perf, "analysis", "js", command.name());
     perf.limits = (!directory).then_some(limits);
-    // Validate --from and analyze/extract from this exact buffer, never a second read.
-    let frozen = if matches!(&command, Command::Slice { selector, .. } | Command::Xref { selector, .. } if selector.from.is_some())
-    {
-        Some(rxd_core::Source::read(&input, limits, &mut perf)?)
-    } else {
-        None
-    };
     let query = match &command {
         Command::Xref {
             selector,
@@ -93,22 +60,12 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
                     case_sensitive: case.sensitive(),
                 }
             } else {
-                rxd_js::RefsTarget::Coordinate(resolve_anchor(
-                    &input,
-                    selector,
-                    &["symbol", "identifier"],
-                    frozen.as_ref(),
-                )?)
+                rxd_js::RefsTarget::Coordinate(selector.resolve().map_err(super::classify)?)
             };
             rxd_js::Query::Refs { target }
         }
         Command::Slice { selector, json, .. } => {
-            let at = resolve_anchor(
-                &input,
-                selector,
-                &["entity", "symbol", "fragment"],
-                frozen.as_ref(),
-            )?;
+            let at = selector.resolve().map_err(super::classify)?;
             rxd_js::Query::Slice {
                 id: at,
                 json: *json,
@@ -119,9 +76,7 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
     let result = (|| {
         // A directory is a scan; a file is one input. There is no flag to choose,
         // because the same file must produce the same stream either way.
-        let bytes = if let Some(source) = frozen {
-            rxd_js::run_source(source, mode, syntax, query, limits, &mut perf)?
-        } else if let Some(threads) = scan
+        let bytes = if let Some(threads) = scan
             && input.symlink_metadata().is_ok_and(|m| m.is_dir())
         {
             recursive::run(

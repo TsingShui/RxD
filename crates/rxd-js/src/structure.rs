@@ -297,8 +297,7 @@ impl<'s> Collector<'s> {
                 "malformed or unsupported coordinate",
             ));
         }
-        // A coordinate does not name its input any more: the stream header carries the
-        // identity, and `--from` compares it there.
+        // A coordinate names a span, not an input.
         self.entities
             .iter()
             .position(|e| e.entity.id == id)

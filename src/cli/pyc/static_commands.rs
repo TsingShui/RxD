@@ -248,16 +248,8 @@ pub fn codes(
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
     let mut analysis = options.load(&input, version, perf)?;
-    let at = if query.selector.at.is_some() || query.selector.from.is_some() {
-        Some(
-            query
-                .selector
-                .resolve(
-                    &["code"],
-                    super::super::xref::Expect::Content(&analysis.source_id),
-                )
-                .map_err(super::super::classify)?,
-        )
+    let at = if query.selector.at.is_some() {
+        Some(query.selector.resolve().map_err(super::super::classify)?)
     } else {
         None
     };

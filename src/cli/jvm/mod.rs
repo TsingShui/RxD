@@ -7,9 +7,7 @@ use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
 use super::filter::CaseArgs;
-use super::xref::{
-    Anchor, Expect, Kind as XrefKind, Selector, Target, TargetArgs, selector_stream,
-};
+use super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -298,17 +296,17 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
     } = command
     {
         let limits = options.limits(&input, policy)?;
-        // A plain `--at` fetch parses only the named class; `--from` and unusual
-        // archive layouts keep the full reader so stream identity is checked first.
-        let scoped = match (&selector.at, &selector.from) {
-            (Some(at), None) => Input::read_class_scoped(&input, limits, options.release, at)?,
-            _ => None,
+        // A plain `--at` fetch parses only the named class; unusual archive layouts keep
+        // the full reader.
+        let scoped = match &selector.at {
+            Some(at) => Input::read_class_scoped(&input, limits, options.release, at)?,
+            None => None,
         };
         let input = match scoped {
             Some(input) => input,
             None => Input::read(&input, limits, options.release)?,
         };
-        let coordinate = selector.resolve(&["class"], Expect::Content(&input.source_id))?;
+        let coordinate = selector.resolve()?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
         // One FETCH is one record: the source is a field of it, not the whole answer, so a
         // consumer parses the same envelope as every other command (ADR 0003).
@@ -418,16 +416,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
     {
         let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
-        let target = match target.selector() {
-            Some(path) => target
-                .resolve_from(selector_stream(
-                    path,
-                    &["method", "field", "type"],
-                    Expect::Content(&input.source_id),
-                )?)
-                .map_err(super::classify)?,
-            None => target.resolve().map_err(super::classify)?,
-        };
+        let target = target.resolve().map_err(super::classify)?;
         let mut names = Normalized { owned: Vec::new() };
         let query = ref_query(&target, &mut names);
         let hits = rxd_jvm::find_refs(&input, &query, limits)?;
@@ -618,7 +607,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
     if let Some((selector, raw)) = request {
-        let at = selector.resolve(&["method"], Expect::Content(&input.source_id))?;
+        let at = selector.resolve()?;
         if raw {
             let (selected, index) = input.method_by_at(&at)?;
             let method = &selected.class.methods[index];
