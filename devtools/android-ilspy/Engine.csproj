@@ -4,7 +4,6 @@
     <BaseIntermediateOutputPath>$(NativeArtifactsRoot)obj/</BaseIntermediateOutputPath>
     <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
     <BaseOutputPath>$(NativeArtifactsRoot)bin/</BaseOutputPath>
-    <RestorePackagesPath>$(NativeArtifactsRoot)packages/</RestorePackagesPath>
   </PropertyGroup>
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
   <PropertyGroup>

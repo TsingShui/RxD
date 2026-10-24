@@ -30,8 +30,9 @@ mkdir -p target/android-ilspy
 ```
 
 Verify downloaded/restored NuGet bytes against the official fixed package hash
-in `crates/rxd-dotnet/native/NOTICE`. Producer downloads/intermediates stay under
-`target/`; no build happens during consumption of the prebuilt package.
+in `crates/rxd-dotnet/native/NOTICE`. NuGet restores use the normal global package
+cache (`NUGET_PACKAGES` or `~/.nuget/packages`); native build intermediates stay under
+`target/`. No build happens during consumption of the prebuilt package.
 
 ## Private OpenSSL
 
