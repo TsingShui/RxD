@@ -37,7 +37,10 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
         success(&output);
         let rows = jsonl(&output);
         let count = oracle["counts"][command].as_u64().unwrap() as usize;
-        assert_eq!(rows[0]["source_id"], oracle["provenance"]["dll_sha256"]);
+        // The input identity samples both ends rather than hashing every byte;
+        // the whole-file SHA-256 above still pins the fixture itself.
+        let bytes = fs::read(&path).unwrap();
+        assert_eq!(rows[0]["source_id"], rxd_core::identity::input_id(&bytes));
         assert_eq!(rows.last().unwrap()["complete"], true);
         assert_eq!(rows.last().unwrap()["records"], count);
         assert_eq!(rows.len(), count + 2);
@@ -229,7 +232,7 @@ fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
         .iter()
         .find(|ty| ty.full_name.as_str() == "Rxd.Closure.IContract`1")
         .unwrap();
-    let interface_id = interface.id.clone();
+    let interface_id = format!("0x{:08x}", interface.token);
     let root = parsed.prepare_class(&interface_id).unwrap();
     let error = parsed.class_body(root).err().unwrap().to_string();
     assert!(error.contains("RESOURCE_LIMIT"), "{error}");
@@ -248,7 +251,7 @@ fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
         .iter()
         .find(|ty| ty.full_name.as_str() == "Rxd.Closure.IContract`1")
         .unwrap();
-    let interface_id = interface.id.clone();
+    let interface_id = format!("0x{:08x}", interface.token);
     let root = parsed.prepare_class(&interface_id).unwrap();
     parsed.class_body(root).unwrap();
 }

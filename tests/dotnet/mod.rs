@@ -468,11 +468,17 @@ fn dotnet_fetch_reads_the_coordinate_from_a_selector_stream() {
     rejected(refused);
 
     let foreign = directory.path().join("foreign.jsonl");
-    let expected_input = expected();
-    let sha = expected_input["sha256"].as_str().unwrap();
+    let header: Value = serde_json::from_str(
+        String::from_utf8_lossy(&outline.stdout)
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    let actual_id = header["source_id"].as_str().unwrap().to_owned();
     fs::write(
         &foreign,
-        String::from_utf8_lossy(&outline.stdout).replace(sha, &"0".repeat(64)),
+        String::from_utf8_lossy(&outline.stdout).replace(&actual_id, &"0".repeat(64)),
     )
     .unwrap();
     let mismatched = run("get-method", &path, &["--from", foreign.to_str().unwrap()]);

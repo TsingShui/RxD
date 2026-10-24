@@ -18,6 +18,8 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+from input_identity import input_identity
 VERSION = 1
 NEEDLE = "/__rxd_bench__/needle"
 
@@ -86,7 +88,7 @@ def generate(path, requested_bytes, needle, syntax="auto"):
     return {
         "kind": "synthetic", "generator_version": VERSION,
         "requested_bytes": requested_bytes, "input_bytes": path.stat().st_size,
-        "source_id": hasher.hexdigest(), "expected_entities": count * 2 + 1,
+        "source_id": input_identity(path), "expected_entities": count * 2 + 1,
         "target_span": target_span, "path": str(path),
         "xref_byte": xref_byte, "xref_identifier": "x",
         "definition_expected": definition_expected,
@@ -268,7 +270,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
     if definition_expected is not None:
         identifier = definition_expected["identifier"]
         declaration = definition_expected["declaration"]
-        symbol_id = f"rxd1:js:{manifest['source_id']}:symbol:{identifier['start']}:{identifier['end']}"
+        symbol_id = f"symbol:{identifier['start']}:{identifier['end']}"
         _, payload = checked(command("slice", ["--at", symbol_id, "--json"]), options.timeout)
         binding = json.loads(payload)
         with path.open("rb") as source:
@@ -630,9 +632,9 @@ def main():
         try:
             if corpus:
                 case = corpus_cases[index]
-                source_id = digest(path)
-                if source_id != case["sha256"]:
+                if digest(path) != case["sha256"]:
                     raise ValueError(f"corpus hash mismatch: {case['name']}")
+                source_id = input_identity(path)
                 sampled = case["expected"]["sample_entities"]
                 if not sampled:
                     raise ValueError("corpus needs an independent sampled entity")
@@ -664,7 +666,7 @@ def main():
                 manifest.update(generate(path, math.ceil(size * 1024 * 1024), options.needle, options.syntax))
             else:
                 path = path.resolve()
-                manifest.update(kind="provided", path=str(path), input_bytes=path.stat().st_size, source_id=digest(path))
+                manifest.update(kind="provided", path=str(path), input_bytes=path.stat().st_size, source_id=input_identity(path))
             report["fixtures"].append(manifest)
             benchmark_fixture(manifest, binary, rg, options, extra)
             manifest["status"] = "failed" if any(c["status"] == "failed" for c in manifest["cases"]) else "ok"

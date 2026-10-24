@@ -18,9 +18,9 @@ body, but `get-function` requires a module-defined function with a code body.
 The backend reads one bounded binary buffer from a regular file and computes SHA-256;
 path and extension never replace content identity. Function indices use the core
 combined index space: imports first, then module-defined functions. The member ID is
-`rxd1:wasm:<sha256>:func:<decimal-index>`, printed as the `func:<decimal-index>`
-coordinate; `get-function --at` verifies the content hash, the coordinate kind, the
-index in the defined-function range, and the presence of a code body. Imported
+its coordinate `func:<decimal-index>`; the module's identity is the header
+`source_id`, so no row repeats a hash. `get-function --at` verifies the coordinate
+kind, the index in the defined-function range, and the presence of a code body. Imported
 function indices may appear in `imports` but are not valid `get-function` targets.
 
 Parsing checks section order, lengths and index-space boundaries, reads one function
@@ -69,13 +69,12 @@ Import rows retain their import-entry identity and expose a nullable
 import positions: copy the target coordinate to query a function, including in a
 stripped module with no name section. Export names do not become function names.
 
-- `get-function --at COORD | --from JSONL` takes the `at` a `functions` row prints (`func:42`). A short
-  coordinate is expanded against the header source identity inside the library; a
-  full `rxd1:wasm:<sha256>:func:<n>` id keeps its own hash, so one naming different
-  content fails as `SOURCE_MISMATCH` instead of being rewritten, and a malformed
-  coordinate is `INVALID_QUERY` rather than guessed. Indices must use canonical
-  unsigned decimal spelling. A well-formed missing index is `NOT_FOUND`. Imported
-  function indices have no code body and are `INVALID_QUERY`. `--from` consumes a
+- `get-function --at COORD | --from JSONL` takes the `at` a `functions` row prints (`func:42`).
+  A coordinate names only a position, so a malformed one is `INVALID_QUERY` rather
+  than guessed and nothing is expanded against a hash. Indices must use canonical
+  unsigned decimal spelling. A well-formed missing index is `NOT_FOUND`. A foreign
+  stream is caught by the `--from` source-identity check, not by the coordinate.
+  Imported function indices have no code body and are `INVALID_QUERY`. `--from` consumes a
   function listing and validates its source identity against the same fixed Module
   buffer used by the subsequent listing, reference scan or extraction.
 - `get-function` emits one JSON `function_view` record. It first tries structured
@@ -128,16 +127,15 @@ query, detail`; `query` echoes the command's own selectors. The summary contains
 
 Data records contain `record, at, source_id, parent_at, context_at, start, end,
 detail`; inapplicable values are `null`, never omitted. Identity is the `at`
-coordinate: a row that has an index-space identity prints it, and the shared
-envelope strips the `rxd1:wasm:<sha256>:` prefix because the header already carries
-`source_id`. `source_id` is therefore `null` on every row, and there are no invented
+coordinate: a row that has an index-space identity prints it, and the header already
+carries `source_id`. `source_id` is therefore `null` on every row, and there are no invented
 structure IDs, so `parent_at` is always `null`. Reference records have `at: null`;
 their `context_at` is the caller's coordinate and `detail.target` is the referenced
 function's coordinate. Other records have `context_at: null`. String and reference
 offsets are segment/function-relative, not file ranges; their outer `start/end` are
 `null`. Every listing command sets `header.detail` to `analysis, imported_funcs,
 total_funcs` with `analysis: metadata`. Function and `function_view` records use the
-content-bound function id as `at`; function ranges are the module file's half-open
+function coordinate as `at`; function ranges are the module file's half-open
 code-body range, including locals, and other records have `start/end: null`.
 
 `at` coordinates are short, copy-only and self-describing; a short coordinate passed

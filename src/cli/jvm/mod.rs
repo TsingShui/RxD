@@ -72,7 +72,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Extract one content-bound method as Java or original JVM instructions.
+    /// Extract one method as Java or original JVM instructions.
     #[command(name = "get-method")]
     Get {
         input: PathBuf,

@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import tempfile
+from input_identity import input_id
 from mcp_client import Client, structured
 
 
@@ -21,7 +22,7 @@ def verify(binary, directory, env, expect_native=False):
             assert {'rxd_open', 'rxd_close', 'js_find', 'js_get', 'evm_analyze'} <= names
             assert ('kuna_functions' in names) == expect_native, names
             opened = structured(client.tool('rxd_open', {'path': str(source)})[0])
-            assert opened['source_id'] == hashlib.sha256(original).hexdigest()
+            assert opened['source_id'] == input_id(original)
             source.write_bytes(b'changed source')
             selected = {'input': {'target_id': opened['target_id']}, 'string': 'MCP'}
             found = structured(client.tool('js_find', selected)[0])

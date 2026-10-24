@@ -366,7 +366,6 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         id.replace("code:", "const:"),
         id.replace("code:4", "code:04"),
         format!("{id}:0"),
-        "rxd1:pyc:0:code:4".into(),
     ] {
         failure(
             refs(&path, "value", &["--within", &bad]),

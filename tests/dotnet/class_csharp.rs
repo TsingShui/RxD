@@ -148,9 +148,10 @@ fn valid_mapping(row: &Value, inventory: &Value) {
     let methods = inventory["detail"]["methods"].as_array().unwrap();
     let mapping = row["detail"]["mapping"].as_array().unwrap();
     for point in mapping {
+        let coordinate = format!("0x{:08x}", point["method_token"].as_u64().unwrap());
         let method = methods
             .iter()
-            .find(|method| method["at"] == point["method_id"])
+            .find(|method| method["at"] == coordinate.as_str())
             .unwrap();
         assert_eq!(
             format!("0x{:08x}", point["method_token"].as_u64().unwrap()),

@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha256};
 use std::{fs::OpenOptions, io::Read, ops::Range, path::Path};
 
 use anyhow::{Context, Result, ensure};
@@ -80,8 +79,8 @@ impl Module {
         ensure!(version == 1, "INVALID_INPUT: unsupported wasm version");
 
         let source_id = path.map_or_else(
-            || format!("{:x}", Sha256::digest(&bytes)),
-            |path| rxd_core::identity::content_id(path, &bytes),
+            || rxd_core::identity::input_id(&bytes),
+            |_path| rxd_core::identity::input_id(&bytes),
         );
         let file_bytes = bytes.len();
 
@@ -345,7 +344,7 @@ impl Module {
     }
 
     pub fn func_id(&self, func_index: u32) -> String {
-        format!("rxd1:wasm:{}:func:{}", self.source_id, func_index)
+        format!("func:{func_index}")
     }
 
     /// Signature (param count, result count) for any function index, imported
@@ -392,8 +391,7 @@ impl Module {
     /// A row prints the copy-only `func:<index>`; the content identity lives in
     /// the stream header, so a short coordinate is expanded against this
     /// module's own hash here instead of making a caller reassemble it. A full
-    /// `rxd1:wasm:<sha256>:func:<index>` id keeps its own hash, so one naming a
-    /// different module fails as `SOURCE_MISMATCH` rather than being rewritten.
+    /// A coordinate is source-agnostic; identity lives in the stream header.
     /// The function index a `func:N` coordinate names.
     ///
     /// The index space is what call operands carry; a body position is not, so a query that
@@ -417,47 +415,24 @@ impl Module {
     }
 
     fn coordinate_function(&self, at: &str) -> Result<u32> {
-        let expanded;
-        let id = if at.starts_with("rxd1:") {
-            at
-        } else {
-            expanded = format!("rxd1:wasm:{}:{at}", self.source_id);
-            expanded.as_str()
-        };
-        let parts: Vec<&str> = id.split(':').collect();
-        if parts.len() != 5
-            || parts[0] != "rxd1"
-            || parts[1] != "wasm"
-            || parts[2].len() != 64
-            || !parts[2]
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        {
-            return Err(rxd_core::Error::failure(
+        let (kind, value) = at.split_once(':').ok_or_else(|| {
+            rxd_core::Error::failure(
                 rxd_core::Failure::Query,
                 "malformed or unsupported WASM coordinate",
             )
-            .into());
-        }
-        if parts[2] != self.source_id {
-            return Err(rxd_core::Error::failure(
-                rxd_core::Failure::Mismatch,
-                "coordinate belongs to different source content",
-            )
-            .into());
-        }
+        })?;
         ensure!(
-            parts[3] == "func",
+            kind == "func",
             rxd_core::Error::failure(
                 rxd_core::Failure::Query,
-                format!("expected function coordinate (func), got {}", parts[3])
+                format!("expected function coordinate (func), got {kind}")
             )
         );
-        let index: u32 = parts[4].parse().map_err(|_| {
+        let index: u32 = value.parse().map_err(|_| {
             rxd_core::Error::failure(rxd_core::Failure::Query, "function index must be a u32")
         })?;
         ensure!(
-            parts[4] == index.to_string(),
+            value == index.to_string(),
             rxd_core::Error::failure(
                 rxd_core::Failure::Query,
                 "function index must be canonical decimal"

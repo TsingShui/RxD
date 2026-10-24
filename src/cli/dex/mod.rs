@@ -528,7 +528,7 @@ fn run_command(
                     let path = target.to_str().ok_or_else(|| {
                         anyhow::anyhow!("INVALID_QUERY: output path must be UTF-8")
                     })?;
-                    let sha256 = rxd_core::identity::content_id(Path::new(""), bytes);
+                    let sha256 = rxd_core::identity::input_id(bytes);
                     append_json(
                         &mut payload,
                         &data_record(

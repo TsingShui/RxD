@@ -104,7 +104,6 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
         id.replace("code:0", "code:01"),
         format!("{id}x"),
         "code:".into(),
-        "rxd1:pyc:0:code:0".into(),
     ] {
         failure(fetch(&original, &bad, &[]), 2, "INVALID_QUERY");
     }

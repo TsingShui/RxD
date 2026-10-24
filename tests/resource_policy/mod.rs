@@ -33,7 +33,7 @@ fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
     assert_eq!(rows.len(), 2);
     assert_eq!(
         rows[0]["source_id"],
-        "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07"
+        "8caa89ad89b5efb9405edd796110b18c63e9545e3dfd9c2719ba6de1be484786"
     );
     assert_eq!(rows[1]["records"], 0);
     assert_eq!(rows[1]["complete"], true);

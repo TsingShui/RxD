@@ -264,30 +264,7 @@ pub fn execute(
             })
         });
         let _guard = CaptureGuard;
-        let identities = inputs
-            .iter()
-            .flat_map(|input| {
-                let route = input.source_id.as_ref().zip(input.input_bytes).map(
-                    |(source_id, input_bytes)| rxd_core::identity::CapturedIdentity {
-                        path: input.path.clone(),
-                        input_bytes,
-                        source_id: source_id.clone(),
-                    },
-                );
-                route
-                    .into_iter()
-                    .chain(input.identities.iter().map(|identity| {
-                        rxd_core::identity::CapturedIdentity {
-                            path: identity.path.clone(),
-                            input_bytes: identity.input_bytes,
-                            source_id: identity.source_id.clone(),
-                        }
-                    }))
-            })
-            .collect();
-        let result = rxd_core::identity::with_captured_identities(identities, || {
-            crate::cli::execute_query(cli, budgets.input_bytes)
-        });
+        let result = crate::cli::execute_query(cli, budgets.input_bytes);
         let bytes = OUTPUT.with(|slot| slot.borrow_mut().take().unwrap().bytes);
         (result, bytes)
     });

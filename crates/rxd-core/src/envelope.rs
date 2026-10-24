@@ -7,10 +7,9 @@ pub const SCHEMA_VERSION: u32 = 2;
 
 /// Navigation and byte offsets; absent values serialize as null, never omitted keys.
 ///
-/// `at` values are content-bound backend ids. They are emitted as the short,
-/// copy-only `at` coordinate: the schema prefix `rxd1:<backend>:<sha256>:` is
-/// stripped because the stream header already carries `source_id`, and an Agent
-/// passes the coordinate back with `--at` instead of assembling a hash itself.
+/// `at` values are the backend's own copy-only coordinates. The stream header
+/// carries `source_id`, so no row repeats a hash and an Agent passes the printed
+/// coordinate back with `--at`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RecordMeta<'a> {
     pub at: Option<&'a str>,
@@ -21,31 +20,14 @@ pub struct RecordMeta<'a> {
     pub end: Option<usize>,
 }
 
-/// Turn a content-bound id into the copy-only coordinate an Agent passes back.
+/// Normalize a coordinate a row printed into the copy-only form `--at` accepts.
 ///
-/// The schema prefix `rxd1:<backend>:<sha256>:` is stripped structurally (64 hex
-/// digits after the backend segment), so no backend needs to be named. A `.NET`
-/// coordinate *is* its ECMA-335 metadata token, which already encodes its table in
-/// the high byte, so it is printed as `0x0600000b` with no noun prefix; every other
-/// backend keeps its own self-describing coordinate (`func:42`, `1234..5678`).
-pub fn at_of(id: &str) -> std::borrow::Cow<'_, str> {
+/// A `.NET` coordinate *is* its ECMA-335 metadata token, which already encodes its
+/// table in the high byte, so it is printed as `0x0600000b`; every other backend
+/// keeps its own self-describing coordinate (`func:42`, `1234..5678`).
+pub fn at_of(coordinate: &str) -> std::borrow::Cow<'_, str> {
     use std::borrow::Cow;
-    let Some(rest) = id.strip_prefix("rxd1:") else {
-        return dotnet_token(id).map_or_else(|| Cow::Borrowed(id), Cow::Owned);
-    };
-    let Some((backend, rest)) = rest.split_once(':') else {
-        return Cow::Borrowed(id);
-    };
-    let Some((hash, at)) = rest.split_once(':') else {
-        return Cow::Borrowed(id);
-    };
-    if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) || at.is_empty() {
-        return Cow::Borrowed(id);
-    }
-    match backend {
-        "dotnet" => dotnet_token(at).map_or_else(|| Cow::Borrowed(id), Cow::Owned),
-        _ => Cow::Borrowed(at),
-    }
+    dotnet_token(coordinate).map_or_else(|| Cow::Borrowed(coordinate), Cow::Owned)
 }
 
 /// `method:0600000b` / `0x0600000b` / `0600000b` -> `0x0600000b`.
@@ -60,12 +42,6 @@ fn dotnet_token(value: &str) -> Option<String> {
     }
     let token = u32::from_str_radix(body, 16).ok()?;
     Some(format!("0x{token:08x}"))
-}
-
-/// Compose the content-bound id a backend validates internally from the input's own
-/// identity plus the coordinate an Agent copied out of a record.
-pub fn full_id(backend: &str, source_id: &str, at: &str) -> String {
-    format!("rxd1:{backend}:{source_id}:{at}")
 }
 
 /// Build a stream header. Use null for query parameters that do not apply.

@@ -19,7 +19,7 @@ rxd pyc decompile raw.marshal --version 3.12 -o recovered.py
 
 Default stdout is UTF-8 Python text; `-o` atomically writes the file and does not
 repeat it on stdout. `--json` returns one ADR 0003 `record: source` envelope with
-`schema_version: 2`, `backend: pyc`, `command: decompile`, input SHA-256 `source_id`,
+`schema_version: 2`, `backend: pyc`, `command: decompile`, input identity digest `source_id`,
 record/at/parent_at/context_at/start/end and detail. There is no code-unit navigation or
 original source range, so at/parent/context/start/end are null; generated text offsets
 never become input offsets. Detail fields are `input_bytes`, `python_version`,
@@ -550,11 +550,10 @@ rxd pyc xref module.pyc --from target/strings.jsonl
 rxd pyc xref graph.marshal --version 3.12 --at "$CONST_AT" --within "$CODE_AT"
 ```
 
-CONST_ID comes from a real strings row `at`, not a literal value. It accepts the short
-`const:<owner>:<path>` coordinate or the full content-bound id; the short form is expanded
-against the header identity. Validation covers full input SHA-256 (full form only),
-backend, kind=const, an existing owner code, canonical decimal top-level slot and every
-path component. The path may traverse only tuple/frozenset and end at str/bytes;
+CONST_ID comes from a real strings row `at`, not a literal value. It accepts only the
+`const:<owner>:<path>` coordinate; nothing expands it against a hash. Validation covers
+kind=const, an existing owner code, canonical decimal top-level slot and every path
+component. The path may traverse only tuple/frozenset and end at str/bytes;
 containers, code, other literal kinds and mutable containers are outside the selected
 str/bytes profile (`INVALID_QUERY`). Malformed IDs are `INVALID_QUERY`; a canonical
 missing owner or path slot is `NOT_FOUND`, and a full-form digest mismatch is

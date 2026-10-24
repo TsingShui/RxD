@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+from input_identity import input_identity
 import subprocess
 import signal
 import queue
@@ -51,7 +52,7 @@ def run(argv, env, cwd, log):
 def check_query(result):
     assert not result.get('isError'), result
     value = result['structuredContent']
-    assert value['header']['source_id'] == hashlib.sha256(SOURCE).hexdigest(), value
+    assert value['header']['source_id'] == input_identity(SOURCE), value
     assert value['summary']['complete'], value
     assert len(value['records']) == 1, value
     assert value['records'][0]['detail']['value'] == 'native MCP λ', value

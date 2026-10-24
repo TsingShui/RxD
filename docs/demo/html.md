@@ -1,7 +1,7 @@
 # HTML examples
 
 `rxd html` enumerates lexical records in a local HTML file and extracts exact byte ranges
-by content-bound ID. It never executes page scripts, loads external resources or builds a
+by coordinate. It never executes page scripts, loads external resources or builds a
 DOM. `entries` lists lexical nodes; `resources` classifies resource candidates and can
 include inline bodies; `extract` fetches one original range. JS content is passed to
 `rxd js` with its own source identity.
@@ -35,8 +35,8 @@ analysis of a real site.
 Header backend is `html`, command `entries`, with path/`analysis: lexical`/`parser:
 html5gum`/`parser_version: 0.8.4`/`lexical_profile: lexical_naive_v1`. Structured output
 follows [ADR 0003](../adr/0003-output-envelope.md), `schema_version=2`. Records appear in
-source order: doctype/comment/element/text. IDs are
-`rxd1:html:<sha256>:<kind>:<start>:<end>`.
+source order: doctype/comment/element/text. A record's `at` is
+`<kind>:<start>:<end>`; the container's `source_id` lives in the header.
 
 Element detail: tag, ordered attrs, self_closing, void, depth, end_tag,
 content_start/content_end. Text/comment/doctype detail: value and depth. Attribute values
@@ -128,7 +128,7 @@ For one body, the resource coordinate also works with ordinary extraction:
   --content -o "$DEMO/one-inline.mjs"
 ```
 
-`--from` checks the catalog's SHA-256 against the very source buffer used for
+`--from` checks the catalog's identity digest against the very source buffer used for
 extraction, including same-length changed inputs. No HTML-to-JS coordinate guessing
 or synthetic resource ID is needed. A complete catalog is not browser page coverage.
 
@@ -173,7 +173,7 @@ receipt, not the file content:
 }
 ```
 
-The receipt `source_id` is the artifact SHA-256; artifact start/end and origin
+The receipt `source_id` is the artifact identity digest; artifact start/end and origin
 start/end are strictly separate. Failures (invalid/foreign ID, non-element `--content`,
 empty content, output replacing input, budget overflow) emit no payload and leave the
 target untouched.

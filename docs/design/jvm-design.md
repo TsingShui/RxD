@@ -65,12 +65,12 @@ checked before selection) fall back to the complete reader, which stays the
 authority. Listings, `strings`, `xref` and `get-method` keep the complete parse.
 Scoped and full reads produce byte-identical `class_body` output.
 
-`header.source_id` is the input file SHA-256; class/method `source_id` is the actual
-class-byte SHA-256. JAR records retain the physical entry. A method ID is
-`rxd1:jvm:<class-sha256>:method:<method-table-index>`; the index is not a DEX
-`method_ids` index. The same class in different containers has the same ID. `get`
-validates the complete ID against the fixed input; wrong, stale or foreign IDs return
-`INVALID_QUERY`.
+`header.source_id` is the input file identity digest; class/method `source_id` is the
+actual class bytes' identity digest. JAR records retain the physical entry. A method's identity is its
+JVM coordinate `Lx/y;->name(proto)`, printed as the row's `at`; no row carries a hash.
+The same class in different containers has the same coordinates. `get` validates the
+coordinate against the fixed input; malformed or unknown coordinates return
+`INVALID_QUERY`, and a foreign stream is caught by the header `source_id` check.
 
 `--raw` outer `start/end` point at Code bytes inside the class file, not the
 compressed JAR. `byte_offset` is the original JVM byte offset within the method; bytes
@@ -136,8 +136,8 @@ strings/xref use `{}`.
 
 Data records contain `record, id, source_id, parent_id, context_id, start, end,
 detail`; inapplicable values are null. `source_id` is the actual owning class-byte
-SHA-256. Class/field/string/reference have no FETCH ID (`id: null`); method/bytecode use
-the content-bound method coordinate. There are no invented class coordinates, so `parent_at` is always
+SHA-256. Class/field/string/reference have no FETCH coordinate (`at: null`); method/bytecode use
+the method coordinate. There are no invented class coordinates, so `parent_at` is always
 null. `reference.context_id` is the owning method ID and can be passed to `get-method`;
 other records have `context_id: null`. Streaming `start/end` are null; method-relative
 `byte_offset` is never treated as a class/JAR file range.

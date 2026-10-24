@@ -36,7 +36,7 @@ decryption and signatures are outside metadata enumeration. ASAR links are liste
 not followed. `complete` means the index was fully enumerated; it does not prove every
 file is readable. Range status uses the container length at open time.
 
-An `extract` receipt has `source_id` (SHA-256 of the extracted file bytes) and
+An `extract` receipt has `source_id` (identity digest of the extracted file bytes) and
 `detail` with `complete`, output `path`, `file_bytes`, `storage`,
 `representation: original` and `origin`. `origin` contains the container path,
 `format: asar`, `entry` and `header_id`; `header_id` hashes the header Pickle and is
@@ -80,7 +80,7 @@ its input, entry and work ceilings, and a real overflow there is an atomic
 ## Relationship to JavaScript
 
 Extracted `.js`/`.cjs`/`.mjs`/`.jsx`/`.ts`/`.tsx` content is analyzed by `rxd-js`;
-original bytes and content-bound IDs under the same parse options are preserved. JS
+original bytes and coordinates under the same parse options are preserved. JS
 offsets refer to the extracted file, and the extraction receipt retains the origin
 relationship. Native `.node` files, shared libraries, V8 compile artifacts and other
 binaries can be enumerated and extracted but are never executed or interpreted here.

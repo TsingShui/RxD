@@ -21,16 +21,16 @@ exposes `--max-*`.
    `entities` (the full catalogue, file root included) plus `functions`/`classes`/`methods`;
    wasm has one command per kind (`types`, `imports`, `exports`, `functions`, `tables`,
    `memories`, `globals`, `data`, `elements`, `strings`, `xref`); html/asar have
-   `entries`; pyc has `codes`; evm has `blocks` and `interface` (the content-bound function
+   `entries`; pyc has `codes`; evm has `blocks` and `interface` (the navigable function
    listing), and the old `outline` is gone everywhere.
 2. **Listing selectors.** Every listing command takes `-f/--filter` (case-insensitive
    substring) plus its own exact selectors (`--kind`, `--name`, `--class`, `--func`,
    `--selector`, ...). Single-object analysis commands (`manifest`, `decompile`,
    `analyze`, `storage`, `metadata`, `cfg`, `disassemble`, `extract`) take no filter.
 3. **`--at` selects a row.** Every fetch/extract command takes `--at` with the coordinate a
-   row prints; the short form expands against the header identity inside the backend
-   library. A full `rxd1:<backend>:<sha256>:...` id is still accepted and still fails with
-   `SOURCE_MISMATCH` when the hash differs. Positional ids and `--id` are gone. `xref` is
+   row prints, verbatim; nothing expands it against a hash, and a handle that still carries
+   an input digest is rejected as `INVALID_QUERY` rather than rewritten. Positional ids and
+   `--id` are gone. `xref` is
    not an exception: `--at` anchors on the identity a row prints (dex/jar member and type
    coordinates, `symbol:6:9`, `func:42`, `const:0:3`), while `-f PATTERN --kind KIND` is the
    content search. js keeps `--byte` beside `--at` because a position *inside* a multi-byte
@@ -208,7 +208,7 @@ predate every one of these surface changes and must be rebuilt from the final co
 
 ## Notes for future work
 
-- `--from <jsonl|->` exists for content-bound re-reads on the backends that have it; the
+- `--from <jsonl|->` exists for source-checked re-reads on the backends that have it; the
   unified surface makes it optional rather than required, because `at` is file-scoped and
   the header carries the identity.
 - Directory scans, semantic index sizes and AST depth are bounded by the shared budget, so

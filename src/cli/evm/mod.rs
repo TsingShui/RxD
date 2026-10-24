@@ -17,7 +17,7 @@ pub enum Command {
     Xref(XrefOptions),
     /// Return all native EVMole analyses as one JSON object.
     Analyze(Options),
-    /// List content-bound function candidates with EVMole's own ABI fields.
+    /// List function candidates with EVMole's own ABI fields.
     Interface(ListOptions),
     /// Infer persistent and transient storage, retaining the function candidates.
     Storage(Options),
@@ -29,7 +29,7 @@ pub enum Command {
     Cfg(Options),
     /// Extract terminal CBOR compiler metadata.
     Metadata(Options),
-    /// List content-bound basic blocks.
+    /// List basic blocks.
     Blocks(ListOptions),
     /// Fetch one basic block using the coordinate a blocks row prints.
     GetBlock(BlockOptions),

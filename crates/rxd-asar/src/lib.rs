@@ -13,7 +13,6 @@ use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::{Error, Limits, Origin, Result, perf::Perf};
 use serde::Serialize;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 use local::invalid;
 
@@ -199,7 +198,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             }
             let bytes = perf.measure("read", || archive.read(&file, entry, limits.input_bytes))?;
             perf.counters.input_bytes = Some(bytes.len());
-            let source_id = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
+            let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
             if perf.enabled() {
                 perf.source_id = Some(source_id.clone());
             }

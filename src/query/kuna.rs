@@ -93,7 +93,7 @@ pub fn catalog() -> Vec<ToolDefinition> {
             name: "kuna_functions".into(),
             backend: "kuna".into(),
             description: format!(
-                "Enumerate all native Kuna function entries with aliases, addresses and object locations. Linked Kuna {version} ({revision}); native JSON, no content-bound entity IDs. Use returned address_hex or a unique name for kuna_decompile. Adapter coverage: full enumeration and single-function JSON only; no search/xref/export/external engines."
+                "Enumerate all native Kuna function entries with aliases, addresses and object locations. Linked Kuna {version} ({revision}); native JSON, no rxd-style entity coordinates. Use returned address_hex or a unique name for kuna_decompile. Adapter coverage: full enumeration and single-function JSON only; no search/xref/export/external engines."
             ),
             input_schema: object_schema::<FunctionsArgs>(),
             output_schema: object_schema::<NativeOutput<FunctionInventory>>(),

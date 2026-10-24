@@ -101,7 +101,7 @@ pub fn refs_json(
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
     let id = crate::canonical_id(&navigation.carrier.source_id, at);
-    match id.split(':').nth(4) {
+    match id.split(':').nth(1) {
         Some("literal") => LiteralInventory::discover(navigation, limits, perf)?
             .refs_json(navigation, functions, &id, listing, limits, perf),
         Some("function" | "block") => {

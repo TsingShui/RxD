@@ -196,52 +196,35 @@ impl DataInventory {
     }
 
     fn id(&self, navigation: &Navigation, literal: &DataLiteral) -> String {
-        format!(
-            "rxd1:evm:{}:{}",
-            navigation.carrier.source_id,
-            self.coordinate(navigation, literal)
-        )
+        self.coordinate(navigation, literal)
     }
 
     fn select(&self, navigation: &Navigation, at: &str) -> Result<&DataLiteral> {
-        let invalid = || {
-            Error::new(
-                "INVALID_QUERY",
-                "expected a canonical content-bound EVM data literal ID",
-            )
-        };
+        let invalid = || Error::new("INVALID_QUERY", "expected an EVM data literal coordinate");
         let canonical = crate::canonical_id(&navigation.carrier.source_id, at);
         let fields: Vec<_> = canonical.split(':').collect();
-        if fields.len() != 9
-            || fields[0] != "rxd1"
-            || fields[1] != "evm"
-            || fields[4] != "literal"
-            || fields[5] != "data"
-            || !matches!(fields[6], "unindexed" | "metadata" | "copied")
-            || fields[2].len() != 64
-            || !fields[2]
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || !matches!(fields[3], "raw" | "hex")
+        if fields.len() != 6
+            || fields[1] != "literal"
+            || fields[2] != "data"
+            || !matches!(fields[3], "unindexed" | "metadata" | "copied")
+            || !matches!(fields[0], "raw" | "hex")
         {
             return Err(invalid());
         }
-        let start = fields[7].parse::<usize>().map_err(|_| invalid())?;
-        let end = fields[8].parse::<usize>().map_err(|_| invalid())?;
-        if start.to_string() != fields[7] || end.to_string() != fields[8] {
+        let start = fields[4].parse::<usize>().map_err(|_| invalid())?;
+        let end = fields[5].parse::<usize>().map_err(|_| invalid())?;
+        if start.to_string() != fields[4] || end.to_string() != fields[5] {
             return Err(invalid());
         }
-        if fields[2] != navigation.carrier.source_id
-            || fields[3] != navigation.carrier.encoding.as_str()
-        {
+        if fields[0] != navigation.carrier.encoding.as_str() {
             return Err(Error::new(
                 "SOURCE_MISMATCH",
-                "EVM data literal ID does not match the carrier and encoding",
+                "EVM data literal coordinate does not match the carrier encoding",
             ));
         }
         self.literals
             .iter()
-            .find(|l| l.kind == fields[6] && l.start == start && l.end == end)
+            .find(|l| l.kind == fields[3] && l.start == start && l.end == end)
             .ok_or_else(invalid)
     }
 

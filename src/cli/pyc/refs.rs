@@ -101,7 +101,7 @@ pub fn run(
             .transpose()?;
         let constant = if kind == "constant" {
             let value = at.as_deref().unwrap();
-            let coordinate_kind = value.split(':').nth(if value.starts_with("rxd1:") { 3 } else { 0 }).unwrap_or("");
+            let coordinate_kind = value.split(':').next().unwrap_or("");
             if coordinate_kind != "const" {
                 return Err(Error::failure(rxd_core::Failure::Query, format!("expected constant coordinate (const), got {coordinate_kind}; use --kind name for literal names")));
             }

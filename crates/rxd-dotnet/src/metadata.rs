@@ -13,6 +13,23 @@ use dotscope::metadata::tables::{
 
 use crate::{CallSignature, Field, Input, Method, StringRecord, TypeInfo, input::Work};
 
+/// One shared empty payload for unresolved signature fields. 41k methods times
+/// three empty allocations is measurable on a large assembly; the values are
+/// replaced wholesale on resolve, never mutated in place.
+fn empty_signature() -> std::sync::Arc<String> {
+    static EMPTY: std::sync::OnceLock<std::sync::Arc<String>> = std::sync::OnceLock::new();
+    EMPTY
+        .get_or_init(|| std::sync::Arc::new(String::new()))
+        .clone()
+}
+
+fn empty_parameters() -> std::sync::Arc<Vec<String>> {
+    static EMPTY: std::sync::OnceLock<std::sync::Arc<Vec<String>>> = std::sync::OnceLock::new();
+    EMPTY
+        .get_or_init(|| std::sync::Arc::new(Vec::new()))
+        .clone()
+}
+
 pub(crate) fn load(input: &mut Input) -> Result<()> {
     let tables = input.view.tables().context("INVALID_INPUT: tables")?;
     ensure!(
@@ -224,11 +241,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
                 core_base_types.insert(row.token.value());
             }
             Ok(TypeInfo {
-                id: input.id("type", row.token.value()),
                 declaring_type_token: nested.get(&row.rid).map(|rid| 0x02000000 | rid),
-                declaring_type_id: nested
-                    .get(&row.rid)
-                    .map(|rid| input.id("type", 0x02000000 | rid)),
                 extends_token: (row.extends.token.value() & 0xffffff != 0)
                     .then_some(row.extends.token.value()),
                 kind: "class".to_owned(),
@@ -314,13 +327,11 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             let declaring_type = result_types[slot].full_name.clone();
             work.charge(name.len().saturating_add(2))?; // name bytes, shared owner handle
             Ok(Field {
-                id: input.id("field", row.token.value()),
-                declaring_type_id: result_types[slot].id.clone(),
                 token: row.token.value(),
                 declaring_type_token: result_types[slot].token,
                 declaring_type,
                 name: name.to_owned(),
-                signature: Arc::new(String::new()),
+                signature: empty_signature(),
                 signature_index: row.signature,
                 resolved: false,
                 flags: row.flags.try_into()?,
@@ -343,6 +354,12 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             (row.token.value(), is_value)
         })
         .collect();
+    // Value-type flag per result_types slot, so the method loop does not probe a
+    // map once per row.
+    let value_slots: Vec<bool> = result_types
+        .iter()
+        .map(|ty| type_kinds.get(&ty.token).copied().unwrap_or(false))
+        .collect();
     for (idx, row) in methods.iter().enumerate() {
         let processed = (|| -> Result<Method> {
             let name = input.name(row.name)?;
@@ -351,23 +368,21 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             let declaring_type = result_types[slot].full_name.clone();
             let token = row.token.value();
             let type_token = types[owner].token.value();
-            let is_value_type = type_kinds[&type_token];
+            let is_value_type = value_slots[slot];
             work.charge(name.len().saturating_add(4))?; // name bytes and shared owner handles
             Ok(Method {
-                declaring_type_id: result_types[slot].id.clone(),
                 impl_flags: row.impl_flags.try_into()?,
                 generic_parameters: generic_parameters
                     .remove(&row.token.value())
                     .unwrap_or_default(),
-                id: input.id("method", token),
                 token,
                 declaring_type,
                 declaring_type_token: type_token,
                 declaring_type_is_value_type: is_value_type,
                 name: name.to_owned(),
-                signature: Arc::new(String::new()),
-                parameters: Arc::new(Vec::new()),
-                return_type: Arc::new(String::new()),
+                signature: empty_signature(),
+                parameters: empty_parameters(),
+                return_type: empty_signature(),
                 has_this: false,
                 signature_flags: 0,
                 signature_index: row.signature,
@@ -633,7 +648,6 @@ pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
             properties.push(crate::Property {
                 token: row.token.value(),
                 declaring_type_token: owner.token,
-                declaring_type_id: owner.id.clone(),
                 name: name.to_owned(),
                 signature,
                 signature_hex: bytes.iter().map(|byte| format!("{byte:02x}")).collect(),
@@ -677,7 +691,6 @@ pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
             events.push(crate::Event {
                 token: row.token.value(),
                 declaring_type_token: owner.token,
-                declaring_type_id: owner.id.clone(),
                 name: name.to_owned(),
                 event_type_token: row.event_type.token.value(),
                 flags: row.flags,
@@ -720,10 +733,9 @@ pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
                         && accessor.semantics == row.semantics),
                 "INVALID_INPUT: duplicate accessor association"
             );
-            work.charge(std::mem::size_of::<crate::Accessor>() + method.id.len())?;
+            work.charge(std::mem::size_of::<crate::Accessor>())?;
             accessors.push(crate::Accessor {
                 method_token: token,
-                method_id: method.id.clone(),
                 semantics: row.semantics,
             });
         }

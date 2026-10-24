@@ -62,7 +62,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Get one content-bound method as conservative code or original instructions.
+    /// Get one method as conservative code or original instructions.
     #[command(name = "get-method")]
     Get {
         input: PathBuf,
@@ -327,7 +327,7 @@ fn execute_inner(
             command.name(),
             RecordMeta {
                 at: Some(&at),
-                parent_at: Some(&method.declaring_type_id),
+                parent_at: Some(&coordinate(method.declaring_type_token)),
                 start: Some(body.code_offset),
                 end: Some(body.code_offset + body.code_size),
                 ..RecordMeta::default()
@@ -398,7 +398,7 @@ fn execute_inner(
                     relationship_record(
                         &input,
                         "property",
-                        &property.declaring_type_id,
+                        &coordinate(property.declaring_type_token),
                         property.token,
                         *property,
                     )
@@ -411,7 +411,7 @@ fn execute_inner(
                     relationship_record(
                         &input,
                         "event",
-                        &event.declaring_type_id,
+                        &coordinate(event.declaring_type_token),
                         event.token,
                         *event,
                     )
@@ -434,13 +434,12 @@ fn execute_inner(
             }
         }
         // Nested inventories carry the same entity references as the top level.
-        shorten_detail_ids(&mut payload);
         let value = fetch_record(
             "class_body",
             command.name(),
             RecordMeta {
                 at: Some(&at),
-                parent_at: class.root.declaring_type_id.as_deref(),
+                parent_at: class.root.declaring_type_token.map(coordinate).as_deref(),
                 ..metadata(&input)
             },
             payload,
@@ -502,12 +501,15 @@ fn execute_inner(
                         // `at`: that is what `--at`/`--from` take back, and what the
                         // reference rows point at.
                         let token = format!("0x{:08x}", 0x7000_0000u32 | literal.offset);
+                        let context = method.map(|method| coordinate(method.token));
                         envelope::record(
                             "string",
                             RecordMeta {
                                 at: Some(&token),
-                                parent_at: method.map(|method| method.declaring_type_id.as_str()),
-                                context_at: method.map(|method| method.id.as_str()),
+                                parent_at: method
+                                    .map(|method| coordinate(method.declaring_type_token))
+                                    .as_deref(),
+                                context_at: context.as_deref(),
                                 ..metadata(&input)
                             },
                             detail(
@@ -598,17 +600,18 @@ fn reference_record(
     literal: Option<&str>,
 ) -> anyhow::Result<Value> {
     let method = &input.methods[(site.method_token & 0xffffff) as usize - 1];
+    let context = coordinate(method.token);
     let start = site.code_offset + site.il_offset as usize;
     Ok(envelope::reference(
         RecordMeta {
-            context_at: Some(&method.id),
-            parent_at: Some(&method.declaring_type_id),
+            context_at: Some(&context),
+            parent_at: Some(&coordinate(method.declaring_type_token)),
             start: Some(start),
             end: Some(start + site.size as usize),
             ..metadata(input)
         },
         detail(
-            json!({"target":literal.map(str::to_owned).or_else(||target.and_then(|target|target.canonical_id.as_deref()).map(envelope::at_of).map(|id|id.into_owned())).unwrap_or_else(||format!("0x{:08x}",site.target_token)),"declaring_type":method.declaring_type,"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
+            json!({"target":literal.map(str::to_owned).or_else(||target.and_then(|target|target.canonical_token).map(coordinate)).unwrap_or_else(||format!("0x{:08x}",site.target_token)),"declaring_type":method.declaring_type,"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
         ),
     ))
 }
@@ -802,8 +805,8 @@ fn annotate_operands(
         operand["name"] = Value::from(target.name.clone());
         operand["status"] = Value::from(target.resolution_status.clone());
         operand["scope"] = serde_json::to_value(&target.scope)?;
-        if let Some(canonical) = &target.canonical_id {
-            operand["target_at"] = Value::from(envelope::at_of(canonical).into_owned());
+        if let Some(canonical) = target.canonical_token {
+            operand["target_at"] = Value::from(coordinate(canonical));
         }
     }
     Ok(value)
@@ -812,42 +815,19 @@ fn annotate_operands(
 /// Detail-level entity references use the same copy-only coordinate as the outer
 /// envelope; a caller never receives a hash it did not ask for. Nested inventories
 /// (class bodies, refs rows) carry the same keys, so the rewrite is recursive.
-fn shorten_ids(value: &mut Value) {
-    match value {
-        Value::Object(fields) => {
-            for (key, child) in fields.iter_mut() {
-                if let Value::String(text) = child
-                    && (key == "id" || key.ends_with("_id"))
-                    && text.starts_with("rxd1:")
-                {
-                    *text = envelope::at_of(text).into_owned();
-                    continue;
-                }
-                shorten_ids(child);
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(shorten_ids),
-        _ => {}
-    }
-}
-
-fn shorten_detail_ids(fields: &mut serde_json::Map<String, Value>) {
-    let mut value = Value::Object(std::mem::take(fields));
-    shorten_ids(&mut value);
-    if let Value::Object(restored) = value {
-        *fields = restored;
-    }
+/// The copy-only coordinate of a row: its ECMA-335 metadata token.
+fn coordinate(token: u32) -> String {
+    format!("0x{token:08x}")
 }
 
 fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<Value> {
-    let mut fields = detail(serde_json::to_value(method)?);
-    fields.remove("id");
-    shorten_detail_ids(&mut fields);
+    let fields = detail(serde_json::to_value(method)?);
+    let record_at = coordinate(method.token);
     Ok(envelope::record(
         "method",
         RecordMeta {
-            at: Some(&method.id),
-            parent_at: Some(&method.declaring_type_id),
+            at: Some(&record_at),
+            parent_at: Some(&coordinate(method.declaring_type_token)),
             ..metadata(input)
         },
         fields,
@@ -857,7 +837,6 @@ fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<V
 fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value> {
     let mut fields = detail(serde_json::to_value(ty)?);
     fields.remove("id");
-    shorten_detail_ids(&mut fields);
     // A base type and an interface are tokens; a reader navigates by name. Both stay,
     // because the token is the identity `get-class --at` takes back and a name is not
     // unique across assemblies. An omitted default keeps the row at its old size.
@@ -885,8 +864,8 @@ fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value
     Ok(envelope::record(
         "class",
         RecordMeta {
-            at: Some(&ty.id),
-            parent_at: ty.declaring_type_id.as_deref(),
+            at: Some(&coordinate(ty.token)),
+            parent_at: ty.declaring_type_token.map(coordinate).as_deref(),
             ..metadata(input)
         },
         fields,
@@ -894,15 +873,14 @@ fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value
 }
 
 fn field_record(input: &Input, field: &rxd_dotnet::Field) -> anyhow::Result<Value> {
-    let mut fields = detail(serde_json::to_value(field)?);
-    fields.remove("id");
+    let fields = detail(serde_json::to_value(field)?);
     // Nested references are copy-only coordinates, exactly as in `methods`/`classes`.
-    shorten_detail_ids(&mut fields);
+    let record_at = coordinate(field.token);
     Ok(envelope::record(
         "field",
         RecordMeta {
-            at: Some(&field.id),
-            parent_at: Some(&field.declaring_type_id),
+            at: Some(&record_at),
+            parent_at: Some(&coordinate(field.declaring_type_token)),
             ..metadata(input)
         },
         fields,
@@ -938,11 +916,12 @@ fn class_method_record(
     fields.insert("reason".into(), json!("member_inventory"));
     fields.insert("code".into(), Value::Null);
     fields.insert("mapping".into(), json!([]));
+    let record_at = coordinate(item.method.token);
     Ok(envelope::record(
         "method_body",
         RecordMeta {
-            at: Some(&item.method.id),
-            parent_at: Some(&item.method.declaring_type_id),
+            at: Some(&record_at),
+            parent_at: Some(&coordinate(item.method.declaring_type_token)),
             start: body.map(|body| body.code_offset),
             end: body.map(|body| body.code_offset + body.code_size),
             ..metadata(input)
@@ -970,12 +949,8 @@ fn relationship_record<T: serde::Serialize>(
             parent_at: Some(owner),
             ..metadata(input)
         },
-        {
-            // Nested references are copy-only coordinates, as in every other listing.
-            let mut fields = detail(serde_json::to_value(relationship)?);
-            shorten_detail_ids(&mut fields);
-            fields
-        },
+        // Nested references are copy-only coordinates, as in every other listing.
+        detail(serde_json::to_value(relationship)?),
     ))
 }
 

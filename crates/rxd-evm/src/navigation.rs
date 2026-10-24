@@ -1,4 +1,4 @@
-//! Bounded content-bound navigation over validated native block candidates.
+//! Bounded navigation over validated native block candidates.
 use rxd_core::{
     Error, Result,
     envelope::{self, RecordMeta},
@@ -176,32 +176,14 @@ impl Navigation {
     }
 
     pub fn block_id(&self, block: &BasicBlock) -> String {
-        format!(
-            "rxd1:evm:{}:{}",
-            self.carrier.source_id,
-            self.block_coordinate(block)
-        )
+        self.block_coordinate(block)
     }
 
     pub fn select_block(&self, id: &str) -> Result<&BasicBlock> {
         let canonical = crate::canonical_id(&self.carrier.source_id, id);
         let fields: Vec<_> = canonical.split(':').collect();
-        let invalid = || {
-            Error::new(
-                "INVALID_QUERY",
-                "expected a canonical content-bound EVM block ID",
-            )
-        };
-        if fields.len() != 7
-            || fields[0] != "rxd1"
-            || fields[1] != "evm"
-            || fields[4] != "block"
-            || fields[2].len() != 64
-            || !fields[2]
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || !matches!(fields[3], "raw" | "hex")
-        {
+        let invalid = || Error::new("INVALID_QUERY", "expected an EVM block coordinate");
+        if fields.len() != 4 || fields[1] != "block" || !matches!(fields[0], "raw" | "hex") {
             return Err(invalid());
         }
         let offset = |s: &str| -> Result<usize> {
@@ -211,12 +193,12 @@ impl Navigation {
             }
             Ok(n)
         };
-        let start = offset(fields[5])?;
-        let end = offset(fields[6])?;
-        if fields[2] != self.carrier.source_id || fields[3] != self.carrier.encoding.as_str() {
+        let start = offset(fields[2])?;
+        let end = offset(fields[3])?;
+        if fields[0] != self.carrier.encoding.as_str() {
             return Err(Error::new(
                 "SOURCE_MISMATCH",
-                "EVM block ID does not match the carrier and encoding",
+                "EVM block coordinate does not match the carrier encoding",
             ));
         }
         self.blocks

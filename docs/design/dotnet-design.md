@@ -297,7 +297,7 @@ The header retains `backend`, `command`, `source_id`, `input_bytes`,
 `schema_version: 2`, `query`; the summary retains `records` and `complete`.
 
 Every data record has `record` and `detail`, plus the other ADR 0003 keys when they have a
-value; absent values are `null` or omitted, and consumers treat the two alike. `source_id` is the fixed PE buffer SHA-256;
+value; absent values are `null` or omitted, and consumers treat the two alike. `source_id` is the fixed PE buffer's identity digest;
 `at`, `parent_at` and `context_at` are copy-only coordinates and never contain a hash.
 Fixed detail fields:
 

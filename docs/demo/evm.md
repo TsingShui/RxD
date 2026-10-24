@@ -36,7 +36,7 @@ rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --selector 1ba64846 --raw --perf
 ```
 
-`interface` lists content-bound function candidates as JSONL, and each `function` row
+`interface` lists function candidates as JSONL, and each `function` row
 carries EVMole's own `arguments` and `stateMutability` next to the navigation evidence
 (selector, dispatch, decoded entry, blocks, boundary/ownership status). `get-function`
 takes the row's `at` or a unique `--selector HEX8`; zero candidates is `NOT_FOUND`,
@@ -62,7 +62,7 @@ rxd evm get-block tests/fixtures/evm/storage-runtime.hex --encoding hex --at "$B
 rxd evm get-block tests/fixtures/evm/storage-runtime.hex --encoding hex --at "$BLOCK_AT" --perf
 ```
 
-`blocks` lists content-bound basic blocks; `get-block` returns only the selected block's
+`blocks` lists basic blocks; `get-block` returns only the selected block's
 original bytes/instructions (`bytecode.hex` is null, `raw_hex` covers that block). A block
 end is the last opcode start; the row `start/end` are the carrier's byte-exclusive range.
 Producer blocks are candidates, not proof of function boundaries or reachability. The

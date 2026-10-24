@@ -47,7 +47,7 @@ Fixed outer keys:
 | --- | --- | --- |
 | `record` | Record discriminator | Always |
 | `at` | The row's coordinate, usable by FETCH | When the row names one; else `null` or absent |
-| `source_id` | SHA-256 of the owning content unit | Header only (null or absent on records) |
+| `source_id` | Identity digest of the owning content unit | Header only (null or absent on records) |
 | `parent_at` | Parent coordinate for tree structures | When there is one; else `null` or absent |
 | `context_at` | Nearest FETCH context for a hit record | When there is one; else `null` or absent |
 | `start` / `end` | Original byte range for location/slicing | When there is one; else `null` or absent |
@@ -73,7 +73,7 @@ change.
 | `record` | Always `"header"` | Always |
 | `backend` | Backend ID | Always |
 | `command` | Subcommand | Always |
-| `source_id` | Input file SHA-256 | Header only (null on records) |
+| `source_id` | Identity digest of the input | Header only (null on records) |
 | `input_bytes` | Input byte count (replaces JS `file_bytes`) | Always |
 | `schema_version` | Envelope version | Always |
 | `query` | Query argument echo | Always |
@@ -127,8 +127,7 @@ The same glue works for every structure listing; only `detail` differs.
 
 The `id` key is being replaced by `at`, and `parent_id`/`context_id` by
 `parent_at`/`context_at`. Values are the backend's own coordinate
-(`0x06000003`, `func:42`, `1234..5678`) with the schema prefix
-`rxd1:<backend>:<sha256>:` stripped; the hash lives once in `header.source_id`.
+(`0x06000003`, `func:42`, `1234..5678`); the hash lives once in `header.source_id`.
 The value is the backend's own coordinate in the shape it prints, read back verbatim: a
 `.NET` coordinate is its ECMA-335 metadata token (`0x0a00001f`), which already encodes
 its table, so it carries no noun prefix; backends whose coordinates are not
@@ -143,13 +142,24 @@ Content binding moves to the paths where it can still fail closed: the header ca
 `source_id`, and FETCH commands accept `--from <jsonl|->`, which re-reads the coordinate
 from the producing stream and rejects a mismatched `source_id`. The removed guarantee is
 that a handle alone identifies its input; a coordinate is deliberately file-scoped so the
-same coordinate can address the same metadata row in two versions of an input. A
-content-bound `rxd1:<backend>:<sha256>:...` spelling is still accepted and still fails
-with `SOURCE_MISMATCH` when the hash differs, so a caller who keeps the full form keeps
-the old guarantee.
+same coordinate can address the same metadata row in two versions of an input. No
+content-bound spelling remains: a handle that still carries an input digest is rejected
+as `INVALID_QUERY` rather than rewritten, so a stale handle fails closed instead of
+silently naming a row in the wrong input.
 
 Every backend is migrated: dex, jar, dotnet, js, wasm, pyc, evm, html and asar print
 `at`/`parent_at`/`context_at` as coordinates and never repeat `source_id` on a record.
+
+### Amendment: `source_id` is a sampled digest
+
+`source_id` is `SHA-256(length || first 16 KiB || last 16 KiB)` of the content unit it
+identifies (`rxd_core::identity::input_id`), not a whole-file SHA-256. Hashing every byte
+cost one pass over the input on every query — 5.5 ms on a 16 MB assembly — to answer a
+question that only needs one input told apart from another. The value keeps both
+properties the envelope relies on: a copy or rename is the same identity, and a
+`--from` stream from another input is still `SOURCE_MISMATCH`. The weakening is explicit:
+an edit that preserves length and both ends is not detected, and detecting a substituted
+artifact is not this tool's job.
 An id nested inside `detail` (a caller id, a symbol or owner id, a reference target) uses
 the same copy-only coordinate, so any coordinate a caller can copy is one `--at` accepts.
 

@@ -330,7 +330,7 @@ fn pyc_decompile_reconstructs_old_and_new_python_without_an_interpreter() {
     assert_eq!(row["detail"]["python_version"], "3.12");
     assert_eq!(
         row["source_id"],
-        format!("{:x}", Sha256::digest(fs::read(&modern).unwrap()))
+        rxd_core::identity::input_id(&fs::read(&modern).unwrap())
     );
     let source = row["detail"]["source"].as_str().unwrap();
     assert!(source.contains("class Greeter:"));

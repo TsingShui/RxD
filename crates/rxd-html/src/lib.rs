@@ -24,7 +24,6 @@ use rxd_core::{
 };
 use serde::Serialize;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 type CallbackFn<'a> = Box<dyn FnMut(CallbackEvent<'_>, Span<usize>) -> Option<Infallible> + 'a>;
 
@@ -365,46 +364,25 @@ fn attribute_name_valid(name: &str) -> bool {
         })
 }
 
-/// Canonical content-bound record identity: `rxd1:html:<sha256>:<kind>:<start>:<end>`.
-fn record_id(hash: &str, kind: &str, start: usize, end: usize) -> String {
-    format!("rxd1:html:{hash}:{kind}:{start}:{end}")
+/// A record's identity is its self-describing `kind:start:end` coordinate.
+fn record_id(_hash: &str, kind: &str, start: usize, end: usize) -> String {
+    format!("{kind}:{start}:{end}")
 }
 
 fn canonical_id(id: &str) -> bool {
     let parts: Vec<_> = id.split(':').collect();
-    parts.len() == 6
-        && parts[0] == "rxd1"
-        && parts[1] == "html"
-        && parts[2].len() == 64
-        && parts[2]
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        && matches!(parts[3], "element" | "text" | "comment" | "doctype")
-        && parts[4..].iter().all(|number| {
+    parts.len() == 3
+        && matches!(parts[0], "element" | "text" | "comment" | "doctype")
+        && parts[1..].iter().all(|number| {
             number
                 .parse::<usize>()
                 .is_ok_and(|value| value.to_string() == *number)
         })
 }
 
-fn validate_id(id: &str, hash: &str, ids: &[String]) -> Result<usize> {
-    // A row prints the copy-only `kind:start:end`; identity lives in the header, so the
-    // short form is expanded here instead of making a caller reassemble the hash.
-    let expanded;
-    let id = if id.split(':').count() == 3 {
-        expanded = format!("rxd1:html:{hash}:{id}");
-        expanded.as_str()
-    } else {
-        id
-    };
+fn validate_id(id: &str, _hash: &str, ids: &[String]) -> Result<usize> {
     if !canonical_id(id) {
         return Err(Error::new("INVALID_QUERY", "malformed HTML record ID"));
-    }
-    if id.split(':').nth(2) != Some(hash) {
-        return Err(Error::new(
-            "SOURCE_MISMATCH",
-            "HTML record ID belongs to different source content",
-        ));
     }
     ids.iter()
         .position(|candidate| candidate == id)
@@ -483,7 +461,7 @@ fn parse_catalog<'a>(
 fn read_source(input: &Path, limits: Limits, perf: &mut Perf) -> Result<(String, String)> {
     let bytes = perf.measure("read", || rxd_core::read_bytes(input, limits.input_bytes))?;
     perf.counters.input_bytes = Some(bytes.len());
-    let hash = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
+    let hash = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
     if perf.enabled() {
         perf.source_id = Some(hash.clone());
     }
@@ -677,7 +655,7 @@ impl Source {
             ));
         }
         let bytes = text.as_bytes()[start..end].to_vec();
-        let source_id = perf.measure("hash", || format!("{:x}", Sha256::digest(&bytes)));
+        let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
         if perf.enabled() {
             perf.source_id = Some(source_id.clone());
         }

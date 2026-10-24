@@ -3586,7 +3586,6 @@ dependencies = [
  "libc",
  "rxd-core",
  "serde",
- "sha2 0.10.9",
  "wasmparser",
 ]
 

@@ -64,7 +64,7 @@ matching results with their original indices. Zero matches still returns complet
 header/summary; a missing `--at code:N` exits 2 with `NOT_FOUND`.
 `--at`, `--name` and `-f` intersect; `codes --from JSONL` selects the first code
 record after validating the stream's input identity. Each row prints the copy-only
-`at: code:<index>`; the header carries the full input SHA-256, so coordinates do not
+`at: code:<index>`; the header carries the input identity digest, so coordinates do not
 change on rename. Parent is first containment; kind is `unknown`, not a runtime type
 judgment. Original marshal definition/field/payload and alias sites use real half-open
 file spans; when there are no new contiguous occurrence bytes they are null.
@@ -160,9 +160,10 @@ replacement is used. Constant coordinates infer their kind; `--from` reads the f
 strings row with its source identity checked against the same analyzed buffer.
 Constant IDs come from actual `strings` output; their path may traverse only tuple/
 frozenset and end at str/bytes. Without `--within`, only the constant's owner is scanned;
-with `--within`, the selected code is scanned. Both selectors accept the short coordinate
-a row prints; a full foreign id is `SOURCE_MISMATCH`. Reference `context_at` routes to
-`get-code --at`.
+with `--within`, the selected code is scanned. Both selectors accept only the coordinate
+a row prints; it carries no hash, so a foreign stream is caught by the `--from`
+`source_id` check and a coordinate absent from this input is `INVALID_QUERY`. Reference
+`context_at` routes to `get-code --at`.
 Name references describe explicit name-bearing opcodes, not runtime dispatch; constant
 references preserve the containing top-level slot and never claim a nested leaf was
 directly loaded. See the [PYC design](../design/pyc-design.md#name-references).

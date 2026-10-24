@@ -10,7 +10,7 @@
     {
       "name": "babel-parser-types",
       "file": "artifacts/babel-parser.d.ts",
-      "source_id": "e6ca59368dce5a594dcde9bbb6ae640d668fa6c28c31639dd2a75b731bb036a2",
+      "source_id": "5d5b1260d75337084839591904e26a0c9bb1cbb1b5021fc7e92b7891cfe0db2b",
       "resolution": "resolved",
       "identifier": "line",
       "byte": 371,
@@ -28,7 +28,7 @@
     {
       "name": "babel-types-declarations",
       "file": "artifacts/babel-types.d.ts",
-      "source_id": "69d4b61c408556b97b796782a1110f7e01a03ed80f31741f2c59b722185830ed",
+      "source_id": "88590e23b32e9cc55d698b1b064767bc738ee0dd9135c9ebb90fd2e53ec048a2",
       "resolution": "resolved",
       "identifier": "tagName",
       "byte": 29,
@@ -46,7 +46,7 @@
     {
       "name": "typed-login-source",
       "file": "artifacts/login.tsx",
-      "source_id": "368120434e867213bfc067c4281a4eb77fc979ea780f7bbac4e6f224e6e5f009",
+      "source_id": "eb1a5a8659d99d417f6ec8832059af1dca36d824367c924693f83d79a27239b9",
       "resolution": "resolved",
       "identifier": "props",
       "byte": 360,
@@ -92,7 +92,7 @@
     {
       "name": "jsx-page-source",
       "file": "artifacts/page.jsx",
-      "source_id": "9f2d78f15fd2dcf14fbe172cd229861aba4ff31f0f872b9b48f9adf33fba8ef5",
+      "source_id": "16d2c08310f5bc33a8360eb245c7f5d35829e7d392313a348866f5e50375f00a",
       "resolution": "resolved",
       "identifier": "props",
       "byte": 133,

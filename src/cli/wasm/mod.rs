@@ -157,7 +157,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Get one content-bound function. Attempts structured C-like
+    /// Get one function. Attempts structured C-like
     /// decompilation by default; falls back to the instruction view.
     #[command(name = "get-function")]
     Get {
@@ -630,8 +630,8 @@ fn coordinate(kind: &str, index: u32) -> String {
     format!("{kind}:{index}")
 }
 
-/// A row whose identity is its content-bound function id; `at_of` shortens it to
-/// the `func:<index>` coordinate, leaving the hash in the stream header only.
+/// A row whose identity is its `func:<index>` coordinate; the module's identity
+/// lives in the stream header.
 fn function_row(function: &rxd_wasm::Function) -> Row {
     Row {
         kind: "function",

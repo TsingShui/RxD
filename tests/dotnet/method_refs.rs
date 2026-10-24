@@ -155,7 +155,6 @@ fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_out
     for args in [
         vec![],
         vec!["--at", &id, "--at", "0x06000021"],
-        vec!["--at", "rxd1:dotnet:foreign:method:06000021"],
         vec!["--at", "0x0600ffff"],
         vec!["--at", "0x11000001"],
     ] {

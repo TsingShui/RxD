@@ -61,11 +61,11 @@ fn evm_interface_lists_carrier_bound_functions_with_native_abi_fields() {
     assert_eq!(header["command"], "interface");
     assert_eq!(
         header["source_id"],
-        format!("{:x}", Sha256::digest(carrier.as_bytes()))
+        rxd_core::identity::input_id(carrier.as_bytes())
     );
     assert_eq!(
         raw_rows[0]["source_id"],
-        format!("{:x}", Sha256::digest(&bytes))
+        rxd_core::identity::input_id(&bytes)
     );
     assert_ne!(header["source_id"], raw_rows[0]["source_id"]);
     assert_eq!(
@@ -75,7 +75,7 @@ fn evm_interface_lists_carrier_bound_functions_with_native_abi_fields() {
     assert_eq!(header["detail"]["bytecode"]["hex"], ARGUMENTS);
     assert_eq!(
         header["detail"]["bytecode"]["sha256"],
-        raw_rows[0]["source_id"]
+        format!("{:x}", Sha256::digest(&bytes))
     );
     assert_eq!(header["detail"]["offset_unit"], "decoded_bytecode_byte");
     assert_eq!(header["input_bytes"], carrier.len());
@@ -355,11 +355,11 @@ fn evm_block_ids_survive_copy_and_reject_stale_sources_encodings_and_forged_boun
     success(&run("get-block", &copy, "hex", &["--at", id]));
     // The copy-only coordinate is relative to the carrier it was read from; a whole
     // content-bound ID keeps the original identity and must reject another carrier.
-    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let full = id.to_owned();
     let destination = directory.path().join("keep.json");
     fs::write(&destination, "preserved").unwrap();
     for forged in [
-        full.replace("rxd1:", "rxd2:"),
+        format!("{full}:0"),
         full.replace(":block:", ":function:"),
         full.replace(":0:3", ":1:3"),
         full.replace(":0:3", ":0:2"),
@@ -907,9 +907,9 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
     assert_eq!(fetched["detail"]["segments"][0]["carrier_end"], 96);
     assert_eq!(fetched["detail"]["segments"][1]["carrier_start"], 124);
     assert_eq!(fetched["detail"]["segments"][1]["carrier_end"], 136);
-    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let full = id.to_owned();
     for invalid in [
-        full.replace("rxd1:", "rxd2:"),
+        format!("{full}:0"),
         full.replace(":function:", ":block:"),
         full.replace(":abi:32", ":abi:33"),
         full.replace(":abi:32", ":abi:032"),
@@ -1726,9 +1726,9 @@ fn evm_code_refs_reject_wrong_kind_forged_and_stale_ids_without_partial_delivery
     let copy = directory.path().join("copy.hex");
     fs::copy(&path, &copy).unwrap();
     success(&run("xref", &copy, "hex", &["--at", id]));
-    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let full = id.to_owned();
     for forged in [
-        full.replace("rxd1:", "rxd2:"),
+        format!("{full}:0"),
         full.replace(":function:", ":literal:"),
         full.replace(":function:", ":block:"),
         full.replace(":abi:32", ":abi:33"),
@@ -2427,9 +2427,9 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     ));
     assert_eq!(copy_rows[1]["at"], rows[1]["at"]);
     success(&run("xref", &copy, "hex", &["--at", id]));
-    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let full = id.to_owned();
     for invalid in [
-        full.replace("rxd1:", "rxd2:"),
+        format!("{full}:0"),
         full.replace(":literal:", ":block:"),
         full.replace(":push:", ":data:"),
         full.replace(":61:1", ":62:1"),
@@ -3100,9 +3100,9 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     let copy = directory.path().join("renamed.bin");
     fs::copy(&path, &copy).unwrap();
     success(&run("xref", &copy, "raw", &["--at", id]));
-    let full = format!("rxd1:evm:{}:{id}", rows[0]["source_id"].as_str().unwrap());
+    let full = id.to_owned();
     for forged in [
-        full.replace("rxd1:", "rxd2:"),
+        format!("{full}:0"),
         full.replace(":unindexed:", ":tail:"),
         full.replace(":7:11", ":07:11"),
         full.replace(":7:11", ":8:11"),

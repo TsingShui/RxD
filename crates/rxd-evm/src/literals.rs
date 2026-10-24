@@ -245,46 +245,29 @@ impl LiteralInventory {
     }
 
     fn id(&self, navigation: &Navigation, literal: &Literal) -> String {
-        format!(
-            "rxd1:evm:{}:{}",
-            navigation.carrier.source_id,
-            self.coordinate(navigation, literal)
-        )
+        self.coordinate(navigation, literal)
     }
 
     fn select<'a>(&'a self, navigation: &Navigation, at: &str) -> Result<&'a Literal> {
-        let invalid = || {
-            Error::new(
-                "INVALID_QUERY",
-                "expected a canonical content-bound EVM PUSH literal ID",
-            )
-        };
+        let invalid = || Error::new("INVALID_QUERY", "expected an EVM PUSH literal coordinate");
         let canonical = crate::canonical_id(&navigation.carrier.source_id, at);
         let fields: Vec<_> = canonical.split(':').collect();
-        if fields.len() != 8
-            || fields[0] != "rxd1"
-            || fields[1] != "evm"
-            || fields[4] != "literal"
-            || fields[5] != "push"
-            || fields[2].len() != 64
-            || !fields[2]
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || !matches!(fields[3], "raw" | "hex")
+        if fields.len() != 5
+            || fields[1] != "literal"
+            || fields[2] != "push"
+            || !matches!(fields[0], "raw" | "hex")
         {
             return Err(invalid());
         }
-        let offset = fields[6].parse::<usize>().map_err(|_| invalid())?;
-        let width = fields[7].parse::<usize>().map_err(|_| invalid())?;
-        if offset.to_string() != fields[6] || width.to_string() != fields[7] || width > 32 {
+        let offset = fields[3].parse::<usize>().map_err(|_| invalid())?;
+        let width = fields[4].parse::<usize>().map_err(|_| invalid())?;
+        if offset.to_string() != fields[3] || width.to_string() != fields[4] || width > 32 {
             return Err(invalid());
         }
-        if fields[2] != navigation.carrier.source_id
-            || fields[3] != navigation.carrier.encoding.as_str()
-        {
+        if fields[0] != navigation.carrier.encoding.as_str() {
             return Err(Error::new(
                 "SOURCE_MISMATCH",
-                "EVM literal ID does not match the carrier and encoding",
+                "EVM literal coordinate does not match the carrier encoding",
             ));
         }
         self.literals
@@ -548,7 +531,7 @@ impl LiteralInventory {
             .filter
             .map(|needle| rxd_core::filter::Contains::new(needle, listing.case_sensitive));
         let id = crate::canonical_id(&navigation.carrier.source_id, at);
-        if id.split(':').nth(5) == Some("data") {
+        if id.split(':').nth(2) == Some("data") {
             let data = crate::data::DataInventory::discover(navigation, functions, limits, perf)?;
             let stage = perf.start_stage();
             let selected = data.refs(navigation, functions, &id, needle.as_ref(), limits, perf);

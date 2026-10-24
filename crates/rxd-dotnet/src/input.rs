@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -57,16 +56,7 @@ impl Input {
             "RESOURCE_LIMIT: input bytes"
         );
         let file_bytes = bytes.len();
-        let source_id = rxd_core::identity::captured_id(path, bytes.len()).unwrap_or_else(|| {
-            let digest = Sha256::digest(&bytes);
-            let mut source_id = String::with_capacity(64);
-            const HEX: &[u8; 16] = b"0123456789abcdef";
-            for byte in digest {
-                source_id.push(HEX[(byte >> 4) as usize] as char);
-                source_id.push(HEX[(byte & 15) as usize] as char);
-            }
-            source_id
-        });
+        let source_id = rxd_core::identity::input_id(&bytes);
         let parsed_file = dotscope::File::from_mem(bytes).context("INVALID_INPUT: PE parsing")?;
         ensure!(
             parsed_file.repairs().is_empty(),
@@ -146,14 +136,11 @@ impl Input {
         Ok(&self.types[index])
     }
 
-    /// Resolve a content-bound id, or the short form this input already fixes:
+    /// Resolve a coordinate, or the token form this input already fixes:
     /// `method:06000003`, `06000003` or `0x06000003`. A short form names a token in
     /// the validated buffer, so content identity still comes from the parsed input.
     fn entity_token(&self, id: &str, kind: &str, table: u32) -> Result<u32> {
-        let token = match self.token_from_id(id, kind)? {
-            Some(token) => token,
-            None => self.token_at(id)?,
-        };
+        let token = self.token_at(id)?;
         self.checked_token(token, kind, table)
     }
 
@@ -172,40 +159,6 @@ impl Input {
             ),
         );
         Ok(token)
-    }
-
-    /// Strict `rxd1:dotnet:<sha256>:<kind>:<token>` parsing that names the part
-    /// which does not match, instead of one opaque "mismatch".
-    fn token_from_id(&self, id: &str, kind: &str) -> Result<Option<u32>> {
-        let Some(rest) = id.strip_prefix("rxd1:") else {
-            return Ok(None);
-        };
-        let mut parts = rest.split(':');
-        let backend = parts.next().unwrap_or_default();
-        ensure!(
-            backend == "dotnet",
-            "INVALID_QUERY: id belongs to backend `{backend}`; `rxd dotnet` needs a `dotnet` id"
-        );
-        let hash = parts.next().unwrap_or_default();
-        ensure!(
-            hash == self.source_id,
-            "INVALID_QUERY: id belongs to a different input (id sha256 {}…, this input {}…); re-run `outline` for this file",
-            short_hash(hash),
-            short_hash(&self.source_id),
-        );
-        let actual = parts.next().unwrap_or_default();
-        ensure!(
-            actual == kind,
-            "INVALID_QUERY: id is a `{actual}` id but this command needs a `{kind}` id"
-        );
-        let encoded = parts.next().unwrap_or_default();
-        ensure!(
-            parts.next().is_none(),
-            "INVALID_QUERY: malformed id: unexpected segments after `{encoded}`"
-        );
-        Ok(Some(
-            hex_token(encoded).context("INVALID_QUERY: malformed id token")?,
-        ))
     }
 
     /// Parse the coordinate an Agent copies out of a record: the ECMA-335 metadata
@@ -279,7 +232,9 @@ impl Input {
             .binary_search_by_key(&method.token, |m| m.token)
             .map_err(|_| anyhow::anyhow!("INVALID_QUERY: foreign method"))?;
         ensure!(
-            self.methods[index].id == method.id,
+            self.types
+                .binary_search_by_key(&method.declaring_type_token, |ty| ty.token)
+                .is_ok(),
             "INVALID_QUERY: foreign method"
         );
         self.resolve_method(index)?;
@@ -389,7 +344,11 @@ impl Input {
     }
 
     pub fn this_type(&self, method: &Method) -> Result<String> {
-        let canonical = self.method_by_id(&method.id)?;
+        let index = self
+            .methods
+            .binary_search_by_key(&method.token, |m| m.token)
+            .map_err(|_| anyhow::anyhow!("INVALID_QUERY: foreign method"))?;
+        let canonical = &self.methods[index];
         ensure!(
             canonical.token == method.token,
             "INVALID_QUERY: foreign method"
@@ -602,15 +561,6 @@ impl Input {
             }
         }
     }
-
-    pub(crate) fn id(&self, kind: &str, token: u32) -> String {
-        format!("rxd1:dotnet:{}:{kind}:{token:08x}", self.source_id)
-    }
-}
-
-/// First 12 hex digits of a content hash, enough to tell inputs apart in a message.
-fn short_hash(hash: &str) -> &str {
-    hash.get(..12).unwrap_or(hash)
 }
 
 /// Parse `06000003` or `0x06000003`; every CIL token is eight hex digits.

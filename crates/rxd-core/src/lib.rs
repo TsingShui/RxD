@@ -358,7 +358,7 @@ impl Source {
             return Err(Error::new("RESOURCE_LIMIT", "input byte budget exceeded"));
         }
         perf.counters.input_bytes = Some(bytes.len());
-        let id = perf.measure("hash", || identity::content_id(Path::new(&path), &bytes));
+        let id = perf.measure("hash", || identity::input_id(&bytes));
         let text = perf.measure("utf8", || {
             String::from_utf8(bytes)
                 .map_err(|_| Error::new("INVALID_INPUT", "input must be valid UTF-8"))

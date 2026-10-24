@@ -196,7 +196,7 @@ merely held in mutable mmap/open-file handles. No analyzed input is executed.
 
 The result has `target_id, source_id, snapshot_id, input_bytes, captured_bytes, kind,
 inputs, origin`. Each input reports its logical original path, relative path where
-applicable, original byte SHA-256 and size, and dependency flag. `source_id` identifies
+applicable, original byte digest and size, and dependency flag. `source_id` identifies
 primary content; `snapshot_id` additionally identifies the captured file/dependency/
 bundle set. Neither replaces backend unit IDs (JVM class hash, .NET token, PYC tree index,
 etc.). Handles belong to one server process, expire after a fixed TTL from publication,
@@ -340,8 +340,8 @@ outside this release and require separate design. This entry point exposes no ne
 listener.
 
 EVM navigation uses the current CLI's fixed nullable stream fields and carrier/encoding
-bound coordinates: `evm_interface` lists content-bound function candidates,
-`evm_blocks` lists content-bound basic blocks, and `evm_get_block`/`evm_get_function`/
+bound coordinates: `evm_interface` lists function candidates,
+`evm_blocks` lists basic blocks, and `evm_get_block`/`evm_get_function`/
 `evm_xref` take the `at` a row prints. `evm_strings` accepts explicit text/bytes/number
 interpretations; `evm_xref` preserves PUSH-use, CODECOPY and code-flow evidence;
 `evm_get_function` requires exactly one `at` or `selector` and keeps raw/default

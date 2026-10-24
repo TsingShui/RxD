@@ -60,7 +60,7 @@ impl<'a> References<'a> {
         limits: Limits,
         perf: &mut Perf,
     ) -> Result<Self> {
-        let (target_kind, target) = match id.split(':').nth(4) {
+        let (target_kind, target) = match id.split(':').nth(1) {
             Some("block") => ("block", navigation.select_block(id)?.start),
             Some("function") => (
                 "function",

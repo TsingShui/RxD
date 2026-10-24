@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from mcp_client import Client, structured
 from pyc_oracle import name_hits, validate_view
 from dotnet_strings_oracle import canonical_hash
+from input_identity import input_identity
 
 
 def sha(data):
@@ -406,7 +407,7 @@ def fresh_workflow(recorder, case, context, sample):
         metrics['component'] = 'open'
         components.append(metrics); raw_frames.append(raw)
         opened = structured(packet)
-        if opened['source_id'] != case['sha256']:
+        if opened['source_id'] != case['identity']:
             raise ValueError('fresh workflow open identity differs')
         reference = {'target_id': opened['target_id']}
         children = []
@@ -575,7 +576,7 @@ def measure_case(recorder, case, samples, concurrency, baseline):
             try:
                 packet, metrics, raw = client.tool('rxd_open', {'path': path, 'backend': case['backend']})
                 opened = structured(packet)
-                if opened['source_id'] != case['sha256']:
+                if opened['source_id'] != case['identity']:
                     raise ValueError('open source identity differs')
                 client.tool('rxd_close', {'target_id': opened['target_id']})
             except Exception as error:
@@ -701,6 +702,10 @@ def main():
         extra = json.loads(path.read_text())
         cases.extend(extra['cases'])
         plans.append(identity(path))
+    # `sha256` is the pinned provenance digest; `identity` is what rxd prints as
+    # `source_id` (a sampled digest of the same bytes).
+    for case in cases:
+        case.setdefault('identity', input_identity(Path(case['input'])))
     if args.only:
         available = {case['name'] for case in cases}
         if set(args.only) - available:

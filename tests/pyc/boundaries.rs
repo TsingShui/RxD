@@ -92,7 +92,7 @@ fn pyc_incomplete_reconstruction_is_explicit_and_preserves_output() {
                 .unwrap()
                 .contains("UNIMPLEMENTED")
         );
-        assert_eq!(row["source_id"], format!("{:x}", Sha256::digest(&bytes)));
+        assert_eq!(row["source_id"], rxd_core::identity::input_id(&bytes));
     }
 }
 

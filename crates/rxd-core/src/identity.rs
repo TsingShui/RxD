@@ -1,61 +1,30 @@
-//! Scoped identities for immutable server-owned input snapshots.
+//! Input identity for coordinate validation.
 use sha2::{Digest, Sha256};
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
 
-/// A precomputed identity of a private immutable captured file.
+/// Bytes taken from each end of an input when deriving its identity.
+const SAMPLE_BYTES: usize = 16 * 1024;
+
+/// Identity of an input buffer: a digest over its length and both ends.
 ///
-/// The caller must own the snapshot and keep its bytes immutable for the entire
-/// scoped operation. Original caller-controlled paths must never be registered.
-#[derive(Clone)]
-pub struct CapturedIdentity {
-    pub path: PathBuf,
-    pub input_bytes: usize,
-    pub source_id: String,
-}
-thread_local! { static CAPTURES: RefCell<BTreeMap<PathBuf, (usize, String)>> = const { RefCell::new(BTreeMap::new()) }; }
-
-pub fn with_captured_identities<T>(
-    identities: Vec<CapturedIdentity>,
-    query: impl FnOnce() -> T,
-) -> T {
-    struct Restore(BTreeMap<PathBuf, (usize, String)>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            CAPTURES.with(|slot| *slot.borrow_mut() = std::mem::take(&mut self.0));
-        }
+/// Whole-file hashing cost one pass over every byte of every input on every
+/// query — 5.5 ms on a 16 MB assembly, tens of milliseconds on a large APK. The
+/// identity only has to separate one input from another, so it samples the
+/// length plus the first and last 16 KiB. A copy or rename keeps the same
+/// identity; a query never reads the interior twice.
+///
+/// The deliberate weakening: an edit that preserves the length and both ends is
+/// not detected. Rebuilds change the size or the headers, and a substituted
+/// artifact is not this tool's concern.
+pub fn input_id(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    if bytes.len() <= 2 * SAMPLE_BYTES {
+        hasher.update(bytes);
+    } else {
+        hasher.update(&bytes[..SAMPLE_BYTES]);
+        hasher.update(&bytes[bytes.len() - SAMPLE_BYTES..]);
     }
-    let identities = identities
-        .into_iter()
-        .map(|identity| (identity.path, (identity.input_bytes, identity.source_id)))
-        .collect();
-    let previous = CAPTURES.with(|slot| slot.replace(identities));
-    let _restore = Restore(previous);
-    query()
-}
-
-/// Return the captured identity when this buffer is from the scoped immutable
-/// snapshot; ordinary CLI and newly derived container buffers are hashed normally.
-pub fn captured_id(path: &Path, input_bytes: usize) -> Option<String> {
-    CAPTURES.with(|slot| {
-        slot.borrow()
-            .get(path)
-            .filter(|(bytes, source_id)| {
-                *bytes == input_bytes
-                    && source_id.len() == 64
-                    && source_id
-                        .bytes()
-                        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-            })
-            .map(|(_, source_id)| source_id.clone())
-    })
-}
-
-pub fn content_id(path: &Path, bytes: &[u8]) -> String {
-    captured_id(path, bytes.len()).unwrap_or_else(|| lower_hex(&Sha256::digest(bytes)))
+    lower_hex(&hasher.finalize())
 }
 
 pub(crate) fn lower_hex(bytes: &[u8]) -> String {

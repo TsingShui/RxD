@@ -75,7 +75,7 @@ restricted by extension or UTF-8. Original bytes go to `-o`; stdout is a JSON re
 never the file content.
 
 The receipt is one `file` record (`schema_version=2`): backend/command/schema_version
-and the extracted SHA-256 `source_id` outside; `detail` contains output path, file_bytes,
+and the extracted file's identity digest `source_id` outside; `detail` contains output path, file_bytes,
 storage, `representation: original`, `origin.container/format/entry/header_id` and
 `complete`. `header_id` identifies the index header, not a whole-archive hash or
 signature. The caller creates the output parent directory; neither the archive nor the

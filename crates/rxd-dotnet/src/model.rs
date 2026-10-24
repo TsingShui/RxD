@@ -36,11 +36,8 @@ pub struct Unreadable {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct TypeInfo {
-    pub id: String,
     #[serde(skip_serializing)]
     pub declaring_type_token: Option<u32>,
-    #[serde(skip_serializing)]
-    pub declaring_type_id: Option<String>,
     pub extends_token: Option<u32>,
     pub kind: String,
     pub interfaces: Vec<u32>,
@@ -56,9 +53,6 @@ pub struct TypeInfo {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Field {
-    pub id: String,
-    #[serde(skip_serializing)]
-    pub declaring_type_id: String,
     #[serde(skip_serializing)]
     pub token: u32,
     #[serde(skip_serializing)]
@@ -77,11 +71,8 @@ pub struct Field {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Method {
-    #[serde(skip_serializing)]
-    pub declaring_type_id: String,
     pub impl_flags: u16,
     pub generic_parameters: Vec<GenericParameter>,
-    pub id: String,
     #[serde(skip_serializing)]
     pub token: u32,
     pub declaring_type: Arc<String>,
@@ -208,7 +199,6 @@ pub struct Decompilation {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ClassSourceMap {
-    pub method_id: String,
     pub method_token: u32,
     pub il_offset: u32,
     pub line: usize,
@@ -253,7 +243,6 @@ pub struct GenericParameter {
 #[derive(Clone, Debug, Serialize)]
 pub struct Accessor {
     pub method_token: u32,
-    pub method_id: String,
     pub semantics: u32,
 }
 
@@ -262,8 +251,6 @@ pub struct Property {
     pub token: u32,
     #[serde(skip_serializing)]
     pub declaring_type_token: u32,
-    #[serde(skip_serializing)]
-    pub declaring_type_id: String,
     pub name: String,
     pub signature: String,
     pub signature_hex: String,
@@ -277,8 +264,6 @@ pub struct Event {
     pub token: u32,
     #[serde(skip_serializing)]
     pub declaring_type_token: u32,
-    #[serde(skip_serializing)]
-    pub declaring_type_id: String,
     pub name: String,
     pub event_type_token: u32,
     #[serde(rename = "access_flags")]

@@ -81,20 +81,15 @@ impl Default for Limits {
     }
 }
 
-/// Expand the copy-only coordinate a record prints into the canonical content-bound ID.
+/// The canonical form of a coordinate a record prints.
 ///
-/// A record prints short, self-describing coordinates such as `hex:block:0:4` because the
-/// stream header already carries the source identity. A full `rxd1:evm:<sha256>:...` ID is
-/// returned unchanged so a foreign hash still fails `SOURCE_MISMATCH` during validation.
-pub(crate) fn canonical_id(source_id: &str, at: &str) -> String {
-    if at.starts_with("rxd1:") {
-        at.to_string()
-    } else {
-        format!("rxd1:evm:{source_id}:{at}")
-    }
+/// A record's identity is its self-describing coordinate such as `hex:block:0:4`.
+/// The stream header already carries the source identity, so no row repeats it.
+pub(crate) fn canonical_id(_source_id: &str, at: &str) -> String {
+    at.to_string()
 }
 
-/// Strip the schema prefix from a content-bound ID for printing next to its record.
+/// Normalize a coordinate for printing next to its record.
 pub(crate) fn coordinate(id: &str) -> String {
     rxd_core::envelope::at_of(id).into_owned()
 }
@@ -122,7 +117,7 @@ impl Encoding {
 impl Carrier {
     pub fn read(path: &Path, encoding: Encoding, limits: Limits, perf: &mut Perf) -> Result<Self> {
         let bytes = perf.measure("read", || rxd_core::read_bytes(path, limits.input_bytes))?;
-        let source_id = perf.measure("hash", || rxd_core::identity::content_id(path, &bytes));
+        let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
         perf.source_id = Some(source_id.clone());
         perf.counters.input_bytes = Some(bytes.len());
         let bytecode = perf.measure("decode", || decode(&bytes, encoding))?;

@@ -1118,11 +1118,7 @@ impl FunctionNavigation {
     }
 
     pub fn function_id(&self, navigation: &Navigation, function: &FunctionCandidate) -> String {
-        format!(
-            "rxd1:evm:{}:{}",
-            navigation.carrier.source_id,
-            self.function_coordinate(navigation, function)
-        )
+        self.function_coordinate(navigation, function)
     }
 
     pub fn owner_coordinates(&self, navigation: &Navigation, block: usize) -> Vec<String> {
@@ -1169,44 +1165,31 @@ impl FunctionNavigation {
             id.ok_or_else(|| Error::new("INVALID_QUERY", "select a function --at or --selector"))?;
         let canonical = crate::canonical_id(&navigation.carrier.source_id, id);
         let fields: Vec<_> = canonical.split(':').collect();
-        let invalid = || {
-            Error::new(
-                "INVALID_QUERY",
-                "expected a canonical content-bound EVM function ID",
-            )
-        };
-        if fields.len() != 8
-            || fields[0] != "rxd1"
-            || fields[1] != "evm"
-            || fields[4] != "function"
-            || fields[2].len() != 64
+        let invalid = || Error::new("INVALID_QUERY", "expected an EVM function coordinate");
+        if fields.len() != 5
+            || fields[1] != "function"
+            || !matches!(fields[0], "raw" | "hex")
+            || fields[2].len() != 8
             || !fields[2]
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || !matches!(fields[3], "raw" | "hex")
-            || fields[5].len() != 8
-            || !fields[5]
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || !matches!(fields[6], "abi" | "fallback")
+            || !matches!(fields[3], "abi" | "fallback")
         {
             return Err(invalid());
         }
-        let entry = fields[7].parse::<usize>().map_err(|_| invalid())?;
-        if entry.to_string() != fields[7] {
+        let entry = fields[4].parse::<usize>().map_err(|_| invalid())?;
+        if entry.to_string() != fields[4] {
             return Err(invalid());
         }
-        if fields[2] != navigation.carrier.source_id
-            || fields[3] != navigation.carrier.encoding.as_str()
-        {
+        if fields[0] != navigation.carrier.encoding.as_str() {
             return Err(Error::new(
                 "SOURCE_MISMATCH",
-                "EVM function ID does not match carrier and encoding",
+                "EVM function coordinate does not match the carrier encoding",
             ));
         }
         self.functions
             .iter()
-            .find(|f| f.selector == fields[5] && f.dispatch == fields[6] && f.entry == entry)
+            .find(|f| f.selector == fields[2] && f.dispatch == fields[3] && f.entry == entry)
             .ok_or_else(invalid)
     }
 
@@ -1455,7 +1438,7 @@ impl FunctionNavigation {
         result
     }
 
-    /// List content-bound function candidates with EVMole's own ABI fields per row.
+    /// List function candidates with EVMole's own ABI fields per row.
     pub fn interface_json(
         &self,
         navigation: &Navigation,

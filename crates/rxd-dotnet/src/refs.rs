@@ -45,7 +45,6 @@ pub struct SemanticTarget {
     pub target_kind: &'static str,
     pub original_token: u32,
     pub canonical_token: Option<u32>,
-    pub canonical_id: Option<String>,
     pub resolution_status: String,
     pub scope: ScopeIdentity,
     pub owner_token: u32,
@@ -115,7 +114,6 @@ impl SemanticTarget {
     fn charge_clone(&self, work: &mut Work) -> Result<()> {
         work.charge(
             std::mem::size_of::<Self>()
-                + self.canonical_id.as_ref().map_or(0, String::len)
                 + self.resolution_status.len()
                 + self.owner_name.len()
                 + self.name.len(),
@@ -306,7 +304,6 @@ impl<'a> Resolver<'a> {
                 type_signature: None,
                 original_token: token,
                 canonical_token: Some(token),
-                canonical_id: Some(method.id.clone()),
                 resolution_status: "resolved".into(),
                 scope: ScopeIdentity::Module,
                 owner_token: method.declaring_type_token,
@@ -356,7 +353,6 @@ impl<'a> Resolver<'a> {
             type_signature: None,
             original_token: token,
             canonical_token: None,
-            canonical_id: None,
             resolution_status: owner.status.into(),
             scope: owner.scope.clone(),
             owner_token: owner.token,
@@ -390,7 +386,6 @@ impl<'a> Resolver<'a> {
             target.resolution_status = match matches.as_slice() {
                 [definition] => {
                     target.canonical_token = Some(*definition);
-                    target.canonical_id = Some(self.input.id("method", *definition));
                     "resolved"
                 }
                 [] => "unresolved",
@@ -451,7 +446,6 @@ impl<'a> Resolver<'a> {
             target_kind: "field",
             original_token: token,
             canonical_token: None,
-            canonical_id: None,
             resolution_status: owner.status.into(),
             scope: owner.scope.clone(),
             owner_token: owner.token,
@@ -465,7 +459,6 @@ impl<'a> Resolver<'a> {
         };
         if token >> 24 == 4 {
             target.canonical_token = Some(token);
-            target.canonical_id = Some(self.input.id("field", token));
         } else if let Some(definition) = owner.definition {
             let candidates = self.field_candidates(definition, &name)?;
             let mut matches = Vec::new();
@@ -489,7 +482,6 @@ impl<'a> Resolver<'a> {
             target.resolution_status = match matches.as_slice() {
                 [definition] => {
                     target.canonical_token = Some(*definition);
-                    target.canonical_id = Some(self.input.id("field", *definition));
                     "resolved"
                 }
                 [] => "unresolved",
@@ -542,7 +534,6 @@ impl<'a> Resolver<'a> {
             target_kind: "type",
             original_token: token,
             canonical_token: canonical,
-            canonical_id: canonical.map(|token| self.input.id("type", token)),
             resolution_status: if named { owner.status } else { "unresolved" }.into(),
             scope: owner.scope.clone(),
             owner_token: owner.token,

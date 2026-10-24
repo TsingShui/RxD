@@ -23,8 +23,8 @@ modules are never instantiated.
 Every listing takes `-f/--filter` (folded unless `--case sensitive`); `get-function`
 and `xref` take `--at func:N` or `--from` a previous stream whose `source_id` is
 checked against the current input. `-o` writes the stream atomically and `--perf`
-reports stages and resource use. Rows carry content-bound IDs so a coordinate can
-never silently address a different module.
+reports stages and resource use. Rows carry coordinates, not hashes, so the module
+identity is stated once in the header `source_id`.
 
 Decompilation is per requested function, never a whole-module pass: listings do
 not enter the decompiler. `get-function` emits C-like code with a line-to-byte
@@ -79,15 +79,15 @@ that view. Both retain code-body offsets and original file ranges.
 
 Listings are single-kind: header → records of that one kind → summary, so no row stream
 mixes types with functions. Identity is the row's `at` coordinate (`type:0`, `func:1`,
-`data:1`, …); the header carries the input SHA-256 and rows never repeat it.
+`data:1`, …); the header carries the input identity digest and rows never repeat it.
 `xref --at` rows carry the caller coordinate in `context_at` and the referenced
 function in `detail.target`, and report only direct calls and `ref.func`;
 `call_indirect` is marked indirect and its runtime table target is not resolved.
 Export rows expose `detail.target_at` for direct navigation to the exported function;
 function imports expose the same field for caller queries, but have no fetchable body.
 Names are not identities, and export aliases do not become name-section labels.
-Short coordinates refer to the current input; use a listing's `--from` stream or a
-full content-bound ID to detect changed input bytes, including same-size changes.
+Coordinates refer to the current input; use a listing's `--from` stream to detect
+changed input bytes, including same-size changes.
 A nonexistent coordinate is `NOT_FOUND`; an unmatched name filter is a complete
 empty result. Contradictory kinds are argument errors, never silent empty scans. Budgets come from the shared
 `rxd_core::Budget` table, so there is no `--max-*` flag. Whole-function decompilation

@@ -5,7 +5,7 @@ Status: implemented.
 `rxd html` is the Agent-facing lexical container entry for local HTML. It provides
 `entries`, `resources` and `extract`. It reads one bounded, valid-UTF-8 regular local
 file, enumerates lexical nodes and source-backed resource candidates, and extracts
-exact byte ranges by content-bound ID. Resource URL resolution uses a pinned local URL
+exact byte ranges by coordinate. Resource URL resolution uses a pinned local URL
 parser, not a network client. It does not depend on `rxd-js` or Oxc, execute page
 scripts, load external resources, or build a browser DOM. Inline JS/TS content is analyzed separately by
 `rxd js`. See the [HTML examples](../demo/html.md).
@@ -30,16 +30,15 @@ scans; HTML files are always handled by `rxd html`.
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
 `schema_version=2`. `entries` format-specific fields are under `detail`; the `extract`
 receipt is a single `file` record with `backend`/`command`/`schema_version` and
-`source_id` (artifact SHA-256), with receipt content under `detail`.
+`source_id` (artifact identity digest), with receipt content under `detail`.
 
 ### Records and closed schema
 
 For `entries`, record kinds are `element`/`text`/`comment`/`doctype`; an end tag is not a fifth
 record. Every data record carries the ADR 0003 navigation fields (`at, source_id, parent_at,
 context_at, start, end`); a field with no value is `null` or absent, and the field set
-never changes with input. Printed coordinates are `kind:start:end`; source identity
-lives in the header. The full content-bound spelling
-`rxd1:html:<lowercase sha256>:<kind>:<start>:<end>` remains accepted. Start/end are
+never changes with input. A record's identity *is* its coordinate `kind:start:end`;
+source identity lives once in the header and no row repeats a hash. Start/end are
 canonical decimal half-open UTF-8 byte ranges.
 
 Element detail: `tag` (ASCII lowercase), `attrs` (ordered object array with `name` and
@@ -226,12 +225,12 @@ resource-coverage denominator.
 
 ## Identity and extraction
 
-ID validation is three layers: syntax (`rxd1`/`html`/64 lowercase hex/one of four
-kinds/canonical decimal), then container hash, then exact catalog membership. A
-syntactically valid ID with a different hash (foreign/stale) returns `SOURCE_MISMATCH`;
-malformed, non-canonical or missing same-hash IDs return `INVALID_QUERY`. Bounds checks
-never replace membership lookup. Content ranges derive from the matched element, never
-from invented IDs or caller ranges.
+ID validation is two layers: syntax (one of four kinds, then canonical decimal
+start/end), then exact catalog membership. Malformed, non-canonical or unknown
+coordinates return `INVALID_QUERY`; a coordinate carries no hash, so use on another
+input fails as "does not exist" and the stream-level `source_id` check is what detects
+a foreign stream. Bounds checks never replace membership lookup. Content ranges derive
+from the matched element, never from invented IDs or caller ranges.
 
 By default `extract` accepts all four kinds: elements select the entire outer range
 (including missing-recovery ranges); others select their complete record range.

@@ -177,13 +177,6 @@ fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
     let different = dir.path().join("different.html");
     fs::write(&different, b"<div><p>other</p></div>").unwrap();
     let other_rows = rows(&run(&different, &[]));
-    let other_short = other_rows[1]["at"].as_str().unwrap();
-    // Only a full id carries a foreign source hash; the short coordinate a row prints is
-    // source-agnostic, so a cross-input mistake is caught by the full form.
-    let other_id = format!(
-        "rxd1:html:{}:{other_short}",
-        other_rows[0]["source_id"].as_str().unwrap()
-    );
     let _hash = all[0]["source_id"].as_str().unwrap();
     for candidate in [
         "not-an-id".to_owned(),
@@ -194,7 +187,6 @@ fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
     }
     // A row prints the copy-only short coordinate, so it is a valid selector.
     assert!(run(&path, &["--within", id]).status.success());
-    fails(run(&path, &["--within", &other_id]), "SOURCE_MISMATCH");
     let non_element = run(&path, &["--within", text_id]);
     assert_eq!(non_element.status.code(), Some(2));
     assert!(non_element.stdout.is_empty());
@@ -243,7 +235,7 @@ fn html_list_reports_source_bound_lexical_catalog_and_atomic_file() {
     fs::write(&path, source).unwrap();
     let output = run(&path, &[]);
     let entries = rows(&output);
-    let hash = format!("{:x}", Sha256::digest(source));
+    let hash = rxd_core::identity::input_id(source);
     assert_eq!(entries.len(), 7);
     assert_eq!(
         entries[0],
@@ -300,7 +292,7 @@ fn html_extract_fetches_every_catalog_kind_with_artifact_identity_and_container_
     fs::write(&path, source).unwrap();
     let catalog = rows(&run(&path, &[]));
     let destination = dir.path().join("arbitrary-name");
-    let hash = format!("{:x}", Sha256::digest(source));
+    let hash = rxd_core::identity::input_id(source);
     for node in &catalog[1..catalog.len() - 1] {
         let id = node["at"].as_str().unwrap();
         let start = node["start"].as_u64().unwrap() as usize;
@@ -314,7 +306,7 @@ fn html_extract_fetches_every_catalog_kind_with_artifact_identity_and_container_
             json!({
                 "record":"file", "backend":"html", "command":"extract", "schema_version":2,
                 "at":null, "parent_at":null, "context_at":null,
-                "source_id":format!("{:x}", Sha256::digest(selected)), "start":0, "end":selected.len(),
+                "source_id":rxd_core::identity::input_id(selected), "start":0, "end":selected.len(),
                 "detail":{"complete":true,"path":destination.to_str().unwrap(),"file_bytes":selected.len(),
                     "representation":"original","part":"outer",
                     "origin":{"container":path.to_str().unwrap(),"format":"html","source_id":hash,
@@ -402,11 +394,6 @@ fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
     let other = dir.path().join("other.html");
     fs::write(&other, b"<div><p>other</p></div>").unwrap();
     let other_rows = rows(&run(&other, &[]));
-    let other_short = other_rows[1]["at"].as_str().unwrap();
-    let other_id = format!(
-        "rxd1:html:{}:{other_short}",
-        other_rows[0]["source_id"].as_str().unwrap()
-    );
     fs::write(&destination, b"old").unwrap();
     for candidate in [
         "not-an-id".to_owned(),
@@ -419,11 +406,6 @@ fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
         );
         assert_eq!(fs::read(&destination).unwrap(), b"old");
     }
-    fails(
-        extract(&path, &other_id, &destination, &[]),
-        "SOURCE_MISMATCH",
-    );
-    assert_eq!(fs::read(&destination).unwrap(), b"old");
     for target in [path.clone(), dir.path().join(".").join("page.html")] {
         let output = extract(&path, id, &target, &[]);
         assert_eq!(

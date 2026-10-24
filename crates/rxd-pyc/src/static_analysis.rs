@@ -71,7 +71,7 @@ impl Analysis {
         perf.resource_limits = Some(limits.perf_limits());
         let bytes = perf.measure("read", || rxd_core::read_bytes(path, limits.input_bytes))?;
         perf.counters.input_bytes = Some(bytes.len());
-        let source_id = perf.measure("hash", || rxd_core::identity::content_id(path, &bytes));
+        let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
         perf.source_id = Some(source_id.clone());
         let mut parse_counts = None;
         let parsed = perf.measure("parse", || -> Result<_> {

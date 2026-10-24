@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use sha2::{Digest, Sha256};
 
 use crate::{ClassFile, Limits};
 
@@ -62,7 +61,7 @@ impl Input {
             bytes.len() <= limits.input_bytes,
             "RESOURCE_LIMIT: input byte budget exceeded"
         );
-        let source_id = rxd_core::identity::content_id(path, &bytes);
+        let source_id = rxd_core::identity::input_id(&bytes);
         let file_bytes = bytes.len();
         let mut entries = Vec::new();
         if bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
@@ -134,7 +133,7 @@ impl Input {
             bytes.len() <= limits.input_bytes,
             "RESOURCE_LIMIT: input byte budget exceeded"
         );
-        let source_id = rxd_core::identity::content_id(path, &bytes);
+        let source_id = rxd_core::identity::input_id(&bytes);
         let file_bytes = bytes.len();
         if bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
             return Ok(None);
@@ -238,7 +237,7 @@ impl Input {
             bytes.len() <= limits.input_bytes,
             "RESOURCE_LIMIT: input byte budget exceeded"
         );
-        let source_id = rxd_core::identity::content_id(path, &bytes);
+        let source_id = rxd_core::identity::input_id(&bytes);
         let file_bytes = bytes.len();
         let mut classes = Vec::new();
         let mut entries = Vec::new();
@@ -471,7 +470,7 @@ pub fn normalize_class_name(name: &str) -> String {
 }
 
 fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    rxd_core::identity::input_id(bytes)
 }
 
 fn is_multi_release(manifest: &str) -> Result<bool> {

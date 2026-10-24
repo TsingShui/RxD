@@ -63,7 +63,7 @@ pub fn run(
     perf.counters.ast_depth = Some(0);
     let bytes = perf.measure("read", || rxd_core::read_bytes(path, limits.input_bytes))?;
     perf.counters.input_bytes = Some(bytes.len());
-    let source_id = perf.measure("hash", || rxd_core::identity::content_id(path, &bytes));
+    let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
     perf.source_id = Some(source_id.clone());
     let loaded = perf.measure("parse", || {
         loader::load_bytes_with_limits(&bytes, version, limits.marshal).map_err(input_error)

@@ -214,11 +214,9 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
                         .find(|got| got["method_token"] == accessor["method_token"])
                         .unwrap();
                     assert_eq!(found["semantics"], accessor["semantics"]);
-                    assert!(
-                        methods
-                            .iter()
-                            .any(|method| method["at"] == found["method_id"])
-                    );
+                    assert!(methods.iter().any(|method| {
+                        method["at"] == format!("0x{:08x}", found["method_token"].as_u64().unwrap())
+                    }));
                 }
             }
         }

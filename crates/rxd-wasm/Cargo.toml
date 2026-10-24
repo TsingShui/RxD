@@ -10,7 +10,6 @@ publish = false
 rxd-core.workspace = true
 anyhow = "1.0"
 serde.workspace = true
-sha2 = "0.10"
 wasmparser = "=0.221.3"
 
 [target.'cfg(unix)'.dependencies]

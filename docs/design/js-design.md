@@ -271,7 +271,7 @@ and member name respectively; no regex/fuzzy mode.
   setter behavior or runtime success. Definitions are not mislabeled as property writes.
 
 All three obey the record and output-byte budgets from `rxd_core::Budget`, sort by `(start, end)` and keep
-content-bound identity. They have no own ID; `parent_at` points at an extractable
+the same coordinate scheme. They have no own ID; `parent_at` points at an extractable
 structure. Their `context_at` is null at context boundaries with no local fragment (for
 example a shorthand arrow); use `parent_at` in that case. Context tracking is an AST-depth
 stack, not a whole-file fragment index or semantic pass.
@@ -573,7 +573,7 @@ identity are out of scope.
 Each invocation first obtains one fixed source buffer; parsing, searching and
 extraction all use it. It never parses one version and reopens another for extraction.
 
-`source_id` is the original file SHA-256, and it lives in the stream header only.
+`source_id` is the original file's identity digest, and it lives in the stream header only.
 An entity coordinate is the span and its kind:
 
 ```text
@@ -647,7 +647,8 @@ with `detail: {}` except resources' selected resolved/unresolved counts.
 
 Data records always contain `record, id, source_id, parent_id, context_id, start, end,
 detail`; all keys are present and inapplicable values are null. `source_id` is the
-owning fixed source SHA-256. Entity and symbol IDs are content-bound; match/reference/
+owning source identity digest. Entity and symbol coordinates carry no hash, so the same
+coordinate in two inputs is the same position, not the same bytes; match/reference/
 unresolved records have `id: null` and use `parent_at` for the containing structure,
 which can be passed to `slice`. `symbol.parent_id` is the canonical declaration's
 containing structure. Entity `parent_at` keeps the structural parent. Match/reference
@@ -735,7 +736,7 @@ added.
 
 `xref FILE --byte N` uses Oxc Semantic binding/reference analysis on demand. It is
 single-file only, with no `--id`, `--within` or recursion. `symbols` implements symbol
-discovery and content-bound symbol IDs; `xref --id` and cross-file bindings are not
+discovery and `symbol:<start>:<end>` coordinates; `xref --id` and cross-file bindings are not
 implemented.
 
 `N` must be less than the original length and inside a declaration identifier or

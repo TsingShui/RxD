@@ -26,7 +26,7 @@ executes input. Its query surface is:
 Structure listings, `find` and `resources` accept a file or scan a directory; `locate/slice/xref/symbols/
 identifiers/calls/members` accept one file. ASAR uses the separate
 [`rxd asar` entry](asar.md) to extract a file, then these commands analyze it; identical
-bytes and parse options keep the same content-bound IDs. For a local HTML capture,
+bytes and parse options keep the same coordinates and source identity. For a local HTML capture,
 use [`rxd html resources`](html.md#resource-discovery-and-batch-inline-handoff):
 classify URLs/preloads/hints and batch-return original inline scripts with
 `--kind script --location inline --include-content`. Save classic bodies as `.cjs`

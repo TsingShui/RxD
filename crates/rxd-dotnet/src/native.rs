@@ -327,11 +327,10 @@ pub(super) fn render_class(input: &Input, class: &ClassBody<'_>) -> Result<Class
                     .instructions
                     .binary_search_by_key(&site.il_offset, |instruction| instruction.offset)
                     .is_ok())
-            .then_some((item, token))
+            .then_some(token)
         });
         match resolved {
-            Some((item, token)) => mapping.push(ClassSourceMap {
-                method_id: item.method.id.clone(),
+            Some(token) => mapping.push(ClassSourceMap {
                 method_token: token,
                 il_offset: site.il_offset,
                 line: site.line,

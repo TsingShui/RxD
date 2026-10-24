@@ -10,7 +10,7 @@
     {
       "name": "typed-login-source",
       "file": "artifacts/login.tsx",
-      "source_id": "368120434e867213bfc067c4281a4eb77fc979ea780f7bbac4e6f224e6e5f009",
+      "source_id": "eb1a5a8659d99d417f6ec8832059af1dca36d824367c924693f83d79a27239b9",
       "binding_name": "Banner",
       "identifier": {
         "start": 238,
@@ -30,7 +30,7 @@
     {
       "name": "jsx-page-source",
       "file": "artifacts/page.jsx",
-      "source_id": "9f2d78f15fd2dcf14fbe172cd229861aba4ff31f0f872b9b48f9adf33fba8ef5",
+      "source_id": "16d2c08310f5bc33a8360eb245c7f5d35829e7d392313a348866f5e50375f00a",
       "binding_name": "Widget",
       "identifier": {
         "start": 60,

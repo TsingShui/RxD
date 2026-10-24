@@ -164,10 +164,6 @@ fn assert_record(row: &Value) {
         Some(prefix) => {
             let at = row["at"].as_str().expect("catalog rows print an at");
             assert!(at.starts_with(&prefix), "{at} does not start with {prefix}");
-            assert!(
-                !at.starts_with("rxd1:"),
-                "{at} must be the short coordinate"
-            );
         }
         None => assert!(row["at"].is_null(), "{} has no identity", row["record"]),
     }
@@ -735,14 +731,9 @@ fn wasm_coordinates_validate_existence_before_name_filters() {
 }
 
 #[test]
-fn wasm_get_expands_short_coordinates_and_rejects_foreign_hashes() {
+fn wasm_get_resolves_a_function_coordinate() {
     let path = input();
-    let source_id = wasm_jsonl(&run("functions", &path, &[]))[0]["source_id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    // A full id built from this module's own hash is the same target.
-    let row = get(&path, &format!("rxd1:wasm:{source_id}:func:1"));
+    let row = get(&path, "func:1");
     assert_eq!(row["at"], "func:1");
     // Imported function index 0 has no code body.
     failure(
@@ -755,16 +746,6 @@ fn wasm_get_expands_short_coordinates_and_rejects_foreign_hashes() {
         run("get-function", &path, &["--at", "func:9999"]),
         2,
         "NOT_FOUND",
-    );
-    // A full id naming different content can never be expanded into this module.
-    failure(
-        run(
-            "get-function",
-            &path,
-            &["--at", &format!("rxd1:wasm:{}:func:1", "d".repeat(64))],
-        ),
-        1,
-        "SOURCE_MISMATCH",
     );
     // Malformed coordinates are rejected, never guessed.
     failure(

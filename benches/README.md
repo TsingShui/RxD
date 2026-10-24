@@ -62,6 +62,11 @@ only one function contains the target marker. They test scale and repeated parse
 not real business bundles. Reports save generator version, exact bytes, structure count
 and SHA-256.
 
+Expected `source_id` values come from `scripts/input_identity.py`, which mirrors
+`rxd_core::identity::input_id`: a digest over the length plus the first and last 16 KiB.
+The `sha256` fields in `tests/corpus/*/manifest.json` and the pinned provenance stay
+whole-file digests, because they identify published artifacts rather than a CLI stream.
+
 By default each scenario records one initial sample, then one warmup and seven measured
 samples, plus three `--perf` samples. Every call creates a fresh CLI/analysis process.
 Generated files and prepared IDs warm the file cache; the script does not clear OS

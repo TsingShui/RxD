@@ -41,7 +41,7 @@ of the value the row is named by.
 
 `interface` is the function listing (it also performs the ownership analysis), so the old
 `functions` alias is gone: one spelling per question. `basic-blocks` stays the native
-EVMole range array and is not a second block listing; `blocks` is the content-bound one.
+EVMole range array and is not a second block listing; `blocks` is the navigable one.
 The removed mixed `outline` command is replaced by `blocks` and `interface`.
 
 Native commands preserve EVMole semantics. Language-neutral pseudocode reconstruction
@@ -58,7 +58,7 @@ for selected functions does not claim original Solidity/Yul. See the
   containers return `UNSUPPORTED_INPUT`.
 - Directories return `INVALID_INPUT`; missing files and real read errors return
   `IO_ERROR`. The backend uses one already-open handle and a bounded fixed buffer.
-- `source_id` is the original file SHA-256, preserving prefix/case/whitespace. The
+- `source_id` is the original file's identity digest, preserving prefix/case/whitespace. The
   decoded bytecode SHA-256 is in `detail.bytecode.sha256`. Neither is an Ethereum
   Keccak code hash.
 - `--include-bytecode` returns exact decoded bytes as lowercase hex without prefix;
@@ -153,15 +153,13 @@ the block coordinate. `evm get-block INPUT --encoding raw|hex --at COORDINATE` r
 `basic-blocks` command remains the original EVMole range array.
 
 A row prints the copy-only coordinate `<raw|hex>:block:<decoded-start>:<decoded-end-exclusive>`
-because the header already carries the source identity. `--at` expands that coordinate
-against the analysed carrier's identity inside the library and then validates it; a whole
-content-bound ID is also accepted:
-`rxd1:evm:<carrier-sha256>:<raw|hex>:block:<decoded-start>:<decoded-end-exclusive>`.
-The carrier hash is 64 lowercase hex; encoding is raw/hex; offsets are canonical decimal
-without leading zeros (except 0). The ID binds the fixed carrier and explicit encoding
-interpretation; decoded SHA-256 stays in detail. Copy/rename does not change the ID.
-Wrong grammar/boundaries return `INVALID_QUERY`; a whole ID naming a different input
-identity returns `SOURCE_MISMATCH`; user input never drives arbitrary slicing.
+because the header already carries the source identity. That coordinate is the whole
+identity: encoding is raw/hex; offsets are canonical decimal without leading zeros
+(except 0). The scan is bound to the fixed carrier and explicit encoding interpretation;
+decoded SHA-256 stays in detail. Copy/rename does not change the coordinate.
+Wrong grammar/boundaries return `INVALID_QUERY`; a coordinate that does not name a
+catalogued block in this scan is also `INVALID_QUERY`, and a foreign stream is caught by
+the header `source_id` check. User input never drives arbitrary slicing.
 
 Navigation decodes the fixed input boundedly and requests native disassemble/
 basic_blocks. Each producer range start/last opcode must exist in the complete decoded
@@ -203,7 +201,7 @@ is separate from decode/analyze.
 
 ## Function candidates and FETCH
 
-`interface` lists content-bound `function` candidates as its own JSONL stream; the
+`interface` lists `function` candidates as its own JSONL stream; the
 summary counts them in `functions`. Each row additionally carries EVMole's own
 `arguments` (comma-joined Solidity type names or null) and `stateMutability` (producer
 spelling, or null for a candidate only witnessed by its dispatcher comparison), taken from
@@ -218,13 +216,10 @@ reconstructs language-neutral EVM pseudocode for declared-supported targets
 exact raw evidence. `--raw` sets `not_requested` and skips reconstruction.
 
 Function coordinate: `<raw|hex>:function:<lowercase-selector-8-hex>:<abi|fallback>:<canonical-decimal-entry>`,
-printed as the row's `at` and expanded against the carrier identity by `--at`; the whole
-content-bound form is
-`rxd1:evm:<carrier-sha256>:<raw|hex>:function:<lowercase-selector-8-hex>:<abi|fallback>:<canonical-decimal-entry>`.
-Carrier/encoding rules match block coordinates. FETCH validates selector/dispatch/entry
-against current discovery; user-reported ranges are rejected. Wrong grammar/kind/
-undiscovered units return `INVALID_QUERY`; a whole ID naming a different carrier/encoding
-returns `SOURCE_MISMATCH`. Copy/rename is stable.
+printed as the row's `at` and accepted back by `--at`. Encoding rules match block
+coordinates. FETCH validates selector/dispatch/entry against current discovery;
+user-reported ranges are rejected. Wrong grammar/kind/undiscovered units return
+`INVALID_QUERY`. Copy/rename is stable.
 
 Candidates come from unchanged EVMole selector/dispatch; the native result map collapses
 duplicate selectors, while rxd's bounded native dispatcher provenance adds valid entries
@@ -431,11 +426,10 @@ evidence use a separate data discriminator.
 
 Literal coordinate:
 `<raw|hex>:literal:push:<canonical-decimal-opcode-PC>:<canonical-decimal-PUSH-width>`,
-width 0..32, printed as `at` and expanded by `--at`; the whole content-bound form is
-`rxd1:evm:<carrier-sha256>:<raw|hex>:literal:push:<canonical-decimal-opcode-PC>:<canonical-decimal-PUSH-width>`. It binds one real validated PUSH occurrence; equal immediates are not
-merged. Copy/rename is stable; carrier/encoding mismatch is `SOURCE_MISMATCH`; wrong
-grammar/kind/width/position or no established literal is `INVALID_QUERY`. IDs never drive
-slicing.
+width 0..32, printed as `at` and accepted back by `--at`. It binds one real validated
+PUSH occurrence; equal immediates are not merged. Copy/rename is stable; wrong
+grammar/kind/width/position or no established literal is `INVALID_QUERY`.
+Coordinates never drive slicing.
 
 `evm xref --at LITERAL_COORDINATE` queries only that exact occurrence's decoded PUSH
 uses, not all equal immediates or arbitrary runtime uses. Each supported function owner
@@ -514,12 +508,10 @@ Solidity/Yul string object boundaries; runtime_string_proven is always false.
 
 Data coordinate:
 `<raw|hex>:literal:data:<unindexed|metadata|copied>:<decoded-start>:<decoded-end-exclusive>`,
-printed as `at` and expanded by `--at`; the whole content-bound form is
-`rxd1:evm:<carrier-sha256>:<raw|hex>:literal:data:<unindexed|metadata|copied>:<decoded-start>:<decoded-end-exclusive>`.
-The fixed input must re-establish the exact origin/range; IDs never slice directly.
-Wrong grammar/candidate is `INVALID_QUERY`; carrier/encoding mismatch is
-`SOURCE_MISMATCH`. The same candidate keeps its ID across query kinds; copy/rename is
-stable; raw/hex bind their carrier and outer start/end map exact digits.
+printed as `at` and accepted back by `--at`. The fixed input must re-establish the
+exact origin/range; coordinates never slice directly. Wrong grammar/candidate is
+`INVALID_QUERY`. The same candidate keeps its coordinate across query kinds;
+copy/rename is stable; raw/hex bind their carrier and outer start/end map exact digits.
 
 CODECOPY evidence reuses functions.rs native abstract transfer, replaying each function
 and actual Context.entry and capturing the instruction's destination/source/length pre-pop

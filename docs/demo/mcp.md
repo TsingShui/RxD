@@ -83,7 +83,7 @@ const child = extracted.child_target;
 await call("rxd_close", {target_id: parent.target_id});
 try {
   const structure = await call("js_entities", {input: {target_id: child.target_id}});
-  // extracted.bytes_base64 is the exact entry; child.source_id is its SHA-256.
+  // extracted.bytes_base64 is the exact entry; child.source_id is its identity digest.
 } finally {
   await call("rxd_close", {target_id: child.target_id});
 }
