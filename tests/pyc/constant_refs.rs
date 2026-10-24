@@ -327,10 +327,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     assert_eq!(all[1..all.len() - 1], scoped[1..scoped.len() - 1]);
     assert_eq!(all[0]["detail"]["scope"], "constant_owner");
     assert_eq!(scoped[0]["detail"]["scope"], "selected_code");
-    assert_js_keys(
-        &all[0]["query"],
-        &["at", "kind", "match", "case", "within", "version"],
-    );
+    assert_js_keys(&all[0]["query"], &["at", "kind", "version"]);
     assert_eq!(all[0]["query"]["at"], id);
     assert_eq!(all[0]["query"]["version"], "3.12");
     assert_eq!(all[0]["query"]["kind"], "constant");

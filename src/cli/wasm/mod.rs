@@ -602,7 +602,22 @@ fn command_query(command: &Command) -> Value {
             filter,
             ..
         } => {
-            json!({"at": selector.at, "kind": kind, "match": filter, "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
+            let mut query = json!({});
+            if let Some(at) = &selector.at {
+                query["at"] = json!(at);
+            }
+            if let Some(kind) = kind {
+                query["kind"] = json!(kind);
+            }
+            if let Some(filter) = filter {
+                query["match"] = json!(filter);
+                query["case"] = json!(if command.case_sensitive() {
+                    "sensitive"
+                } else {
+                    "insensitive"
+                });
+            }
+            query
         }
         _ => {
             json!({"filter": command.filter(), "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})

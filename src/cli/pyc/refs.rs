@@ -138,8 +138,26 @@ pub fn run(
     };
     let bytes = perf.measure("serialize", || -> Result<_> {
         let mut out = Output::new(options.common.budget.output_bytes);
+        let mut query = json!({"kind": kind});
+        if let Some(at) = at.as_deref() {
+            query["at"] = json!(at);
+        }
+        if let Some(filter) = &target.filter {
+            query["match"] = json!(filter);
+            query["case"] = json!(if target.case.sensitive() {
+                "sensitive"
+            } else {
+                "insensitive"
+            });
+        }
+        if let Some(within) = within.as_deref() {
+            query["within"] = json!(within);
+        }
+        if let Some((major, minor)) = version {
+            query["version"] = json!(format!("{major}.{minor}"));
+        }
         append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            json!({"at":at,"kind":kind,"match":target.filter,"case":if target.case.sensitive() {"sensitive"} else {"insensitive"},"within":within,"version":version.map(|(a,b)|format!("{a}.{b}"))}),
+            query,
             json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;

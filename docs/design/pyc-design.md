@@ -494,7 +494,8 @@ table operands and produce no name hit.
 
 ### Refs schema v2
 
-Header/reference/summary JSONL per ADR 0003. Header query: at/kind/match/case/within/version
+Header/reference/summary JSONL per ADR 0003. Header query: `at, kind` for an identity, `kind, match, case` for a name search, plus
+`within`/`version` when used
 (optional null; kind=`name`/`constant`, case=`insensitive`/`sensitive`); detail: analysis/python_version/code_count/scope/instruction_validation;
 analysis=`explicit_name_references`; scope=`all_codes`/`selected_code`; instruction_
 validation=`scanned_scope`.
@@ -581,7 +582,8 @@ in different slots/owners are not linked; multiple nested leaves in one containi
 share instruction evidence, but each query echoes only the selected occurrence. Ordering is
 code index then instruction offset.
 
-The common xref query retains at/kind/match/case/within/version with absent selectors null;
+The common xref query carries only the selectors used: `at, kind` for an identity,
+`kind, match, case` for a name search, plus `within`/`version` when set;
 constant header/summary detail.analysis=`explicit_constant_references`; the rest of the
 fixed schema is shared with name selectors. Summary/perf records count only real hits;
 unsupported evidence is counted separately and remains subject to the selected

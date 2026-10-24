@@ -219,10 +219,12 @@ kind, so `--kind` is only needed to read `--at` as a literal. `-f/--filter` sear
 (case-sensitive substring), which cannot say what kind it looks for, so it requires `--kind`.
 A coordinate that no table carries is `NOT_FOUND`, never an empty result; a `--kind` that
 contradicts the coordinate is an argument error naming both kinds, never an empty result.
-A nullable outer key (`at`, `parent_at`, `context_at`, `start`, `end`, `source_id`) is
-`null` or absent, and consumers treat the two alike (ADR 0003). A coordinate names a
-position in the input being queried; it carries no content identity, so re-run the
-listing for a different input instead of reusing a coordinate across inputs.
+`xref`'s `query` echo contains only the fields the call used: `at` or `match` (never
+both), plus `kind` and the applicable `case`/`class`/`within`/`version`. A nullable outer
+key (`at`, `parent_at`, `context_at`, `start`, `end`, `source_id`) is `null` or absent,
+and consumers treat the two alike (ADR 0003). A coordinate names a position in the input
+being queried; it carries no content identity, so re-run the listing for a different
+input instead of reusing a coordinate across inputs.
 
 Original instructions versus reconstructed source is one flag, `--raw`, on every
 backend that can emit both; `--bytecode`, `--il` and future spellings are not separate

@@ -276,10 +276,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
             "detail",
         ],
     );
-    assert_js_keys(
-        &stream[0]["query"],
-        &["at", "kind", "match", "case", "within", "version"],
-    );
+    assert_js_keys(&stream[0]["query"], &["at", "kind"]);
     assert_js_keys(
         &stream[0]["detail"],
         &[

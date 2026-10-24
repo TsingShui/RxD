@@ -317,8 +317,8 @@ All statuses have the same fixed detail keys.
 `reference.detail.target_kind` is semantic `method`/`field`/`type`, string route
 `string`, otherwise `token`. A string-route `header.detail.target` names the literal
 instead of being null: `{target_kind: "user_string", token: "0x7000001b", value: "N3CTF"}`
-for `--at 0x70xxxxxx`, and `{target_kind: "user_string", value: "<query>"}` for
-`--string` (no token, because one value may match several heap entries; each hit row
+for `--at 0x70xxxxxx`, and `{target_kind: "user_string", match: "<query>"}` for
+`--match … --kind string` (no token, because one value may match several heap entries; each hit row
 keeps its own `target_token`). `signature` is non-null only for method semantic targets
 (flags, generic_arity, sentinel, return_type, parameters); `type_signature` only for
 field/type semantic targets, using structural AST kind/element/token/value/arguments.

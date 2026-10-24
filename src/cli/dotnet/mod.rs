@@ -248,7 +248,7 @@ fn execute_inner(
                 if *exact {
                     json!({"target_kind": "user_string", "value": pattern})
                 } else {
-                    json!({"target_kind": "user_string", "filter": pattern})
+                    json!({"target_kind": "user_string", "match": pattern})
                 }
             }
             Some(Target::Token { token, .. }) => {
@@ -430,12 +430,25 @@ fn execute_inner(
             Command::Fields { class, name, .. } => json!({"class":class,"name":name}),
             Command::Methods { class, name, .. } => json!({"class":class,"name":name}),
             Command::Strings { filter, .. } => json!({"filter":filter}),
-            Command::Xref { at, filter, .. } => json!({
-                "kind": xref_target.as_ref().map(Target::kind).map(Kind::as_str),
-                "at": at,
-                "match": filter,
-                "class": Value::Null,
-            }),
+            Command::Xref {
+                at, filter, case, ..
+            } => {
+                let mut query = json!({
+                    "kind": xref_target.as_ref().map(Target::kind).map(Kind::as_str),
+                });
+                if let Some(at) = at {
+                    query["at"] = json!(at);
+                }
+                if let Some(filter) = filter {
+                    query["match"] = json!(filter);
+                    query["case"] = json!(if case.is_sensitive() {
+                        "sensitive"
+                    } else {
+                        "insensitive"
+                    });
+                }
+                query
+            }
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
         };
         append(

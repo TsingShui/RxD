@@ -124,16 +124,29 @@ pub struct Target {
 
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl Target {
-    /// The header's echo of the query.
+    /// The header's echo of the query. Only fields the query actually used are present.
     pub fn json(&self) -> serde_json::Value {
-        let anchor = self.anchor.as_ref().map(Anchor::text);
-        serde_json::json!({
-            "kind": self.kind.as_str(),
-            "at": anchor,
-            "match": self.filter,
-            "class": self.class,
-            "case": if self.case_sensitive { "sensitive" } else { "insensitive" },
-        })
+        let mut query = serde_json::Map::new();
+        query.insert("kind".into(), self.kind.as_str().into());
+        if let Some(anchor) = self.anchor.as_ref().map(Anchor::text) {
+            query.insert("at".into(), anchor.into());
+        }
+        if let Some(filter) = &self.filter {
+            query.insert("match".into(), filter.clone().into());
+            query.insert(
+                "case".into(),
+                (if self.case_sensitive {
+                    "sensitive"
+                } else {
+                    "insensitive"
+                })
+                .into(),
+            );
+        }
+        if let Some(class) = &self.class {
+            query.insert("class".into(), class.clone().into());
+        }
+        serde_json::Value::Object(query)
     }
 }
 

@@ -217,7 +217,8 @@ fn wasm_jsonl(output: &Output) -> Vec<Value> {
     );
     let query_keys: &[&str] = match header["command"].as_str().unwrap() {
         "functions" => &["at", "name", "filter", "case"],
-        "xref" => &["at", "kind", "match", "case"],
+        "xref" if header["query"].get("match").is_some() => &["kind", "match", "case"],
+        "xref" => &["at", "kind"],
         _ => &["filter", "case"],
     };
     assert_keys(&header["query"], query_keys);

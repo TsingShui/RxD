@@ -620,7 +620,8 @@ query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: entities/func
 `name, filter, case, role, within`; calls `name, filter, case, within`; members
 `name, filter, case, access, within`; resources
 `kind, resolution, filter, case, within, resolve_bindings`; values `within, kind, name, filter, case`;
-xref echoes `at` or `match` plus `kind, case`; symbols `name, filter, case, within`.
+xref echoes `at` for an identity or `kind, match, case` for a symbol search; symbols
+`name, filter, case, within`.
 
 Header detail fields:
 

@@ -95,7 +95,7 @@ The header contains `record, backend, command, source_id, input_bytes, schema_ve
 query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}`.
 `input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
 `query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
-`xref`=`kind, at, match, class`;
+`xref`=`kind` plus `at` or `match` (with `case`/`class` when used);
 to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
 complete, detail`; `records` counts data records only.
 

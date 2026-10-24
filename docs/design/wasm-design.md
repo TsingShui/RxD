@@ -61,7 +61,8 @@ selectors AND together. Coordinate existence is validated before filtering: an
 out-of-range index, or an imported function with no defined-function row, is
 `NOT_FOUND`, never an empty-success listing. Unmatched content/name searches may
 return an empty complete listing. `query` echoes `filter, case` for listings (plus
-`at, name` for functions) and `at, kind, match, case` for xref.
+`at, name` for functions); xref echoes `at, kind` for an identity and
+`kind, match, case` for a content search.
 
 Import rows retain their import-entry identity and expose a nullable
 `detail.target_at` (`func:N` for function imports). Export rows expose

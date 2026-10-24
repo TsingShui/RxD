@@ -432,7 +432,7 @@ fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
                 "user_string"
             );
             assert_eq!(
-                by_value[0]["detail"]["target"]["filter"].as_str(),
+                by_value[0]["detail"]["target"]["match"].as_str(),
                 Some(value.as_str())
             );
         }
