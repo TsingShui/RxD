@@ -505,14 +505,14 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
             Ok::<_, Error>((name, value.map(str::to_owned)))
         })
         .transpose()?;
-    let query_attr = attr.as_ref().map(|(name, value)| match value {
+    let _query_attr = attr.as_ref().map(|(name, value)| match value {
         Some(value) => format!("{name}={value}"),
         None => name.clone(),
     });
-    let path = input
+    let _path = input
         .to_str()
         .ok_or_else(|| invalid("HTML input path must be UTF-8"))?;
-    let (text, hash) = read_source(input, limits, perf)?;
+    let (text, _hash) = read_source(input, limits, perf)?;
     let (catalog, ids) = parse_catalog(&text, limits, perf)?;
     let order = perf.measure("query", || -> Result<Vec<usize>> {
         let root = if let Some(id) = within.as_deref() {
@@ -567,9 +567,6 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
     })?;
     let mut output = Output { bytes: Vec::new() };
     perf.measure("serialize", || -> Result<()> {
-        output.json(&envelope::header("html", "entries", Some(&hash), Some(text.len()),
-            json!({"kind":kind,"tag":tag,"attr":query_attr,"depth":depth,"within":within,"contains":contains}),
-            json!({"path":path,"analysis":"lexical","parser":"html5gum","parser_version":"0.8.4","lexical_profile":"lexical_naive_v1"}).as_object().unwrap().clone()))?;
         for &index in &order {
             let node = &catalog.nodes[index];
             let id = &ids[index];
@@ -581,9 +578,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
             };
             output.json(&envelope::record(node.kind, RecordMeta { at: Some(id), parent_at: parent.as_deref(), context_at: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end), ..RecordMeta::default() }, detail.as_object().unwrap().clone()))?;
         }
-        let count = |kind| catalog.nodes.iter().filter(|node| node.kind == kind).count();
-        output.json(&envelope::summary(order.len(), true,
-            json!({"nodes":catalog.nodes.len(),"elements":count("element"),"texts":count("text"),"comments":count("comment"),"doctypes":count("doctype"),"tokenizer_errors":catalog.tokenizer_errors,"unmatched_end_tags":catalog.unmatched_end_tags,"missing_end_tags":catalog.missing_end_tags}).as_object().unwrap().clone()))
+        Ok(())
     })?;
     perf.counters.records = Some(order.len());
     perf.counters.output_bytes = Some(output.bytes.len());

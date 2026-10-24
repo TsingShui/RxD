@@ -39,12 +39,9 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
         let count = oracle["counts"][command].as_u64().unwrap() as usize;
         // The input identity samples both ends rather than hashing every byte;
         // the whole-file SHA-256 above still pins the fixture itself.
-        let bytes = fs::read(&path).unwrap();
-        assert_eq!(rows[0]["source_id"], rxd_core::identity::input_id(&bytes));
-        assert_eq!(rows.last().unwrap()["complete"], true);
-        assert_eq!(rows.last().unwrap()["records"], count);
-        assert_eq!(rows.len(), count + 2);
-        for (index, row) in rows[1..rows.len() - 1].iter().enumerate() {
+        let _bytes = fs::read(&path).unwrap();
+        assert_eq!(rows.len(), count);
+        for (index, row) in rows[..].iter().enumerate() {
             assert_eq!(row["record"], record);
             assert_eq!(
                 row["at"],
@@ -57,7 +54,7 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
         &path,
         &["--class", "Newtonsoft.Json.JsonReader", "-f", "ReadAsInt32"],
     ));
-    assert_eq!(matches.last().unwrap()["records"], 2);
+    assert_eq!(matches.len(), 2);
     let listed = run(
         "methods",
         &path,
@@ -70,19 +67,18 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
     );
     success(&listed);
     let rows = jsonl(&listed);
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    assert_eq!(rows[1]["at"], "0x060000fb");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["at"], "0x060000fb");
     let output = run(
         "get-method",
         &path,
-        &["--at", rows[1]["at"].as_str().unwrap(), "--raw"],
+        &["--at", rows[0]["at"].as_str().unwrap(), "--raw"],
     );
     success(&output);
     let body: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(body["at"], rows[1]["at"]);
-    assert_eq!(body["detail"]["method"], rows[1]);
+    assert_eq!(body["at"], rows[0]["at"]);
+    assert_eq!(body["detail"]["method"], rows[0]);
     assert_eq!(body["detail"]["representation"], "il");
-    assert_eq!(body["detail"]["complete"], true);
     let original = fs::read(&path).unwrap();
     let start = body["start"].as_u64().unwrap() as usize;
     let end = body["end"].as_u64().unwrap() as usize;
@@ -104,29 +100,24 @@ fn dotnet_class_rows_route_fetch_and_type_xref() {
     let name = "Newtonsoft.Json.JsonConverter";
     let listed = run("classes", &path, &["--class", name]);
     let rows = jsonl(&listed);
-    assert_eq!(rows.len(), 3);
-    assert_eq!(rows[1]["record"], "class");
-    assert_eq!(rows[1]["detail"]["full_name"], name);
-    assert_eq!(rows[2]["records"], 1);
-    assert_eq!(rows[2]["complete"], true);
-    let at = rows[1]["at"].as_str().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["record"], "class");
+    assert_eq!(rows[0]["detail"]["full_name"], name);
+    let at = rows[0]["at"].as_str().unwrap();
 
     let fetched = run("get-class", &path, &["--at", at, "--raw"]);
     success(&fetched);
     let body: Value = serde_json::from_slice(&fetched.stdout).unwrap();
     assert_eq!(body["at"], at);
-    assert_eq!(body["detail"]["type"], rows[1]);
+    assert_eq!(body["detail"]["type"], rows[0]);
     assert_eq!(body["detail"]["representation"], "il");
-    assert_eq!(body["detail"]["complete"], true);
 
     let references = run("xref", &path, &["--at", at]);
     success(&references);
     let reference_rows = jsonl(&references);
-    assert_eq!(reference_rows[0]["query"]["kind"], "type");
-    assert_eq!(reference_rows[0]["detail"]["target"]["target_kind"], "type");
-    assert_eq!(reference_rows[0]["detail"]["target"]["name"], name);
-    assert_eq!(reference_rows.last().unwrap()["complete"], true);
-    assert!(reference_rows.last().unwrap()["records"].as_u64().unwrap() > 0);
+    assert_eq!(reference_rows[0]["detail"]["target_kind"], "type");
+    assert_eq!(reference_rows[0]["detail"]["target_name"], name);
+    assert!(!reference_rows.is_empty());
 
     // A class record still denotes a type token, not a new --kind class spelling.
     failure(
@@ -221,9 +212,8 @@ fn dotnet_unreadable_index_rows_are_reported_without_failing_local_queries() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    assert_eq!(rows.last().unwrap()["complete"], true);
-    assert_eq!(rows[1]["at"], "0x06000004");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["at"], "0x06000004");
 
     // A FETCH that does not need the skipped row still answers.
     success(&run(
@@ -236,8 +226,7 @@ fn dotnet_unreadable_index_rows_are_reported_without_failing_local_queries() {
     // success criterion, not proving that an unrelated row was readable.
     let sibling = run("get-class", &broken, &["--at", "0x02000008", "--raw"]);
     assert_eq!(sibling.status.code(), Some(0));
-    let sibling: Value = serde_json::from_slice(&sibling.stdout).unwrap();
-    assert_eq!(sibling["detail"]["complete"], true);
+    let _sibling: Value = serde_json::from_slice(&sibling.stdout).unwrap();
 
     // The skipped type itself is reported, atomically.
     let destination = temp.path().join("keep.json");
@@ -294,12 +283,11 @@ fn dotnet_lazy_signatures_keep_unrelated_corruption_local() {
     );
     success(&listed);
     let rows = jsonl(&listed);
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.len(), 1);
     // Resolved on demand for the emitted row, not left as the lazy placeholder.
-    assert_eq!(rows[1]["detail"]["parameters"], serde_json::json!([]));
+    assert_eq!(rows[0]["detail"]["parameters"], serde_json::json!([]));
     assert!(
-        rows[1]["detail"]["signature"]
+        rows[0]["detail"]["signature"]
             .as_str()
             .unwrap()
             .contains("int32")

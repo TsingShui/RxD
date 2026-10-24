@@ -43,9 +43,10 @@ escape decoding is parsing, not decryption. `--resolve-static` only evaluates cl
 constant expressions; it does not execute user functions, parse string arrays or restore
 dynamic property names.
 
-Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
-`schema_version=2`: navigation outside, format fields under `detail`; header input size is
-`input_bytes`, path is `detail.path`. Default `slice` raw bytes are outside the envelope.
+Structured output follows [ADR 0003](../adr/0003-output-envelope.md): streams are data
+rows only, navigation is outside `detail`, and single-object results may carry
+`schema_version`, `input_bytes` and `detail.path`. Default `slice` raw bytes are outside
+the envelope.
 
 ## Setup
 
@@ -141,7 +142,7 @@ The fixture has two hits: the top-level `api` constant and `send`'s request. Use
 
 Static-expression hits use `detail.literal_kind: static_expression`,
 `detail.resolution: static` and `detail.raw`; ordinary literal hits leave these null.
-Zero hits is success with `summary.records: 0`.
+Zero hits is success with empty stdout and exit 0.
 
 ## 3. locate
 
@@ -379,9 +380,9 @@ The first call search matches `load`; the second does not. A dynamic callee such
 `entities DIR` (or `functions`/`classes`/`methods`), `find DIR -f TEXT` and
 `resources DIR` recurse into regular
 `.js/.mjs/.cjs/.jsx/.ts/.mts/.cts/.tsx` files (case-sensitive), do not follow symlinks and
-include hidden directories/`node_modules`. Results concatenate per-file header/records/
-summary and end with `scan_summary` (detail `files`). Success needs exit 0 and the final
-complete `scan_summary`; any file failure/resource overflow fails the whole call atomically.
+include hidden directories/`node_modules`. A directory stream is flat; each file opens
+its rows with a `file` record (`detail.path`, `detail.input_bytes`). Success is exit 0;
+any file failure/resource overflow fails the whole call atomically.
 `--threads` controls parallelism and in-flight parsed inputs (peak memory). Recursive
 `--perf` adds a `discover` phase.
 
@@ -390,7 +391,7 @@ complete `scan_summary`; any file failure/resource overflow fails the whole call
 Defaults: input bytes, entity count and AST depth are checked per file; records and output
 bytes cover the whole invocation. Directory scans, records, semantic index nodes and AST
 depth are bounded by `rxd_core::Budget`, which the CLI does not expose as flags. Syntax
-errors fail atomically; there is no permissive mode. Raw source stdout has no summary;
+errors fail atomically; there is no permissive mode. Raw source stdout is one object;
 exit status determines completeness. Ordinary representative queries follow the 150 ms
 fresh-process rule; `benches/cli.py` measures release fresh processes with per-workload
 samples, median/P95 and >150 ms share. Whole-function decompilation exceptions follow

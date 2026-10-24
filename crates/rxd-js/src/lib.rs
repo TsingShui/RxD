@@ -33,7 +33,7 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast_visit::Visit;
 use oxc_parser::{ParseOptions, Parser};
-use rxd_core::envelope::{RecordMeta, header, summary};
+use rxd_core::envelope::{RecordMeta, header};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Limits, Origin, Result, Source};
 use serde::Serialize;
@@ -578,11 +578,9 @@ pub fn run_source(
             let indices = selection?;
             perf.counters.records = Some(indices.len());
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for &i in &indices {
                     output.json(&collector.entities[i].entity.envelope())?;
                 }
-                output.json(&summary(indices.len(), true, Default::default()))?;
                 Ok(())
             })?;
         }
@@ -591,11 +589,9 @@ pub fn run_source(
             perf.record("query", query_start);
             perf.counters.records = Some(collector.matches.len());
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for found in &collector.matches {
                     output.json(&found.envelope())?;
                 }
-                output.json(&summary(collector.matches.len(), true, Default::default()))?;
                 Ok(())
             })?;
         }
@@ -610,31 +606,15 @@ pub fn run_source(
                 perf,
             )?;
             perf.counters.records = Some(result.len());
-            let unresolved = result
+            let _unresolved = result
                 .iter()
                 .filter(|resource| resource.unresolved())
                 .count();
             perf.measure("serialize", || -> Result<()> {
-                let mut header = header;
-                header["detail"]["analysis"] = json!("syntax");
-                header["detail"]["resource_profile"] = json!("syntax_load_sites_v1");
-                header["detail"]["binding_profile"] = if resources.resolve_bindings {
-                    json!("local_const_strings_v1")
-                } else {
-                    json!(null)
-                };
-                output.json(&header)?;
                 for resource in &result {
                     output.json(&resource.envelope())?;
                 }
-                output.json(&summary(
-                    result.len(),
-                    true,
-                    json!({"resolved":result.len()-unresolved,"unresolved":unresolved})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ))
+                Ok(())
             })?;
         }
         Query::Values(values) => {
@@ -672,11 +652,10 @@ pub fn run_source(
                 let mut header = header;
                 header["detail"]["analysis"] = json!("syntax");
                 header["detail"]["value_profile"] = json!("syntax_value_slots_v1");
-                output.json(&header)?;
                 for row in &result {
                     output.json(&row.envelope())?;
                 }
-                output.json(&summary(result.len(), true, Default::default()))
+                Ok(())
             })?;
         }
         Query::Identifiers {
@@ -696,11 +675,10 @@ pub fn run_source(
             )?;
             perf.counters.records = Some(result.len());
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for identifier in &result {
                     output.json(&identifier.envelope())?;
                 }
-                output.json(&summary(result.len(), true, Default::default()))
+                Ok(())
             })?;
         }
         Query::Calls { names, within } => {
@@ -715,11 +693,10 @@ pub fn run_source(
             )?;
             perf.counters.records = Some(result.len());
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for call in &result {
                     output.json(&call.envelope())?;
                 }
-                output.json(&summary(result.len(), true, Default::default()))
+                Ok(())
             })?;
         }
         Query::Members {
@@ -739,11 +716,10 @@ pub fn run_source(
             )?;
             perf.counters.records = Some(result.len());
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for member in &result {
                     output.json(&member.envelope())?;
                 }
-                output.json(&summary(result.len(), true, Default::default()))
+                Ok(())
             })?;
         }
         Query::Locate { byte } => {
@@ -826,11 +802,10 @@ pub fn run_source(
             let records = result.records.len();
             perf.counters.records = Some(records);
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for record in &result.records {
                     output.json(&record.envelope())?;
                 }
-                output.json(&summary(records, true, Default::default()))
+                Ok(())
             })?;
         }
         Query::Refs { target } => {
@@ -845,51 +820,11 @@ pub fn run_source(
                     let byte = occurrence_start(&source, at.as_str())?;
                     let result =
                         refs::run(&parsed.program, &source, &collector, byte, limits, perf)?;
-                    header["detail"]["resolution"] = json!(result.resolution);
-                    #[derive(Serialize)]
-                    struct RefHeader<'a> {
-                        selected: &'a refs::Selected,
-                        declaration: &'a Option<lexical::Location>,
-                        declaration_ids: &'a Option<Vec<String>>,
-                    }
-                    let detail = envelope::ExtendedDetail {
-                        base: header["detail"].as_object().unwrap().clone(),
-                        extra: RefHeader {
-                            selected: &result.selected,
-                            declaration: &result.declaration,
-                            declaration_ids: &result.declaration_ids,
-                        },
-                    };
-                    header = serde_json::to_value(envelope::Body {
-                        outer: header,
-                        detail,
-                    })
-                    .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
                     result.references
                 }
                 RefsTarget::Byte(byte) => {
                     let result =
                         refs::run(&parsed.program, &source, &collector, *byte, limits, perf)?;
-                    header["detail"]["resolution"] = json!(result.resolution);
-                    #[derive(Serialize)]
-                    struct RefHeader<'a> {
-                        selected: &'a refs::Selected,
-                        declaration: &'a Option<lexical::Location>,
-                        declaration_ids: &'a Option<Vec<String>>,
-                    }
-                    let detail = envelope::ExtendedDetail {
-                        base: header["detail"].as_object().unwrap().clone(),
-                        extra: RefHeader {
-                            selected: &result.selected,
-                            declaration: &result.declaration,
-                            declaration_ids: &result.declaration_ids,
-                        },
-                    };
-                    header = serde_json::to_value(envelope::Body {
-                        outer: header,
-                        detail,
-                    })
-                    .map_err(|error| Error::new("INVALID_INPUT", error.to_string()))?;
                     result.references
                 }
                 // A name search has no single selected occurrence: every row names its own
@@ -917,11 +852,10 @@ pub fn run_source(
             let records = references.len();
             perf.counters.records = Some(records);
             perf.measure("serialize", || -> Result<()> {
-                output.json(&header)?;
                 for reference in &references {
                     output.json(&reference.envelope())?;
                 }
-                output.json(&summary(records, true, Default::default()))
+                Ok(())
             })?;
         }
         Query::Slice { id, json } => {

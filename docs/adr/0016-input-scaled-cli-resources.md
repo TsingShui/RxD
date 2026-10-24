@@ -75,7 +75,7 @@ worker concurrency remain bounded, and explicit service discovery limits remain.
 
 ## Output and failures
 
-.NET, WASM and PYC use a shared fallibly growing JSONL writer; headers, records, summary
+.NET, WASM and PYC use a shared fallibly growing JSONL writer; data records
 and final newline all count. Serialization exhaustion stays `RESOURCE_LIMIT`, not
 successful truncation. Existing atomic-output guarantees must remain; this change does not repair DEX's
 existing direct file writes or every historical error-classification defect. How much

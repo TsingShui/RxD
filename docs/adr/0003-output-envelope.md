@@ -1,38 +1,42 @@
-# ADR 0003: Unified structured output envelope
+# ADR 0003: Structured output rows
 
-Status: accepted as the contract for structured output from every backend.
+Status: accepted. Amended: streaming commands emit data rows only; the earlier
+header/summary envelope is removed.
 
-This ADR defines the shared envelope for JSONL streams: a header, zero or more data
-records and a summary; a fixed outer meta layer and a backend-specific `detail` object;
-and consistent field presence. The goal is one backend-independent codemode consumer and
-one MCP `outputSchema` skeleton. MCP and codemode share this contract.
+This ADR defines the shared shape of structured output from every backend: JSONL streams
+are zero or more data records, one JSON object per line, with a fixed outer meta layer and
+a backend-specific `detail` object. Single-object results keep their own record shape.
+There is no stream header and no stream summary.
 
 Backend design documents reference this ADR and enumerate each record type's detail
 fields.
 
 ## Context
 
-JSONL output had three inconsistent styles: JS/JVM records were flat, WASM/.NET used a
-same-name record subobject (then `{"record":"type","type":{...}}`; `.NET` rows are
-`record: "class"` now, like every other backend's), and header field names
-differed (`file_bytes`/`path` in JS vs `input_bytes` elsewhere; `analysis` was sometimes
-absent).
+Earlier versions wrapped every JSONL stream in a `header` line and a `summary` line. The
+envelope carried stream-level metadata (`backend`, `command`, `source_id`, `input_bytes`,
+`query`, `analysis`) and a `complete`/`records` summary. In practice:
 
-Both consumers need a stable, predictable outer envelope with backend-specific detail
-isolated in a deterministic schema:
+- The caller already knows the backend, command, input and query it invoked.
+- `source_id` lost its only functional consumer when `--from` was removed (ADR 0018).
+- `complete` was `true` on every successful stream; failures already emit no stdout and a
+  non-zero exit, and partial coverage is backend-specific data.
+- The two wrapper lines added parsing boilerplate and offset every data row.
 
-- **codemode**: `JSON.parse` then filter/map; fields must be isomorphic across backends
-  and support `record → id → get → start/end` glue.
-- **headless MCP**: one tool has one `outputSchema`; output must be stable and typed,
-  not opaque free-form JSON.
+The remaining consumers need one predictable per-row shape: codemode parses a line,
+filters/maps by `record`, reads `detail`, and passes `at`/`parent_at`/`context_at` back to
+`--at`. MCP exposes the same rows, unchanged.
 
 ## Decision
 
-### 1. Three-part JSONL stream
+### 1. Data rows only
 
-Enumeration/search/reference commands (`entities`, `find`, `strings`, `xref`, `xref`,
-`symbols`, etc.) emit exactly one `header`, zero or more data records and exactly one
-`summary`. Success means exit 0 plus a summary with `complete: true`.
+Enumeration/search/reference commands (`entities`, `find`, `strings`, `xref`, `symbols`,
+`codes`, `classes`, `methods`, etc.) emit zero or more data records and nothing else.
+A successful empty result is an empty stdout with exit 0.
+
+Progress, timings, warnings and diagnostics go to stderr. `--perf` remains a separate
+stderr JSONL stream.
 
 ### 2. Meta/detail split
 
@@ -47,7 +51,7 @@ Fixed outer keys:
 | --- | --- | --- |
 | `record` | Record discriminator | Always |
 | `at` | The row's coordinate, usable by FETCH | When the row names one; else `null` or absent |
-| `source_id` | Identity digest of the owning content unit | Header only (null or absent on records) |
+| `source_id` | Identity digest of the owning content unit | Single-object receipts only; never a stream row |
 | `parent_at` | Parent coordinate for tree structures | When there is one; else `null` or absent |
 | `context_at` | Nearest FETCH context for a hit record | When there is one; else `null` or absent |
 | `start` / `end` | Original byte range for location/slicing | When there is one; else `null` or absent |
@@ -56,72 +60,47 @@ Fixed outer keys:
 `record` and `detail` are always present. The nullable navigation keys are `null` or
 absent, and **the two are the same thing**: a consumer must read them as
 `row.at ?? null`. The section "Absent and null are equivalent" below records why the
-contract allows omission, and what a consumer may rely on.
+contract allows omission.
 
 ### 3. Detail is a deterministic per-record schema
 
 The `detail` field set is uniquely determined by `(backend, record)`; it is never
-dynamic or input-shaped. The outer `record` is the discriminator. Therefore MCP can
-express a `oneOf` by record and codemode can read `r.detail.<field>` without backend
-branches. Adding fields is backward-compatible; removing/changing them is a contract
-change.
+dynamic or input-shaped. The outer `record` is the discriminator. MCP can express a
+`oneOf` by record and codemode can read `r.detail.<field>` without backend branches.
+Adding fields is backward-compatible; removing/changing them is a contract change.
 
-### 4. Fixed header keys
+### 4. No stream-level query echo
 
-| Key | Meaning | Presence |
-| --- | --- | --- |
-| `record` | Always `"header"` | Always |
-| `backend` | Backend ID | Always |
-| `command` | Subcommand | Always |
-| `source_id` | Identity digest of the input | Header only (null on records) |
-| `input_bytes` | Input byte count (replaces JS `file_bytes`) | Always |
-| `schema_version` | Envelope version | Always |
-| `query` | Query argument echo | Always |
-| `detail` | Backend header details (`path`, `source_type`, `root_id`, imported/total function counts, `analysis`, etc.) | Always |
+A stream carries no `backend`, `command`, `schema_version`, `input_bytes`, `query` or
+`source_id` line. The caller knows what it invoked. A saved stream is data, not a
+self-describing transaction; save the command alongside it if that context is needed.
 
-Backend-specific header fields live under `detail`, keeping outer header keys isomorphic.
+### 5. Single JSON commands
 
-### 5. Fixed summary keys
+Commands returning one result object (for example a FETCH body, an extract receipt, or a
+native analysis object) do not add lines around it. The result is one JSON object that
+may carry `backend`, `command`, `schema_version`, `source_id` and `detail` at the top
+level. It follows the same meta/detail split.
 
-| Key | Meaning | Presence |
-| --- | --- | --- |
-| `record` | Always `"summary"` | Always |
-| `records` | Number of data records | Always |
-| `complete` | Whether the query completed | Always |
-| `detail` | Backend-specific counts (`classes`, recursive `files`/`scan_summary`, etc.) | Always |
+### 6. Completion and counts
 
-### 6. Single JSON commands
+Success is exit 0; failure is a non-zero exit with no stdout and a diagnostic on stderr.
+There is no `complete` boolean and no `records` count. A consumer counts rows by parsing
+lines. Backend-specific coverage evidence, where it exists, stays in that record's
+`detail` or in `--perf`; a zero-row result is complete within the command's declared
+scope because partial failures are failures.
 
-Commands returning one result object (for example JS `locate`) do not wrap it in
-header/summary; codemode uses the parsed object directly. The result still follows the
-same meta/detail split, and embedded entity/ancestor subrecords follow the record-body
-convention.
+### 7. MCP projection
 
-### 7. Out of scope
+MCP analysis tools that capture a JSONL stream return `{"records": [...]}` with the data
+rows unchanged. Single-object commands return their object unchanged. Source/XML text
+still arrives as `{"text": "..."}`.
+
+### 8. Out of scope
 
 - Raw byte output (JS/JVM `get` source, ASAR `extract` `-o` bytes, DEX Java text) is not
-  structured output and stays byte-exact. ASAR's stdout receipt is still one envelope
-  record.
-- Single-record FETCH commands return one JSON record following the record-body
-  convention; header/summary are not mandatory.
-
-## Codemode shape (target)
-
-```js
-const out = await tools.bash({ command: "rxd jar classes app.jar" });
-const rows = out.output.trim().split("\n").map(JSON.parse);
-
-const header = rows[0];
-const summary = rows.at(-1);
-const methods = rows.filter(r => r.record === "method");
-
-for (const m of methods) {
-  const src = await tools.bash({ command: `rxd jar get-method app.jar '${m.id}'` });
-  // m.detail.descriptor / m.detail.access
-}
-```
-
-The same glue works for every structure listing; only `detail` differs.
+  structured output and stays byte-exact. ASAR's stdout receipt is one JSON object.
+- Single-record FETCH commands are one JSON object; they are not streams.
 
 ## Amendment: the FETCH handle is a coordinate, not a hash
 
@@ -129,40 +108,34 @@ The same glue works for every structure listing; only `detail` differs.
 > stream-identity check were removed. A coordinate is still copy-only and file-scoped;
 > no FETCH path re-reads a previous stream.
 
-The `id` key is being replaced by `at`, and `parent_id`/`context_id` by
-`parent_at`/`context_at`. Values are the backend's own coordinate
-(`0x06000003`, `func:42`, `1234..5678`); the hash lives once in `header.source_id`.
-The value is the backend's own coordinate in the shape it prints, read back verbatim: a
-`.NET` coordinate is its ECMA-335 metadata token (`0x0a00001f`), which already encodes
-its table, so it carries no noun prefix; backends whose coordinates are not
-self-describing keep a prefix (`func:42`, `code:9`). A prefix that a backend does not
+Values are the backend's own coordinate (`0x06000003`, `func:42`, `1234..5678`), read
+back verbatim: a `.NET` coordinate is its ECMA-335 metadata token (`0x0a00001f`), which
+already encodes its table, so it carries no noun prefix; backends whose coordinates are
+not self-describing keep a prefix (`func:42`, `code:9`). A prefix that a backend does not
 use is refused with the value to use instead.
 
 Rationale: an Agent had to copy 80-103 character handles in which about 70% of the
 bytes were a hash repeated 1-4 times per record. Measured on a 168 KB production
 bundle, `id`/`source_id`/`parent_id`/`context_id` were 49% of an entity stream.
 
-The removed guarantee is that a handle alone identifies its input; a coordinate is
-deliberately file-scoped so the same coordinate can address the same metadata row in two
-versions of an input. No content-bound spelling remains: a handle that still carries an
-input digest is rejected as `INVALID_QUERY` rather than rewritten. A coordinate copied
-from another input is not checked; re-run the listing for the input being fetched.
+A coordinate is deliberately file-scoped so the same coordinate can address the same
+metadata row in two versions of an input. No content-bound spelling remains: a handle
+that still carries an input digest is rejected as `INVALID_QUERY` rather than rewritten.
+A coordinate copied from another input is not checked; re-run the listing for the input
+being fetched.
 
-Every backend is migrated: dex, jar, dotnet, js, wasm, pyc, evm, html and asar print
-`at`/`parent_at`/`context_at` as coordinates and never repeat `source_id` on a record.
+Every backend prints `at`/`parent_at`/`context_at` as coordinates and never repeats a
+content hash on a stream row.
 
-### Amendment: `source_id` is a sampled digest
+## Amendment: `source_id` is a sampled digest
 
-`source_id` is `SHA-256(length || first 16 KiB || last 16 KiB)` of the content unit it
-identifies (`rxd_core::identity::input_id`), not a whole-file SHA-256. Hashing every byte
-cost one pass over the input on every query — 5.5 ms on a 16 MB assembly — to answer a
-question that only needs one input told apart from another. The value keeps both
-properties the envelope relies on: a copy or rename is the same identity. The weakening
-is explicit:
-an edit that preserves length and both ends is not detected, and detecting a substituted
-artifact is not this tool's job.
-An id nested inside `detail` (a caller id, a symbol or owner id, a reference target) uses
-the same copy-only coordinate, so any coordinate a caller can copy is one `--at` accepts.
+Where a single-object receipt or MCP target carries `source_id`, it is
+`SHA-256(length || first 16 KiB || last 16 KiB)` of the content unit it identifies
+(`rxd_core::identity::input_id`), not a whole-file SHA-256. Hashing every byte cost one
+pass over the input on every query — 5.5 ms on a 16 MB assembly — to answer a question
+that only needs one input told apart from another. A copy or rename is the same identity.
+The weakening is explicit: an edit that preserves length and both ends is not detected,
+and detecting a substituted artifact is not this tool's job.
 
 ## Amendment: absent and null are equivalent
 
@@ -183,20 +156,14 @@ it does not. Consumers must treat absence and `null` identically — `row.at ?? 
 fields optional rather than required-and-nullable, so schema validation accepts both
 spellings.
 
-What a consumer *can* rely on is unaffected: a coordinate printed in `at`, `parent_at`,
-`context_at` or `detail.*` is one the backend's `--at` accepts, and a row whose `at` is
-absent or null is an occurrence (a reference site, a literal, an archive entry with no
-FETCH) rather than an addressable entity.
+A coordinate printed in `at`, `parent_at`, `context_at` or `detail.*` is one the backend's
+`--at` accepts; a row whose `at` is absent or null is an occurrence (a reference site, a
+literal, an archive entry with no FETCH) rather than an addressable entity.
 
 ## Consequences
 
-- All streaming JSONL and single JSON commands change shape; tests, demos and benchmarks
-  follow.
-- `schema_version` moves from 1 to 2. The old constant is removed; no compatibility shim.
-- Each record gains one `detail` layer, slightly increasing tokens; fixed outer keys buy
-  predictable codemode/MCP handling.
-- Nullable outer keys are present only when they have a value (see the amendment), so a
-  consumer reads them defensively; the keys that are always there are `record` and
-  `detail`.
-- The future MCP `outputSchema` uses this envelope directly.
+- JSONL streams lose the header/summary lines and every stream-level field they carried.
+- Every backend, test, demo and MCP projection follows the data-row shape.
+- `schema_version` remains a field on single-object receipts; streams do not repeat it.
+- `--perf` and stderr diagnostics are unchanged; success is exit 0.
 - Performance contracts are unchanged (ADR 0002 and the 150 ms requirement).

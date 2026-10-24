@@ -12,7 +12,7 @@ target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar --class fixt
 ```
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
-`schema_version=2`: streaming commands emit header → records → summary, navigation
+`schema_version=2`: streaming commands emit data rows, navigation
 outside and content under `detail`. Take a `methods` row's `at` (`Lx;->name(proto)`) and
 query:
 
@@ -55,7 +55,7 @@ target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -m JsonReader --kin
 target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -m append --kind method --class java/lang/StringBuilder
 target/release/rxd jar xref tests/fixtures/jvm/flow-deflated.jar -m hello --kind string
 # An identity, exactly: one method overload, as a `xref` row prints it.
-target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar --at 'Lcom/google/gson/Gson;->toJson(Ljava/lang/Object;)Ljava/lang/String;' 
+target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar --at 'Lcom/google/gson/Gson;->toJson(Ljava/lang/Object;)Ljava/lang/String;'
 ```
 
 Runnable returned-ID routing:

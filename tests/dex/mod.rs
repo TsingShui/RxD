@@ -77,36 +77,10 @@ fn dex_records(output: &Output) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let header = &rows[0];
-    assert_keys(
-        header,
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_eq!(header["record"], "header");
-    assert_eq!(header["backend"], "dex");
-    assert_eq!(header["schema_version"], 2);
-    assert!(header["source_id"].is_null());
-    assert!(header["input_bytes"].as_u64().unwrap() > 0);
-    assert_keys(&header["detail"], &[]);
-    for row in &rows[1..rows.len() - 1] {
+    for row in &rows {
         assert_record(row);
     }
-    let summary = rows.last().unwrap();
-    assert_keys(summary, &["record", "records", "complete", "detail"]);
-    assert_eq!(summary["record"], "summary");
-    assert_eq!(summary["records"], rows.len() - 2);
-    assert_eq!(summary["complete"], true);
-    assert_keys(&summary["detail"], &[]);
-    rows[1..rows.len() - 1].to_vec()
+    rows
 }
 
 #[test]

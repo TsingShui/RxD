@@ -22,9 +22,9 @@ analysis also runs outside the long-lived protocol process.
    Concrete closed input/output schemas describe each operation and record kind.
    Format-specific parsers, IR, identity units and reference semantics remain in backends.
    There is no public arbitrary argv, shell or caller-selected output destination.
-3. Convert ordinary JSONL to `{header, records, summary}`, retaining schema version 2,
-   fixed nullable navigation fields, ordering and record details. Recursive JS preserves
-   per-file streams and `scan_summary`. Native single JSON remains a single object.
+3. Convert ordinary JSONL to `{records: [...]}`, retaining fixed nullable navigation
+   fields, ordering and record details. Recursive JS stays flat, with each file's rows
+   opened by a `file` data record. Native single JSON remains a single object.
    FETCH retains exact source or original instruction evidence and existing reconstruction
    fallback. JS isolated UTF-16 surrogate values use explicit `utf16_units` objects rather
    than replacement characters. Both structuredContent and its JSON compatibility text

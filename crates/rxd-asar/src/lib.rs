@@ -118,18 +118,6 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             perf.counters.records = Some(entries.len());
             let mut result = Output { bytes: Vec::new() };
             perf.measure("serialize", || -> Result<()> {
-                result.json(&envelope::header(
-                    "asar",
-                    "entries",
-                    None,
-                    None,
-                    json!(null),
-                    json!({"analysis":"metadata", "container":path})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ))?;
-                let mut invalid_ranges = 0;
                 for (path, entry) in &entries {
                     if contains.as_ref().is_some_and(|needle| {
                         !rxd_core::filter::Contains::new(needle, case_sensitive).matches(path)
@@ -142,7 +130,6 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                         let error = archive.range_error(entry);
                         detail["range_valid"] = json!(error.is_none());
                         if let Some(error) = error {
-                            invalid_ranges += 1;
                             detail["range_error"] = json!(error.code());
                         }
                     }
@@ -158,14 +145,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                         detail.as_object().unwrap().clone(),
                     ))?;
                 }
-                result.json(&envelope::summary(
-                    entries.len(),
-                    true,
-                    json!({"invalid_ranges":invalid_ranges})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ))
+                Ok(())
             })?;
             perf.counters.output_bytes = Some(result.bytes.len());
             Ok(Response::List(result.bytes))

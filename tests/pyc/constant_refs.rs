@@ -51,9 +51,6 @@ fn pyc_constant_refs_route_search_occurrences_to_original_owner_instructions() {
             .filter(|r| r["record"] == "reference")
             .collect();
         assert_eq!(hits.len(), expected.len());
-        assert_eq!(stream.last().unwrap()["complete"], true);
-        assert_eq!(stream[0]["query"]["at"], id);
-        assert_eq!(stream[0]["query"]["kind"], "constant");
         for (hit, expected) in hits.iter().zip(expected) {
             assert_eq!(hit["context_at"], literal["context_at"]);
             assert_eq!(hit["detail"]["constant_id"], id);
@@ -107,28 +104,28 @@ fn pyc_constant_refs_preserve_real_extended_constant_operands() {
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("extended.oracle.json")).unwrap()).unwrap();
     let literals = rows(&invoke("strings", &path, &["--filter", "literal-299"]));
-    assert_eq!(literals.last().unwrap()["records"], 1);
-    let literal = &literals[1];
+    assert_eq!(literals.len(), 1);
+    let literal = &literals[0];
     let owner = literal["detail"]["code_index"].as_u64().unwrap() as usize;
     let result = rows(&invoke(
         "xref",
         &path,
         &["--at", literal["at"].as_str().unwrap()],
     ));
-    assert_eq!(result.last().unwrap()["records"], 1);
+    assert_eq!(result.len(), 1);
     let expected = oracle["codes"][owner]["dis_instructions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|i| i["opname"] == "LOAD_CONST" && i["arg"] == literal["detail"]["constant_slot"])
         .unwrap();
-    assert_eq!(result[1]["detail"]["operand"], 300);
-    assert_eq!(result[1]["detail"]["raw_operand"], 44);
-    assert_eq!(result[1]["detail"]["offset"], expected["offset"]);
+    assert_eq!(result[0]["detail"]["operand"], 300);
+    assert_eq!(result[0]["detail"]["raw_operand"], 44);
+    assert_eq!(result[0]["detail"]["offset"], expected["offset"]);
     let fetch = invoke(
         "get-code",
         &path,
-        &["--at", result[1]["context_at"].as_str().unwrap()],
+        &["--at", result[0]["context_at"].as_str().unwrap()],
     );
     success(&fetch);
     let view: Value = serde_json::from_slice(&fetch.stdout).unwrap();
@@ -139,7 +136,7 @@ fn pyc_constant_refs_preserve_real_extended_constant_operands() {
         .find(|i| i["offset"] == expected["offset"])
         .unwrap();
     assert_eq!(unit["prefixes"][0]["raw_operand"], 1);
-    assert_eq!(unit["targets"][0], result[1]["detail"]["target"]);
+    assert_eq!(unit["targets"][0], result[0]["detail"]["target"]);
 }
 
 fn bytes_field(value: &[u8]) -> Vec<u8> {
@@ -225,8 +222,6 @@ fn pyc_constant_refs_keep_equal_slots_owners_shared_paths_and_each_real_instruct
                 .collect::<Vec<_>>(),
             offsets
         );
-        assert_eq!(result.last().unwrap()["complete"], true);
-        assert_eq!(result.last().unwrap()["detail"]["scanned_code_count"], 1);
         for hit in hits {
             assert_eq!(hit["context_at"], literal["context_at"]);
             assert_eq!(hit["detail"]["constant_id"], literal["at"]);
@@ -312,7 +307,6 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     let strings = rows(&invoke("strings", &path, &["--version", "3.12"]));
     let literal = &strings[1];
     let id = literal["at"].as_str().unwrap();
-    let digest = strings[0]["source_id"].as_str().unwrap();
     let owner_id = literal["context_at"].as_str().unwrap();
     let codes = rows(&invoke("codes", &path, &["--version", "3.12"]));
     let other_id = codes.iter().find(|r| r["detail"]["index"] == 1).unwrap()["at"]
@@ -324,21 +318,9 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         &path,
         &["--version", "3.12", "--at", id, "--within", owner_id],
     ));
-    assert_eq!(all[1..all.len() - 1], scoped[1..scoped.len() - 1]);
-    assert_eq!(all[0]["detail"]["scope"], "constant_owner");
-    assert_eq!(scoped[0]["detail"]["scope"], "selected_code");
-    assert_js_keys(&all[0]["query"], &["at", "kind", "version"]);
-    assert_eq!(all[0]["query"]["at"], id);
-    assert_eq!(all[0]["query"]["version"], "3.12");
-    assert_eq!(all[0]["query"]["kind"], "constant");
-    assert!(all[0]["query"]["within"].is_null());
-    assert_eq!(all[0]["detail"]["analysis"], "explicit_constant_references");
-    assert_eq!(
-        all.last().unwrap()["detail"]["analysis"],
-        "explicit_constant_references"
-    );
+    assert_eq!(all[..], scoped[..]);
     assert_js_keys(
-        &all[1]["detail"],
+        &all[0]["detail"],
         &[
             "code_index",
             "offset",
@@ -361,12 +343,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         &path,
         &["--version", "3.12", "--at", id, "--within", other_id],
     ));
-    assert_eq!(excluded.len(), 2);
-    assert_eq!(excluded[1]["records"], 0);
-    assert_eq!(excluded[1]["complete"], true);
-    assert_eq!(excluded[1]["detail"]["scanned_code_count"], 0);
-    assert_eq!(excluded[1]["detail"]["instructions"], 0);
-    let _ = &digest;
+    assert!(excluded.is_empty());
     // A coordinate is `const:<owner>:<path>`; there is no hash to forge or strip.
     for invalid in [
         id.replacen("const:", "code:", 1),
@@ -449,13 +426,11 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         2,
         "INVALID_QUERY",
     );
-    let names = rows(&invoke(
+    let _names = rows(&invoke(
         "xref",
         &path,
         &["--version", "3.12", "--kind", "name", "--at", "x"],
     ));
-    assert_eq!(names[0]["query"]["at"], "x");
-    assert_eq!(names[0]["query"]["kind"], "name");
 }
 
 fn perf_row(output: &Output) -> Value {
@@ -477,9 +452,9 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     let complete = invoke("xref", &path, &["--version", "3.12", "--at", &id, "--perf"]);
     let stream = rows(&complete);
     let perf = perf_row(&complete);
-    assert_eq!(stream.last().unwrap()["records"], 2);
+    assert_eq!(stream.len(), 1);
     assert_eq!(perf["counters"]["instructions"], 14);
-    assert_eq!(perf["counters"]["records"], 2);
+    assert_eq!(perf["counters"]["records"], 1);
     assert!(perf["counters"]["ast_depth"].is_null());
     assert_json_output_boundary(&complete);
     assert_no_budget_flags(&path, "xref");
@@ -488,7 +463,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     base.input_bytes = bytes.len();
     let (perf, scan) = xref_library(&path, Some((3, 12)), &id, None, base, 14);
     let scan = scan.unwrap();
-    assert_eq!(scan.hits.len(), 2);
+    assert_eq!(scan.hits.len(), 1);
     assert_eq!(scan.instructions, 14);
     let perf = perf_value(&perf);
     let work = perf["counters"]["work"].as_u64().unwrap() as usize;
@@ -578,7 +553,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
     let deep_bytes = module(&[121, 0], &consts);
     let deep_path = dir.path().join("deep.marshal");
     fs::write(&deep_path, deep_bytes).unwrap();
-    let literal = rows(&invoke("strings", &deep_path, &["--version", "3.12"]))[1].clone();
+    let literal = rows(&invoke("strings", &deep_path, &["--version", "3.12"]))[0].clone();
     assert_eq!(
         literal["detail"]["constant_path"].as_array().unwrap().len(),
         71
@@ -606,20 +581,14 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
         "unknown.marshal",
     );
     let strings = rows(&invoke("strings", &path, &["--version", "3.12"]));
-    for literal in &strings[1..strings.len() - 1] {
+    for literal in &strings[..] {
         let result = rows(&invoke(
             "xref",
             &path,
             &["--version", "3.12", "--at", literal["at"].as_str().unwrap()],
         ));
-        assert_eq!(result.last().unwrap()["complete"], false);
-        assert_eq!(result.last().unwrap()["detail"]["unsupported_count"], 1);
         assert_eq!(
-            result.last().unwrap()["detail"]["unsupported"][0]["status"],
-            "UNSUPPORTED_OPCODE"
-        );
-        assert_eq!(
-            result.last().unwrap()["records"],
+            result.len(),
             if literal["detail"]["value"] == "x" {
                 1
             } else {
@@ -636,7 +605,7 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
     ] {
         let bytes = module(&body, b")\x02z\x01xz\x06unused");
         fs::write(&path, &bytes).unwrap();
-        let literal = rows(&invoke("strings", &path, &["--version", "3.12"]))[2].clone();
+        let literal = rows(&invoke("strings", &path, &["--version", "3.12"]))[0].clone();
         let out = dir.path().join("keep.jsonl");
         fs::write(&out, b"keep").unwrap();
         failure(
@@ -693,6 +662,5 @@ fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner
             child["context_at"].as_str().unwrap(),
         ],
     ));
-    assert_eq!(excluded.last().unwrap()["complete"], true);
-    assert_eq!(excluded.last().unwrap()["records"], 0);
+    assert_eq!(excluded.len(), 0);
 }

@@ -1,5 +1,12 @@
 # JVM frontend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd jar` reads ordinary `.class` files and JAR/ZIP archives containing JVM class
@@ -29,18 +36,17 @@ queries still return `UNSUPPORTED_BYTECODE`. There is no shared cross-JS/.NET IR
 
 | Command | Output |
 | --- | --- |
-| `jar classes [--class CLASS]`, `jar methods|fields [--class CLASS] [--name NAME] [-o FILE]` | header/match/summary JSONL, one object kind per command, `detail.analysis: metadata` |
+| `jar classes [--class CLASS]`, `jar methods|fields [--class CLASS] [--name NAME] [-o FILE]` | data-row JSONL, one object kind per command, `detail.analysis: metadata` |
 | `jar get-method INPUT --at METHOD_ID [-o FILE]` | One `method_body` record: Java in `detail.code` |
 | `jar get-method INPUT --at METHOD_ID --raw [-o FILE]` | The same `method_body` record with `representation: bytecode`: opcode, original bytes, byte_offset, operands, explicit constant references, branch targets and exception table |
 | `jar get-class INPUT --at CLASS [-o FILE]` | One `class_body` record: whole-class Java in `detail.code` (fields, constructors, all method bodies) by internal/dotted/descriptor name |
-| `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | header/string/summary JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
-| `jar xref INPUT --at COORD` | header/reference/summary JSONL; the coordinate is an exact identity (`Lx/y;`, `Lx/y;->name(proto)`, `Lx/y;->name:type`); `context_at` is the caller, `detail.target` the matched coordinate, `detail.byte_offset`/`detail.mnemonic` the reference site |
+| `jar strings INPUT [--class CLASS] [--filter TEXT] [-o FILE]` | data-row JSONL, `detail.analysis: metadata`; string literals in the selected class constant pool with class and pool index |
+| `jar xref INPUT --at COORD` | data-row JSONL; the coordinate is an exact identity (`Lx/y;`, `Lx/y;->name(proto)`, `Lx/y;->name:type`); `context_at` is the caller, `detail.target` the matched coordinate, `detail.byte_offset`/`detail.mnemonic` the reference site |
 | `jar xref INPUT -m PATTERN --kind KIND` | the same rows for a substring search over the target's value, name or type, with `--class` narrowing to one exact owner class; `--kind` is required |
 
 `classes`/`methods`/`fields` filter exactly by internal name, dotted name or descriptor,
 and methods exactly by name while retaining all overloads; a method filter omits field
-records. `header.query` records conditions; summary completeness applies only to the
-selected query.
+records. Success and failure are exit codes; there is no stream-level query echo.
 
 Only real files are accepted; directories, nested JARs, WAR and JMOD are not scanned.
 Class and ZIP are identified by content, not extension. ZIP processing selects class
@@ -61,7 +67,7 @@ the declared class name and raw `.class` inputs fall back to the complete reader
 stays the authority. Listings, `strings`, `xref` and `get-method` keep the complete parse.
 Scoped and full reads produce byte-identical `class_body` output.
 
-`header.source_id` is the input file identity digest. JAR records retain the physical
+A stream row does not repeat the input file identity digest. JAR records retain the physical
 entry. A method's identity is its JVM coordinate `Lx/y;->name(proto)`, printed as the
 row's `at`; no row carries a hash. The same class in different containers has the same
 coordinates. `get` validates the coordinate against the fixed input; malformed or unknown
@@ -74,7 +80,7 @@ several IR instructions whose addresses are `byte_offset * 32 + subinstruction i
 used only for internal ordering, jumps and exception ranges; public output keeps
 original JVM offsets.
 
-Success plus final `summary.complete: true` means the selected metadata enumeration is
+Success plus final `exit 0` means the selected metadata enumeration is
 complete. It does not mean every method decompiles, that unknown attributes were
 semantically analyzed, or that the JVM verified the class. `get` Java is a decompiled
 representation, not original source. Abstract/native methods without Code can be
@@ -120,17 +126,11 @@ errors exit 2; other failures exit 1. Diagnostics go to stderr.
 ## Envelope (schema_version=2)
 
 All structured output uses the shared [ADR 0003](../adr/0003-output-envelope.md)
-constructors. The listings, `strings` and `xref` return header → zero or more
-records → summary, with no legacy flat-field shim.
-
-The header contains `record, backend, command, source_id, input_bytes, schema_version,
-query, detail`. Streaming commands set `header.detail` to `analysis, release` with
-`analysis: metadata`. `query` echoes command conditions. Summary contains `record,
-records, complete, detail`; `classes` sets `summary.detail.classes`, while
-strings/xref use `{}`.
+constructors. The listings, `strings` and `xref` return zero or more data records,
+with no legacy flat-field shim and no header/summary.
 
 Data records contain `record, at, source_id, parent_at, context_at, start, end,
-detail`; inapplicable values are null. `source_id` is null on records (the header carries
+detail`; inapplicable values are null. `source_id` is null on records (a stream does not
 the input identity). Class, field and method rows carry their descriptor coordinate;
 string and reference rows have no `at`. `parent_at` is null. `reference.context_at` is the
 owning method coordinate and can be passed to `get-method`. Streaming `start/end` are null; method-relative
@@ -156,7 +156,7 @@ is an interface, annotation or enum without fetching each class. `entry` is null
 constant_index/utf16_units may be null. `fields`/`methods` are class-table totals. `utf16_units` is
 null when decoding is lossless, otherwise an array of raw UTF-16 code units.
 
-`get-method --raw` is one `record="bytecode"` FETCH record without header/summary;
+`get-method --raw` is one `record="bytecode"` FETCH record without data records;
 it adds `backend="jvm"`, `command="get-method"`, `schema_version=2` outside. `detail.
 representation` is always `bytecode`; `complete` is true. Outer `start/end` replaces
 the old `file_range` and points at the actual class-file Code range (half-open), not
@@ -241,7 +241,7 @@ conditions. The 150 ms requirement applies; JVM adds no performance exception (r
 ## MCP projection
 
 `jar_classes/methods/fields/strings/xref/get_method/get_class` keep the CLI namespace `jar` and
-record `backend: jvm`. JSONL becomes header/records/summary; Java text gains a
+record `backend: jvm`. JSONL becomes data records; Java text gains a
 representation/source/complete/source_id wrapper, while bytecode and Java fallback keep
 their single-record shape. A container `target_id` does not replace class SHA-256 or
 method content IDs; release selection, physical entry, method byte_offset and original

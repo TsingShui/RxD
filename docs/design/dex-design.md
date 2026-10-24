@@ -1,5 +1,12 @@
 # DEX backend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd dex` analyzes Android APK/ZIP archives and standalone DEX files. Analysis lives
@@ -86,25 +93,20 @@ checked with references/member data. Known radguard output limitations are track
 
 ## Envelope (schema_version=2)
 
-constructors and return header → zero or more records → summary; empty results still
-candidates at exit 4; `summary.complete=true` means candidate enumeration is complete,
-not that resolution is unique. General success requires exit 0 and `complete=true`.
-3/4 produce no stdout.
+constructors and return zero or more data records; empty results still
+candidates at exit 4; `exit 0=true` means candidate enumeration is complete,
+not that resolution is unique. General success requires exit 0. 3/4 produce no stdout.
 
-The header contains `record, backend, command, source_id, input_bytes, schema_version,
-query, detail`, with `backend=dex`. `header.detail` and `summary.detail` are `{}`.
-`input_bytes` is the sum of supplied input file sizes (repeated inputs count again).
-`query` fields: `classes`=`filter`; `strings`=`filter, offset, limit`; `entries`=`{}`;
-`xref`=`kind` plus `at` or `match` (with `case`/`class` when used);
-to Dalvik form. Inapplicable query values are null. Summary contains `record, records,
-complete, detail`; `records` counts data records only.
+Data rows contain exactly the record and detail keys the query emits; there is no
+stream-level `backend`, `command`, `source_id`, `input_bytes`, `schema_version` or
+`query` line.
+to Dalvik form. Inapplicable query values are null.
 
 Data records contain exactly `record` and `detail`, plus the one navigation key that
 applies (`at` for a class/method/field row, `context_at` for a reference row). The other
 nullable keys of ADR 0003 are omitted, not repeated as `null`; the ADR's
 "absent and null are equivalent" rule is what makes that legal, and it saves 39% of a
-class row and ~10 MB on a wide `xref`. The header still carries backend/command and the
-input size once, and DEX deliberately does not rehash large archives,
+class row and ~10 MB on a wide `xref`. DEX deliberately does not rehash large archives,
 avoiding extra reads against the 150 ms budget. Class identity and routing come from
 detail `descriptor`/`name` (and `entry`); `xref.detail.member` carries the referring
 member's Dalvik descriptor, directly usable with `get-class`, and its declaring class is
@@ -220,7 +222,7 @@ rasc schema-v1 byte comparisons are not used for the schema-v2 JSON protocol.
 ## MCP projection
 
 `dex_get_class/entries/strings/xref/manifest/classes` reuse existing parsing and
-result assembly in isolated workers. JSONL projects to header/records/summary;
+result assembly in isolated workers. JSONL projects to data records;
 `get-class`/`get-method` already answer with a record, and Manifest XML is wrapped with
 representation/source/complete/source_id. Original null
 id/source_id semantics remain; a target only pins input and does not claim entity

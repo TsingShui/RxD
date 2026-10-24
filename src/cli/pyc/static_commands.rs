@@ -3,7 +3,6 @@ use clap::Args;
 use rxd_core::{Result, perf::Perf};
 use rxd_pyc::static_analysis::{Analysis, Limits};
 use serde::Serialize;
-use serde_json::json;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -270,12 +269,9 @@ pub fn codes(
     perf.counters.records = Some(selected.len());
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = Output::new(options.budget.output_bytes);
-        append(&mut writer,&rxd_core::envelope::header("pyc","codes",Some(&analysis.source_id),Some(analysis.bytes.len()),
-            json!({"filter":query.filter,"case":if query.case_sensitive {"sensitive"} else {"insensitive"},"name":query.name,"at":at,"version":version.map(|(major,minor)| format!("{major}.{minor}"))}),
-            json!({"analysis":"metadata","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
-        for &index in &selected { append(&mut writer,&record(&analysis,index)?)?; }
-        append(&mut writer,&rxd_core::envelope::summary(selected.len(),true,
-            json!({"code_count":analysis.codes.len(),"analysis":"metadata","instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
+        for &index in &selected {
+            append(&mut writer, &record(&analysis, index)?)?;
+        }
         Ok(writer.into_bytes())
     })?;
     perf.counters.output_bytes = Some(bytes.len());

@@ -850,6 +850,9 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
 }
 
 fn append(output: &mut Vec<u8>, record: &serde_json::Value) -> anyhow::Result<()> {
+    if rxd_core::envelope::is_wrapper(record) {
+        return Ok(());
+    }
     serde_json::to_writer(&mut *output, record)
         .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
     output.push(b'\n');

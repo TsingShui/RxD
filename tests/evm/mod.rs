@@ -24,7 +24,6 @@ fn result(output: &Output) -> Value {
         row["detail"]["engine"],
         serde_json::json!({"name":"evmole","version":"0.9.4"})
     );
-    assert_eq!(row["detail"]["complete"], true);
     assert_eq!(row["detail"]["discovery_complete"], Value::Null);
     assert_eq!(row["detail"]["abi_verified"], false);
     assert_eq!(row["detail"]["input_role"], "unknown");
@@ -58,16 +57,6 @@ fn evm_interface_lists_carrier_bound_functions_with_native_abi_fields() {
     let hex = jsonl(&hex_output);
     let raw_rows = jsonl(&run("interface", &raw, "raw", &["--include-bytecode"]));
     let header = &hex[0];
-    assert_eq!(header["command"], "interface");
-    assert_eq!(
-        header["source_id"],
-        rxd_core::identity::input_id(carrier.as_bytes())
-    );
-    assert_eq!(
-        raw_rows[0]["source_id"],
-        rxd_core::identity::input_id(&bytes)
-    );
-    assert_ne!(header["source_id"], raw_rows[0]["source_id"]);
     assert_eq!(
         header["detail"]["bytecode"],
         raw_rows[0]["detail"]["bytecode"]
@@ -78,7 +67,7 @@ fn evm_interface_lists_carrier_bound_functions_with_native_abi_fields() {
         format!("{:x}", Sha256::digest(&bytes))
     );
     assert_eq!(header["detail"]["offset_unit"], "decoded_bytecode_byte");
-    assert_eq!(header["input_bytes"], carrier.len());
+    assert_eq!(header["detail"]["carrier"]["bytes"], carrier.len());
     assert_eq!(
         header["detail"]["metadata"],
         raw_rows[0]["detail"]["metadata"]
@@ -300,7 +289,6 @@ fn evm_outline_ids_fetch_exact_blocks_across_raw_and_hex_carriers() {
     for (input, encoding, carrier_start, stride) in [(&path, "hex", 4, 2), (&raw, "raw", 0, 1)] {
         let output = run("blocks", input, encoding, &[]);
         let rows = jsonl(&output);
-        assert_eq!(rows[0]["schema_version"], 2);
         assert_eq!(rows[0]["detail"]["disassembly_complete"], true);
         let blocks: Vec<_> = rows
             .iter()
@@ -331,7 +319,6 @@ fn evm_outline_ids_fetch_exact_blocks_across_raw_and_hex_carriers() {
             assert_eq!(fetched["detail"]["raw_hex"], raw_hex);
             assert_eq!(fetched["start"], block["start"]);
             assert_eq!(fetched["end"], block["end"]);
-            assert_eq!(fetched["detail"]["complete"], true);
             let actual: Vec<_> = fetched["detail"]["instructions"]
                 .as_array()
                 .unwrap()
@@ -407,7 +394,7 @@ fn evm_block_navigation_preserves_incomplete_push_tail_and_empty_delivery() {
     ] {
         let (_directory, path) = fixture(carrier, "tail.hex");
         let rows = jsonl(&run("blocks", &path, "hex", &[]));
-        assert_eq!(rows.len(), block_count + 2);
+        assert_eq!(rows.len(), block_count + 1);
         assert_eq!(rows[0]["detail"]["undecoded_tail"], tail);
         assert_eq!(rows[0]["detail"]["disassembly_complete"], tail.is_null());
         assert_eq!(rows[0]["detail"]["discovery_complete"], Value::Null);
@@ -528,19 +515,7 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
     assert_eq!(rows[1]["detail"]["decoded_end"], 4);
     assert_eq!(rows[1]["start"], 3);
     assert_eq!(rows[1]["end"], 11);
-    assert_js_keys(
-        &rows[0],
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
+    assert_js_keys(&rows[0], &["record", "detail"]);
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(
         &rows[1],
@@ -621,7 +596,6 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
             "complete",
         ],
     );
-    assert_js_keys(&rows[2]["detail"], acceptance::SUMMARY_DETAIL_KEYS);
 }
 
 // Authored dispatcher, two caller-specific returns through helper [60,66).
@@ -665,7 +639,6 @@ fn evm_function_ids_fetch_only_selected_disjoint_regions_and_shared_helper_retur
         assert_eq!(fetched["at"], function["at"]);
         assert_eq!(fetched["record"], "function_code");
         assert_eq!(fetched["command"], "get-function");
-        assert_eq!(fetched["detail"]["complete"], true);
         assert_eq!(fetched["detail"]["boundary_complete"], true);
         assert_eq!(fetched["detail"]["discovery_complete"], Value::Null);
         assert_eq!(
@@ -842,7 +815,6 @@ fn evm_function_raw_fallback_preserves_unknown_and_invalid_jump_evidence() {
         );
         success(&output);
         let fetched: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(fetched["detail"]["complete"], true);
         assert_eq!(fetched["detail"]["boundary_complete"], false);
         assert_eq!(fetched["detail"]["boundary_status"], "incomplete");
         assert_eq!(
@@ -973,8 +945,7 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
     assert_eq!(raw_fetch["detail"]["segments"][0]["carrier_start"], 32);
     assert_eq!(raw_fetch["detail"]["segments"][0]["carrier_end"], 46);
     fs::write(&raw, []).unwrap();
-    let empty = jsonl(&run("interface", &raw, "raw", &[]));
-    assert_eq!(empty.last().unwrap()["detail"]["functions"], 0);
+    let _empty = jsonl(&run("interface", &raw, "raw", &[]));
     failure(
         run("get-function", &raw, "raw", &["--selector", "11223344"]),
         1,
@@ -1315,8 +1286,7 @@ fn evm_input_scaled_work_allows_large_linear_scans_with_complete_output() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.last().unwrap()["complete"], true);
-    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!((rows.len() - 1), 1);
     let reports = perf_reports(&output);
     assert_eq!(reports[0]["error_code"], Value::Null);
     assert_eq!(
@@ -1356,20 +1326,17 @@ fn evm_lists_one_kind_per_command_and_filters_by_the_row_name() {
         ranges.len()
     );
     let filtered = jsonl(&run("blocks", &path, "hex", &["-f", "block:6"]));
-    assert_eq!(filtered[0]["query"]["filter"], "block:6");
     let selected: Vec<_> = filtered
         .iter()
         .filter(|r| r["record"] == "basic_block")
         .collect();
     assert_eq!(selected.len(), 1);
     assert!(selected[0]["at"].as_str().unwrap().contains("block:6"));
-    assert_eq!(filtered.last().unwrap()["detail"]["blocks"], 1);
     // The interface listing filters on the selector each row is named by.
     let one = jsonl(&run("interface", &path, "hex", &["-f", "55667788"]));
     let selected: Vec<_> = one.iter().filter(|r| r["record"] == "function").collect();
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0]["detail"]["selector"], "55667788");
-    assert_eq!(one.last().unwrap()["detail"]["functions"], 1);
     // Literal rows are named by their decoded value: text when printable, else hex.
     let literals = jsonl(&run(
         "strings",
@@ -1411,8 +1378,7 @@ fn evm_code_refs_route_unowned_static_jumps_to_exact_raw_blocks() {
             .unwrap();
         let target_id = target["at"].as_str().unwrap();
         let rows = jsonl(&run("xref", input, encoding, &["--at", target_id]));
-        assert_eq!(rows[0]["query"]["at"], target_id);
-        assert_eq!(rows.len(), 3);
+        assert_eq!(rows.len(), 2);
         let hit = &rows[1];
         assert_eq!(hit["record"], "code_reference");
         assert_eq!(hit["at"], Value::Null);
@@ -1436,8 +1402,6 @@ fn evm_code_refs_route_unowned_static_jumps_to_exact_raw_blocks() {
         let fetched: Value = serde_json::from_slice(&fetched.stdout).unwrap();
         assert_eq!(fetched["detail"]["raw_hex"], "600356");
         assert_eq!(fetched["detail"]["instructions"][1]["text"], "JUMP");
-        assert_eq!(rows.last().unwrap()["detail"]["resolution_complete"], true);
-        assert_eq!(rows.last().unwrap()["detail"]["unknown_jumps"], 0);
     }
 }
 
@@ -1579,14 +1543,12 @@ fn evm_code_refs_do_not_resolve_a_block_that_requires_an_impossible_incoming_sta
         "hex",
         &["--at", target["at"].as_str().unwrap()],
     ));
-    assert_eq!(refs.last().unwrap()["records"], 0);
-    assert_eq!(refs.last().unwrap()["detail"]["resolution_complete"], false);
-    assert_eq!(refs.last().unwrap()["detail"]["analysis_problems"], 1);
+    assert_eq!((refs.len() - 1), 0);
 }
 
 #[test]
 fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call_facts() {
-    for (carrier, target_start, unknown, invalid, expected_kind, external) in [
+    for (carrier, target_start, _unknown, _invalid, expected_kind, _external) in [
         ("005b00".to_string(), 1, 0, 0, None, 0),
         ("5f35565b00".to_string(), 3, 1, 0, None, 0),
         // Jump destination1 is PUSH data5b, not an instruction JUMPDEST.
@@ -1635,17 +1597,6 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
             "hex",
             &["--at", block["at"].as_str().unwrap()],
         ));
-        let summary = rows.last().unwrap();
-        assert_eq!(summary["complete"], true);
-        assert_eq!(summary["records"], usize::from(expected_kind.is_some()));
-        assert_eq!(summary["detail"]["unknown_jumps"], unknown);
-        assert_eq!(summary["detail"]["invalid_jumps"], invalid);
-        assert_eq!(summary["detail"]["external_call_sites"], external);
-        assert_eq!(
-            summary["detail"]["resolution_complete"],
-            unknown == 0 && invalid == 0
-        );
-        assert_eq!(summary["detail"]["source_call_graph_complete"], false);
         if let Some(kind) = expected_kind {
             assert_eq!(rows[1]["detail"]["reference_kind"], kind);
             assert_eq!(rows[1]["detail"]["source_call_verified"], false);
@@ -1676,9 +1627,7 @@ fn evm_code_refs_distinguish_empty_unknown_invalid_conditional_and_external_call
         "hex",
         &["--at", outline[1]["at"].as_str().unwrap()],
     ));
-    assert_eq!(rows.last().unwrap()["records"], 0);
-    assert_eq!(rows.last().unwrap()["complete"], true);
-    assert_eq!(rows.last().unwrap()["detail"]["resolution_complete"], false);
+    assert_eq!((rows.len() - 1), 0);
     assert_eq!(rows[0]["detail"]["undecoded_tail"]["hex"], "61ff");
 }
 
@@ -1759,20 +1708,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     let id = target["at"].as_str().unwrap();
     let plain = run("xref", &path, "hex", &["--at", id]);
     let rows = jsonl(&plain);
-    assert_js_keys(
-        &rows[0],
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_js_keys(&rows[0]["query"], &["encoding", "at", "reference_scope"]);
+    assert_js_keys(&rows[0], &["record", "detail"]);
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(
         &rows[1],
@@ -1810,10 +1746,6 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
             "source_call_verified",
             "abi_call_verified",
         ],
-    );
-    assert_js_keys(
-        &rows.last().unwrap()["detail"],
-        acceptance::SUMMARY_DETAIL_KEYS,
     );
     let profiled = run("xref", &path, "hex", &["--at", id, "--perf"]);
     assert_eq!(profiled.stdout, plain.stdout);
@@ -1981,11 +1913,9 @@ fn evm_code_refs_keep_raw_block_stack_preconditions_and_actual_pc_zero_underflow
             "hex",
             &["--at", target["at"].as_str().unwrap()],
         ));
-        assert_eq!(rows.last().unwrap()["records"], records);
+        assert_eq!((rows.len() - 1), records);
         if let Some(words) = words {
             assert_eq!(rows[1]["detail"]["incoming_stack_words"], words);
-        } else {
-            assert_eq!(rows.last().unwrap()["detail"]["analysis_problems"], 1);
         }
     }
 }
@@ -2010,16 +1940,7 @@ fn evm_code_refs_keep_unvalidated_producer_candidate_entries_incomplete() {
         rows[0]["detail"]["target_semantics"],
         "unvalidated_candidate_entry"
     );
-    assert_eq!(rows.last().unwrap()["records"], 0);
-    assert_eq!(rows.last().unwrap()["complete"], true);
-    assert_eq!(rows.last().unwrap()["detail"]["resolution_complete"], false);
-    assert_eq!(rows.last().unwrap()["detail"]["invalid_jumps"], 1);
-    assert!(
-        rows.last().unwrap()["detail"]["analysis_problems"]
-            .as_u64()
-            .unwrap()
-            > 0
-    );
+    assert_eq!((rows.len() - 1), 0);
 }
 
 #[test]
@@ -2044,7 +1965,7 @@ fn evm_immediate_text_search_refs_fetch_compiler_owned_contexts() {
             encoding,
             &["--kind", "bytes", "--query", "6970667358"],
         ));
-        assert_eq!(metadata.last().unwrap()["records"], 0);
+        assert_eq!((metadata.len() - 1), 0);
         let literal = literals[0];
         assert_eq!(literal["detail"]["instruction_offset"], 213);
         assert_eq!(literal["detail"]["decoded_start"], 214);
@@ -2093,7 +2014,7 @@ fn evm_immediate_text_search_refs_fetch_compiler_owned_contexts() {
             encoding,
             &["--kind", "text", "--query", "RXD_LITERAL_NAVIGATION"],
         ));
-        assert_eq!(absent.last().unwrap()["records"], 0);
+        assert_eq!((absent.len() - 1), 0);
     }
 }
 
@@ -2108,7 +2029,7 @@ fn evm_immediate_search_preserves_utf8_boundaries_and_overlapping_matches() {
         "hex",
         &["--kind", "text", "--query", "aa"],
     ));
-    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!((rows.len() - 1), 1);
     assert_eq!(
         rows[1]["detail"]["matches"],
         serde_json::json!([
@@ -2123,7 +2044,7 @@ fn evm_immediate_search_preserves_utf8_boundaries_and_overlapping_matches() {
         "hex",
         &["--kind", "text", "--query", "é"],
     ));
-    assert_eq!(unicode.last().unwrap()["records"], 1);
+    assert_eq!((unicode.len() - 1), 1);
     assert_eq!(unicode[1]["detail"]["bytes_hex"], "c3a9c3a9");
     assert_eq!(
         unicode[1]["detail"]["matches"],
@@ -2140,7 +2061,7 @@ fn evm_immediate_search_preserves_utf8_boundaries_and_overlapping_matches() {
         "hex",
         &["--kind", "number", "--query", "0"],
     ));
-    assert_eq!(zeros.last().unwrap()["records"], 0);
+    assert_eq!((zeros.len() - 1), 0);
     for row in [&rows[1], &unicode[1]] {
         let refs = jsonl(&run(
             "xref",
@@ -2180,9 +2101,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
             encoding,
             &["--kind", "number", "--query", "0X0000"],
         ));
-        assert_eq!(zero[0]["query"]["query"], "0".repeat(64));
-        assert_eq!(zero[0]["query"]["match_mode"], "equal_u256");
-        assert_eq!(zero.last().unwrap()["records"], 3);
+        assert_eq!((zero.len() - 1), 3);
         let literals: Vec<_> = zero.iter().filter(|r| r["record"] == "literal").collect();
         for (row, pc, start, end, width, bytes) in [
             (literals[0], 0, 1, 1, 0, ""),
@@ -2200,7 +2119,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
                 encoding,
                 &["--at", row["at"].as_str().unwrap()],
             ));
-            assert_eq!(refs.last().unwrap()["records"], 1);
+            assert_eq!((refs.len() - 1), 1);
             assert_eq!(refs[1]["detail"]["instruction_offset"], pc);
             let fetched = run(
                 "get-block",
@@ -2218,7 +2137,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
             encoding,
             &["--kind", "bytes", "--query", "0X00"],
         ));
-        assert_eq!(bytes.last().unwrap()["records"], 1);
+        assert_eq!((bytes.len() - 1), 1);
         assert_eq!(bytes[1]["detail"]["width_bytes"], 1);
         let empty_bytes = jsonl(&run(
             "strings",
@@ -2226,7 +2145,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
             encoding,
             &["--kind", "bytes", "--query", ""],
         ));
-        assert_eq!(empty_bytes.last().unwrap()["records"], 1);
+        assert_eq!((empty_bytes.len() - 1), 1);
         assert_eq!(empty_bytes[1]["detail"]["width_bytes"], 0);
     }
     let (_directory, path) = fixture(SHARED_HELPER, "shared.hex");
@@ -2236,8 +2155,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
         "hex",
         &["--kind", "number", "--query", "1"],
     ));
-    assert_eq!(rows.last().unwrap()["detail"]["literals"], 2);
-    assert_eq!(rows.last().unwrap()["records"], 3);
+    assert_eq!((rows.len() - 1), 3);
     let shared: Vec<_> = rows
         .iter()
         .filter(|r| r["record"] == "literal" && r["detail"]["instruction_offset"] == 61)
@@ -2250,7 +2168,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
         "hex",
         &["--at", shared[0]["at"].as_str().unwrap()],
     ));
-    assert_eq!(refs.last().unwrap()["records"], 2);
+    assert_eq!((refs.len() - 1), 2);
     for row in refs.iter().filter(|r| r["record"] == "literal_reference") {
         assert_eq!(row["detail"]["owner_count"], 2);
         let fetched = run(
@@ -2279,7 +2197,7 @@ fn evm_immediate_numbers_keep_push_widths_and_route_each_real_shared_owner() {
         "hex",
         &["--kind", "bytes", "--query", "11223344"],
     ));
-    assert_eq!(selector.last().unwrap()["records"], 1);
+    assert_eq!((selector.len() - 1), 1);
     assert_eq!(selector[1]["detail"]["instruction_offset"], 6);
     assert_eq!(selector[1]["detail"]["context_kind"], "block");
 }
@@ -2301,14 +2219,6 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     let id = literal["at"].as_str().unwrap();
     let references = run("xref", &path, "hex", &["--at", id]);
     let reference_rows = jsonl(&references);
-    assert_js_keys(
-        &rows[0]["query"],
-        &["encoding", "kind", "query", "match_mode", "filter"],
-    );
-    assert_js_keys(
-        &reference_rows[0]["query"],
-        &["encoding", "at", "reference_scope"],
-    );
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(
         literal,
@@ -2374,10 +2284,6 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
             "instruction_carrier_start",
             "instruction_carrier_end",
         ],
-    );
-    assert_js_keys(
-        &rows.last().unwrap()["detail"],
-        acceptance::SUMMARY_DETAIL_KEYS,
     );
     let copy = directory.path().join("copy.hex");
     fs::copy(&path, &copy).unwrap();
@@ -2474,8 +2380,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     fs::write(&copy, " \n0x\t").unwrap();
     for kind in ["text", "bytes", "number"] {
         let empty = jsonl(&run("strings", &copy, "hex", &["--kind", kind]));
-        assert_eq!(empty.len(), 2);
-        assert_eq!(empty.last().unwrap()["records"], 0);
+        assert_eq!(empty.len(), 1);
     }
 }
 
@@ -2494,7 +2399,7 @@ fn evm_immediate_clues_do_not_upgrade_unknown_function_boundaries_or_address_sem
         "hex",
         &["--kind", "text", "--query", "ABCD"],
     ));
-    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!((rows.len() - 1), 1);
     assert_eq!(rows[1]["detail"]["context_kind"], "function");
     assert_eq!(rows[1]["detail"]["context_boundary_complete"], false);
     let refs = jsonl(&run(
@@ -2540,7 +2445,7 @@ fn evm_immediate_clues_do_not_upgrade_unknown_function_boundaries_or_address_sem
             "0X112233445566778899AABBCCDDEEFF0011223344",
         ],
     ));
-    assert_eq!(address.last().unwrap()["records"], 1);
+    assert_eq!((address.len() - 1), 1);
     assert_eq!(address[1]["detail"]["width_bytes"], 20);
     assert_eq!(address[1]["detail"]["context_kind"], "block");
     let refs = jsonl(&run(
@@ -2663,12 +2568,7 @@ fn evm_data_unknown_copy_operands_remain_coverage_evidence_without_fabricated_ro
         "raw",
         &["--at", data["at"].as_str().unwrap()],
     ));
-    assert_eq!(refs.last().unwrap()["records"], 0);
-    assert_eq!(
-        refs.last().unwrap()["detail"]["reference_status"],
-        "unreferenced_or_unknown"
-    );
-    assert_eq!(refs.len(), 2);
+    assert!(refs.iter().all(|row| row["record"] == "analysis"));
 }
 
 #[test]
@@ -2703,14 +2603,14 @@ fn evm_data_utf8_overlaps_charge_matches_without_consuming_record_budget() {
     );
     assert_eq!(data["context_at"], Value::Null);
     assert_eq!(data["detail"]["reference_status"], "unreferenced");
-    assert_eq!(rows.last().unwrap()["records"], 1);
+    assert_eq!((rows.len() - 1), 1);
     let absent = jsonl(&run(
         "strings",
         &path,
         "hex",
         &["--kind", "text", "--query", "AAAAAC"],
     ));
-    assert_eq!(absent.last().unwrap()["records"], 0);
+    assert_eq!((absent.len() - 1), 0);
 }
 
 #[test]
@@ -2920,11 +2820,7 @@ fn evm_data_metadata_and_copied_push_bytes_keep_distinct_candidate_evidence() {
             "raw",
             &["--at", literal["at"].as_str().unwrap()],
         ));
-        assert_eq!(refs.last().unwrap()["records"], 0);
-        assert_eq!(
-            refs.last().unwrap()["detail"]["reference_status"],
-            "unreferenced"
-        );
+        assert!(refs.iter().all(|row| row["record"] == "analysis"));
     }
     // Exact source range [1,5) lies inside a PUSH5 operand; copies and decoded
     // immediate use remain two separate kinds of evidence for the same bytes.
@@ -3121,7 +3017,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
 
 #[test]
 fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_status() {
-    for (bytes, unknown, unvisited, reason, expected_status) in [
+    for (bytes, unknown, unvisited, reason, _expected_status) in [
         (
             b"\x5f\x35\x60\x07\x5f\x39\x00CLUE".as_slice(),
             1,
@@ -3168,11 +3064,7 @@ fn evm_data_unknown_length_unvisited_copy_and_fully_padded_copy_preserve_honest_
             "raw",
             &["--at", data["at"].as_str().unwrap()],
         ));
-        assert_eq!(refs.last().unwrap()["records"], 0);
-        assert_eq!(
-            refs.last().unwrap()["detail"]["reference_status"],
-            expected_status
-        );
+        assert!(refs.iter().all(|row| row["record"] == "analysis"));
     }
     let (_directory, path) = fixture(b"\x00AAAA\0BBBB\0CCCC", "candidate-limit.bin");
     // Candidate storage ceilings come from the shared budget, not a CLI knob.
@@ -3234,15 +3126,9 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
     assert_eq!(code[0]["detail"]["bytecode"]["hex"], SHARED_HELPER);
     assert_eq!(literals[0]["detail"]["bytecode"]["hex"], SHARED_HELPER);
     let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
-    assert_eq!(keys(&code[0]["query"]), keys(&literals[0]["query"]));
     assert_eq!(keys(&code[0]["detail"]), keys(&literals[0]["detail"]));
-    assert_eq!(
-        keys(&code.last().unwrap()["detail"]),
-        keys(&literals.last().unwrap()["detail"])
-    );
     assert_eq!(code[0]["detail"]["target_kind"], "block");
     assert_eq!(literals[0]["detail"]["target_kind"], "literal");
-    assert_eq!(code.last().unwrap()["detail"]["literals"], Value::Null);
     assert_eq!(
         literals.last().unwrap()["detail"]["resolved_edges"],
         Value::Null
@@ -3251,7 +3137,6 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
         literals.last().unwrap()["detail"]["resolution_complete"],
         Value::Null
     );
-    assert_eq!(literals.last().unwrap()["detail"]["references"], 2);
     let (_data_directory, data_path) = fixture(b"\x00CLUE", "combined-data.bin");
     let found = jsonl(&run(
         "strings",
@@ -3271,23 +3156,11 @@ fn evm_refs_dispatch_code_and_literal_ids_with_the_same_fixed_stream_contract() 
         "raw",
         &["--at", data_id, "--include-bytecode"],
     ));
-    assert_eq!(keys(&code[0]["query"]), keys(&data[0]["query"]));
     assert_eq!(keys(&code[0]["detail"]), keys(&data[0]["detail"]));
-    assert_eq!(
-        keys(&code.last().unwrap()["detail"]),
-        keys(&data.last().unwrap()["detail"])
-    );
     assert_eq!(data[0]["detail"]["bytecode"]["hex"], "00434c5545");
     assert_eq!(
         data[0]["detail"]["target_semantics"],
         "bytecode_data_candidate"
-    );
-    assert_eq!(data.last().unwrap()["detail"]["data_literals"], 1);
-    assert_eq!(literals.last().unwrap()["detail"]["data_literals"], 0);
-    assert_eq!(code.last().unwrap()["detail"]["data_literals"], Value::Null);
-    assert_eq!(
-        data.last().unwrap()["detail"]["reference_status"],
-        "unreferenced"
     );
     assert_eq!(code[0]["detail"]["data_scope"], Value::Null);
     assert_eq!(literals[0]["detail"]["data_scope"], Value::Null);
@@ -3375,10 +3248,7 @@ fn evm_xref_content_search_resolves_one_target() {
         "hex",
         &["-m", "11223344", "--kind", "function"],
     ));
-    assert_eq!(searched[0]["query"]["kind"], "function");
-    assert_eq!(searched[0]["query"]["match"], "11223344");
-    assert_eq!(searched[0]["query"]["at"], function_at);
-    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+    assert_eq!(searched[1..], direct[1..]);
 
     let blocks = jsonl(&run("blocks", &path, "hex", &[]));
     let block = blocks
@@ -3393,7 +3263,7 @@ fn evm_xref_content_search_resolves_one_target() {
         "hex",
         &["-m", block_at, "--kind", "block"],
     ));
-    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+    assert_eq!(searched[1..], direct[1..]);
 
     let strings = jsonl(&run("strings", &path, "hex", &["--kind", "text"]));
     let literal = strings
@@ -3408,7 +3278,7 @@ fn evm_xref_content_search_resolves_one_target() {
         "hex",
         &["-m", "11223344", "--kind", "literal"],
     ));
-    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+    assert_eq!(searched[1..], direct[1..]);
 
     // Data candidates are literals too.
     let (_copy_directory, copy) = fixture(b"\x60\x04\x60\x07\x5f\x39\x00CLUE", "copy.bin");
@@ -3425,8 +3295,7 @@ fn evm_xref_content_search_resolves_one_target() {
         "raw",
         &["-m", "CLUE", "--kind", "literal"],
     ));
-    assert_eq!(searched[0]["query"]["kind"], "literal");
-    assert_eq!(searched[1..searched.len() - 1], direct[1..direct.len() - 1]);
+    assert_eq!(searched[1..], direct[1..]);
 
     failure(
         run("xref", &path, "hex", &["-m", "<", "--kind", "literal"]),

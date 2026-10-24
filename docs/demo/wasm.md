@@ -23,7 +23,7 @@ modules are never instantiated.
 Every listing takes `-f/--filter` (folded unless `--case sensitive`); `get-function`
 and `xref` take `--at func:N`. `-o` writes the stream atomically and `--perf` reports
 stages and resource use. Rows carry coordinates, not hashes, so the module identity is
-stated once in the header `source_id`.
+not repeated on every row; a directory stream opens each file with its own scope record.
 
 Decompilation is per requested function, never a whole-module pass: listings do
 not enter the decompiler. `get-function` emits C-like code with a line-to-byte
@@ -72,9 +72,9 @@ unstructured cases degrade completely to `representation: wasm`, `decompiled: fa
 `reason: UNSUPPORTED_*`, an instruction view and original bytes; `--raw` always selects
 that view. Both retain code-body offsets and original file ranges.
 
-Listings are single-kind: header → records of that one kind → summary, so no row stream
+Listings are single-kind data rows, so no row stream
 mixes types with functions. Identity is the row's `at` coordinate (`type:0`, `func:1`,
-`data:1`, …); the header carries the input identity digest and rows never repeat it.
+`data:1`, …); rows never repeat a content hash.
 `xref --at` rows carry the caller coordinate in `context_at` and the referenced
 function in `detail.target`, and report only direct calls and `ref.func`;
 `call_indirect` is marked indirect and its runtime table target is not resolved.

@@ -45,8 +45,8 @@ const opened = await call("rxd_open", {path: "/workspace/app.js", backend: "js"}
 try {
   const input = {target_id: opened.target_id};
   const hits = await call("js_find", {input, string: "/api/login"});
-  if (!hits.summary.complete) throw new Error("incomplete query");
-  // `at` identifies a row; `context_at` names the structure that reported it.
+  // A stream is `{records: [...]}`; `at` identifies a row and `context_at` names
+  // the structure that reported it.
   const sources = await Promise.all(hits.records.map(hit =>
     call("js_slice", {input, at: hit.context_at})));
   const originalText = sources.map(source => source.detail.source);

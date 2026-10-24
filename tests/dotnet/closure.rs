@@ -19,7 +19,7 @@ fn dotnet_navigation_rejects_late_fetch_failures_without_partial_output() {
     let copied = directory.path().join("same-content.dll");
     fs::copy(&path, &copied).unwrap();
     let strings = jsonl(&run("strings", &path, &["--filter", "deep λ"]));
-    let hit = &strings[1];
+    let hit = &strings[0];
     let method_id = hit["context_at"].as_str().unwrap();
     let type_id = hit["parent_at"].as_str().unwrap();
     success(&run("get-method", &copied, &["--at", method_id, "--raw"]));

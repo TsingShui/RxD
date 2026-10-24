@@ -1,5 +1,12 @@
 # JavaScript backend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd js` uses Rust and Oxc for compact bundles and ordinary JavaScript files without
@@ -338,7 +345,7 @@ runtime value or dependency graph is known.
 ## Resource-reference query
 
 `resources FILE|DIR` is a parser-only projection with
-`header.detail.analysis: syntax` and `resource_profile: syntax_load_sites_v1`.
+`record detail.analysis: syntax` and `resource_profile: syntax_load_sites_v1`.
 It lists syntactic reference **candidates**, not proven calls to built-ins, successful
 loads, a browser dependency graph or page coverage. No network, package resolver,
 import-map expansion or input-code execution is involved. Default queries are parser-only;
@@ -397,7 +404,7 @@ complete assigned URL. Spread arguments retain their original spelling and
 ### Optional local const strings
 
 `--resolve-bindings` builds Oxc's existing node-budgeted lexical index and echoes
-`resolve_bindings: true`; header `binding_profile` becomes
+`resolve_bindings: true`; `binding_profile` detail becomes
 `local_const_strings_v1` (null otherwise). Site recognition remains syntax-based:
 this does not prove that a named web API is a built-in.
 
@@ -486,12 +493,10 @@ directory is a scan and a file is one input: there is no flag to choose, so the 
 input always produces the same stream. A listing is JSONL because it is a stream, so
 there is no `--jsonl` switch spelling out the default.
 
-Recursive JSONL concatenates each file's header/results/summary and appends a final
-`scan_summary` with `record, schema_version=2, backend, command, records, complete,
-detail`, where `detail` is `files`. Records belong to the preceding header's
-`detail.path/source_id`; identical content at different paths is emitted separately.
-Success requires exit 0 and a final complete `scan_summary`; empty directories still
-return it. Any file failure or resource limit fails the whole invocation atomically,
+Recursive JSONL is one flat data stream. Each file opens its rows with a `file` record
+(`detail.path`, `detail.input_bytes`); identical content at different paths is emitted
+separately. There is no `scan_summary`. Success requires exit 0; an empty directory is an
+empty stdout. Any file failure or resource limit fails the whole invocation atomically,
 exposing no partial stdout and preserving the `-o` target.
 
 Admission, syntax depth and applicable work/storage/output envelopes are checked
@@ -512,7 +517,7 @@ retries after parse failure. Standard `.js/.mjs/.cjs` remain non-JSX; a `.js` fi
 containing JSX must use `--syntax jsx`. Directory discovery only covers the eight
 extensions and does not follow links; `--syntax` applies to every file.
 
-`header.detail` and JSON `detail` always include `syntax` and `declaration_file`;
+`record detail` and JSON `detail` always include `syntax` and `declaration_file`;
 extended syntax sets `jsx|ts|tsx` and a boolean, standard JS sets null. `source_type`
 is the final script/module mode. Source identity is based on original bytes; entity/
 symbol/fragment IDs validate real nodes and are deterministic for the same content,
@@ -549,11 +554,11 @@ than guessing; these are not tsc results.
 
 TS merged/redeclared symbols keep Oxc's canonical first identifier; declaration/value/
 type facts are not textually merged into a new type. With multiple declarations,
-`symbols.detail`, resolved `xref` header detail and `slice` symbol detail expose
+`symbols.detail`, resolved `xref` records and `slice` symbol detail expose
 `declaration_ids` in original order as structure/fragment IDs. `slice(symbol)` stdout
 still extracts only the canonical declaration; the Agent can expand other
 declarations/overloads. Metadata declaration IDs and top-level records share the
-the record budget check before collection; summary/perf records only count top-level
+the record budget check before collection; perf records only count top-level
 results. A forged canonical symbol range from a later declaration is rejected.
 
 `slice(symbol)` also covers type aliases, interfaces, enums, namespaces, import-equals
@@ -572,7 +577,7 @@ identity are out of scope.
 Each invocation first obtains one fixed source buffer; parsing, searching and
 extraction all use it. It never parses one version and reopens another for extraction.
 
-`source_id` is the original file's identity digest, and it lives in the stream header only.
+A stream row does not repeat the input's identity digest.
 An entity coordinate is the span and its kind:
 
 ```text
@@ -580,8 +585,9 @@ An entity coordinate is the span and its kind:
 ```
 
 The hash is not repeated inside ids: a coordinate names a range, not a file, so the same
-coordinate means the same range in any input while the header says which input the rows
-describe. That is also why there is no stale-coordinate error on a rewritten file.
+coordinate means the same range in any input while the enclosing file scope says which
+input the rows describe. That is also why there is no stale-coordinate error on a
+rewritten file.
 `slice` and `entities --within`
 validate kind and real structure boundaries; a syntactically valid range without a
 matching entity is still an error. Paths are display metadata, not identity.
@@ -611,10 +617,10 @@ spans and never silently moves offsets.
 
 All structured output follows [ADR 0003](../adr/0003-output-envelope.md) and shared
 constructors, with no legacy flat shim. Single-file structure/find/xref/symbols JSONL
-is header → zero or more records → summary. Success requires exit 0 and
-`summary.complete=true`; budget failures return no partial result.
+is zero or more data records. Success requires exit 0 and
+`exit 0=true`; budget failures return no partial result.
 
-The header contains `record, backend, command, source_id, input_bytes, schema_version,
+The data rows contain `record, backend, command, source_id, input_bytes, schema_version,
 query, detail`. `input_bytes` replaces `file_bytes`. Query echoes: entities/functions/classes/methods
 `within, depth, kind, name`; find `filter, case, resolve_static`; identifiers
 `name, filter, case, role, within`; calls `name, filter, case, within`; members
@@ -640,13 +646,13 @@ script/module mode. `root_id` always points at program (`parent_id: null`,
 `container, format, entry` or null for a direct file; an entry path is the
 archive path, while identity and offsets use the entry's original bytes. Refs
 `selected` is `name, role, start, end, entity_id, context_id, type_reference,
-value_reference`; `declaration` is `start, end, entity_id` or null. These header
+value_reference`; `declaration` is `start, end, entity_id` or null. These query-level
 objects are not independent records. Summary is `record, records, complete, detail`
 with `detail: {}` except resources' selected resolved/unresolved counts.
 
 Data records always contain `record, at, source_id, parent_at, context_at, start, end,
 detail`; all keys are present and inapplicable values are null. `source_id` is null (the
-header carries the input identity). Entity and symbol coordinates carry no hash, so the
+file scope identifies the input). Entity and symbol coordinates carry no hash, so the
 same coordinate in two inputs is the same position, not the same bytes;
 match/reference/unresolved records have `at: null` and use `parent_at` for the containing
 structure, which can be passed to `slice`. `symbol.parent_at` is the canonical
@@ -686,7 +692,7 @@ coordinate), `--byte OFFSET` (a position, possibly inside a multi-byte identifie
 target and site, each row naming its own `detail.target`).
 
 `locate` returns one `record=locate`; `slice --json` returns one `record=source`; neither
-has header/summary and both add `backend=js, command, schema_version=2` outside.
+has data records and both add `backend=js, command, schema_version=2` outside.
 `locate` outer id/parent_id/start/end come from the innermost entity and `context_at`
 is the local fragment; `detail.entity`/`ancestors` are complete entity bodies ordered
 inner to outer. `slice` outer id is the requested target, start/end the extracted range,
@@ -743,7 +749,7 @@ identifier. Whitespace, strings, comments, keywords, static property keys and `f
 `obj.foo` return `NOT_FOUND`; object/destructuring shorthand that is both binding
 and reference is selectable. `key` in `obj[key]` is a normal lexical reference.
 
-Refs header detail adds `analysis: lexical`, `resolution`, `selected`, `declaration`:
+Refs query-level metadata used to add `analysis: lexical`, `resolution`, `selected`, `declaration`:
 
 - `selected` has decoded `name`, `role: declaration|reference`, original `start/end`,
   `entity_id`, `context_at`.
@@ -780,7 +786,7 @@ parser-only. Structural traversal checks entity and AST-depth budgets first; sem
 nodes above the selected `semantic_nodes` envelope (input-scaled for CLI, fixed
 for explicit service/default library callers) return `RESOURCE_LIMIT` before
 index allocation. Reference records are budgeted before collecting positions; output
-bytes include header/summary. The node budget is not a parser/peak-RSS limit. Perf
+bytes include data records. The node budget is not a parser/peak-RSS limit. Perf
 adds a semantic phase and semantic_nodes/symbols/references counts only on those paths.
 
 ## Symbol discovery
@@ -830,7 +836,7 @@ containing structure. A symbol record's `at` can be passed directly to `xref --a
 Both record kinds mix in ascending `(start, end)`. Summary records count symbols plus
 unresolved references; complete means the query completed, not resolution/runtime
 completeness. Record budgets are checked before collecting identities/positions;
-output bytes include header/summary. Semantic node admission follows ADR 0016;
+output bytes include data records. Semantic node admission follows ADR 0016;
 structural depth, input and atomic-output contracts remain. Perf adds the semantic phase/counts only for xref/symbols/slice-symbol.
 
 ## Declaration extraction by binding
@@ -1039,9 +1045,9 @@ success.
 
 JSONL determines matches and checks the total output budget before writing; resource
 limits never silently truncate. An I/O error during writing may leave partial bytes;
-consumers detect failure by non-zero exit or missing summary. `-o FILE` writes a
-same-directory temporary file then replaces the target, preserving the old content on
-failure. Raw source stdout has no summary; exit status determines completeness.
+consumers detect failure by non-zero exit. `-o FILE` writes a same-directory temporary
+file then replaces the target, preserving the old content on failure. Raw source stdout
+is one object; exit status determines completeness.
 
 Tests use handwritten small JS fixtures covering anonymous/named/arrow/nested
 functions, closures, object/class methods, constructors, getters/setters, async and
@@ -1054,9 +1060,8 @@ byte-exact.
 Identity tests cover same-name functions, identical content at different paths, changed
 content at the same path, forged ranges, wrong kinds and incompatible ID versions.
 Filter tests cover `--within`, depth, references when a parent is filtered, and
-deterministic ordering. Output tests cover stdout/stderr separation, JSONL header/
-summary, empty-result exit, budget failure, write failure, raw bytes and `-o`
-consistency. Resource tests include deep nesting and many entities.
+deterministic ordering. Output tests cover stdout/stderr separation, data-row-only JSONL,
+empty-result exit, budget failure, write failure, raw bytes and `-o` consistency. Resource tests include deep nesting and many entities.
 
 Agent acceptance tasks locate an API request function, explain error-trigger
 conditions, trace an outer closure variable, and distinguish same-name bindings in
@@ -1066,9 +1071,9 @@ lower task correctness is not acceptance.
 ## MCP projection
 
 `js_entities/functions/classes/methods/find/identifiers/calls/members/locate/xref/symbols/get` reuse existing
-implementations. JSONL becomes header/records/summary; recursive directories keep
-`files` and `scan_summary` (only for directory-capable listings and `find`); get uses the
-original source record's `detail.source` with source/CRLF unchanged. Isolated UTF-16
+implementations. JSONL becomes `{"records": [...]}`; recursive directories are flat
+`file` data records followed by each file's rows; get uses the original source record's
+`detail.source` with source/CRLF unchanged. Isolated UTF-16
 surrogate decoded values are represented losslessly as `{utf16_units: [...]}` in
 structuredContent, while ordinary strings stay strings; CLI JSON escaping is unchanged.
 A directory target must declare `backend: js`, pin the file set and obey file/discovery/

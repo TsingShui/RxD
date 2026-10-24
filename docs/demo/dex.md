@@ -63,7 +63,7 @@ The old rasc MCP transport is not imported; the shared stdio entry is in the
 
 ## Consuming schema v2
 
-JSONL even for zero results; success requires exit 0 and `summary.complete=true`.
+JSONL even for zero results; success requires exit 0 (zero rows is an empty stdout).
 A FETCH answers with one JSON record (`class_body` / `method_body`) whose
 `detail.code` is the Java source. Navigation fields are always present but null; FETCH
 coordinates are never constructed

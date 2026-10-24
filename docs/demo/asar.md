@@ -49,12 +49,12 @@ of a real native module or run the application.
 "$RXD" asar entries "$ASAR" -o "$DEMO/list.jsonl"
 ```
 
-Header backend is `asar`, `header.detail.analysis` is `metadata`. Structured output
+Each row has backend `asar`; its detail reports metadata. Structured output
 follows [ADR 0003](../adr/0003-output-envelope.md), `schema_version=2`: file records
 carry path/bytes/storage under `detail` and are ordered by logical path. Packed entries
 expose `range_valid`; invalid ranges expose `range_error` (`out_of_bounds` or
-`overflow`). `summary.detail.invalid_ranges` counts them; the summary also has
-`records` and `complete`. The example has three entries and one out-of-bounds decoy
+`overflow`). Invalid ranges remain visible as `range_error` on the affected row. The
+example has three entries and one out-of-bounds decoy
 (`invalid_ranges: 1`); the decoy is listed without reading its claimed payload.
 
 `list -o` bytes are identical to stdout. Complete enumeration does not mean every entry

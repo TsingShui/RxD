@@ -130,53 +130,8 @@ fn assert_record(row: &Value) {
 
 fn jvm_jsonl(output: &Output) -> Vec<Value> {
     let rows = jsonl(output);
-    let header = &rows[0];
-    assert_keys(
-        header,
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_eq!(header["record"], "header");
-    assert_eq!(header["backend"], "jvm");
-    assert_eq!(header["schema_version"], 2);
-    assert!(header["input_bytes"].as_u64().unwrap() > 0);
-    assert_keys(&header["detail"], &["analysis", "release"]);
-    assert_eq!(
-        header["detail"]["analysis"],
-        header["command"].as_str().unwrap()
-    );
-    for row in &rows[1..rows.len() - 1] {
+    for row in &rows {
         assert_record(row);
-    }
-    let summary = rows.last().unwrap();
-    assert_keys(summary, &["record", "records", "complete", "detail"]);
-    assert_eq!(summary["record"], "summary");
-    assert_eq!(summary["records"], rows.len() - 2);
-    assert_eq!(summary["complete"], true);
-    match header["command"].as_str().unwrap() {
-        "classes" => {
-            assert_keys(&summary["detail"], &["classes", "records"]);
-            assert_eq!(
-                summary["detail"]["classes"],
-                rows.iter().filter(|r| r["record"] == "class").count()
-            );
-        }
-        "methods" => {
-            assert_keys(&summary["detail"], &["classes", "records"]);
-            assert_eq!(
-                summary["detail"]["records"],
-                rows.iter().filter(|r| r["record"] == "method").count()
-            );
-        }
-        _ => assert_keys(&summary["detail"], &[]),
     }
     rows
 }
@@ -499,7 +454,6 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
 
     // String literal reference: the ldc site in FlowFixture.text().
     let string_hits = jvm_jsonl(&run(&["xref", "-m", "前端", "--kind", "string"], &path));
-    assert_eq!(string_hits[0]["command"], "xref");
     let refs: Vec<&Value> = string_hits
         .iter()
         .filter(|v| v["record"] == "reference")
@@ -614,8 +568,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
         &["xref", "-m", "zzzznotexist", "--kind", "method"],
         &gson,
     ));
-    assert!(!empty.iter().any(|v| v["record"] == "reference"));
-    assert_eq!(empty.last().unwrap()["complete"], true);
+    assert!(empty.is_empty());
 
     // Clap rejects both anchor faces before the query runs.
     failure(

@@ -32,11 +32,8 @@ fn pyc_codes_enumerates_the_independent_code_graph_without_reconstruction() {
     let output = codes(&path, &[]);
     let rows = rows(&output);
     let codes = oracle["codes"].as_array().unwrap();
-    assert_eq!(rows.len(), codes.len() + 2);
-    assert_eq!(rows[0]["record"], "header");
-    assert_eq!(rows[0]["schema_version"], 2);
-    assert_eq!(rows[0]["detail"]["analysis"], "metadata");
-    for (index, (row, code)) in rows[1..rows.len() - 1].iter().zip(codes).enumerate() {
+    assert_eq!(rows.len(), codes.len());
+    for (index, (row, code)) in rows[..].iter().zip(codes).enumerate() {
         assert_eq!(row["record"], "code");
         assert_eq!(row["at"], format!("code:{index}"));
         assert_eq!(row["detail"]["index"], index);
@@ -48,8 +45,7 @@ fn pyc_codes_enumerates_the_independent_code_graph_without_reconstruction() {
             code["code_hex"].as_str().unwrap().len() / 2
         );
     }
-    assert_eq!(rows.last().unwrap()["records"], codes.len());
-    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.len(), codes.len());
 }
 
 #[test]
@@ -62,7 +58,7 @@ fn pyc_codes_preserves_spans_parents_filters_and_path_independent_ids() {
     let (dir, renamed) = fixture(&bytes, "renamed.bin");
     assert_eq!(codes(&renamed, &[]).stdout, codes(&path, &[]).stdout);
     assert_eq!(codes(&path, &[]).stdout, codes(&path, &[]).stdout);
-    for (row, expected) in all[1..all.len() - 1]
+    for (row, expected) in all[..]
         .iter()
         .zip(oracle["marshal_ranges"]["code_ranges"].as_array().unwrap())
     {
@@ -89,7 +85,7 @@ fn pyc_codes_preserves_spans_parents_filters_and_path_independent_ids() {
             .unwrap();
         let parent = edge["parent"]
             .as_u64()
-            .map(|parent| all[parent as usize + 1]["at"].clone())
+            .map(|parent| all[parent as usize]["at"].clone())
             .unwrap_or(Value::Null);
         assert_eq!(row["parent_at"], parent);
         assert_eq!(row["detail"]["kind"], "unknown");
@@ -97,29 +93,22 @@ fn pyc_codes_preserves_spans_parents_filters_and_path_independent_ids() {
     }
     // Two original code names are "same"; filtering retains their global indexes/IDs.
     let same = rows(&codes(&path, &["--name", "same"]));
-    assert_eq!(same.len(), 4);
-    assert_eq!(
-        same[0]["query"],
-        serde_json::json!({"filter":null,"case":"insensitive","name":"same","at":null,"version":null})
-    );
-    for row in &same[1..3] {
+    assert_eq!(same.len(), 2);
+    for row in &same {
         assert_eq!(
-            *row,
-            all[row["detail"]["index"].as_u64().unwrap() as usize + 1]
+            all[row["detail"]["index"].as_u64().unwrap() as usize]["at"],
+            row["at"]
         );
     }
     let empty = rows(&codes(&path, &["--name", "absent"]));
-    assert_eq!(empty.len(), 2);
-    assert_eq!(empty[1]["records"], 0);
-    assert_eq!(empty[1]["complete"], true);
+    assert!(empty.is_empty());
     let selected = rows(&codes(&path, &["--at", "code:4"]));
-    assert_eq!(selected[1], all[5]);
+    assert_eq!(selected[0], all[4]);
     failure(codes(&path, &["--at", "code:99999"]), 2, "NOT_FOUND");
     let intersected = rows(&codes(&path, &["--at", "code:0", "--name", "same"]));
-    assert_eq!(intersected.len(), 2);
+    assert!(intersected.is_empty());
     let raw = rows(&codes(&corpus("graph.marshal"), &["--version", "3.12"]));
-    assert_eq!(raw[0]["query"]["version"], "3.12");
-    for (raw, pyc) in raw[1..raw.len() - 1].iter().zip(&all[1..all.len() - 1]) {
+    for (raw, pyc) in raw[..].iter().zip(&all[..]) {
         assert_eq!(raw["detail"]["name"], pyc["detail"]["name"]);
         assert_eq!(raw["start"].as_u64().unwrap() + 16, pyc["start"]);
     }
@@ -176,13 +165,12 @@ fn pyc_codes_retains_container_aliases_unicode_and_unavailable_bodies() {
     let bytes = metadata_module(&bytes_field(&[100]), &consts, b"z\x08<module>"); // Odd co_code deliberately remains unscanned.
     let (_dir, path) = fixture(&bytes, "metadata.marshal");
     let all = rows(&codes(&path, &["--version", "3.12"]));
-    assert_eq!(all.len(), 4);
-    assert_eq!(all[0]["detail"]["instruction_validation"], "not_scanned");
-    assert_eq!(all[2]["detail"]["name"], "雪");
-    assert_eq!(all[2]["detail"]["qualname"], "雪");
-    assert_eq!(all[2]["detail"]["body_status"], "empty");
-    assert_eq!(all[2]["detail"]["incoming"].as_array().unwrap().len(), 4);
-    for incoming in &all[2]["detail"]["incoming"].as_array().unwrap()[1..] {
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[1]["detail"]["name"], "雪");
+    assert_eq!(all[1]["detail"]["qualname"], "雪");
+    assert_eq!(all[1]["detail"]["body_status"], "empty");
+    assert_eq!(all[1]["detail"]["incoming"].as_array().unwrap().len(), 4);
+    for incoming in &all[1]["detail"]["incoming"].as_array().unwrap()[1..] {
         let start = incoming["start"].as_u64().unwrap() as usize;
         let end = incoming["end"].as_u64().unwrap() as usize;
         assert_eq!(&bytes[start..end], b"r\0\0\0\0");
@@ -198,10 +186,10 @@ fn pyc_codes_retains_container_aliases_unicode_and_unavailable_bodies() {
         "unavailable.marshal",
     );
     let all = rows(&codes(&path, &["--version", "3.12"]));
-    assert_eq!(all[1]["detail"]["body_status"], "unavailable");
-    assert!(all[1]["detail"]["bytecode_bytes"].is_null());
-    assert!(all[1]["detail"]["name"].is_null());
-    assert_eq!(all[1]["detail"]["name_bytes"], "eda080");
+    assert_eq!(all[0]["detail"]["body_status"], "unavailable");
+    assert!(all[0]["detail"]["bytecode_bytes"].is_null());
+    assert!(all[0]["detail"]["name"].is_null());
+    assert_eq!(all[0]["detail"]["name_bytes"], "eda080");
     let mut cycle = metadata_module(&bytes_field(&[]), b")\x01r\0\0\0\0", b"z\x01x");
     cycle[0] |= 0x80;
     let (_dir, path) = fixture(cycle, "cycle.marshal");
@@ -241,21 +229,21 @@ fn pyc_codes_marks_code_containment_through_aliased_const_tables_without_false_s
     let bytes = metadata_module(&bytes_field(&[]), &consts, b"z\x08<module>");
     let (_dir, path) = fixture(&bytes, "aliased-table.marshal");
     let all = rows(&codes(&path, &["--version", "3.12"]));
-    assert_eq!(all.len(), 5);
-    assert_eq!(all[2]["detail"]["name"], "shared");
-    assert_eq!(all[3]["detail"]["name"], "owner");
-    let edges = all[2]["detail"]["incoming"].as_array().unwrap();
+    assert_eq!(all.len(), 3);
+    assert_eq!(all[1]["detail"]["name"], "shared");
+    assert_eq!(all[2]["detail"]["name"], "owner");
+    let edges = all[1]["detail"]["incoming"].as_array().unwrap();
     assert_eq!(edges.len(), 2);
     let alias = &edges[1];
-    assert_eq!(all[3]["at"], "code:2");
+    assert_eq!(all[2]["at"], "code:2");
     // Ids nested in `detail` are the same copy-only coordinate as `at`.
-    assert_eq!(alias["owner_id"], all[3]["at"]);
+    assert_eq!(alias["owner_id"], all[2]["at"]);
     assert!(alias["start"].is_null());
     assert!(alias["end"].is_null());
     let start = alias["alias_start"].as_u64().unwrap() as usize;
     let end = alias["alias_end"].as_u64().unwrap() as usize;
     assert_eq!(&bytes[start..end], b"r\0\0\0\0");
-    assert_eq!(all[3]["detail"]["fields"]["consts"]["reference"], true);
+    assert_eq!(all[2]["detail"]["fields"]["consts"]["reference"], true);
 }
 
 #[test]
@@ -265,28 +253,6 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
     let data = rows(&output);
     assert_js_keys(
         &data[0],
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_js_keys(
-        &data[0]["detail"],
-        &[
-            "analysis",
-            "python_version",
-            "code_count",
-            "instruction_validation",
-        ],
-    );
-    assert_js_keys(
-        &data[1],
         &[
             "record",
             "at",
@@ -299,7 +265,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         ],
     );
     assert_js_keys(
-        &data[1]["detail"],
+        &data[0]["detail"],
         &[
             "index",
             "name",
@@ -333,7 +299,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         ],
     );
     assert_js_keys(
-        &data[1]["detail"]["fields"],
+        &data[0]["detail"]["fields"],
         &[
             "arg_count",
             "posonly_arg_count",
@@ -354,7 +320,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         ],
     );
     assert_js_keys(
-        &data[1]["detail"]["fields"]["code"],
+        &data[0]["detail"]["fields"]["code"],
         &[
             "start",
             "end",
@@ -441,7 +407,7 @@ fn pyc_codes_rejects_unverified_magic_and_incomplete_marshal() {
         let mut bytes = original.clone();
         bytes[4..8].copy_from_slice(&flags.to_le_bytes());
         let (_dir, path) = fixture(bytes, "header.pyc");
-        assert_eq!(rows(&codes(&path, &[]))[1]["detail"]["name"], "<module>");
+        assert_eq!(rows(&codes(&path, &[]))[0]["detail"]["name"], "<module>");
     }
     for flags in [2_u32, 4, u32::MAX] {
         let mut bytes = original.clone();
@@ -492,7 +458,7 @@ fn pyc_codes_preserves_shared_dictionary_definition_and_reference_sites() {
         "dict-alias.marshal",
     );
     let all = rows(&codes(&path, &["--version", "3.12"]));
-    let incoming = &all[2]["detail"]["incoming"][1];
+    let incoming = &all[1]["detail"]["incoming"][1];
     assert_eq!(incoming["constant_path"], serde_json::json!([0, 1]));
     assert!(incoming["start"].is_null());
     assert!(incoming["alias_start"].is_u64());

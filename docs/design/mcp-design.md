@@ -216,8 +216,8 @@ fails.
 
 HTML `html_entries` captures one regular immutable file for a path or file target. Its
 `lexical_naive_v1` records are not a DOM or browser-complete parse; no page code executes
-and no external resources load. Header/records/summary retain CLI values and order with
-logical paths restored (not byte-identical JSONL). Filters `kind/tag/attr/within/depth/
+and no external resources load. Data rows retain CLI values and order with logical paths
+restored (not byte-identical JSONL). Filters `kind/tag/attr/within/depth/
 filter` are the CLI flags of the same name; records carry their `at` coordinate and the
 reporting node in `context_at`. `html_extract` reuses backend validation, selection,
 receipt and artifact identity: its `at` argument is the coordinate an `entries` row
@@ -240,11 +240,11 @@ Content/format checks, not entry extension, select the next backend.
 ## Structured results and errors
 
 Results are shaped generically from the captured stream, with no per-tool mapping:
-ordinary JSONL becomes `{header, records, summary}`, recursive JS becomes
-`{files: [{header, records, summary}], scan_summary}` including zero-file scans (an
-empty scan is `{files: [], scan_summary}`), a single JSON object is returned unchanged
-(a FETCH record or a whole-class document), and any other output (XML manifest, Java or
-C# source, original text) is returned as `{text: "..."}`. Stable outer navigation fields
+ordinary JSONL becomes `{"records": [...]}` with the data rows unchanged, a single JSON
+object is returned unchanged (a FETCH record or a whole-class document), and any other
+output (XML manifest, Java or C# source, original text) is returned as `{text: "..."}`.
+Recursive JS streams are flat too; each file opens its rows with a `file` data record
+carrying `detail.path` and `detail.input_bytes`, and an empty scan is `{"records": []}`. Stable outer navigation fields
 remain nullable under schema version 2: `at` names a record, `parent_at` its structural
 owner and `context_at` the caller that reported it, so no caller depends on a
 backend-specific identity key. Original text is unchanged, including line endings. JS get

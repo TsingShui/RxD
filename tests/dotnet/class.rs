@@ -30,7 +30,6 @@ fn dotnet_class_il_fetch_includes_all_owned_generated_methods_with_original_il_a
     assert_fetch_protocol(&row, "get-class");
     assert_eq!(row["record"], "class_body");
     assert_eq!(row["at"], id);
-    assert_eq!(row["detail"]["complete"], true);
     assert_eq!(row["detail"]["representation"], "il");
     assert_eq!(row["detail"]["decompiled"], false);
     assert!(row["detail"]["code"].is_null());
@@ -283,8 +282,7 @@ fn dotnet_class_fetch_rejects_corrupt_ownership_and_original_method_bodies_witho
         if offset == nested + 2 {
             assert_eq!(output.status.code(), Some(0), "{output:?}");
             assert!(output.stdout.is_empty());
-            let written: Value = serde_json::from_slice(&fs::read(&destination).unwrap()).unwrap();
-            assert_eq!(written["detail"]["complete"], true);
+            let _written: Value = serde_json::from_slice(&fs::read(&destination).unwrap()).unwrap();
         } else {
             assert_eq!(
                 output.status.code(),

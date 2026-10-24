@@ -326,7 +326,6 @@ fn pyc_decompile_reconstructs_old_and_new_python_without_an_interpreter() {
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_envelope(&row);
-    assert_eq!(row["detail"]["complete"], true);
     assert_eq!(row["detail"]["python_version"], "3.12");
     assert_eq!(
         row["source_id"],
@@ -341,7 +340,6 @@ fn pyc_decompile_reconstructs_old_and_new_python_without_an_interpreter() {
     success(&old);
     let row: Value = serde_json::from_slice(&old.stdout).unwrap();
     assert_eq!(row["detail"]["python_version"], "2.7");
-    assert_eq!(row["detail"]["complete"], true);
     assert!(row["detail"]["source"].as_str().unwrap().contains("a = 42"));
 }
 

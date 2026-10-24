@@ -25,18 +25,7 @@ fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
         .unwrap();
     success(&output);
     assert!(output.stdout.is_empty());
-    let rows: Vec<Value> = fs::read_to_string(&destination)
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert_eq!(rows.len(), 2);
-    assert_eq!(
-        rows[0]["source_id"],
-        "8caa89ad89b5efb9405edd796110b18c63e9545e3dfd9c2719ba6de1be484786"
-    );
-    assert_eq!(rows[1]["records"], 0);
-    assert_eq!(rows[1]["complete"], true);
+    assert!(fs::read_to_string(&destination).unwrap().is_empty());
     let profiles: Vec<Value> = String::from_utf8(output.stderr)
         .unwrap()
         .lines()
@@ -89,19 +78,22 @@ fn input_scaled_pyc_output_policy_covers_static_and_source_json() {
         success(&output);
         assert!(output.stdout.is_empty(), "{command}");
         let bytes = fs::read(&destination).unwrap();
+        if bytes.is_empty() {
+            continue;
+        }
         assert_eq!(bytes.last(), Some(&b'\n'), "{command}");
         let rows: Vec<Value> = std::str::from_utf8(&bytes)
             .unwrap()
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        let last = rows.last().unwrap();
-        if last["record"] == "summary" {
-            assert_eq!(last["complete"], true, "{command}");
-            assert_eq!(last["records"], rows.len() - 2, "{command}");
+        if rows.len() == 1 && rows[0].get("backend").is_some() {
+            assert_eq!(rows[0]["detail"]["complete"], true, "{command}");
         } else {
-            assert_eq!(rows.len(), 1, "{command}");
-            assert_eq!(last["detail"]["complete"], true, "{command}");
+            assert!(
+                rows.iter().all(|row| row["record"] != "summary"),
+                "{command}"
+            );
         }
         let reports: Vec<Value> = String::from_utf8(output.stderr)
             .unwrap()
@@ -157,10 +149,8 @@ fn input_scaled_jvm_keeps_format_valid_metadata_above_four_kib() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.len(), 3);
-    assert_eq!(rows[0]["source_id"], rxd_core::identity::input_id(&bytes));
-    assert_eq!(rows[1]["at"], format!("L{name};"));
-    assert_eq!(rows[2]["complete"], true);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["at"], format!("L{name};"));
 }
 
 #[cfg(feature = "backend-pyc")]

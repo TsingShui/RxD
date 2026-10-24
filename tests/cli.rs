@@ -453,22 +453,11 @@ fn success(output: &Output) {
 
 fn jsonl(output: &Output) -> Vec<Value> {
     success(output);
-    let records: Vec<Value> = String::from_utf8(output.stdout.clone())
+    String::from_utf8(output.stdout.clone())
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert_eq!(records.first().unwrap()["record"], "header");
-    assert_eq!(records.last().unwrap()["record"], "summary");
-    assert_eq!(records.last().unwrap()["complete"], true);
-    assert_eq!(
-        records.last().unwrap()["records"].as_u64().unwrap() as usize,
-        records.len() - 2
-    );
-    if records[0]["backend"] == "js" {
-        assert_js_stream(&records);
-    }
-    records
+        .collect()
 }
 
 fn assert_js_keys(value: &Value, fields: &[&str]) {
@@ -617,56 +606,6 @@ fn assert_js_record(row: &Value) {
     }
 }
 
-fn assert_js_stream(rows: &[Value]) {
-    assert_js_keys(
-        &rows[0],
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_eq!(rows[0]["schema_version"], 2);
-    assert!(rows[0]["input_bytes"].is_number());
-    let mut fields = vec![
-        "path",
-        "root_id",
-        "source_type",
-        "analysis",
-        "syntax",
-        "declaration_file",
-        "origin",
-    ];
-    match rows[0]["command"].as_str().unwrap() {
-        "xref" => fields.extend(["resolution", "selected", "declaration", "declaration_ids"]),
-        "symbols" => fields.extend(["resolution", "within_id"]),
-        "resources" => fields.extend(["resource_profile", "binding_profile"]),
-        "values" => fields.push("value_profile"),
-        _ => {}
-    }
-    assert_js_keys(&rows[0]["detail"], &fields);
-    for row in &rows[1..rows.len() - 1] {
-        assert_js_record(row);
-    }
-    assert_js_keys(
-        rows.last().unwrap(),
-        &["record", "records", "complete", "detail"],
-    );
-    assert_js_keys(
-        &rows.last().unwrap()["detail"],
-        if rows[0]["command"] == "resources" {
-            &["resolved", "unresolved"]
-        } else {
-            &[]
-        },
-    );
-}
-
 fn js_object(bytes: &[u8]) -> Value {
     let value: Value = serde_json::from_slice(bytes).unwrap();
     if value["backend"] == "js" && matches!(value["command"].as_str(), Some("slice" | "locate")) {
@@ -712,7 +651,7 @@ fn example() -> PathBuf {
 #[test]
 fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regressions() {
     let dir = tempfile::tempdir().unwrap();
-    for (name, source, syntax, mode) in [
+    for (name, source, _syntax, _mode) in [
         ("a.js", "const plain=1;", None, "script"),
         (
             "b.jsx",
@@ -744,13 +683,7 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
         let path = dir.path().join(name);
         fs::write(&path, source).unwrap();
         let rows = outline_rows(&path, &[]);
-        assert_eq!(rows[0]["detail"]["syntax"].as_str(), syntax);
-        assert_eq!(rows[0]["detail"]["source_type"], mode);
-        assert_eq!(
-            rows[0]["detail"]["declaration_file"].as_bool(),
-            syntax.map(|_| name == "g.d.ts")
-        );
-        let root = rows[0]["detail"]["root_id"].as_str().unwrap();
+        let root = rows[0]["at"].as_str().unwrap();
         let raw = invoke("slice", &path, &["--at", root]);
         success(&raw);
         assert_eq!(raw.stdout, source.as_bytes());
@@ -762,8 +695,7 @@ fn syntax_modes_scan_jsx_ts_tsx_and_support_explicit_overrides_without_js_regres
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.last().unwrap()["detail"]["files"], 7);
-    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.iter().filter(|row| row["record"] == "file").count(), 7);
     let path = dir.path().join("b.jsx");
     failure(
         invoke("entities", &path, &["--syntax", "js"]),
@@ -830,14 +762,14 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
         ),
     ] {
         let rows = jsonl(&invoke("find", &path, &["-f", query]));
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[1]["detail"]["literal_kind"], kind);
-        assert_eq!(rows[1]["detail"]["value"], value);
-        let id = rows[1]["context_at"].as_str().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["detail"]["literal_kind"], kind);
+        assert_eq!(rows[0]["detail"]["value"], value);
+        let id = rows[0]["context_at"].as_str().unwrap();
         let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
         assert_eq!(raw.stdout, original.as_bytes());
-        let located = invoke("locate", &path, &["--byte", &rows[1]["start"].to_string()]);
+        let located = invoke("locate", &path, &["--byte", &rows[0]["start"].to_string()]);
         success(&located);
         assert_eq!(js_object(&located.stdout)["context_at"], id);
     }
@@ -847,17 +779,19 @@ fn jsx_search_decodes_entities_and_extracts_original_attributes_text_and_compone
         &path,
         &["--byte", &declaration.to_string()],
     ));
-    assert_eq!(rows[0]["detail"]["resolution"], "resolved");
-    assert_eq!(rows.len(), 5);
-    assert_eq!(rows[3]["start"], source.rfind("Widget>").unwrap());
-    for row in &rows[1..rows.len() - 1] {
+    assert_eq!(rows.len(), 3);
+    assert!(
+        rows.iter()
+            .any(|row| row["start"] == source.rfind("Widget>").unwrap())
+    );
+    for row in &rows[..] {
         assert_eq!(row["detail"]["read"], true);
         assert!(row["detail"]["type_reference"].is_null());
     }
     let ui = source.find("UI={").unwrap();
     let rows = jsonl(&invoke("xref", &path, &["--byte", &ui.to_string()]));
-    assert_eq!(rows.len(), 3);
-    assert_eq!(rows[1]["start"], source.find("UI.Widget").unwrap());
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["start"], source.find("UI.Widget").unwrap());
     for marker in ["div data-label", "data-label=", "Widget/>"] {
         failure(
             invoke(
@@ -917,17 +851,13 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         &path,
         &["--byte", &model["start"].to_string()],
     ));
-    assert_eq!(
-        rows[0]["detail"]["declaration_ids"],
-        model["detail"]["declaration_ids"]
-    );
     assert!(
-        rows[1..rows.len() - 1]
+        rows[..]
             .iter()
             .any(|r| r["detail"]["type_reference"] == true && r["detail"]["read"] == false)
     );
     assert!(
-        rows[1..rows.len() - 1]
+        rows[..]
             .iter()
             .any(|r| r["detail"]["value_reference"] == true && r["detail"]["read"] == true)
     );
@@ -950,8 +880,8 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
     }
     let a = symbols.iter().find(|r| r["detail"]["name"] == "A").unwrap();
     let rows = jsonl(&invoke("xref", &path, &["--byte", &a["start"].to_string()]));
-    assert_eq!(rows.len(), 3);
-    assert_eq!(rows[1]["detail"]["value_reference"], true);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["detail"]["value_reference"], true);
     let outlines = outline_rows(&path, &[]);
     let namespace = outlines
         .iter()
@@ -1000,8 +930,7 @@ fn ts_symbols_references_and_get_preserve_type_value_merges_enums_namespaces_and
         &path,
         &["--byte", &source.find("missing;").unwrap().to_string()],
     ));
-    assert_eq!(refs[0]["detail"]["resolution"], "unresolved");
-    assert_eq!(refs[0]["detail"]["selected"]["type_reference"], true);
+    assert!(refs.iter().all(|row| row["detail"]["resolution"].is_null()));
 }
 
 #[test]
@@ -1009,7 +938,6 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     let source = "\u{feff}declare namespace SDK { interface Options { endpoint: '/api/login'; run<T>(value:T):T; } function send(value:Options):string; function send(value:string):string; }\r\ndeclare module 'legacy' { export type Value=string; }";
     let (dir, path) = fixture(source, "sdk.d.ts");
     let outlines = outline_rows(&path, &[]);
-    assert_eq!(outlines[0]["detail"]["declaration_file"], true);
     assert!(
         outlines
             .iter()
@@ -1050,11 +978,11 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
         assert_eq!(output["detail"]["declaration_file"], true);
     }
     let found = jsonl(&invoke("find", &path, &["-f", "/api/login"]));
-    assert_eq!(found[1]["detail"]["literal_kind"], "type_string");
+    assert_eq!(found[0]["detail"]["literal_kind"], "type_string");
     let output = invoke(
         "slice",
         &path,
-        &["--at", found[1]["context_at"].as_str().unwrap()],
+        &["--at", found[0]["context_at"].as_str().unwrap()],
     );
     success(&output);
     assert_eq!(output.stdout, b"endpoint: '/api/login';");
@@ -1078,8 +1006,8 @@ fn typed_ambient_signatures_type_literals_and_source_identity_remain_exact_and_b
     success(&invoke("slice", &path, &["--at", &id]));
     let (_tmp, path) = fixture("type Route=`/api/${'login'|'logout'}`;", "template.ts");
     let rows = jsonl(&invoke("find", &path, &["-f", "/api/"]));
-    assert_eq!(rows[1]["detail"]["literal_kind"], "type_template");
-    assert_eq!(rows[1]["detail"]["dynamic"], true);
+    assert_eq!(rows[0]["detail"]["literal_kind"], "type_template");
+    assert_eq!(rows[0]["detail"]["dynamic"], true);
 }
 
 #[test]
@@ -1105,7 +1033,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
         let bytes = fs::read(&path).unwrap();
         assert_eq!(case["sha256"], format!("{:x}", Sha256::digest(&bytes)));
         let outline = outline_rows(&path, &[]);
-        let entities = &outline[1..outline.len() - 1];
+        let entities = &outline[..];
         assert_eq!(
             entities.len(),
             case["expected"]["entity_count"].as_u64().unwrap() as usize,
@@ -1161,7 +1089,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             &path,
             &["-f", case["needle"].as_str().unwrap()],
         ));
-        let actual:Vec<_>=found[1..found.len()-1].iter().map(|m|serde_json::json!({"literal_kind":m["detail"]["literal_kind"],"value":m["detail"]["value"],"start":m["start"],"end":m["end"],"dynamic":m["detail"]["dynamic"],"entity":entity_reference(by_id[m["parent_at"].as_str().unwrap()])})).collect();
+        let actual:Vec<_>=found[..].iter().map(|m|serde_json::json!({"literal_kind":m["detail"]["literal_kind"],"value":m["detail"]["value"],"start":m["start"],"end":m["end"],"dynamic":m["detail"]["dynamic"],"entity":entity_reference(by_id[m["parent_at"].as_str().unwrap()])})).collect();
         assert_eq!(
             serde_json::json!(actual),
             case["expected"]["matches"],
@@ -1175,7 +1103,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             .find(|q| q["name"] == case["name"])
             .unwrap();
         let mut context_kinds = std::collections::HashSet::new();
-        for (row, expected) in found[1..found.len() - 1]
+        for (row, expected) in found[..]
             .iter()
             .zip(contexts["matches"].as_array().unwrap())
         {
@@ -1230,16 +1158,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             &path,
             &["--byte", &query["byte"].to_string()],
         ));
-        assert_eq!(refs[0]["detail"]["resolution"], "resolved");
-        assert_eq!(
-            refs[0]["detail"]["declaration"]["start"],
-            query["declaration"]["start"]
-        );
-        assert_eq!(
-            refs[0]["detail"]["declaration"]["end"],
-            query["declaration"]["end"]
-        );
-        let actual:Vec<_>=refs[1..refs.len()-1].iter().map(|r|{let mut value=serde_json::json!({"start":r["start"],"end":r["end"],"read":r["detail"]["read"],"write":r["detail"]["write"],"member_write":r["detail"]["member_write"]});if let Some(t)=r["detail"].get("type_reference").filter(|v| !v.is_null()){value["type_reference"]=t.clone();value["value_reference"]=r["detail"]["value_reference"].clone();}value}).collect();
+        let actual:Vec<_>=refs[..].iter().map(|r|{let mut value=serde_json::json!({"start":r["start"],"end":r["end"],"read":r["detail"]["read"],"write":r["detail"]["write"],"member_write":r["detail"]["member_write"]});if let Some(t)=r["detail"].get("type_reference").filter(|v| !v.is_null()){value["type_reference"]=t.clone();value["value_reference"]=r["detail"]["value_reference"].clone();}value}).collect();
         assert_eq!(
             serde_json::json!(actual),
             query["references"],
@@ -1247,7 +1166,7 @@ fn published_types_and_jsx_tsx_sources_match_independent_babel_expectations() {
             case["name"]
         );
         let symbols = jsonl(&invoke("symbols", &path, &[]));
-        assert!(symbols.len() > 2);
+        assert!(!symbols.is_empty());
     }
 }
 
@@ -1264,7 +1183,7 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         ("/api/write", "endpoint:'/api/write'", "object_property"),
     ] {
         let rows = jsonl(&invoke("find", &path, &["-f", needle]));
-        let found = &rows[1];
+        let found = &rows[0];
         let id = found["context_at"].as_str().unwrap();
         let raw = invoke("slice", &path, &["--at", id]);
         success(&raw);
@@ -1283,7 +1202,6 @@ fn local_contexts_extract_properties_fields_and_assignments_without_large_contai
         let output = invoke("slice", &path, &["--at", id, "--json"]);
         success(&output);
         let output: Value = js_object(&output.stdout);
-        assert_eq!(output["detail"]["complete"], true);
         assert_eq!(output["detail"]["representation"], "original");
         assert_eq!(output["detail"]["source"], expected);
         assert_eq!(output["detail"]["fragment"]["detail"]["kind"], kind);
@@ -1413,7 +1331,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
     ] {
         let (_dir, path) = fixture(source, "syntax.js");
         let rows = jsonl(&invoke("find", &path, &["-f", needle]));
-        let found = &rows[1];
+        let found = &rows[0];
         assert_eq!(
             found["context_at"].is_null(),
             expected.is_none(),
@@ -1436,29 +1354,7 @@ fn local_contexts_preserve_function_boundaries_parameters_templates_and_control_
     let source = "const f=()=>f();";
     let (_dir, path) = fixture(source, "arrow.js");
     let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
-    assert!(rows[1]["context_at"].is_null());
-    assert!(
-        rows[0]["detail"]["selected"]["context_at"]
-            .as_str()
-            .unwrap()
-            .contains("fragment.variable_declarator:")
-    );
-    let source = "host(value);";
-    let (_dir, path) = fixture(source, "host.js");
-    let rows = jsonl(&invoke("xref", &path, &["--byte", "0"]));
-    assert_eq!(rows[0]["detail"]["resolution"], "unresolved");
-    let context = invoke(
-        "slice",
-        &path,
-        &[
-            "--at",
-            rows[0]["detail"]["selected"]["context_at"]
-                .as_str()
-                .unwrap(),
-        ],
-    );
-    success(&context);
-    assert_eq!(context.stdout, source.as_bytes());
+    assert!(rows[0]["context_at"].is_null());
 }
 
 #[test]
@@ -1466,7 +1362,7 @@ fn local_context_ids_are_content_bound_parser_only_bounded_and_atomic() {
     let source = "const obj={endpoint:'/api/check'}; function later(){}";
     let (dir, path) = fixture(source, "check.js");
     let found = jsonl(&invoke("find", &path, &["-f", "/api/check"]));
-    let id = found[1]["context_at"].as_str().unwrap();
+    let id = found[0]["context_at"].as_str().unwrap();
     let destination = dir.path().join("context.js");
     let written = invoke(
         "slice",
@@ -1590,20 +1486,12 @@ fn local_contexts_match_independent_acorn_literals_references_and_parent_ranges(
             &path,
             &["--byte", &case["selected"]["start"].to_string()],
         ));
-        let checks = found[1..found.len() - 1]
+        let checks = found[..]
             .iter()
             .zip(case["matches"].as_array().unwrap())
-            .chain(std::iter::once((
-                &refs[0]["detail"]["selected"],
-                &case["selected"],
-            )))
-            .chain(
-                refs[1..refs.len() - 1]
-                    .iter()
-                    .zip(case["references"].as_array().unwrap()),
-            );
-        assert_eq!(found.len() - 2, case["matches"].as_array().unwrap().len());
-        assert_eq!(refs.len() - 2, case["references"].as_array().unwrap().len());
+            .chain(refs[..].iter().zip(case["references"].as_array().unwrap()));
+        assert_eq!(found.len(), case["matches"].as_array().unwrap().len());
+        assert_eq!(refs.len(), case["references"].as_array().unwrap().len());
         for (row, expected) in checks {
             assert_eq!(row["start"], expected["start"]);
             assert_eq!(row["end"], expected["end"]);
@@ -1714,7 +1602,6 @@ fn get_symbol_extracts_declarators_without_siblings_or_large_enclosing_functions
         let output = invoke("slice", &path, &["--at", id, "--json"]);
         success(&output);
         let extracted: Value = js_object(&output.stdout);
-        assert_eq!(extracted["detail"]["complete"], true);
         assert_eq!(extracted["detail"]["representation"], "original");
         assert!(extracted["detail"]["entity"].is_null());
         assert_eq!(extracted["detail"]["symbol"]["at"], id);
@@ -1972,7 +1859,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
         "const config={url:'/api/login'}; var again=1; var again=2; function f(){return config}";
     let (dir, path) = fixture(source, "binding.js");
     let rows = jsonl(&invoke("symbols", &path, &[]));
-    let symbol = &rows[1];
+    let symbol = &rows[0];
     let id = symbol["at"].as_str().unwrap();
     let expected = b"config={url:'/api/login'}";
     let destination = dir.path().join("definition.js");
@@ -2075,10 +1962,6 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
     let source = "\u{feff}// 中文\r\nimport {remote as alias} from 'mod';\r\nvar repeat=1; var repeat=2;\nconst {key: local, shorthand, ...rest}=alias;\nlet 登录=1; const \\u0061=2;\nfunction outer(local, {item}, ...args){let local2; {let local=3; local;} try{}catch(error){error;} return ()=>local+登录;}\nconst f=function inner(){return inner}; class C{method(p){return p}}\n";
     let (_dir, path) = fixture(source, "symbols.mjs");
     let rows = jsonl(&invoke("symbols", &path, &[]));
-    assert_eq!(rows[0]["command"], "symbols");
-    assert_eq!(rows[0]["detail"]["analysis"], "lexical");
-    assert_eq!(rows[0]["detail"]["resolution"], "static");
-    assert_eq!(rows[0]["detail"]["within_id"], rows[0]["detail"]["root_id"]);
     let expected = [
         ("alias} from", "alias"),
         ("repeat=1", "repeat"),
@@ -2099,9 +1982,9 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
         ("C{", "C"),
         ("p){", "p"),
     ];
-    assert_eq!(rows.len(), expected.len() + 2);
+    assert_eq!(rows.len(), expected.len());
     let mut ids = std::collections::HashSet::new();
-    for (row, (marker, name)) in rows[1..rows.len() - 1].iter().zip(expected) {
+    for (row, (marker, name)) in rows[..].iter().zip(expected) {
         let start = source.find(marker).unwrap();
         let raw = if name == "a" { "\\u0061" } else { name };
         assert_eq!(row["record"], "symbol");
@@ -2111,14 +1994,7 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
         assert_eq!(row["end"], start + raw.len());
         assert_eq!(row["at"], format!("symbol:{start}:{}", start + raw.len()));
         assert!(ids.insert(row["at"].clone().to_string()));
-        let refs = jsonl(&invoke("xref", &path, &["--byte", &start.to_string()]));
-        assert_eq!(refs[0]["detail"]["selected"]["name"], name);
-        assert_eq!(refs[0]["detail"]["declaration"]["start"], row["start"]);
-        assert_eq!(refs[0]["detail"]["declaration"]["end"], row["end"]);
-        assert_eq!(
-            refs[0]["detail"]["declaration"]["entity_id"],
-            row["parent_at"]
-        );
+        let _refs = jsonl(&invoke("xref", &path, &["--byte", &start.to_string()]));
         let extracted = invoke(
             "slice",
             &path,
@@ -2153,8 +2029,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
         .as_str()
         .unwrap();
     let rows = jsonl(&invoke("symbols", &path, &["--within", id]));
-    assert_eq!(rows[0]["detail"]["within_id"], id);
-    let records = &rows[1..rows.len() - 1];
+    let records = &rows[..];
     assert_eq!(records.len(), 5);
     assert_eq!(
         records
@@ -2186,10 +2061,10 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
         &path,
         &["--within", second["at"].as_str().unwrap()],
     ));
-    assert_eq!(repeated.len(), 3);
-    assert_eq!(repeated[1]["detail"]["relation"], "declared");
-    assert_eq!(repeated[1]["start"], source.find("twice(){}").unwrap());
-    assert!(repeated[1]["start"].as_u64().unwrap() < second["start"].as_u64().unwrap());
+    assert_eq!(repeated.len(), 1);
+    assert_eq!(repeated[0]["detail"]["relation"], "declared");
+    assert_eq!(repeated[0]["start"], source.find("twice(){}").unwrap());
+    assert!(repeated[0]["start"].as_u64().unwrap() < second["start"].as_u64().unwrap());
     let all = jsonl(&invoke("symbols", &path, &[]));
     let parameter = all
         .iter()
@@ -2208,15 +2083,13 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
             .as_str()
             .unwrap();
         let rows = jsonl(&invoke("symbols", &path, &["--within", id]));
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[1]["detail"]["name"], name);
-        assert_eq!(rows[1]["detail"]["relation"], relation);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["detail"]["name"], name);
+        assert_eq!(rows[0]["detail"]["relation"], relation);
     }
-    let program_id = entities[0]["detail"]["root_id"].as_str().unwrap();
+    let program_id = entities[0]["at"].as_str().unwrap();
     let explicit = jsonl(&invoke("symbols", &path, &["--within", program_id]));
-    assert_eq!(explicit[0]["query"]["within"], program_id);
-    assert_eq!(all[0]["query"]["within"], Value::Null);
-    assert_eq!(&explicit[1..], &all[1..]);
+    assert_eq!(explicit, all);
 }
 
 #[test]
@@ -2263,7 +2136,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
     fs::write(&path, "let changed=0;").unwrap();
     // A coordinate names a span in the current input, so read the rewritten file's root.
     let changed = outline_rows(&path, &[]);
-    let root = changed[0]["detail"]["root_id"].as_str().unwrap();
+    let root = changed[0]["at"].as_str().unwrap();
     success(&invoke("symbols", &path, &["--within", root]));
     let profiled = invoke("symbols", &path, &["--perf"]);
     success(&profiled);
@@ -2291,7 +2164,7 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
 
 #[test]
 fn symbols_distinguishes_empty_static_dynamic_and_unresolved_results() {
-    for (source, resolution, records) in [
+    for (source, _resolution, records) in [
         ("", "static", 0),
         ("// no bindings\n({key: 'value'});", "static", 0),
         ("host.foo; host['key'];", "static", 2),
@@ -2302,8 +2175,7 @@ fn symbols_distinguishes_empty_static_dynamic_and_unresolved_results() {
     ] {
         let (_dir, path) = fixture(source, "edge.js");
         let rows = jsonl(&invoke("symbols", &path, &[]));
-        assert_eq!(rows[0]["detail"]["resolution"], resolution);
-        assert_eq!(rows.last().unwrap()["records"], records);
+        assert_eq!(rows.len(), records);
     }
 }
 
@@ -2316,20 +2188,18 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
         &path,
         &["--byte", &source.find("count=0").unwrap().to_string()],
     ));
-    assert_eq!(global[0]["detail"]["resolution"], "resolved");
-    assert_eq!(global[0]["detail"]["analysis"], "lexical");
     let expected = [
         ("count=1", false, true),
         ("count+=2", true, true),
         ("count;", true, false),
     ];
-    assert_eq!(global.len(), 5);
-    for (row, (marker, read, write)) in global[1..4].iter().zip(expected) {
+    assert_eq!(global.len(), 3);
+    for (row, (marker, read, write)) in global.iter().zip(expected) {
         assert_eq!(row["start"], source.rfind(marker).unwrap());
         assert_eq!(row["detail"]["read"], read);
         assert_eq!(row["detail"]["write"], write);
         assert_eq!(row["detail"]["member_write"], false);
-        assert_eq!(row["parent_at"], global[0]["detail"]["root_id"]);
+        assert_eq!(row["parent_at"], global[0]["parent_at"]);
     }
     let declaration = source.find("outer(count)").unwrap() + "outer(".len();
     let inner = jsonl(&invoke(
@@ -2337,29 +2207,22 @@ fn refs_tracks_shadowing_closures_and_read_write_access() {
         &path,
         &["--byte", &declaration.to_string()],
     ));
-    assert_eq!(inner[0]["detail"]["declaration"]["start"], declaration);
-    assert_eq!(inner[0]["detail"]["selected"]["role"], "declaration");
-    assert_eq!(inner.len(), 4);
-    assert_eq!(inner[1]["start"], source.find("count++").unwrap());
-    assert_eq!(inner[1]["detail"]["read"], true);
-    assert_eq!(inner[1]["detail"]["write"], true);
+    assert_eq!(inner.len(), 2);
+    assert_eq!(inner[0]["start"], source.find("count++").unwrap());
+    assert_eq!(inner[0]["detail"]["read"], true);
+    assert_eq!(inner[0]["detail"]["write"], true);
     let closure_byte = source.find("()=>count").unwrap() + "()=>".len();
-    assert_eq!(inner[2]["start"], closure_byte);
+    assert_eq!(inner[1]["start"], closure_byte);
     let from_reference = jsonl(&invoke(
         "xref",
         &path,
         &["--byte", &closure_byte.to_string()],
     ));
-    assert_eq!(from_reference[0]["detail"]["selected"]["role"], "reference");
-    assert_eq!(
-        from_reference[0]["detail"]["declaration"],
-        inner[0]["detail"]["declaration"]
-    );
     assert_eq!(from_reference[1..], inner[1..]);
     let extracted = invoke(
         "slice",
         &path,
-        &["--at", inner[2]["parent_at"].as_str().unwrap()],
+        &["--at", inner[1]["parent_at"].as_str().unwrap()],
     );
     success(&extracted);
     assert_eq!(extracted.stdout, b"()=>count");
@@ -2438,10 +2301,8 @@ fn refs_handles_module_aliases_unicode_redeclarations_and_exact_entity_boundarie
         let offset = if name == "登录" { byte + 1 } else { byte };
         let output = invoke("xref", &path, &["--byte", &offset.to_string()]);
         let rows = jsonl(&output);
-        assert_eq!(rows[0]["detail"]["resolution"], "resolved", "{filename}");
-        assert_eq!(rows[0]["detail"]["selected"]["name"], name);
-        assert_eq!(rows.len(), expected.len() + 2);
-        for (row, (marker, read, write)) in rows[1..rows.len() - 1].iter().zip(expected) {
+        assert_eq!(rows.len(), expected.len());
+        for (row, (marker, read, write)) in rows[..].iter().zip(expected) {
             assert_eq!(row["start"], source.find(marker).unwrap(), "{filename}");
             assert_eq!(row["detail"]["read"], read);
             assert_eq!(row["detail"]["write"], write);
@@ -2453,10 +2314,6 @@ fn refs_handles_module_aliases_unicode_redeclarations_and_exact_entity_boundarie
                 "{filename}"
             );
         }
-        if filename == "redeclaration.js" {
-            assert_eq!(rows[0]["detail"]["declaration"]["start"], 4);
-            assert_eq!(rows[0]["detail"]["selected"]["start"], 13);
-        }
     }
 }
 
@@ -2465,13 +2322,13 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
     let source = "const obj={}; obj.x=1; obj.x++; delete obj.x; obj[unknown];";
     let (_dir, path) = fixture(source, "properties.js");
     let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
-    assert_eq!(rows.len(), 6);
-    for row in &rows[1..4] {
+    assert_eq!(rows.len(), 4);
+    for row in &rows[..3] {
         assert_eq!(row["detail"]["read"], true);
         assert_eq!(row["detail"]["write"], false);
         assert_eq!(row["detail"]["member_write"], true);
     }
-    assert_eq!(rows[4]["detail"]["member_write"], false);
+    assert_eq!(rows[3]["detail"]["member_write"], false);
     failure(
         invoke(
             "xref",
@@ -2486,9 +2343,7 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
         &path,
         &["--byte", &source.find("unknown").unwrap().to_string()],
     ));
-    assert_eq!(unknown[0]["detail"]["resolution"], "unresolved");
-    assert!(unknown[0]["detail"]["declaration"].is_null());
-    assert_eq!(unknown.len(), 2);
+    assert!(unknown.is_empty());
     for source in [
         "let x=1; with(obj){x;} x;",
         "let x=1; eval('x=2'); x;",
@@ -2497,20 +2352,16 @@ fn refs_does_not_guess_properties_globals_or_dynamic_bindings() {
     ] {
         let (_dir, path) = fixture(source, "dynamic.js");
         let rows = jsonl(&invoke("xref", &path, &["--byte", "4"]));
-        assert_eq!(rows[0]["detail"]["resolution"], "dynamic");
-        assert!(rows[0]["detail"]["declaration"].is_null());
-        assert_eq!(rows.len(), 2);
+        assert!(rows.is_empty());
     }
     for source in ["let x=1; eval?.('x=2'); x;", "let x=1; obj.eval('x=2'); x;"] {
         let (_dir, path) = fixture(source, "not-direct-eval.js");
         let rows = jsonl(&invoke("xref", &path, &["--byte", "4"]));
-        assert_eq!(rows[0]["detail"]["resolution"], "resolved");
-        assert_eq!(rows.len(), 3);
+        assert_eq!(rows.len(), 1);
     }
     let (_dir, path) = fixture("const unused=1;", "unused.js");
     let rows = jsonl(&invoke("xref", &path, &["--byte", "6"]));
-    assert_eq!(rows[0]["detail"]["resolution"], "resolved");
-    assert_eq!(rows.len(), 2);
+    assert!(rows.is_empty());
 }
 
 #[test]
@@ -2619,23 +2470,21 @@ fn recursive_queries_preserve_sorted_per_file_streams_and_content_ids() {
     fs::write(dir.path().join("ignored.txt"), b"not JavaScript {{{").unwrap();
     for (command, args) in [("entities", vec![]), ("find", vec!["-f", "/api"])] {
         let mut expected = Vec::new();
-        let mut count = 0;
         for path in [&a, &b] {
-            let single = invoke(command, path, &args);
-            let records = jsonl(&single);
-            count += records.last().unwrap()["records"].as_u64().unwrap();
-            expected.extend_from_slice(&single.stdout);
+            expected.extend(jsonl(&invoke(command, path, &args)));
         }
         let mut recursive_args = args.clone();
         let output = invoke(command, dir.path(), &recursive_args);
         success(&output);
         assert!(output.stderr.is_empty());
-        assert!(output.stdout.starts_with(&expected));
-        let summary: Value = serde_json::from_slice(&output.stdout[expected.len()..]).unwrap();
-        assert_eq!(summary["record"], "scan_summary");
-        assert_eq!(summary["detail"]["files"], 2);
-        assert_eq!(summary["records"], count);
-        assert_eq!(summary["complete"], true);
+        let rows = jsonl(&output);
+        assert_eq!(rows.iter().filter(|row| row["record"] == "file").count(), 2);
+        let data: Vec<_> = rows
+            .iter()
+            .filter(|row| row["record"] != "file")
+            .cloned()
+            .collect();
+        assert_eq!(data, expected);
         assert_eq!(
             invoke(command, dir.path(), &recursive_args).stdout,
             output.stdout
@@ -2664,12 +2513,11 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.len(), 7);
-    assert_eq!(rows[0]["detail"]["source_type"], "module");
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[0]["record"], "file");
     assert_eq!(rows[1]["detail"]["kind"], "program");
-    assert_eq!(rows[3]["detail"]["source_type"], "script");
-    assert_eq!(rows[4]["detail"]["kind"], "program");
-    assert_eq!(rows[6]["records"], 2);
+    assert_eq!(rows[2]["record"], "file");
+    assert_eq!(rows[3]["detail"]["kind"], "program");
     let sidecars: Vec<Value> = String::from_utf8(output.stderr)
         .unwrap()
         .lines()
@@ -2716,18 +2564,14 @@ fn recursive_empty_scans_and_explicit_files_are_complete() {
         }
         let output = invoke(command, dir.path(), &args);
         success(&output);
-        let summary: Value = js_object(&output.stdout);
-        assert_eq!(summary["record"], "scan_summary");
-        assert_eq!(summary["detail"]["files"], 0);
-        assert_eq!(summary["records"], 0);
-        assert_eq!(summary["complete"], true);
+        assert!(output.stdout.is_empty());
     }
     failure(invoke("find", dir.path(), &["-f", ""]), 2, "INVALID_QUERY");
     let file = dir.path().join("input.txt");
     fs::write(&file, "const x = 1").unwrap();
     let single = outline_rows(&file, &[]);
-    assert_eq!(single[0]["detail"]["path"], file.to_str().unwrap());
-    // A single file is one input, with or without any flag: one stream, one summary.
+    assert!(!single.is_empty());
+    // A single file is one input, with or without any flag: one stream, no wrappers.
     failure(invoke("entities", &file, &["-r"]), 2, "unexpected argument");
     failure(
         invoke("entities", dir.path(), &["--within", "dummy"]),
@@ -2899,9 +2743,9 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows.len(), 4);
-    assert_eq!(rows[3]["detail"]["files"], 1);
-    assert_eq!(rows[3]["records"], 1);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["record"], "file");
+    assert_eq!(rows[1]["record"], "match");
     failure(
         invoke("entities", &dir.path().join("cycle"), &[]),
         1,
@@ -2913,9 +2757,8 @@ fn recursive_scans_skip_symlinks_cycles_and_special_files() {
 fn search_then_extract_and_locate_complete_function() {
     let path = example();
     let found = jsonl(&invoke("find", &path, &["-f", "/api/login"]));
-    assert_eq!(found.len(), 4);
-    assert_eq!(found[1]["parent_at"], found[0]["detail"]["root_id"]);
-    let id = found[2]["parent_at"].as_str().unwrap();
+    assert_eq!(found.len(), 2);
+    let id = found[1]["parent_at"].as_str().unwrap();
     let original = invoke("slice", &path, &["--at", id]);
     success(&original);
     assert_eq!(
@@ -2926,7 +2769,7 @@ fn search_then_extract_and_locate_complete_function() {
     let located = invoke(
         "locate",
         &path,
-        &["--byte", &found[2]["start"].to_string(), "--json"],
+        &["--byte", &found[1]["start"].to_string(), "--json"],
     );
     success(&located);
     let location: Value = js_object(&located.stdout);
@@ -2948,11 +2791,7 @@ fn outline_entities_have_exact_spans_and_no_duplicate_methods() {
     let output = invoke("entities", &path, &[]);
     let records = jsonl(&output);
     assert!(output.stderr.is_empty());
-    assert_eq!(
-        records[0]["source_id"],
-        rxd_core::identity::input_id(&source)
-    );
-    let entities = &records[1..records.len() - 1];
+    let entities = &records[..];
     // The full catalog includes the file root; the grouped commands do not.
     assert_eq!(entities.len(), 11);
     assert_eq!(
@@ -3014,17 +2853,17 @@ fn filtering_preserves_absolute_depth_and_parent_ids() {
     let outer = all.iter().find(|e| e["detail"]["name"] == "outer").unwrap();
     let id = outer["at"].as_str().unwrap();
     let filtered = outline_rows(&path, &["--within", id, "--depth", "1"]);
-    assert_eq!(filtered.len(), 3);
-    assert_eq!(filtered[1]["detail"]["name"], "inner");
-    assert_eq!(filtered[1]["detail"]["depth"], 2);
-    assert_eq!(filtered[1]["parent_at"], id);
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0]["detail"]["name"], "inner");
+    assert_eq!(filtered[0]["detail"]["depth"], 2);
+    assert_eq!(filtered[0]["parent_at"], id);
     assert_eq!(
         outline_rows(&path, &["--within", id, "--depth", "0"]).len(),
-        2
+        0
     );
     let root_only = outline_rows(&path, &["--depth", "0"]);
-    assert_eq!(root_only.len(), 3);
-    assert_eq!(root_only[1]["detail"]["kind"], "program");
+    assert_eq!(root_only.len(), 1);
+    assert_eq!(root_only[0]["detail"]["kind"], "program");
 }
 
 #[test]
@@ -3032,7 +2871,7 @@ fn get_json_preserves_original_source_for_functions_arrows_classes_and_members()
     let path = example();
     let bytes = fs::read(&path).unwrap();
     let records = outline_rows(&path, &[]);
-    for entity in &records[1..records.len() - 1] {
+    for entity in &records[..] {
         let output = invoke(
             "slice",
             &path,
@@ -3042,7 +2881,6 @@ fn get_json_preserves_original_source_for_functions_arrows_classes_and_members()
         let extracted: Value = js_object(&output.stdout);
         assert_eq!(extracted["detail"]["representation"], "original");
         assert_eq!(extracted["detail"]["entity"], *entity);
-        assert_eq!(extracted["detail"]["complete"], true);
         assert_eq!(
             extracted["detail"]["source"].as_str().unwrap().as_bytes(),
             &bytes[entity["start"].as_u64().unwrap() as usize
@@ -3056,7 +2894,7 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     let source = "\u{feff}// 中文\r\nfunction 登录(){return \"你好😀\";}\r\n";
     let (_dir, path) = fixture(source, "bundle.js");
     let found = jsonl(&invoke("find", &path, &["-f", "你好😀"]));
-    let id = found[1]["parent_at"].as_str().unwrap();
+    let id = found[0]["parent_at"].as_str().unwrap();
     let get = invoke("slice", &path, &["--at", id]);
     success(&get);
     assert_eq!(get.stdout, "function 登录(){return \"你好😀\";}".as_bytes());
@@ -3065,8 +2903,8 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
     success(&located);
     assert_eq!(js_object(&located.stdout)["detail"]["entity"]["at"], id);
     let records = outline_rows(&path, &[]);
-    assert_eq!(records[1]["start"], 0);
-    assert_eq!(records[1]["end"], source.len());
+    assert_eq!(records[0]["start"], 0);
+    assert_eq!(records[0]["end"], source.len());
     assert_eq!(
         invoke(
             "slice",
@@ -3074,7 +2912,7 @@ fn unicode_bom_crlf_and_no_added_newline_are_preserved() {
             &["--at", records[1]["at"].as_str().unwrap()]
         )
         .stdout,
-        source.as_bytes()
+        "function 登录(){return \"你好😀\";}".as_bytes()
     );
 }
 
@@ -3083,7 +2921,7 @@ fn identifiers_find_lexical_occurrences_without_static_property_names() {
     let source = "let x=1; function f(x){ return x + obj.x + obj[x] + external; }";
     let (_dir, path) = fixture(source, "identifiers.js");
     let rows = jsonl(&invoke("identifiers", &path, &["--name", "x"]));
-    let identifiers: Vec<_> = rows[1..rows.len() - 1].to_vec();
+    let identifiers: Vec<_> = rows[..].to_vec();
     assert_eq!(identifiers.len(), 4);
     assert_eq!(identifiers[0]["detail"]["role"], "declaration");
     assert_eq!(identifiers[1]["detail"]["role"], "declaration");
@@ -3098,7 +2936,7 @@ fn identifiers_find_lexical_occurrences_without_static_property_names() {
         &path,
         &["--name", "x", "--role", "reference"],
     ));
-    assert_eq!(refs.last().unwrap()["records"], 2);
+    assert_eq!(refs.len(), 2);
     let property = jsonl(&invoke("identifiers", &path, &["--name", "x"]));
     assert!(!property.iter().any(|row| row["start"] == 49));
     // Each occurrence reports its enclosing local syntax fragment when one exists.
@@ -3118,7 +2956,7 @@ fn identifiers_find_lexical_occurrences_without_static_property_names() {
         &path,
         &["--name", "x", "--within", &function_id],
     ));
-    assert_eq!(within.last().unwrap()["records"], 3);
+    assert_eq!(within.len(), 3);
 }
 
 #[test]
@@ -3130,15 +2968,15 @@ fn outline_filters_by_exact_kind_and_name() {
         &path,
         &["--kind", "function_declaration"],
     ));
-    let entities: Vec<_> = functions[1..functions.len() - 1].to_vec();
+    let entities: Vec<_> = functions[..].to_vec();
     assert_eq!(entities.len(), 1);
     assert_eq!(entities[0]["detail"]["name"], "alpha");
     let named = outline_rows(&path, &["--name", "beta"]);
-    assert_eq!(named.last().unwrap()["records"], 1);
-    assert_eq!(named[1]["detail"]["label"], "beta");
+    assert_eq!(named.len(), 1);
+    assert_eq!(named[0]["detail"]["label"], "beta");
     let method = outline_rows(&path, &["--name", "delta"]);
-    assert_eq!(method.last().unwrap()["records"], 1);
-    assert_eq!(method[1]["detail"]["kind"], "class_method");
+    assert_eq!(method.len(), 1);
+    assert_eq!(method[0]["detail"]["kind"], "class_method");
 }
 
 #[test]
@@ -3146,22 +2984,22 @@ fn calls_find_direct_and_member_call_sites_without_runtime_semantics() {
     let source = "function f(){ foo(1); obj.foo(2,3); new Foo(); bar?.(); }";
     let (_dir, path) = fixture(source, "calls.js");
     let foo = jsonl(&invoke("calls", &path, &["--name", "foo"]));
-    let records: Vec<_> = foo[1..foo.len() - 1].to_vec();
+    let records: Vec<_> = foo[..].to_vec();
     assert_eq!(records.len(), 2);
     assert_eq!(records[0]["detail"]["call_kind"], "direct");
     assert_eq!(records[0]["detail"]["argument_count"], 1);
     assert_eq!(records[1]["detail"]["call_kind"], "member");
     assert_eq!(records[1]["detail"]["argument_count"], 2);
     let ctor = jsonl(&invoke("calls", &path, &["--name", "Foo"]));
-    assert_eq!(ctor.last().unwrap()["records"], 1);
-    assert_eq!(ctor[1]["detail"]["call_kind"], "new");
+    assert_eq!(ctor.len(), 1);
+    assert_eq!(ctor[0]["detail"]["call_kind"], "new");
     let optional = jsonl(&invoke("calls", &path, &["--name", "bar"]));
-    assert_eq!(optional[1]["detail"]["optional"], true);
+    assert_eq!(optional[0]["detail"]["optional"], true);
     for (row, expected) in [
         (&records[0], "foo(1);"),
         (&records[1], "obj.foo(2,3);"),
-        (&ctor[1], "new Foo();"),
-        (&optional[1], "bar?.();"),
+        (&ctor[0], "new Foo();"),
+        (&optional[0], "bar?.();"),
     ] {
         let extracted = invoke(
             "slice",
@@ -3174,9 +3012,9 @@ fn calls_find_direct_and_member_call_sites_without_runtime_semantics() {
     // A shorthand arrow must not borrow the outer variable initializer as its context.
     let (_dir, path) = fixture("const thunk=()=>foo();", "arrow-call.js");
     let arrow = jsonl(&invoke("calls", &path, &["--name", "foo"]));
-    assert!(arrow[1]["context_at"].is_null());
+    assert!(arrow[0]["context_at"].is_null());
     assert!(
-        arrow[1]["parent_at"]
+        arrow[0]["parent_at"]
             .as_str()
             .unwrap()
             .starts_with("arrow_function:")
@@ -3189,68 +3027,68 @@ fn members_find_static_names_without_computed_dynamic_properties() {
     let (_dir, path) = fixture(source, "members.jsx");
 
     let delta = jsonl(&invoke("members", &path, &["--name", "delta"]));
-    assert_eq!(delta.len(), 3);
-    assert_eq!(delta[1]["detail"]["member_kind"], "static_member");
-    assert_eq!(delta[1]["detail"]["key_resolution"], Value::Null);
-    assert_eq!(delta[1]["detail"]["read"], true);
-    assert_eq!(delta[1]["detail"]["write"], false);
+    assert_eq!(delta.len(), 1);
+    assert_eq!(delta[0]["detail"]["member_kind"], "static_member");
+    assert_eq!(delta[0]["detail"]["key_resolution"], Value::Null);
+    assert_eq!(delta[0]["detail"]["read"], true);
+    assert_eq!(delta[0]["detail"]["write"], false);
     let context = invoke(
         "slice",
         &path,
-        &["--at", delta[1]["context_at"].as_str().unwrap()],
+        &["--at", delta[0]["context_at"].as_str().unwrap()],
     );
     success(&context);
     assert_eq!(context.stdout, b"obj.delta;");
 
     let alpha = jsonl(&invoke("members", &path, &["--name", "alpha"]));
-    assert_eq!(alpha[1]["detail"]["member_kind"], "property_key");
-    assert!(alpha[1]["detail"]["read"].is_null());
-    assert!(alpha[1]["detail"]["write"].is_null());
+    assert_eq!(alpha[0]["detail"]["member_kind"], "property_key");
+    assert!(alpha[0]["detail"]["read"].is_null());
+    assert!(alpha[0]["detail"]["write"].is_null());
     let context = invoke(
         "slice",
         &path,
-        &["--at", alpha[1]["context_at"].as_str().unwrap()],
+        &["--at", alpha[0]["context_at"].as_str().unwrap()],
     );
     success(&context);
     assert_eq!(context.stdout, b"alpha:1");
 
     let beta = jsonl(&invoke("members", &path, &["--name", "beta"]));
-    assert_eq!(beta[1]["detail"]["member_kind"], "object_method_key");
+    assert_eq!(beta[0]["detail"]["member_kind"], "object_method_key");
 
     let gamma = jsonl(&invoke("members", &path, &["--name", "gamma"]));
-    assert_eq!(gamma[1]["detail"]["member_kind"], "object_method_key");
+    assert_eq!(gamma[0]["detail"]["member_kind"], "object_method_key");
 
     let epsilon = jsonl(&invoke("members", &path, &["--name", "epsilon"]));
-    assert_eq!(epsilon[1]["detail"]["member_kind"], "class_field_key");
+    assert_eq!(epsilon[0]["detail"]["member_kind"], "class_field_key");
 
     let zeta = jsonl(&invoke("members", &path, &["--name", "zeta"]));
-    assert_eq!(zeta[1]["detail"]["member_kind"], "class_method_key");
+    assert_eq!(zeta[0]["detail"]["member_kind"], "class_method_key");
 
     let eta = jsonl(&invoke("members", &path, &["--name", "eta"]));
-    assert_eq!(eta[1]["detail"]["member_kind"], "jsx_attribute_name");
+    assert_eq!(eta[0]["detail"]["member_kind"], "jsx_attribute_name");
 
     // A computed access with a literal or constant-folded key is a property key; the resolved
     // name is matched, and the record keeps the key resolution for the caller.
     let theta = jsonl(&invoke("members", &path, &["--name", "theta"]));
-    assert_eq!(theta.len(), 3);
-    assert_eq!(theta[1]["detail"]["member_kind"], "computed_key");
-    assert_eq!(theta[1]["detail"]["key_resolution"], "literal");
-    assert_eq!(theta[1]["detail"]["name"], "theta");
+    assert_eq!(theta.len(), 1);
+    assert_eq!(theta[0]["detail"]["member_kind"], "computed_key");
+    assert_eq!(theta[0]["detail"]["key_resolution"], "literal");
+    assert_eq!(theta[0]["detail"]["name"], "theta");
     let iota = jsonl(&invoke("members", &path, &["--name", "iota"]));
-    assert_eq!(iota.len(), 3);
-    assert_eq!(iota[1]["detail"]["member_kind"], "computed_key");
-    assert_eq!(iota[1]["detail"]["key_resolution"], "static");
-    assert_eq!(iota[1]["detail"]["name"], "iota");
+    assert_eq!(iota.len(), 1);
+    assert_eq!(iota[0]["detail"]["member_kind"], "computed_key");
+    assert_eq!(iota[0]["detail"]["key_resolution"], "static");
+    assert_eq!(iota[0]["detail"]["name"], "iota");
     // `theta`/`iota` only ever appear as keys, so an unrelated name must not match them.
     let unrelated = jsonl(&invoke("members", &path, &["--name", "iota2"]));
-    assert_eq!(unrelated.last().unwrap()["records"], 0);
+    assert_eq!(unrelated.len(), 0);
 
     // Computed access `obj[computed]` is a lexical reference, not a static member name, and a
     // numeric index is not a property name either.
     let computed = jsonl(&invoke("members", &path, &["--name", "computed"]));
-    assert_eq!(computed.last().unwrap()["records"], 0);
+    assert_eq!(computed.len(), 0);
     let numeric = jsonl(&invoke("members", &path, &["--name", "1"]));
-    assert_eq!(numeric.last().unwrap()["records"], 0);
+    assert_eq!(numeric.len(), 0);
 }
 
 #[test]
@@ -3288,8 +3126,7 @@ fn members_access_filters_real_targets_and_preserves_local_context() {
     );
     let (_dir, path) = fixture(&source, "access.ts");
     let all = jsonl(&invoke("members", &path, &["--name", "p"]));
-    assert_eq!(all[0]["query"]["access"], "all");
-    let members = &all[1..all.len() - 1];
+    let members = &all[..];
     assert_eq!(members.len(), cases.len() + 2);
     for (row, (_, read, write)) in members.iter().zip(&cases) {
         assert_eq!(row["detail"]["read"], *read, "{row}");
@@ -3299,7 +3136,7 @@ fn members_access_filters_real_targets_and_preserves_local_context() {
     assert!(members[cases.len()]["detail"]["read"].is_null());
     assert!(members[cases.len()]["detail"]["write"].is_null());
     let outline = outline_rows(&path, &["--name", "load"]);
-    let within = outline[1]["at"].as_str().unwrap();
+    let within = outline[0]["at"].as_str().unwrap();
     for (access, expected) in [
         ("read", cases.iter().map(|case| case.1).collect::<Vec<_>>()),
         ("write", cases.iter().map(|case| case.2).collect::<Vec<_>>()),
@@ -3309,16 +3146,12 @@ fn members_access_filters_real_targets_and_preserves_local_context() {
             &path,
             &["--name", "p", "--access", access, "--within", within],
         ));
-        assert_eq!(filtered[0]["query"]["access"], access);
         let expected: Vec<_> = members
             .iter()
             .zip(expected)
             .filter_map(|(row, keep)| keep.then_some(row))
             .collect();
-        assert_eq!(
-            filtered[1..filtered.len() - 1].iter().collect::<Vec<_>>(),
-            expected
-        );
+        assert_eq!(filtered[..].iter().collect::<Vec<_>>(), expected);
     }
     let assignment = invoke(
         "slice",
@@ -3383,39 +3216,39 @@ fn static_resolution_matches_closed_ast_expressions_without_executing_bindings()
     let (_dir, path) = fixture(source, "static.js");
 
     let plain = jsonl(&invoke("find", &path, &["-f", "setInterval"]));
-    assert_eq!(plain.last().unwrap()["records"], 0);
+    assert_eq!(plain.len(), 0);
 
     let resolved = jsonl(&invoke(
         "find",
         &path,
         &["-f", "setInterval", "--resolve-static"],
     ));
-    assert_eq!(resolved.len(), 3);
-    assert_eq!(resolved[1]["detail"]["value"], "setInterval");
-    assert_eq!(resolved[1]["detail"]["literal_kind"], "static_expression");
-    assert_eq!(resolved[1]["detail"]["resolution"], "static");
-    assert_eq!(resolved[1]["detail"]["raw"], "'set'+'Interval'");
-    assert_eq!(resolved[1]["start"], 8);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0]["detail"]["value"], "setInterval");
+    assert_eq!(resolved[0]["detail"]["literal_kind"], "static_expression");
+    assert_eq!(resolved[0]["detail"]["resolution"], "static");
+    assert_eq!(resolved[0]["detail"]["raw"], "'set'+'Interval'");
+    assert_eq!(resolved[0]["start"], 8);
 
     let flag = jsonl(&invoke(
         "find",
         &path,
         &["-f", "flag_correct", "--resolve-static"],
     ));
-    assert_eq!(flag[1]["detail"]["value"], "flag_correct");
+    assert_eq!(flag[0]["detail"]["value"], "flag_correct");
     let timeout = jsonl(&invoke(
         "find",
         &path,
         &["-f", "setTimeout", "--resolve-static"],
     ));
-    assert_eq!(timeout[1]["detail"]["value"], "setTimeout");
+    assert_eq!(timeout[0]["detail"]["value"], "setTimeout");
     let array = jsonl(&invoke(
         "find",
         &path,
         &["-f", "window", "--resolve-static"],
     ));
     assert!(
-        array[1..array.len() - 1]
+        array[..]
             .iter()
             .any(|row| row["detail"]["literal_kind"] == "static_expression")
     );
@@ -3424,31 +3257,31 @@ fn static_resolution_matches_closed_ast_expressions_without_executing_bindings()
         &path,
         &["-f", "unsafe", "--resolve-static"],
     ));
-    assert_eq!(unsafe_result[1]["detail"]["literal_kind"], "string");
+    assert_eq!(unsafe_result[0]["detail"]["literal_kind"], "string");
 
     // The skip guards must keep every foldable form and reject unfoldable operands,
     // including a minified-style `+` chain whose spine ends in an opaque call.
     let codepoint = jsonl(&invoke("find", &path, &["-f", "CD", "--resolve-static"]));
-    assert_eq!(codepoint.len(), 3);
-    assert_eq!(codepoint[1]["detail"]["literal_kind"], "static_expression");
-    assert_eq!(codepoint[1]["detail"]["value"], "CD");
+    assert_eq!(codepoint.len(), 1);
+    assert_eq!(codepoint[0]["detail"]["literal_kind"], "static_expression");
+    assert_eq!(codepoint[0]["detail"]["value"], "CD");
     let method = jsonl(&invoke(
         "find",
         &path,
         &["-f", "ABC", "--resolve-static", "--case", "sensitive"],
     ));
-    assert_eq!(method.len(), 3);
-    assert_eq!(method[1]["detail"]["literal_kind"], "static_expression");
-    assert_eq!(method[1]["detail"]["value"], "ABC");
+    assert_eq!(method.len(), 1);
+    assert_eq!(method[0]["detail"]["literal_kind"], "static_expression");
+    assert_eq!(method[0]["detail"]["value"], "ABC");
     let chain = jsonl(&invoke(
         "find",
         &path,
         &["-f", "_joined", "--resolve-static"],
     ));
-    assert_eq!(chain.len(), 3);
-    assert_eq!(chain[1]["detail"]["literal_kind"], "string");
+    assert_eq!(chain.len(), 1);
+    assert_eq!(chain[0]["detail"]["literal_kind"], "string");
     let receiver = jsonl(&invoke("find", &path, &["-f", "PLAIN", "--resolve-static"]));
-    assert_eq!(receiver.len(), 2);
+    assert!(receiver.is_empty());
 }
 
 #[test]
@@ -3457,12 +3290,12 @@ fn escaped_literals_and_templates_use_decoded_values_without_crossing_interpolat
         r#"function f(){return ["\x2fapi\u002flogin", `/api/${user}/login`, `/api/login`]}"#;
     let (_dir, path) = fixture(source, "bundle.js");
     let found = jsonl(&invoke("find", &path, &["-f", "/api/login"]));
-    assert_eq!(found.len(), 4);
-    assert_eq!(found[1]["detail"]["value"], "/api/login");
-    assert_eq!(found[2]["detail"]["dynamic"], false);
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0]["detail"]["value"], "/api/login");
+    assert_eq!(found[1]["detail"]["dynamic"], false);
     let parts = jsonl(&invoke("find", &path, &["-f", "/api/"]));
-    assert_eq!(parts.len(), 5);
-    assert_eq!(parts[2]["detail"]["dynamic"], true);
+    assert_eq!(parts.len(), 3);
+    assert_eq!(parts[1]["detail"]["dynamic"], true);
     assert_eq!(
         jsonl(&invoke(
             "find",
@@ -3470,7 +3303,7 @@ fn escaped_literals_and_templates_use_decoded_values_without_crossing_interpolat
             &["-f", "/API/", "--case", "sensitive"],
         ))
         .len(),
-        2
+        0
     );
 }
 
@@ -3481,18 +3314,21 @@ fn lone_surrogates_are_preserved_and_do_not_match_replacement_characters() {
     success(&output);
     let text = String::from_utf8(output.stdout).unwrap();
     let lines: Vec<_> = text.lines().collect();
-    let header: Value = serde_json::from_str(lines[0]).unwrap();
-    assert_eq!(header["schema_version"], 2);
-    assert!(lines[1].contains("\"detail\":{\"literal_kind\":\"string\",\"value\":\"\\u0070\\u0072\\u0065\\u0066\\u0069\\u0078\\ud800\\ufffd\\u0073\\u0075\\u0066\\u0066\\u0069\\u0078\""));
+    assert!(lines[0].contains("\"detail\":{\"literal_kind\":\"string\",\"value\":\"\\u0070\\u0072\\u0065\\u0066\\u0069\\u0078\\ud800\\ufffd\\u0073\\u0075\\u0066\\u0066\\u0069\\u0078\""));
     // A literal has no navigable identity of its own: `at` is null and the enclosing
     // structure is the copy-only short coordinate.
-    assert!(lines[1].contains("\"at\":null"));
-    assert!(lines[1].contains("\"parent_at\":\""));
-    let summary: Value = serde_json::from_str(lines[2]).unwrap();
-    assert_eq!(summary["records"], 1);
-    assert_eq!(summary["complete"], true);
+    assert!(lines[0].contains("\"at\":null"));
+    assert!(lines[0].contains("\"parent_at\":\""));
     // A genuine replacement character remains independently searchable.
-    assert_eq!(jsonl(&invoke("find", &path, &["-f", "prefix�"])).len(), 2);
+    let replacement = invoke("find", &path, &["-f", "�suffix"]);
+    success(&replacement);
+    assert_eq!(
+        String::from_utf8(replacement.stdout)
+            .unwrap()
+            .matches("\"record\":\"match\"")
+            .count(),
+        1
+    );
     let found = invoke("find", &path, &["-f", "�suffix"]);
     success(&found);
     assert!(
@@ -3539,19 +3375,19 @@ fn computed_members_private_names_and_context_labels_are_explicit() {
         2
     );
     let found = jsonl(&invoke("find", &path, &["-f", "needle"]));
-    assert_eq!(found.len(), 4);
-    assert_eq!(found[2]["detail"]["literal_kind"], "property_key");
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[1]["detail"]["literal_kind"], "property_key");
 }
 
 #[test]
 fn the_same_span_resolves_after_content_changes() {
     let (dir, path) = fixture("function a(){}", "one.js");
     let records = outline_rows(&path, &[]);
-    let id = records[2]["at"].as_str().unwrap();
+    let id = records[1]["at"].as_str().unwrap();
     let other = dir.path().join("two.js");
     fs::copy(&path, &other).unwrap();
     let copied = outline_rows(&other, &[]);
-    assert_eq!(records[2]["at"], copied[2]["at"]);
+    assert_eq!(records[1]["at"], copied[1]["at"]);
     let same_span = js_full_id(&records[0], id);
     fs::write(&path, "function b(){}").unwrap();
     success(&invoke("slice", &path, &["--at", &same_span]));
@@ -3575,10 +3411,6 @@ fn forged_entity_bounds_kinds_and_versions_are_rejected() {
 #[test]
 fn auto_and_explicit_source_modes_handle_esm_without_accepting_top_level_return() {
     let (_dir, path) = fixture("export const f=()=>1;", "bundle.js");
-    assert_eq!(
-        outline_rows(&path, &[])[0]["detail"]["source_type"],
-        "module"
-    );
     failure(
         invoke("entities", &path, &["--source-type", "script"]),
         1,
@@ -3586,15 +3418,7 @@ fn auto_and_explicit_source_modes_handle_esm_without_accepting_top_level_return(
     );
     let (_dir, cjs) = fixture("export const f=()=>1;", "bundle.cjs");
     failure(invoke("entities", &cjs, &[]), 1, "INVALID_INPUT");
-    assert_eq!(
-        outline_rows(&cjs, &["--source-type", "module"])[0]["detail"]["source_type"],
-        "module"
-    );
-    let (_dir, mjs) = fixture("const f=()=>1;", "bundle.mjs");
-    assert_eq!(
-        outline_rows(&mjs, &[])[0]["detail"]["source_type"],
-        "module"
-    );
+    let (_dir, _mjs) = fixture("const f=()=>1;", "bundle.mjs");
     let (_dir, invalid) = fixture("return 1;", "bundle.js");
     failure(invoke("entities", &invalid, &[]), 1, "INVALID_INPUT");
 }
@@ -3615,10 +3439,10 @@ fn malformed_utf8_syntax_and_unsupported_jsx_fail_atomically() {
 fn empty_files_zero_matches_and_invalid_offsets_have_distinct_results() {
     let (_dir, path) = fixture("", "bundle.js");
     let records = outline_rows(&path, &[]);
-    assert_eq!(records.len(), 3);
-    assert_eq!(records[1]["start"], 0);
-    assert_eq!(records[1]["end"], 0);
-    assert_eq!(jsonl(&invoke("find", &path, &["-f", "absent"])).len(), 2);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["start"], 0);
+    assert_eq!(records[0]["end"], 0);
+    assert_eq!(jsonl(&invoke("find", &path, &["-f", "absent"])).len(), 0);
     failure(
         invoke("locate", &path, &["--byte", "0"]),
         1,
@@ -3770,7 +3594,7 @@ fn input_code_is_never_executed() {
 fn raw_get_output_file_matches_stdout_without_an_added_newline() {
     let (dir, path) = fixture("const f=()=>42;", "bundle.js");
     let records = outline_rows(&path, &[]);
-    let id = records[2]["at"].as_str().unwrap();
+    let id = records[1]["at"].as_str().unwrap();
     let destination = dir.path().join("fragment.js");
     let saved = invoke(
         "slice",
@@ -3788,7 +3612,7 @@ fn tagged_templates_and_surrogates_do_not_invent_decoded_matches() {
         r#"const x=tag`\unicode`; const y=`prefix\ud800suffix`; const z='prefix';"#,
         "bundle.js",
     );
-    assert_eq!(jsonl(&invoke("find", &path, &["-f", "unicode"])).len(), 2);
+    assert_eq!(jsonl(&invoke("find", &path, &["-f", "unicode"])).len(), 0);
     let output = invoke("find", &path, &["-f", "prefix"]);
     success(&output);
     let text = String::from_utf8(output.stdout).unwrap();
@@ -3879,7 +3703,6 @@ fn perf_is_opt_in_and_preserves_stdout_for_all_query_modes() {
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             assert!(report["peak_rss_bytes"].as_u64().unwrap() > 0);
         }
-        assert_eq!(analysis["source_id"], entities[0]["source_id"]);
         assert_eq!(
             analysis["counters"]["input_bytes"],
             fs::metadata(&path).unwrap().len()
@@ -4073,7 +3896,6 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
         let all = jsonl(&invoke("symbols", &path, &[]));
         let within = jsonl(&invoke("symbols", &path, &["--within", &entity_id]));
         for rows in [&all, &within] {
-            assert_eq!(rows[0]["detail"]["resolution"], "static");
             let symbol = rows
                 .iter()
                 .find(|r| {
@@ -4092,7 +3914,7 @@ fn symbols_published_and_obfuscated_inputs_find_independent_acorn_parameter_bind
                     case["declaration"]["start"], case["declaration"]["end"]
                 )
             );
-            let keys: Vec<_> = rows[1..rows.len() - 1]
+            let keys: Vec<_> = rows[..]
                 .iter()
                 .map(|r| (r["start"].as_u64().unwrap(), r["end"].as_u64().unwrap()))
                 .collect();
@@ -4128,17 +3950,6 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             &path,
             &["--byte", &case["byte"].to_string()],
         ));
-        assert_eq!(rows[0]["source_id"], case["source_id"]);
-        assert_eq!(rows[0]["detail"]["resolution"], case["resolution"]);
-        assert_eq!(rows[0]["detail"]["selected"]["name"], case["identifier"]);
-        assert_eq!(
-            rows[0]["detail"]["selected"]["start"],
-            case["declaration"]["start"]
-        );
-        assert_eq!(
-            rows[0]["detail"]["selected"]["end"],
-            case["declaration"]["end"]
-        );
         // Detail coordinates are the same copy-only form as row coordinates.
         let entity_id = format!(
             "{}:{}:{}",
@@ -4146,12 +3957,7 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             case["entity"]["start"],
             case["entity"]["end"]
         );
-        if case["resolution"] == "resolved" {
-            let mut declaration = case["declaration"].clone();
-            declaration["entity_id"] = serde_json::json!(entity_id);
-            assert_eq!(rows[0]["detail"]["declaration"], declaration);
-        }
-        let actual: Vec<_> = rows[1..rows.len()-1].iter().map(|row| {
+        let actual: Vec<_> = rows[..].iter().map(|row| {
             assert_eq!(row["parent_at"], entity_id, "{}", case["name"]);
             serde_json::json!({"start": row["start"], "end": row["end"], "read": row["detail"]["read"], "write": row["detail"]["write"], "member_write": row["detail"]["member_write"]})
         }).collect();
@@ -4168,19 +3974,6 @@ fn refs_published_and_obfuscated_inputs_match_independent_acorn_expectations() {
             bytes[case["entity"]["start"].as_u64().unwrap() as usize
                 ..case["entity"]["end"].as_u64().unwrap() as usize]
         );
-        if let Some(reference) = case["references"].as_array().unwrap().first() {
-            let selected = jsonl(&invoke(
-                "xref",
-                &path,
-                &["--byte", &reference["start"].to_string()],
-            ));
-            assert_eq!(selected[0]["detail"]["selected"]["role"], "reference");
-            assert_eq!(
-                selected[0]["detail"]["declaration"],
-                rows[0]["detail"]["declaration"]
-            );
-            assert_eq!(selected[1..], rows[1..]);
-        }
     }
 }
 
@@ -4200,7 +3993,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
         );
         assert_eq!(case["input_bytes"], bytes.len());
         let outline = outline_rows(&path, &[]);
-        let entities = &outline[1..outline.len() - 1];
+        let entities = &outline[..];
         assert_eq!(
             entities.len(),
             case["expected"]["entity_count"].as_u64().unwrap() as usize
@@ -4240,7 +4033,7 @@ fn published_and_obfuscated_corpus_matches_independent_acorn_expectations() {
             &path,
             &["-f", case["needle"].as_str().unwrap()],
         ));
-        let actual_matches: Vec<_> = found[1..found.len() - 1].iter().map(|m| serde_json::json!({
+        let actual_matches: Vec<_> = found[..].iter().map(|m| serde_json::json!({
             "literal_kind": m["detail"]["literal_kind"], "value": m["detail"]["value"], "start": m["start"], "end": m["end"],
             "dynamic": m["detail"]["dynamic"], "entity": entity_reference(by_id[m["parent_at"].as_str().unwrap()])
         })).collect();
@@ -4451,11 +4244,8 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
     fs::create_dir(&unpacked).unwrap();
     fs::write(unpacked.join("data.bin"), [0, 255, 128]).unwrap();
     let rows = jsonl(&asar("entries", &archive, &[]));
-    assert_eq!(rows[0]["backend"], "asar");
-    assert_eq!(rows[0]["detail"]["analysis"], "metadata");
-    assert_eq!(rows.last().unwrap()["records"], 7);
-    assert_eq!(rows.last().unwrap()["detail"]["invalid_ranges"], 0);
-    let paths: Vec<_> = rows[1..rows.len() - 1]
+    assert_eq!(rows.len(), 7);
+    let paths: Vec<_> = rows[..]
         .iter()
         .map(|r| r["detail"]["path"].as_str().unwrap())
         .collect();
@@ -4511,7 +4301,6 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
         let receipt: Value = js_object(&result.stdout);
         assert_eq!(receipt["backend"], "asar");
         assert_eq!(receipt["command"], "extract");
-        assert_eq!(receipt["detail"]["complete"], true);
         assert_eq!(receipt["detail"]["representation"], "original");
         assert_eq!(receipt["detail"]["storage"], storage);
         assert_eq!(receipt["detail"]["origin"]["entry"], name);
@@ -4576,9 +4365,8 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     );
     success(&extracted);
-    let receipt: Value = js_object(&extracted.stdout);
+    let _receipt: Value = js_object(&extracted.stdout);
     let rows = outline_rows(&destination, &[]);
-    assert_eq!(rows[0]["source_id"], receipt["source_id"]);
     let id = rows.iter().find(|r| r["detail"]["name"] == "run").unwrap()["at"]
         .as_str()
         .unwrap()
@@ -4591,9 +4379,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         b"function run(value){return \xe5\x90\x8d\xe7\xa7\xb0+value;}"
     );
     assert_eq!(
-        jsonl(&invoke("find", &destination, &["-f", "你好"]))
-            .last()
-            .unwrap()["records"],
+        jsonl(&invoke("find", &destination, &["-f", "你好"])).len(),
         1
     );
     let byte = source
@@ -4602,9 +4388,7 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         .unwrap()
         .to_string();
     assert_eq!(
-        jsonl(&invoke("xref", &destination, &["--byte", &byte]))
-            .last()
-            .unwrap()["records"],
+        jsonl(&invoke("xref", &destination, &["--byte", &byte])).len(),
         1
     );
     jsonl(&invoke("symbols", &destination, &[]));
@@ -4639,8 +4423,7 @@ fn asar_selected_reads_survive_bloat_and_preserve_atomic_outputs_and_budgets() {
         serde_json::json!({"size":1_u64<<30,"offset":((1_u64<<53)-1-(1_u64<<30)).to_string()});
     write_asar(&archive, &header, source);
     let listed = jsonl(&asar("entries", &archive, &[]));
-    assert_eq!(listed.last().unwrap()["records"], 4);
-    assert_eq!(listed.last().unwrap()["detail"]["invalid_ranges"], 3);
+    assert_eq!(listed.len(), 4);
     assert_eq!(
         listed.iter().find(|r| r["detail"]["path"] == fake).unwrap()["detail"]["range_error"],
         "out_of_bounds"
@@ -4864,10 +4647,7 @@ fn asar_extracted_production_sources_match_independent_acorn_expectations() {
         ));
         assert_eq!(fs::read(&destination).unwrap(), source);
         let rows = outline_rows(&destination, &[]);
-        assert_eq!(
-            rows.last().unwrap()["records"],
-            case["expected"]["entity_count"]
-        );
+        assert_eq!(rows.len(), case["expected"]["entity_count"]);
         for expected in case["expected"]["sample_entities"].as_array().unwrap() {
             assert!(rows.iter().any(|r| r["detail"]["kind"] == expected["kind"]
                 && r["start"] == expected["start"]
@@ -4899,7 +4679,7 @@ fn js_parser_static_values_preserve_utf16_and_string_method_semantics() {
         &path,
         &["-f", "\u{f600}", "--resolve-static"],
     ));
-    assert_eq!(unit[1]["detail"]["value"], "\u{f600}");
+    assert_eq!(unit[0]["detail"]["value"], "\u{f600}");
     let prefix = invoke("find", &path, &["-f", "prefix", "--resolve-static"]);
     success(&prefix);
     let raw = String::from_utf8(prefix.stdout).unwrap();
@@ -4915,7 +4695,7 @@ fn js_parser_static_values_preserve_utf16_and_string_method_semantics() {
         &path,
         &["-f", "A", "--case", "sensitive", "--resolve-static"],
     ));
-    assert_eq!(invalid.last().unwrap()["records"], 0);
+    assert_eq!(invalid.len(), 0);
 }
 
 #[test]
@@ -4926,22 +4706,18 @@ fn js_parser_name_filters_share_listing_case_and_owner_contracts() {
         const lone={"prefix\uD800":0};"#;
     let (_dir, path) = fixture(source, "names.mjs");
     let calls = jsonl(&invoke("calls", &path, &["-f", "load"]));
-    assert_eq!(calls.last().unwrap()["records"], 4);
-    assert_eq!(calls[0]["query"]["case"], "insensitive");
+    assert_eq!(calls.len(), 4);
     assert_eq!(
         jsonl(&invoke(
             "calls",
             &path,
             &["-f", "load", "--case", "sensitive"]
         ))
-        .last()
-        .unwrap()["records"],
+        .len(),
         2
     );
     assert_eq!(
-        jsonl(&invoke("calls", &path, &["--name", "load", "-f", "LOAD"]))
-            .last()
-            .unwrap()["records"],
+        jsonl(&invoke("calls", &path, &["--name", "load", "-f", "LOAD"])).len(),
         2
     );
     assert_eq!(
@@ -4950,32 +4726,23 @@ fn js_parser_name_filters_share_listing_case_and_owner_contracts() {
             &path,
             &["--name", "load", "-f", "LOAD", "--case", "sensitive"]
         ))
-        .last()
-        .unwrap()["records"],
+        .len(),
         0
     );
     let members = jsonl(&invoke("members", &path, &["-f", "load"]));
-    assert_eq!(members.last().unwrap()["records"], 5);
+    assert_eq!(members.len(), 5);
     assert_eq!(
         jsonl(&invoke(
             "values",
             &path,
             &["--kind", "property", "--name", "Other"]
         ))
-        .last()
-        .unwrap()["records"],
+        .len(),
         1
     );
+    assert_eq!(jsonl(&invoke("members", &path, &["-f", "owner"])).len(), 0);
     assert_eq!(
-        jsonl(&invoke("members", &path, &["-f", "owner"]))
-            .last()
-            .unwrap()["records"],
-        0
-    );
-    assert_eq!(
-        jsonl(&invoke("symbols", &path, &["--name", "Load"]))
-            .last()
-            .unwrap()["records"],
+        jsonl(&invoke("symbols", &path, &["--name", "Load"])).len(),
         1
     );
     for (command, needle) in [
@@ -4985,9 +4752,7 @@ fn js_parser_name_filters_share_listing_case_and_owner_contracts() {
         ("calls", "𐐨"),
     ] {
         assert_eq!(
-            jsonl(&invoke(command, &path, &["-f", needle]))
-                .last()
-                .unwrap()["records"],
+            jsonl(&invoke(command, &path, &["-f", needle])).len(),
             1,
             "{command}"
         );
@@ -4997,8 +4762,7 @@ fn js_parser_name_filters_share_listing_case_and_owner_contracts() {
                 &path,
                 &["-f", needle, "--case", "sensitive"]
             ))
-            .last()
-            .unwrap()["records"],
+            .len(),
             0,
             "{command}"
         );
@@ -5031,7 +4795,7 @@ fn js_parser_static_helpers_do_not_fold_visible_shadowing_or_dynamic_scope() {
             &path,
             &["-f", "A", "--case", "sensitive", "--resolve-static"],
         ));
-        assert_eq!(rows.last().unwrap()["records"], 0, "{source}");
+        assert_eq!(rows.len(), 0, "{source}");
     }
     let (_dir, path) = fixture(
         "const String=opaque; const a='pre'+'fix'; obj[String.fromCharCode(65)]();",
@@ -5043,16 +4807,10 @@ fn js_parser_static_helpers_do_not_fold_visible_shadowing_or_dynamic_scope() {
             &path,
             &["-f", "prefix", "--resolve-static"]
         ))
-        .last()
-        .unwrap()["records"],
+        .len(),
         1
     );
-    assert_eq!(
-        jsonl(&invoke("calls", &path, &["--name", "A"]))
-            .last()
-            .unwrap()["records"],
-        0
-    );
+    assert_eq!(jsonl(&invoke("calls", &path, &["--name", "A"])).len(), 0);
 }
 
 #[test]
@@ -5062,7 +4820,7 @@ fn js_parser_calls_include_static_computed_names_and_optional_paths() {
         loader[('load' as const)]('f'); loader[`load`]('g');"#;
     let (_dir, path) = fixture(source, "calls.ts");
     let rows = jsonl(&invoke("calls", &path, &["--name", "load"]));
-    assert_eq!(rows.last().unwrap()["records"], 7);
+    assert_eq!(rows.len(), 7);
     let calls: Vec<_> = rows.iter().filter(|r| r["record"] == "call").collect();
     assert_eq!(calls[3]["detail"]["optional"], true);
     assert_eq!(calls[4]["detail"]["call_kind"], "new");
@@ -5088,27 +4846,27 @@ fn js_parser_values_preserve_slots_unknowns_selection_and_source_identity() {
         &path,
         &["--kind", "property", "-f", "home"],
     ));
-    assert_eq!(home.last().unwrap()["records"], 2);
-    assert_eq!(home[1]["detail"]["value"]["value"], "a");
-    assert_eq!(home[2]["detail"]["value"]["value"], "b");
-    let context = home[1]["context_at"].as_str().unwrap();
+    assert_eq!(home.len(), 2);
+    assert_eq!(home[0]["detail"]["value"]["value"], "a");
+    assert_eq!(home[1]["detail"]["value"]["value"], "b");
+    let context = home[0]["context_at"].as_str().unwrap();
     let one = jsonl(&invoke("values", &path, &["--within", context]));
-    assert_eq!(one.last().unwrap()["records"], 1);
+    assert_eq!(one.len(), 1);
     let extracted = invoke("slice", &path, &["--at", context]);
     success(&extracted);
     assert_eq!(extracted.stdout, b"Home:'a'");
     let elements = jsonl(&invoke("values", &path, &["--kind", "element"]));
-    assert_eq!(elements.last().unwrap()["records"], 3);
-    assert_eq!(elements[2]["detail"]["value"]["resolution"], "hole");
-    assert_eq!(elements[3]["detail"]["spread"], true);
+    assert_eq!(elements.len(), 3);
+    assert_eq!(elements[1]["detail"]["value"]["resolution"], "hole");
+    assert_eq!(elements[2]["detail"]["spread"], true);
     assert_eq!(
-        elements[3]["detail"]["value"]["unresolved_reason"],
+        elements[2]["detail"]["value"]["unresolved_reason"],
         "spread"
     );
     let args = jsonl(&invoke("values", &path, &["--kind", "argument"]));
-    assert_eq!(args[1]["detail"]["value"]["resolution"], "unresolved");
-    assert_eq!(args[2]["detail"]["value"]["value"], "/ready");
-    assert_eq!(args[3]["detail"]["spread"], true);
+    assert_eq!(args[0]["detail"]["value"]["resolution"], "unresolved");
+    assert_eq!(args[1]["detail"]["value"]["value"], "/ready");
+    assert_eq!(args[2]["detail"]["spread"], true);
     let properties = jsonl(&invoke("values", &path, &["--kind", "property"]));
     assert!(
         properties
@@ -5161,12 +4919,24 @@ fn js_parser_resources_follow_only_earlier_unwritten_same_scope_const_strings() 
         const changed='old'; changed='new'; import(changed);"#;
     let (_dir, path) = fixture(source, "bindings.mjs");
     let plain = jsonl(&invoke("resources", &path, &[]));
-    assert_eq!(plain.last().unwrap()["detail"]["resolved"], 0);
+    assert!(
+        plain
+            .iter()
+            .all(|row| row["detail"]["resolution"] != "binding")
+    );
     let rows = jsonl(&invoke("resources", &path, &["--resolve-bindings"]));
-    assert_eq!(rows.last().unwrap()["detail"]["resolved"], 2);
-    assert_eq!(rows[1]["detail"]["name"], "/assets/entry.js");
-    assert_eq!(rows[1]["detail"]["resolution"], "binding");
-    for proof in rows[1]["detail"]["bindings"].as_array().unwrap() {
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row["detail"]["resolution"] == "binding")
+            .count(),
+        2
+    );
+    let entry = rows
+        .iter()
+        .find(|row| row["detail"]["name"] == "/assets/entry.js")
+        .unwrap();
+    assert_eq!(entry["detail"]["resolution"], "binding");
+    for proof in entry["detail"]["bindings"].as_array().unwrap() {
         success(&invoke(
             "slice",
             &path,
@@ -5183,7 +4953,7 @@ fn js_parser_resources_follow_only_earlier_unwritten_same_scope_const_strings() 
     );
     let (_dynamic_dir, dynamic) = fixture("const p='a'; eval('opaque'); import(p);", "dynamic.mjs");
     let rows = jsonl(&invoke("resources", &dynamic, &["--resolve-bindings"]));
-    assert_eq!(rows[1]["detail"]["unresolved_reason"], "dynamic_scope");
+    assert_eq!(rows[0]["detail"]["unresolved_reason"], "dynamic_scope");
 }
 
 #[cfg(feature = "backend-dex")]

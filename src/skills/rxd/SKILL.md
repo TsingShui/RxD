@@ -39,16 +39,15 @@ and binwalk integration are planned, not available commands.
 ## Consume results and preserve identity
 
 - stdout contains payload; diagnostics and the `--perf` record
-  use stderr. Do not mix them. JSONL lists/searches/references have header →
-  records → summary. Require successful exit and `summary.complete: true`; JS
-  directory scans also have per-file summaries and a final `scan_summary`
-  (files are scanned in path order, using `--threads` workers by default, and
-  the stream is identical whatever the worker count).
+  use stderr. Do not mix them. JSONL lists/searches/references are data rows
+  only: no header and no summary. Require exit 0 and parse the rows; zero rows is
+  a complete empty result. JS directory scans open each file with a `file` data
+  record and are scanned in path order, using `--threads` workers by default.
   Backend-specific completeness, inference and reconstruction flags still apply.
 - Schema v2 navigation (`at`, `parent_at`, `context_at`, `source_id`, `start`,
   `end`) is outside `detail`; format-specific fields are inside. `at` is the
-  copy-only coordinate a row prints and the value `--at` accepts; `source_id` is
-  set only on the stream header. Not every row has a usable coordinate or range.
+  copy-only coordinate a row prints and the value `--at` accepts; a stream row
+  does not repeat a content hash. Not every row has a usable coordinate or range.
   Parse actual responses, never manufacture coordinates.
 - A coordinate names a range in the input you are querying, not the file itself: reuse
   it only with the same bytes and interpretation options. A coordinate copied from
@@ -95,7 +94,7 @@ for `symbols --within`. A symbol row's `at` anchors `xref`; its `start` byte is 
 within one file,
 not properties or cross-file calls; `unresolved`/`dynamic` resolution remains
 explicit. For directory find,
-route each hit with its header's `detail.path` into single-file commands.
+route each hit through the enclosing `file` record's `detail.path` into single-file commands.
 
 The identifier/call/member queries are syntax-first locators. `identifiers`
 returns binding/reference occurrences of a full lexical name (so `obj.foo` never
@@ -283,7 +282,7 @@ calling typed tools. Normal calls use exactly one `input: {path}` or
 handle for related calls and `rxd_close` afterward. Targets fix input bytes but do
 not cache parser state. Backend tools retain original identity, reference and
 fallback semantics. Roots and worker/capture/deadline/full-response budgets apply;
-consume structuredContent and complete summaries, not a truncated text preview.
+consume `structuredContent` (`{records: [...]}` for streams), not a truncated text preview.
 
 ## Scope and maintenance
 

@@ -1489,7 +1489,7 @@ impl FunctionNavigation {
         let stage = perf.start_stage();
         let result = (|| {
             let mut output = Output { bytes: Vec::new() };
-            write_record(&mut output, &header)?;
+            write_record(&mut output, &crate::navigation::analysis_record(&header))?;
             for function in selected {
                 self.prepare_record(navigation, function, false, limits, perf)?;
                 write_record(

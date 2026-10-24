@@ -52,7 +52,7 @@
     <pre><code>rxd dex strings app.apk --filter Authorization --limit 20
 rxd dex xref app.apk -f Authorization --kind string
 rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
-    <p class="section-lede"><code>xref.detail.target</code> 是目标坐标，可直接传给 <code>--at</code>；只上坐标用 <code>--at</code>，按内容找用 <code>-f PATTERN --kind KIND</code>。退出码 3 表示无结果，4 表示歧义。只有 <code>summary.complete=true</code> 才算完整。</p>
+    <p class="section-lede"><code>xref.detail.target</code> 是目标坐标，可直接传给 <code>--at</code>；只上坐标用 <code>--at</code>，按内容找用 <code>-m PATTERN --kind KIND</code>。成功以 exit 0 表示；零结果就是空 stdout。</p>
   </section>
 
   <section class="section">

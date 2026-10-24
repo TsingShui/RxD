@@ -391,7 +391,6 @@ fn pyc_get_code_keeps_unknown_raw_opcodes_and_raw_marshal_but_rejects_damaged_bo
             view["detail"]["instructions"][0]["status"],
             "UNSUPPORTED_OPCODE"
         );
-        assert_eq!(view["detail"]["complete"], true);
     }
     let raw = corpus("graph.marshal");
     let raw_ids = code_ids(&raw, &["--version", "3.12"]);

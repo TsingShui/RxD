@@ -34,13 +34,13 @@ $rxd dotnet get-method tests/fixtures/dotnet/Fixture.dll --at "$caller" --raw
 ```
 
 String hits already carry method/class coordinates; no heap token needs to be constructed.
-Check the complete summary, then route the hit contexts:
+Route the hit contexts:
 
 ```sh
 fixture=tests/fixtures/dotnet/Fixture.dll
 $rxd dotnet strings "$fixture" -f hello -o target/string-hits.jsonl
-caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["context_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
-owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; assert rows[-1]["complete"]; print(next(r["parent_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
+caller=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; print(next(r["context_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
+owner=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/string-hits.jsonl")]; print(next(r["parent_at"] for r in rows if r["record"]=="string" and r["context_at"]))')
 $rxd dotnet get-method "$fixture" --at "$caller" --raw
 $rxd dotnet get-class "$fixture" --at "$owner" --raw
 $rxd dotnet xref "$fixture" -m $'hello\nlambda' --kind string
@@ -148,7 +148,7 @@ not that reconstruction failed. See [the engine guide](../../benches/ilspy/READM
 
 Coordinates are file-scoped: `0x0600000b` names metadata row 11 in *this* input, so
 the same coordinate addresses the same row in another version. A coordinate copied from
-another assembly is not detected; re-run the listing for the input being fetched. Outline/xref follow the header/records/summary completeness contract.
+another assembly is not detected; re-run the listing for the input being fetched. Streams are data rows only; success is exit 0.
 
 ## Type to complete original IL
 
@@ -186,11 +186,11 @@ $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -m hello --kind string
 
 `-f ... --kind string` matches every heap entry that *contains* the pattern, and every
 original `ldstr` site of those entries.
-The header names the literal it resolved to rather than `null`:
+Each reference row names the target it resolved to:
 
 ```sh
 $rxd dotnet xref tests/fixtures/dotnet/strings/Strings.dll --at 0x70000001 | head -1
-{"record":"header",...,"detail":{"target":{"target_kind":"user_string","token":"0x70000001","value":"shared 世界\nλ"}}}
+{"record":"reference",...,"detail":{"target":"shared 世界\nλ","target_kind":"string","target_token":1879048193,...}}
 ```
 
 Reading IL needs no string lookup either: a `ldstr` operand carries `target_at` (its own

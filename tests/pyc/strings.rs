@@ -46,7 +46,7 @@ fn pyc_strings_match_independent_lossless_constants_and_occurrence_ids() {
     let oracle: Value =
         serde_json::from_slice(&fs::read(corpus("graph.oracle.json")).unwrap()).unwrap();
     let data = rows(&strings(&path, &[]));
-    let mut observed = data[1..data.len() - 1].iter();
+    let mut observed = data[..].iter();
     let mut count = 0;
     for (owner, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
         let mut expected = Vec::new();
@@ -114,9 +114,7 @@ fn pyc_strings_match_independent_lossless_constants_and_occurrence_ids() {
         }
     }
     assert!(observed.next().is_none());
-    assert_eq!(data.last().unwrap()["records"], count);
-    assert_eq!(data.last().unwrap()["complete"], true);
-    assert_eq!(data[0]["detail"]["instruction_validation"], "not_scanned");
+    assert_eq!(data.len(), count);
 }
 
 #[test]
@@ -132,17 +130,8 @@ fn pyc_strings_filter_exact_text_and_raw_payload_without_losing_shared_occurrenc
         (vec!["--filter", "\u{fffd}"], 0),
     ] {
         let matched = rows(&strings(&path, &args));
-        assert_eq!(matched.last().unwrap()["records"], expected, "{args:?}");
-        assert_eq!(matched.last().unwrap()["complete"], true);
-        assert_eq!(
-            matched[0]["query"][if args[0] == "--filter" {
-                "filter"
-            } else {
-                "filter_hex"
-            }],
-            args[1]
-        );
-        for row in &matched[1..matched.len() - 1] {
+        assert_eq!(matched.len(), expected, "{args:?}");
+        for row in &matched[..] {
             assert!(all.contains(row));
         }
     }
@@ -155,12 +144,9 @@ fn pyc_strings_filter_exact_text_and_raw_payload_without_losing_shared_occurrenc
     assert_eq!(conflict.status.code(), Some(2));
     assert!(conflict.stdout.is_empty());
     let empty_hex = rows(&strings(&path, &["--filter-hex", ""]));
-    assert_eq!(&empty_hex[1..empty_hex.len() - 1], &all[1..all.len() - 1]);
+    assert_eq!(&empty_hex[..], &all[..]);
     let empty_text = rows(&strings(&path, &["--filter", ""]));
-    assert_eq!(
-        empty_text.last().unwrap()["records"].as_u64().unwrap(),
-        all.len() as u64 - 2 - 3
-    );
+    assert_eq!(empty_text.len(), all.len() - 3);
 }
 
 fn bytes_field(value: &[u8]) -> Vec<u8> {
@@ -194,7 +180,7 @@ fn pyc_strings_distinguish_literal_definitions_container_aliases_and_shared_cons
     let bytes = module(&bytes_field(&[100]), &consts); // Odd bodies deliberately remain unscanned.
     let (_dir, path) = fixture(&bytes, "shared.marshal");
     let all = rows(&strings(&path, &["--version", "3.12"]));
-    assert_eq!(all.len(), 7);
+    assert_eq!(all.len(), 5);
     let expected = [
         (0, vec![0, 0]),
         (0, vec![1, 0, 0]),
@@ -202,7 +188,7 @@ fn pyc_strings_distinguish_literal_definitions_container_aliases_and_shared_cons
         (0, vec![3, 0, 0]),
         (1, vec![0]),
     ];
-    for (row, (owner, path)) in all[1..6].iter().zip(expected) {
+    for (row, (owner, path)) in all[..5].iter().zip(expected) {
         assert_eq!(row["detail"]["code_index"], owner);
         assert_eq!(row["detail"]["constant_path"], serde_json::json!(path));
         assert_eq!(row["detail"]["value"], "x");
@@ -213,10 +199,14 @@ fn pyc_strings_distinguish_literal_definitions_container_aliases_and_shared_cons
             all[1]["detail"]["definition_start"]
         );
     }
-    let start = all[1]["start"].as_u64().unwrap() as usize;
-    let end = all[1]["end"].as_u64().unwrap() as usize;
+    let x = all
+        .iter()
+        .find(|row| row["detail"]["value"] == "x")
+        .unwrap();
+    let start = x["start"].as_u64().unwrap() as usize;
+    let end = x["end"].as_u64().unwrap() as usize;
     assert_eq!(&bytes[start..end], b"x");
-    for row in &all[2..6] {
+    for row in &all[1..5] {
         for key in ["start", "end"] {
             assert!(row[key].is_null());
         }
@@ -230,9 +220,19 @@ fn pyc_strings_distinguish_literal_definitions_container_aliases_and_shared_cons
             assert_eq!(end - start, 5);
         }
     }
-    assert_eq!(all[3]["detail"]["aliases"].as_array().unwrap().len(), 2);
     assert_eq!(
-        all[5]["detail"]["aliases"][0]["constant_path"],
+        all.iter()
+            .find(|row| row["detail"]["aliases"]
+                .as_array()
+                .is_some_and(|aliases| aliases.len() == 2))
+            .unwrap()["detail"]["aliases"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        all[4]["detail"]["aliases"][0]["constant_path"],
         serde_json::json!([])
     );
     failure(
@@ -289,43 +289,43 @@ fn pyc_strings_preserve_empty_control_unicode_bytes_and_duplicate_definitions() 
     consts.extend_from_slice(b"z\x01xz\x01x[\x01\0\0\0z\x07ignored");
     let (_dir, path) = fixture(module(&bytes_field(&[100]), &consts), "literal.marshal");
     let all = rows(&strings(&path, &["--version", "3.12"]));
-    assert_eq!(all.len(), 8); // Mutable list is outside the immutable-constant scope.
-    assert_eq!(all[1]["detail"]["value"], "");
-    assert_eq!(all[1]["start"], all[1]["end"]);
-    assert_eq!(all[2]["detail"]["raw_bytes"], "");
-    assert!(all[2]["detail"]["value"].is_null());
-    assert_eq!(all[3]["detail"]["value"], "\0\n雪");
-    assert_eq!(all[4]["detail"]["raw_bytes"], "ff610062");
-    assert_ne!(all[5]["at"], all[6]["at"]);
-    assert_ne!(all[5]["start"], all[6]["start"]);
+    assert_eq!(all.len(), 6); // Mutable list is outside the immutable-constant scope.
+    assert_eq!(all[0]["detail"]["value"], "");
+    assert_eq!(all[0]["start"], all[0]["end"]);
+    assert_eq!(all[1]["detail"]["raw_bytes"], "");
+    assert!(all[1]["detail"]["value"].is_null());
+    assert_eq!(all[2]["detail"]["value"], "\0\n雪");
+    assert_eq!(all[3]["detail"]["raw_bytes"], "ff610062");
+    assert_ne!(all[4]["at"], all[5]["at"]);
+    assert_ne!(all[4]["start"], all[5]["start"]);
     assert_eq!(
-        rows(&strings(&path, &["--version", "3.12", "--filter", "a"]))[1],
-        all[4]
+        rows(&strings(&path, &["--version", "3.12", "--filter", "a"]))[0],
+        all[3]
     );
     assert_eq!(
         rows(&strings(
             &path,
             &["--version", "3.12", "--filter-hex", "610062"]
-        ))[1],
-        all[4]
+        ))[0],
+        all[3]
     );
     assert_eq!(
         rows(&strings(
             &path,
             &["--version", "3.12", "--filter-hex", "000a"]
-        ))[1],
-        all[3]
+        ))[0],
+        all[2]
     );
     assert_eq!(
         rows(&strings(&path, &["--version", "3.12", "--filter", ""])).len(),
         all.len()
     );
-    assert_eq!(
+    assert!(
         rows(&strings(
             &path,
             &["--version", "3.12", "--filter", "ignored"]
-        ))[1]["records"],
-        0
+        ))
+        .is_empty()
     );
 }
 
@@ -334,40 +334,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     let path = corpus("graph.timestamp.pyc");
     let output = strings(&path, &["--perf"]);
     let all = rows(&output);
-    assert_js_keys(
-        &all[0],
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_eq!(all[0]["command"], "strings");
-    assert_eq!(all[0]["schema_version"], 2);
-    assert_eq!(
-        all[0]["query"],
-        serde_json::json!({"filter":null,"filter_hex":null,"version":null})
-    );
-    assert_js_keys(
-        &all[0]["detail"],
-        &[
-            "analysis",
-            "python_version",
-            "code_count",
-            "instruction_validation",
-            "containers",
-        ],
-    );
-    assert_eq!(
-        all[0]["detail"]["containers"],
-        serde_json::json!(["tuple", "frozenset"])
-    );
-    for row in &all[1..all.len() - 1] {
+    for row in &all[..] {
         assert_js_keys(
             row,
             &[
@@ -405,14 +372,6 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
             assert_js_keys(alias, &["start", "end", "constant_path"]);
         }
     }
-    assert_js_keys(
-        all.last().unwrap(),
-        &["record", "records", "complete", "detail"],
-    );
-    assert_js_keys(
-        &all.last().unwrap()["detail"],
-        &["analysis", "code_count", "instruction_validation"],
-    );
     let reports: Vec<Value> = String::from_utf8(output.stderr)
         .unwrap()
         .lines()
@@ -450,7 +409,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     let mut base = shared_static_limits();
     base.input_bytes = bytes.len();
     let (perf, literals) = strings_library(&path, None, None, None, base);
-    assert_eq!(literals.unwrap().len(), all.len() - 2);
+    assert_eq!(literals.unwrap().len(), all.len());
     let perf = perf_value(&perf);
     let entities = perf["counters"]["entities"].as_u64().unwrap() as usize;
     let work = perf["counters"]["work"].as_u64().unwrap() as usize;
@@ -496,13 +455,10 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     changed[8] = 1; // Identity includes the input header even when literals are unchanged.
     let (_dir, changed) = fixture(changed, "changed.pyc");
     let changed = rows(&strings(&changed, &[]));
-    // Row coordinates are copy-only; source identity lives in the stream header.
-    assert_ne!(changed[0]["source_id"], all[0]["source_id"]);
-    assert_eq!(changed[1]["at"], all[1]["at"]);
-    assert_eq!(changed[1]["detail"], all[1]["detail"]);
+    assert_eq!(changed[0]["at"], all[0]["at"]);
+    assert_eq!(changed[0]["detail"], all[0]["detail"]);
     let raw = rows(&strings(&corpus("graph.marshal"), &["--version", "3.12"]));
-    assert_eq!(raw[0]["query"]["version"], "3.12");
-    for (raw, pyc) in raw[1..raw.len() - 1].iter().zip(&all[1..all.len() - 1]) {
+    for (raw, pyc) in raw[..].iter().zip(&all[..]) {
         assert_eq!(raw["detail"]["raw_bytes"], pyc["detail"]["raw_bytes"]);
         assert_eq!(
             raw["detail"]["payload_start"].as_u64().unwrap() + 16,
@@ -567,7 +523,7 @@ fn pyc_strings_bound_long_match_work_and_deep_paths_without_false_output_limits(
     let all = strings(&path, &["--version", "3.12"]);
     let data = rows(&all);
     assert_eq!(
-        data[1]["detail"]["constant_path"].as_array().unwrap().len(),
+        data[0]["detail"]["constant_path"].as_array().unwrap().len(),
         81
     );
     assert_no_budget_flags(&path, "strings");

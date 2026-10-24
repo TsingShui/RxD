@@ -51,11 +51,3 @@ impl<T> Body<T> {
         self
     }
 }
-
-#[derive(Serialize)]
-pub struct ExtendedDetail<T> {
-    #[serde(flatten)]
-    pub base: Map<String, Value>,
-    #[serde(flatten)]
-    pub extra: T,
-}

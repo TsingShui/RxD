@@ -70,11 +70,7 @@ impl Reference {
 }
 
 pub struct References {
-    pub resolution: &'static str,
-    pub selected: Selected,
-    pub declaration: Option<Location>,
     pub references: Vec<Reference>,
-    pub declaration_ids: Option<Vec<String>>,
 }
 
 /// The reference rows of one resolved symbol, and where its declaration is.
@@ -255,24 +251,14 @@ pub fn run(
         // File-wide conservatism: with/eval can invalidate lexical reference claims.
         let dynamic = lexical::is_dynamic(&semantic);
         if dynamic || symbol.is_none() {
+            let _ = (dynamic, selected);
             return Ok(References {
-                resolution: if dynamic { "dynamic" } else { "unresolved" },
-                selected,
-                declaration: None,
                 references: Vec::new(),
-                declaration_ids: None,
             });
         }
         let symbol = symbol.expect("resolved symbol");
-        let (declaration_location, references) =
-            symbol_references(&semantic, symbol, source, &locations, typed)?;
-        let declaration = Some(declaration_location);
-        Ok(References {
-            resolution: "resolved",
-            selected,
-            declaration,
-            references,
-            declaration_ids: lexical::declaration_ids(&semantic, symbol, source)?,
-        })
+        let (_, references) = symbol_references(&semantic, symbol, source, &locations, typed)?;
+        let _ = selected;
+        Ok(References { references })
     })
 }

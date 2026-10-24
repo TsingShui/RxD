@@ -1,5 +1,12 @@
 # ASAR backend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd asar` is the Agent-facing static entry point for ASAR containers. It provides
@@ -20,18 +27,18 @@ or self-extracts a sample.
 
 | Command | Output and behavior |
 | --- | --- |
-| `asar entries FILE [-o CATALOG] [-f FILTER]` | header/file/summary JSONL, `backend: asar`, `command: entries`; each file row carries `at` (archive-relative path); `header.detail.analysis: metadata`. Lists every file type ordered by logical path. `-o` writes the same bytes as stdout. |
+| `asar entries FILE [-o CATALOG] [-f FILTER]` | data-row JSONL, `backend: asar`, `command: entries`; each file row carries `at` (archive-relative path); `record detail.analysis: metadata`. Lists every file type ordered by logical path. `-o` writes the same bytes as stdout. |
 | `asar extract FILE --at ENTRY -o OUTPUT` | `--at` (an `entries` row) and `-o` are required. The target contains the original bytes; stdout is a single JSON receipt, never the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
 `schema_version=2`. `entries` places format-specific fields in each file record and
-the summary under `detail`; `extract` returns one `file` record with
+the row's own detail; `extract` returns one `file` record with
 `backend`/`command`/`schema_version`/`source_id` outside and the receipt in `detail`.
 
 A `entries` file record has `path`, `bytes` and `storage`. Packed entries expose
 `range_valid`; invalid ranges expose
 `range_error: out_of_bounds|overflow`. Link entries expose `link`.
-`summary.detail.invalid_ranges` counts invalid ranges. Unpacked readability, syntax,
+`analysis detail.invalid_ranges` counts invalid ranges. Unpacked readability, syntax,
 decryption and signatures are outside metadata enumeration. ASAR links are listed,
 not followed. `complete` means the index was fully enumerated; it does not prove every
 file is readable. Range status uses the container length at open time.
@@ -107,7 +114,7 @@ real protected application packages.
 ## MCP projection
 
 `asar_entries`/`asar_extract` reuse the same index and extraction implementation.
-`entries` projects header/records/summary without reading unrelated unpacked
+`entries` projects data records without reading unrelated unpacked
 dependencies. `open`/`extract` capture declared dependencies and validate roots and
 lengths; links are not followed. `extract` keeps the original receipt with
 `detail.path: null` and adds `child_target`; `include_bytes` adds `bytes_base64` but

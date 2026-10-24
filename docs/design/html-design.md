@@ -1,5 +1,12 @@
 # HTML backend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd html` is the Agent-facing lexical container entry for local HTML. It provides
@@ -23,8 +30,8 @@ scans; HTML files are always handled by `rxd html`.
 
 | Command | Output and behavior |
 | --- | --- |
-| `html entries FILE [-f TEXT] [-o CATALOG]` | header/records/summary JSONL, `backend: html`, `command: entries`; `header.detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
-| `html resources FILE [--base-url URL] [-f TEXT] [-o CATALOG]` | header/resource/summary JSONL; classifies inline bodies and external references. `--kind`, `--location inline\|external`, and optional `--include-content` narrow or enrich the same listing. No requests or script execution. |
+| `html entries FILE [-f TEXT] [-o CATALOG]` | data records JSONL, `backend: html`, `command: entries`; `record detail.analysis: lexical`. Lists the four lexical record kinds in source order; supports `--kind/--tag/--attr/--within/--depth`. `-o` writes the same bytes as stdout. |
+| `html resources FILE [--base-url URL] [-f TEXT] [-o CATALOG]` | data-row JSONL; classifies inline bodies and external references. `--kind`, `--location inline\|external`, and optional `--include-content` narrow or enrich the same listing. No requests or script execution. |
 | `html extract FILE --at AT -o OUTPUT [--content]` | One selector and `-o` are required. The target stores original bytes (element outer range by default; content range with `--content`). Stdout is one JSON receipt, not the file content. |
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
@@ -262,7 +269,7 @@ pre-commit failure preserves the old target, produces no final artifact and emit
 payload; an output/commit failure leaves no success receipt. If stdout transfer fails
 after replacement, the output file may exist and a non-zero exit is not complete
 success; `entries` stdout may also be partial, and complete success still requires a
-complete summary plus exit 0. Multi-node extraction, directory write transactions and
+exit 0. Multi-node extraction, directory write transactions and
 persistent parse state are not implemented.
 
 ## Resource budgets
@@ -342,7 +349,7 @@ exception; any exception needs explicit scope, measurements and approval.
 ## MCP projection
 
 `html_entries`/`html_resources`/`html_extract` reuse the same query and result
-construction. The listings project header/records/summary, preserving CLI values,
+construction. The listings project data records, preserving CLI values,
 identity, order and completeness (logical path restoration, not byte-identical JSONL). HTML capture is a
 regular immutable file (path or file target); directories/bundles are rejected.
 `html_resources` reflects `base_url/kind/location/filter/case/include_content` from

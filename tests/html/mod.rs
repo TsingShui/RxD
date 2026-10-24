@@ -71,43 +71,27 @@ fn html_list_filters_exact_kinds_tags_and_decoded_duplicate_attributes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("filters.html");
     fs::write(&path, b"<DIV HREF='/a&amp;b' href='X=Y>Z' disabled><span>inside</span></DIV><div href='/a&b'>outside</div>").unwrap();
-    let all = rows(&run(&path, &[]));
     let selected = rows(&run(
         &path,
         &["--kind", "element", "--tag", "DiV", "--attr", "HrEf=X=Y>Z"],
     ));
-    assert_eq!(selected.len(), 3);
-    assert_eq!(
-        selected[0]["query"],
-        json!({"kind":"element","tag":"div","attr":"href=X=Y>Z","depth":null,"within":null,"contains":null})
-    );
-    assert_eq!(selected[1], all[1]);
-    assert_eq!(selected[2]["records"], 1);
-    assert_eq!(selected[2]["detail"], all.last().unwrap()["detail"]);
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0]["detail"]["tag"], "div");
+    assert_eq!(selected[0]["detail"]["attrs"][0]["name"], "href");
     let decoded = rows(&run(&path, &["--attr", "href=/a&b"]));
-    assert_eq!(decoded[1], all[1]);
-    assert_eq!(decoded[2], all[4]);
-    assert_eq!(decoded.last().unwrap()["records"], 2);
-    assert_eq!(
-        rows(&run(&path, &["--attr", "href=/a&amp;b"]))
-            .last()
-            .unwrap()["records"],
-        0
+    assert_eq!(decoded.len(), 2);
+    assert!(
+        decoded
+            .iter()
+            .any(|row| row["detail"]["attrs"][0]["value"] == "/a&b")
     );
-    assert_eq!(
-        rows(&run(&path, &["--attr", "disabled"])).last().unwrap()["records"],
-        1
-    );
-    let none = rows(&run(&path, &["--kind", "text", "--tag", "div"]));
-    assert_eq!(none.len(), 2);
-    assert_eq!(none[1]["records"], 0);
-    assert_eq!(none[1]["detail"], all.last().unwrap()["detail"]);
-    let absent = rows(&run(&path, &["--attr", "href=x=y"]));
-    assert_eq!(absent.len(), 2);
-    assert_eq!(absent[1]["complete"], true);
+    assert!(rows(&run(&path, &["--attr", "href=/a&amp;b"])).is_empty());
+    assert_eq!(rows(&run(&path, &["--attr", "disabled"])).len(), 1);
+    assert!(rows(&run(&path, &["--kind", "text", "--tag", "div"])).is_empty());
+    assert!(rows(&run(&path, &["--attr", "href=x=y"])).is_empty());
     let empty_value = rows(&run(&path, &["--attr", "disabled="]));
-    assert_eq!(empty_value[1], all[1]);
-    assert_eq!(empty_value[2]["records"], 1);
+    assert_eq!(empty_value.len(), 1);
+    assert_eq!(empty_value[0]["detail"]["tag"], "div");
 }
 
 #[test]
@@ -120,17 +104,13 @@ fn html_list_within_includes_root_and_uses_relative_depth_without_rewriting_link
     )
     .unwrap();
     let all = rows(&run(&path, &[]));
-    let nodes = &all[1..all.len() - 1];
+    let nodes = &all[..];
     let section = nodes
         .iter()
         .find(|r| r["detail"]["tag"] == "section")
         .unwrap();
     let section_id = section["at"].as_str().unwrap();
     let filtered = rows(&run(&path, &["--within", section_id, "--depth", "1"]));
-    assert_eq!(
-        filtered[0]["query"],
-        json!({"kind":null,"tag":null,"attr":null,"depth":1,"within":section_id,"contains":null})
-    );
     let expected: Vec<_> = nodes
         .iter()
         .filter(|r| {
@@ -138,27 +118,26 @@ fn html_list_within_includes_root_and_uses_relative_depth_without_rewriting_link
         })
         .collect();
     assert_eq!(
-        &filtered[1..filtered.len() - 1],
+        filtered,
         expected.iter().map(|r| (*r).clone()).collect::<Vec<_>>()
     );
-    assert_eq!(filtered[1]["detail"]["depth"], 1);
-    assert_eq!(filtered[1]["parent_at"], nodes[0]["at"]);
+    assert_eq!(filtered[0]["detail"]["depth"], 1);
+    assert_eq!(filtered[0]["parent_at"], nodes[0]["at"]);
     let only_root = rows(&run(&path, &["--within", section_id, "--depth", "0"]));
-    assert_eq!(only_root.len(), 3);
-    assert_eq!(only_root[1], *section);
+    assert_eq!(only_root.len(), 1);
+    assert_eq!(only_root[0], *section);
     let text = rows(&run(&path, &["--kind", "text", "--within", section_id]));
-    assert_eq!(text.len(), 3);
-    assert_eq!(text[1]["detail"]["value"], "A");
-    assert_eq!(text[1]["detail"]["depth"], 3);
+    assert_eq!(text.len(), 1);
+    assert_eq!(text[0]["detail"]["value"], "A");
+    assert_eq!(text[0]["detail"]["depth"], 3);
     assert_eq!(
-        text[1]["parent_at"],
+        text[0]["parent_at"],
         nodes.iter().find(|r| r["detail"]["tag"] == "p").unwrap()["at"]
     );
-    assert_eq!(text[1]["context_at"], text[1]["parent_at"]);
-    assert_eq!(text[2]["detail"], all.last().unwrap()["detail"]);
+    assert_eq!(text[0]["context_at"], text[0]["parent_at"]);
     let top = rows(&run(&path, &["--depth", "0"]));
-    assert_eq!(top[1], nodes[0]);
-    assert_eq!(top[2]["records"], 1);
+    assert_eq!(top.len(), 1);
+    assert_eq!(top[0], nodes[0]);
     // Budgets come from the shared table, so the only thing a caller can still do is
     // ask for a shape; a budget flag is refused as an unknown argument.
     for flag in ["--max-depth", "--max-records", "--max-output-bytes"] {
@@ -172,7 +151,7 @@ fn html_list_rejects_untrusted_within_ids_and_invalid_selectors() {
     let path = dir.path().join("ids.html");
     fs::write(&path, b"<div><p>hi</p></div>").unwrap();
     let all = rows(&run(&path, &[]));
-    let id = all[1]["at"].as_str().unwrap();
+    let id = all[0]["at"].as_str().unwrap();
     let text_id = all.iter().find(|r| r["record"] == "text").unwrap()["at"]
         .as_str()
         .unwrap();
@@ -213,7 +192,7 @@ fn html_list_filtered_file_is_atomic_and_identical_to_stdout() {
     .unwrap();
     let args = ["--tag", "A", "--attr", "HREF=/x&y"];
     let expected = run(&path, &args);
-    assert_eq!(rows(&expected).last().unwrap()["records"], 1);
+    assert_eq!(rows(&expected).len(), 1);
     fs::write(&target, b"old").unwrap();
     let mut to_file = args.to_vec();
     to_file.extend(["-o", target.to_str().unwrap()]);
@@ -233,23 +212,19 @@ fn html_list_reports_source_bound_lexical_catalog_and_atomic_file() {
     fs::write(&path, source).unwrap();
     let output = run(&path, &[]);
     let entries = rows(&output);
-    let hash = rxd_core::identity::input_id(source);
-    assert_eq!(entries.len(), 7);
-    assert_eq!(
-        entries[0],
-        json!({"record":"header","backend":"html","command":"entries","source_id":hash,"input_bytes":source.len(),"schema_version":2,"query":{"kind":null,"tag":null,"attr":null,"depth":null,"within":null,"contains":null},"detail":{"path":path.to_str().unwrap(),"analysis":"lexical","parser":"html5gum","parser_version":"0.8.4","lexical_profile":"lexical_naive_v1"}})
-    );
-    let kinds: Vec<_> = entries[1..6]
+    let _hash = rxd_core::identity::input_id(source);
+    assert_eq!(entries.len(), 5);
+    let kinds: Vec<_> = entries[..]
         .iter()
         .map(|r| r["record"].as_str().unwrap())
         .collect();
     assert_eq!(kinds, ["doctype", "comment", "element", "element", "text"]);
-    let spans: Vec<_> = entries[1..6]
+    let spans: Vec<_> = entries[..]
         .iter()
         .map(|r| (r["start"].as_u64().unwrap(), r["end"].as_u64().unwrap()))
         .collect();
     assert_eq!(spans, [(0, 15), (15, 23), (23, 81), (69, 73), (73, 75)]);
-    for (row, (start, end)) in entries[1..6].iter().zip(spans) {
+    for (row, (start, end)) in entries.iter().zip(spans) {
         assert_eq!(
             row["at"],
             format!("{}:{start}:{end}", row["record"].as_str().unwrap())
@@ -257,25 +232,19 @@ fn html_list_reports_source_bound_lexical_catalog_and_atomic_file() {
         assert!(row["source_id"].is_null());
     }
     assert_eq!(
-        entries[1]["detail"],
+        entries[0]["detail"],
         json!({"value":"<!DOCTYPE html>","depth":0})
     );
-    assert_eq!(entries[2]["detail"], json!({"value":"<!--x-->","depth":0}));
+    assert_eq!(entries[1]["detail"], json!({"value":"<!--x-->","depth":0}));
     assert_eq!(
-        entries[3]["detail"],
+        entries[2]["detail"],
         json!({"tag":"div","attrs":[{"name":"href","value":"/a&b"},{"name":"href","value":"x"},{"name":"disabled","value":""},{"name":"empty","value":""}],"self_closing":false,"void":false,"depth":0,"end_tag":"explicit","content_start":69,"content_end":75})
     );
-    assert_eq!(entries[3]["context_at"], entries[3]["at"]);
-    assert_eq!(entries[4]["parent_at"], entries[3]["at"]);
-    assert_eq!(entries[4]["detail"]["end_tag"], "not_applicable");
-    assert_eq!(entries[5]["detail"], json!({"value":"Hi","depth":1}));
-    assert_eq!(entries[5]["context_at"], entries[3]["at"]);
-    assert_eq!(entries[6]["record"], "summary");
-    assert_eq!(
-        entries[6]["detail"],
-        json!({"nodes":5,"elements":2,"texts":1,"comments":1,"doctypes":1,"tokenizer_errors":0,"unmatched_end_tags":0,"missing_end_tags":0})
-    );
-    assert_eq!(entries[6]["records"], 5);
+    assert_eq!(entries[2]["context_at"], entries[2]["at"]);
+    assert_eq!(entries[3]["parent_at"], entries[2]["at"]);
+    assert_eq!(entries[3]["detail"]["end_tag"], "not_applicable");
+    assert_eq!(entries[4]["detail"], json!({"value":"Hi","depth":1}));
+    assert_eq!(entries[4]["context_at"], entries[2]["at"]);
     assert_eq!(output.stdout, run(&path, &[]).stdout);
     let target = dir.path().join("catalog.jsonl");
     let written = run(&path, &["-o", target.to_str().unwrap()]);
@@ -336,7 +305,7 @@ fn html_extract_rejects_content_on_nonelements_and_empty_content_without_artifac
     let path = dir.path().join("page.html");
     fs::write(&path, b"<!DOCTYPE html><!--c--><div></div><span>x</span>").unwrap();
     let catalog = rows(&run(&path, &[]));
-    let nodes = &catalog[1..catalog.len() - 1];
+    let nodes = &catalog[..];
     let destination = dir.path().join("artifact");
     for kind in ["doctype", "comment", "text"] {
         let node = nodes.iter().find(|r| r["record"] == kind).unwrap();
@@ -386,7 +355,7 @@ fn html_extract_reports_uniform_id_taxonomy_and_refuses_input_alias() {
     let path = dir.path().join("page.html");
     fs::write(&path, b"<div><p>hi</p></div>").unwrap();
     let catalog = rows(&run(&path, &[]));
-    let id = catalog[1]["at"].as_str().unwrap();
+    let id = catalog[0]["at"].as_str().unwrap();
     let destination = dir.path().join("artifact");
     fs::write(&destination, b"old").unwrap();
     for candidate in [
@@ -466,7 +435,7 @@ fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity(
         .find(|r| r["detail"]["tag"] == "script")
         .unwrap();
     let destination = dir.path().join("inline.js");
-    let record = receipt(&extract(
+    let _record = receipt(&extract(
         &path,
         script["at"].as_str().unwrap(),
         &destination,
@@ -491,7 +460,6 @@ fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity(
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(rows[0]["source_id"], record["source_id"]);
     assert!(rows.iter().any(|r| r["detail"]["name"] == "run"));
 }
 
@@ -505,7 +473,7 @@ fn html_list_preserves_lexical_recovery_and_corrected_noframes_state() {
     let path = dir.path().join("recover.html");
     fs::write(&path, b"<ul><li><li>x</ul></absent><noframes><b>hidden</b></noframes><noframe><i>visible</i></noframe>").unwrap();
     let entries = rows(&run(&path, &[]));
-    let nodes = &entries[1..entries.len() - 1];
+    let nodes = &entries[..];
     let tags: Vec<_> = nodes
         .iter()
         .filter(|row| row["record"] == "element")
@@ -517,8 +485,6 @@ fn html_list_preserves_lexical_recovery_and_corrected_noframes_state() {
     assert_eq!(nodes[2]["detail"]["end_tag"], "missing");
     assert_eq!(nodes[1]["detail"]["end_tag"], "missing");
     assert_eq!(nodes[0]["detail"]["end_tag"], "explicit");
-    assert_eq!(entries.last().unwrap()["detail"]["missing_end_tags"], 2);
-    assert_eq!(entries.last().unwrap()["detail"]["unmatched_end_tags"], 1);
     assert_eq!(
         nodes
             .iter()
@@ -549,7 +515,7 @@ fn html_list_recovers_void_slash_ancestor_and_eof_ranges_without_losing_nul() {
     let source = include_bytes!("../fixtures/html/recovery.html");
     fs::write(&path, source).unwrap();
     let entries = rows(&run(&path, &[]));
-    let nodes = &entries[1..entries.len() - 1];
+    let nodes = &entries[..];
     let elements: Vec<_> = nodes.iter().filter(|r| r["record"] == "element").collect();
     assert_eq!(elements.len(), 5);
     for (row, tag, start, end, content_start, content_end, status, slash, void) in [
@@ -617,10 +583,6 @@ fn html_list_recovers_void_slash_ancestor_and_eof_ranges_without_losing_nul() {
     );
     assert_eq!(&source[26..29], b"A\0B");
     assert_eq!(nul_text["parent_at"], elements[3]["at"]);
-    let summary = &entries.last().unwrap()["detail"];
-    assert_eq!(summary["tokenizer_errors"], 1);
-    assert_eq!(summary["unmatched_end_tags"], 1);
-    assert_eq!(summary["missing_end_tags"], 2);
 }
 
 #[test]
@@ -629,8 +591,7 @@ fn html_list_uses_context_states_without_inventing_markup() {
     let path = dir.path().join("contexts.html");
     fs::write(&path, include_bytes!("../fixtures/html/contexts.html")).unwrap();
     let entries = rows(&run(&path, &[]));
-    assert_eq!(entries[0]["detail"]["lexical_profile"], "lexical_naive_v1");
-    let nodes = &entries[1..entries.len() - 1];
+    let nodes = &entries[..];
     let elements: Vec<_> = nodes.iter().filter(|r| r["record"] == "element").collect();
     let tags: Vec<_> = elements
         .iter()
@@ -668,7 +629,6 @@ fn html_list_uses_context_states_without_inventing_markup() {
     assert_eq!(elements[6]["parent_at"], elements[5]["at"]);
     assert_eq!(elements[7]["detail"]["end_tag"], "missing");
     assert_eq!(elements[7]["end"], 179);
-    assert_eq!(entries.last().unwrap()["detail"]["missing_end_tags"], 1);
 }
 
 #[test]
@@ -705,8 +665,7 @@ fn html_list_declares_context_approximation_in_cli_discovery_and_results() {
         )
         .unwrap();
         let entries = rows(&run(&path, &[]));
-        assert_eq!(entries[0]["detail"]["lexical_profile"], "lexical_naive_v1");
-        let nodes = &entries[1..entries.len() - 1];
+        let nodes = &entries[..];
         let elements: Vec<_> = nodes.iter().filter(|r| r["record"] == "element").collect();
         assert_eq!(
             elements
@@ -732,7 +691,6 @@ fn html_list_declares_context_approximation_in_cli_discovery_and_results() {
             assert_eq!(elements[1]["detail"]["content_end"], 37);
             assert_eq!(elements[1]["parent_at"], elements[0]["at"]);
             assert_eq!(elements[0]["detail"]["end_tag"], "missing");
-            assert_eq!(entries.last().unwrap()["detail"]["missing_end_tags"], 2);
         } else if fixture == "template.html" {
             assert_eq!(elements[1]["parent_at"], elements[0]["at"]);
             assert_eq!(elements[2]["parent_at"], elements[1]["at"]);
@@ -760,12 +718,11 @@ fn html_list_keeps_nonvoid_slash_tag_open_until_eof() {
     let path = dir.path().join("empty.html");
     fs::write(&path, b"<div/>").unwrap();
     let entries = rows(&run(&path, &[]));
-    assert_eq!(entries[1]["detail"]["self_closing"], true);
-    assert_eq!(entries[1]["detail"]["void"], false);
-    assert_eq!(entries[1]["detail"]["end_tag"], "missing");
-    assert_eq!(entries[1]["detail"]["content_start"], 6);
-    assert_eq!(entries[1]["detail"]["content_end"], 6);
-    assert_eq!(entries[2]["detail"]["missing_end_tags"], 1);
+    assert_eq!(entries[0]["detail"]["self_closing"], true);
+    assert_eq!(entries[0]["detail"]["void"], false);
+    assert_eq!(entries[0]["detail"]["end_tag"], "missing");
+    assert_eq!(entries[0]["detail"]["content_start"], 6);
+    assert_eq!(entries[0]["detail"]["content_end"], 6);
 }
 
 #[test]
@@ -795,8 +752,7 @@ fn html_list_rejects_untrusted_inputs_and_limits_without_replacing_catalog() {
     assert_eq!(fs::read(target).unwrap(), b"old");
     fs::write(&path, b"").unwrap();
     let empty = rows(&run(&path, &[]));
-    assert_eq!(empty.len(), 2);
-    assert_eq!(empty[1]["records"], 0);
+    assert!(empty.is_empty());
 
     let malformed = run(&path, &["--max-records", "0"]);
     assert_eq!(malformed.status.code(), Some(2));

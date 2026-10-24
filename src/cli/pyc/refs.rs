@@ -124,18 +124,6 @@ pub fn run(
     perf.counters.records = Some(scan.hits.len());
     perf.counters.matches = Some(scan.hits.len());
     result?;
-    let analysis_kind = if kind == "constant" {
-        "explicit_constant_references"
-    } else {
-        "explicit_name_references"
-    };
-    let scope = if within.is_some() {
-        "selected_code"
-    } else if kind == "constant" {
-        "constant_owner"
-    } else {
-        "all_codes"
-    };
     let bytes = perf.measure("serialize", || -> Result<_> {
         let mut out = Output::new(options.common.budget.output_bytes);
         let mut query = json!({"kind": kind});
@@ -156,17 +144,27 @@ pub fn run(
         if let Some((major, minor)) = version {
             query["version"] = json!(format!("{major}.{minor}"));
         }
-        append(&mut out, &envelope::header("pyc", "xref", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            query,
-            json!({"analysis":analysis_kind,"python_version":analysis.version.display(),"code_count":analysis.codes.len(),"scope":scope,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         for hit in &scan.hits {
-            analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
-            append(&mut out, &Record {record:envelope::REFERENCE, at:None, source_id:None, parent_at:None,
-                context_at:analysis.code_id(hit.code_index), start:hit.start, end:hit.end, detail:hit})?;
+            analysis.charge_work(
+                1usize
+                    .saturating_add(hit.constant_id.as_ref().map_or(0, String::len))
+                    .saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)),
+            )?;
+            append(
+                &mut out,
+                &Record {
+                    record: envelope::REFERENCE,
+                    at: None,
+                    source_id: None,
+                    parent_at: None,
+                    context_at: analysis.code_id(hit.code_index),
+                    start: hit.start,
+                    end: hit.end,
+                    detail: hit,
+                },
+            )?;
         }
         analysis.charge_work(scan.unsupported.len())?;
-        append(&mut out, &envelope::summary(scan.hits.len(), scan.unsupported.is_empty(),
-            json!({"analysis":analysis_kind,"code_count":analysis.codes.len(),"scanned_code_count":scan.scanned_codes,"instructions":scan.instructions,"unsupported_count":scan.unsupported.len(),"unsupported":scan.unsupported,"instruction_validation":"scanned_scope"}).as_object().unwrap().clone()))?;
         Ok(out.into_bytes())
     });
     perf.counters.work = Some(analysis.evidence.work);

@@ -105,7 +105,7 @@ matches the value the row is named by. The scope is validated-block PUSH immedia
 `excluded_unindexed_pushes` accounts for PUSH-like bytes outside validated blocks.
 Separate `data_literal`/`data_reference` records cover unindexed, metadata and contextual
 CODECOPY candidates; a text/data hit does not prove a runtime string or executable use.
-IDs bind one exact occurrence/range; zero hits still produce a complete header+summary.
+IDs bind one exact occurrence/range; zero hits still succeed with no data rows beyond the analysis record.
 See the [EVM design](../design/evm-design.md#strings-and-data-candidates).
 
 ## Budgets and performance

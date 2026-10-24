@@ -6,13 +6,28 @@ use std::{
 };
 
 use rayon::prelude::*;
-use rxd_core::envelope::{SCHEMA_VERSION, summary};
 use rxd_core::{Error, Limits, Result, perf::Perf};
 use rxd_js::{Query, SourceMode, Syntax};
 use serde_json::json;
 
 fn at_path(path: &Path, error: Error) -> Error {
     Error::new(error.code, format!("{}: {}", path.display(), error.message))
+}
+
+/// A directory scan has no stream header, so each file opens its rows with a `file`
+/// data record: the only thing that ties a file-scoped `at` to its input.
+fn file_record(path: &Path) -> Result<Vec<u8>> {
+    let input_bytes = fs::metadata(path).map_err(Error::from)?.len();
+    let mut row = serde_json::to_vec(&json!({
+        "record": "file",
+        "detail": {
+            "path": path.to_string_lossy(),
+            "input_bytes": input_bytes,
+        }
+    }))
+    .map_err(|error| Error::new("INTERNAL_ERROR", error.to_string()))?;
+    row.push(b'\n');
+    Ok(row)
 }
 
 fn discover(input: &Path, max_files: Option<usize>) -> Result<Vec<PathBuf>> {
@@ -124,32 +139,21 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
             "--within requires a single-file input",
         ));
     }
+    let directory = fs::symlink_metadata(input)
+        .map_err(|e| at_path(input, e.into()))?
+        .is_dir();
     let files = perf
         .measure("discover", || discover(input, max_files))
         .map_err(|e| at_path(input, e))?;
     let mut output = Vec::new();
     let mut records = 0;
-    if files.len() == 1 {
-        run_serial(&shared, &files[0], perf, &mut records, &mut output)?;
+    if files.len() == 1 && !directory {
+        run_serial(&shared, &files[0], false, perf, &mut records, &mut output)?;
+    } else if files.len() == 1 {
+        run_serial(&shared, &files[0], true, perf, &mut records, &mut output)?;
     } else {
         run_parallel(&shared, &files, threads, perf, &mut records, &mut output)?;
     }
-    let summary = perf
-        .measure("serialize", || {
-            let mut scan_summary = summary(
-                records,
-                true,
-                json!({"files":files.len()}).as_object().unwrap().clone(),
-            );
-            scan_summary["record"] = json!("scan_summary");
-            scan_summary["schema_version"] = json!(SCHEMA_VERSION);
-            scan_summary["backend"] = json!("js");
-            scan_summary["command"] = json!(query.name());
-            serde_json::to_vec(&scan_summary)
-        })
-        .map_err(|e| Error::new("INVALID_INPUT", e.to_string()))?;
-    output.extend_from_slice(&summary);
-    output.push(b'\n');
     perf.counters.records = Some(records);
     perf.counters.output_bytes = Some(output.len());
     Ok(output)
@@ -160,6 +164,7 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
 fn run_serial(
     shared: &Shared<'_>,
     path: &Path,
+    file_row: bool,
     perf: &mut Perf,
     records: &mut usize,
     output: &mut Vec<u8>,
@@ -189,6 +194,9 @@ fn run_serial(
     // A scan has multiple content identities, never the last file's identity.
     perf.source_id = None;
     let bytes = result.map_err(|e| at_path(path, e))?;
+    if file_row {
+        output.extend_from_slice(&file_record(path)?);
+    }
     output.extend_from_slice(&bytes);
     Ok(())
 }
@@ -242,6 +250,7 @@ fn run_parallel(
         let file_records = shard.counters.records.unwrap_or(0);
         *records += file_records;
         perf.merge(&shard);
+        output.extend_from_slice(&file_record(path)?);
         output.extend_from_slice(&bytes);
     }
     // A scan has multiple content identities, never the last file's identity.

@@ -306,7 +306,7 @@ impl Navigation {
             "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "discovery_complete": null}))),
         );
         let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &header)?;
+        write_record(&mut output, &analysis_record(&header))?;
         for block in selected {
             write_record(&mut output, &self.block_record(block, false))?;
         }
@@ -324,6 +324,9 @@ impl Navigation {
 }
 
 pub(crate) fn write_record(output: &mut Output, record: &Value) -> Result<()> {
+    if envelope::is_wrapper(record) {
+        return Ok(());
+    }
     if let Err(error) = serde_json::to_writer(&mut *output, record) {
         return Err(Error::new("INVALID_INPUT", error.to_string()));
     }
@@ -333,6 +336,12 @@ pub(crate) fn write_record(output: &mut Output, record: &Value) -> Result<()> {
 }
 
 /// Fixed nullable EVM JSONL header detail, shared by all navigation commands.
+/// EVM keeps its bytecode/metadata evidence as a normal first data record. It is not
+/// a stream wrapper: it has no query, command or summary fields.
+pub(crate) fn analysis_record(header: &Value) -> Value {
+    json!({"record": "analysis", "detail": header["detail"].clone()})
+}
+
 pub(crate) fn header_detail(
     detail: serde_json::Map<String, Value>,
 ) -> serde_json::Map<String, Value> {

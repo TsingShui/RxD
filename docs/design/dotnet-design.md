@@ -1,5 +1,12 @@
 # .NET IL backend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd dotnet` is the Agent-facing static entry for ordinary managed PE assemblies. It
@@ -66,8 +73,8 @@ longer or shifted spelling is refused rather than resolved to another row, and a
 whose table does not fit the command is refused with the table it is in. A
 coordinate is unique inside one input and meaningless outside it: the same
 coordinate addresses the same metadata row in two versions of an assembly, which is
-what makes version comparison possible. Content identity lives in
-`header.source_id`; records do not repeat it. `--at` stays file-scoped: it validates
+what makes version comparison possible. A stream row does not repeat a content hash.
+`--at` stays file-scoped: it validates
 kind, token table and row range against the fixed input, but a token copied from another
 assembly is not detected. Re-run the listing for the input being fetched.
 
@@ -122,8 +129,8 @@ rxd dotnet xref app.dll --at 0x06000001
   spelling. Select a fetchable class first: an unfiltered listing can start
   with `<Module>`, which `get-class` deliberately rejects.
 
-- `classes`/`fields`/`methods` each emit a header, their own records and a summary JSONL
-  (one object kind per command). Header echoes filters;
+- `classes`/`fields`/`methods` each emit their own data-row JSONL
+  (one object kind per command);
   order follows metadata tokens. `--class` matches the full type name exactly;
   `--name` matches a method name exactly and preserves overloads.
 - `get-method` emits one JSON record with method, representation, reconstructed
@@ -279,14 +286,12 @@ does not overwrite an existing output. Diagnostics go to stderr; `INVALID_QUERY`
 ## Envelope (schema version 2)
 
 Structured output follows [ADR 0003](../adr/0003-output-envelope.md). JSONL queries
-emit exactly one header, all data records and a `complete: true` summary; header and
-summary `detail` are always present. Refs `header.detail.target` retains the queried
-member/type descriptor (null for raw token mode); other header/summary extras are `{}`.
-The header retains `backend`, `command`, `source_id`, `input_bytes`,
-`schema_version: 2`, `query`; the summary retains `records` and `complete`.
+emit zero or more data records only; there is no header or summary.
+Refs `record detail.target` retains the queried member/type descriptor (null for raw token
+mode); other data records extras are `{}`.
 
 Every data record has `record` and `detail`, plus the other ADR 0003 keys when they have a
-value; absent values are `null` or omitted, and consumers treat the two alike. `source_id` is the fixed PE buffer's identity digest;
+value; absent values are `null` or omitted, and consumers treat the two alike.
 `at`, `parent_at` and `context_at` are copy-only coordinates and never contain a hash.
 Fixed detail fields:
 
@@ -315,7 +320,7 @@ ranges. Groups sort by heap offset then method token; offsets are in original IL
 All statuses have the same fixed detail keys.
 
 `reference.detail.target_kind` is semantic `method`/`field`/`type`, string route
-`string`, otherwise `token`. A string-route `header.detail.target` names the literal
+`string`, otherwise `token`. A string-route `record detail.target` names the literal
 instead of being null: `{target_kind: "user_string", token: "0x7000001b", value: "N3CTF"}`
 for `--at 0x70xxxxxx`, and `{target_kind: "user_string", match: "<query>"}` for
 `--match … --kind string` (no token, because one value may match several heap entries; each hit row
@@ -324,12 +329,12 @@ keeps its own `target_token`). `signature` is non-null only for method semantic 
 field/type semantic targets, using structural AST kind/element/token/value/arguments.
 Raw/string set both null but keep the same fixed key set. Named tokens in the AST merge
 only within the fixed input by full scope and never prove cross-assembly loading or
-external definitions. `header.detail.target` has target_kind/original_token/
+external definitions. `record detail.target` has target_kind/original_token/
 canonical_token/canonical_id/resolution_status/scope/owner_token/original_owner_token/
 owner_name/name/signature/type_signature/owner_arguments/method_arguments; a zero-hit
 semantic query still keeps the descriptor.
 
-`get-method` returns one `method_body` record without header/summary; the top-level
+`get-method` returns one `method_body` record without data records; the top-level
 FETCH envelope carries `backend="dotnet"`, `command="get-method"`,
 `schema_version=2`. `detail.complete` states completeness; `detail.method` is the same
 full method envelope as the `methods` listing. Outer start/end is the original PE code range
@@ -450,7 +455,7 @@ allocation; decoded/copied string payloads are additionally bounded by charged w
 Shared owner/signature handles do not recharge the bytes they no longer copy. Signature
 cache lookups, new parses and displays remain charged, and deferred callable projection
 starts with the metadata work already spent. The complete serialized CLI output is
-bounded independently using the input-scaled output envelope, including header/summary/newline bytes:
+bounded independently using the input-scaled output envelope, including data records/newline bytes:
 sharing must not allow repeated signatures to expand into an unbounded output
 buffer. Exceeding it is atomic `RESOURCE_LIMIT`, not `INVALID_INPUT` or successful
 truncation. The earlier signature-sharing optimization preserved fixed quotas; the
@@ -464,7 +469,7 @@ prefix/EH validation and skips IL hex and non-token mnemonic allocation when not
 needed. Every readable method is validated; a corrupt method is never skipped to
 produce a complete zero result. Loop/depth and cumulative work failures are explicit.
 Budgets are checked before allocation, entity traversal, method decode and output,
-including JSONL header/summary and complete FETCH IL. Decoded IL working sets
+including JSONL data records and complete FETCH IL. Decoded IL working sets
 (instruction/switch storage plus the raw-byte hex view) and the whole-class
 serialized projection are charged against the selected output allowance; cumulative
 scan evidence and resolved reference rows are charged against the metadata
@@ -557,7 +562,7 @@ JS deobfuscation and string decryption remain permanent non-goals.
 ## MCP projection
 
 `dotnet_classes/fields/methods/strings/xref/get_method/get_class` reuse metadata, semantic reference
-and FETCH implementations. JSONL projects to header/records/summary; single FETCH keeps
+and FETCH implementations. JSONL projects to data records; single FETCH keeps
 its original record. Actual MethodDef/TypeDef IDs, original UTF-16 code units, original
 IL/EH and C# representation/decompiled/reason/mapping are preserved; `complete` does
 not mean reconstruction succeeded. Protocol startup/tool listing/metadata/`il: true`

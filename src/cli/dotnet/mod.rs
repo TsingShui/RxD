@@ -617,7 +617,9 @@ fn record(
 }
 
 fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
-    output.json_line(value)?;
+    if !rxd_core::envelope::is_wrapper(value) {
+        output.json_line(value)?;
+    }
     Ok(())
 }
 

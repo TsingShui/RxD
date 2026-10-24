@@ -1,5 +1,12 @@
 # WebAssembly backend
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `rxd wasm` is the Agent-facing static analysis entry for WebAssembly modules. It reads
@@ -18,8 +25,7 @@ body, but `get-function` requires a module-defined function with a code body.
 The backend reads one bounded binary buffer from a regular file and computes SHA-256;
 path and extension never replace content identity. Function indices use the core
 combined index space: imports first, then module-defined functions. The member ID is
-its coordinate `func:<decimal-index>`; the module's identity is the header
-`source_id`, so no row repeats a hash. `get-function --at` verifies the coordinate
+its coordinate `func:<decimal-index>`; a stream row does not repeat a content hash. `get-function --at` verifies the coordinate
 kind, the index in the defined-function range, and the presence of a code body. Imported
 function indices may appear in `imports` but are not valid `get-function` targets.
 
@@ -45,9 +51,9 @@ rxd wasm xref module.wasm --kind function -m log
 
 One command emits one record kind; there is no mixed structural stream. `types`,
 `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`,
-`elements` and `strings` each emit header/records/summary JSONL whose records are
+`elements` and `strings` each emit data records JSONL whose records are
 all of that command's single kind, in section index order, with
-`detail.analysis: metadata`. `header.query` echoes the selectors the command took.
+`detail.analysis: metadata`. There is no stream-level query echo.
 
 Every listing command takes `-f/--filter`, a substring over the
 value the row is named by: the name-section label for `functions` and `globals`,
@@ -118,21 +124,17 @@ and never overwrite an existing output. Diagnostics go to stderr. `INVALID_QUERY
 
 All structured output uses the shared [ADR 0003](../adr/0003-output-envelope.md)
 constructors, with no legacy flat fields or same-name record subobjects. Every
-listing command and `xref` return header → zero or more data records → summary. The
-header contains `record, backend, command, source_id, input_bytes, schema_version,
-query, detail`; `query` echoes the command's own selectors. The summary contains
-`record, records, complete, detail` with `detail: {}`. Only exit 0 plus
-`summary.complete: true` means a complete query.
+listing command and `xref` return zero or more data records, with no header or summary.
 
 Data records contain `record, at, source_id, parent_at, context_at, start, end,
 detail`; inapplicable values are `null`, never omitted. Identity is the `at`
-coordinate: a row that has an index-space identity prints it, and the header already
-carries `source_id`. `source_id` is therefore `null` on every row, and there are no invented
+coordinate: a row that has an index-space identity prints it. `source_id` is `null` on
+every row, and there are no invented
 structure IDs, so `parent_at` is always `null`. Reference records have `at: null`;
 their `context_at` is the caller's coordinate and `detail.target` is the referenced
 function's coordinate. Other records have `context_at: null`. String and reference
 offsets are segment/function-relative, not file ranges; their outer `start/end` are
-`null`. Every listing command sets `header.detail` to `analysis, imported_funcs,
+`null`. Every listing command sets `record detail` to `analysis, imported_funcs,
 total_funcs` with `analysis: metadata`. Function and `function_view` records use the
 function coordinate as `at`; function ranges are the module file's half-open
 code-body range, including locals, and other records have `start/end: null`.
@@ -172,7 +174,7 @@ Fixed detail fields:
 | `function_view` | `representation, decompiled, reason, code, func, body_file_offset, body_size, locals, mapping, complete`; `instructions` and `bytecode_hex` are present with `--raw` and in the instruction fallback |
 
 `get-function` (default reconstruction or `--raw`) is a single
-`record="function_view"` FETCH record without header/summary; it additionally carries
+`record="function_view"` FETCH record without data records; it additionally carries
 `backend="wasm"`, `command="get-function"` and `schema_version=2` outside. `--raw` is
 the only spelling for the original instruction view; there is no separate
 `--bytecode` or `--instructions` flag. `func` is a
@@ -248,7 +250,7 @@ charges actual decode and match work across all defined bodies once, independent
 of the number of selected targets. Target count is work-bounded, and reference
 metadata is charged before cloning names into retained rows. Budgets are checked
 before allocation, section enumeration, function decode and output, including JSONL
-header/summary and complete `get-function` original bytes. Code bodies are validated
+data records and complete `get-function` original bytes. Code bodies are validated
 against specification bounds; immediate vector lengths and `br_table` target counts
 are checked before allocation. Worker isolation is not an OS security sandbox.
 
@@ -288,7 +290,7 @@ parsing, not deobfuscation.
 
 The typed tools mirror the listing commands (`wasm_types`, `wasm_functions`, …) and
 `wasm_strings`/`wasm_xref`/`wasm_get_function`, reusing the same validation/decode and
-reconstruction code. JSONL becomes header/records/summary; FETCH keeps the original
+reconstruction code. JSONL becomes data records; FETCH keeps the original
 function view and raw option. Combined function indices, module file ranges,
 body-relative offsets, indirect calls and complete fallback remain unchanged; inputs
 are never instantiated. Target capture cost is reported separately from the query.

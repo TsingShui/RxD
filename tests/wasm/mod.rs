@@ -193,44 +193,9 @@ fn assert_record(row: &Value) {
 
 fn wasm_jsonl(output: &Output) -> Vec<Value> {
     let rows = jsonl(output);
-    let header = &rows[0];
-    assert_keys(
-        header,
-        &[
-            "record",
-            "backend",
-            "command",
-            "source_id",
-            "input_bytes",
-            "schema_version",
-            "query",
-            "detail",
-        ],
-    );
-    assert_eq!(header["record"], "header");
-    assert_eq!(header["backend"], "wasm");
-    assert_eq!(header["schema_version"], 2);
-    assert!(header["input_bytes"].as_u64().unwrap() > 0);
-    assert_keys(
-        &header["detail"],
-        &["analysis", "imported_funcs", "total_funcs"],
-    );
-    let query_keys: &[&str] = match header["command"].as_str().unwrap() {
-        "functions" => &["at", "name", "filter", "case"],
-        "xref" if header["query"].get("match").is_some() => &["kind", "match", "case"],
-        "xref" => &["at", "kind"],
-        _ => &["filter", "case"],
-    };
-    assert_keys(&header["query"], query_keys);
-    for row in &rows[1..rows.len() - 1] {
+    for row in &rows {
         assert_record(row);
     }
-    let summary = rows.last().unwrap();
-    assert_keys(summary, &["record", "records", "complete", "detail"]);
-    assert_eq!(summary["record"], "summary");
-    assert_eq!(summary["records"], rows.len() - 2);
-    assert_eq!(summary["complete"], true);
-    assert_keys(&summary["detail"], &[]);
     rows
 }
 
@@ -394,15 +359,7 @@ fn wasm_listing_commands_each_emit_only_their_own_record_kind() {
         ("strings", "string"),
     ];
     for (command, kind) in kinds {
-        let rows = wasm_jsonl(&run(command, &path, &[]));
-        let header = &rows[0];
-        assert_eq!(header["backend"], "wasm");
-        assert_eq!(header["command"], command);
-        assert_eq!(header["detail"]["analysis"], "metadata");
-        // Merged index space: one imported function, three total.
-        assert_eq!(header["detail"]["imported_funcs"], 1);
-        assert_eq!(header["detail"]["total_funcs"], 3);
-        let records = &rows[1..rows.len() - 1];
+        let records = wasm_jsonl(&run(command, &path, &[]));
         assert!(
             records.iter().all(|row| row["record"] == kind),
             "{command} emitted a foreign kind: {records:?}"
@@ -463,20 +420,17 @@ fn wasm_functions_select_by_exact_index_name_and_filter() {
     let functions = records_of(&by_index, "function");
     assert_eq!(functions.len(), 1);
     assert_eq!(functions[0]["detail"]["func_index"], 1);
-    assert_eq!(by_index[0]["query"]["at"], "func:1");
 
     let by_name = wasm_jsonl(&run("functions", &path, &["--name", "sum"]));
     let named = records_of(&by_name, "function");
     assert_eq!(named.len(), 1);
     assert_eq!(named[0]["detail"]["name"], "sum");
-    assert_eq!(by_name[0]["query"]["name"], "sum");
 
     // The substring filter is case-insensitive and matches the name label.
     let filtered = wasm_jsonl(&run("functions", &path, &["--filter", "SU"]));
     let hits = records_of(&filtered, "function");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0]["detail"]["name"], "sum");
-    assert_eq!(filtered[0]["query"]["filter"], "SU");
 }
 
 #[test]
@@ -529,7 +483,6 @@ fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
     );
     let folded = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-m", "SUM"]));
     assert_eq!(records_of(&folded, "reference"), exact);
-    assert_eq!(folded[0]["query"]["case"], "insensitive");
     let strict = wasm_jsonl(&run(
         "xref",
         &path,
@@ -576,7 +529,7 @@ fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
 fn wasm_function_coordinates_select_existing_rows() {
     let path = input();
     let functions = wasm_jsonl(&run("functions", &path, &["--at", "func:1"]));
-    assert_eq!(functions.last().unwrap()["records"], 1);
+    assert_eq!(functions.len(), 1);
     let fetched = run("get-function", &path, &["--at", "func:1"]);
     success(&fetched);
     assert_eq!(
@@ -639,7 +592,6 @@ fn wasm_strings_filter_is_a_case_insensitive_substring_of_the_literal() {
             .any(|s| s["detail"]["value"].as_str() == Some("hello"))
     );
     assert!(strings.iter().all(|s| s["detail"]["value"] != "world"));
-    assert_eq!(rows[0]["query"]["filter"], "ELL");
 }
 
 #[test]

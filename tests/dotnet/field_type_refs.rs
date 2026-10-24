@@ -66,8 +66,8 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
         .as_str()
         .unwrap();
     let rows = jsonl(&run("xref", &path, &["--at", id]));
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    let hit = &rows[1];
+    assert_eq!(rows.len(), 1);
+    let hit = &rows[0];
     assert_eq!(hit["detail"]["target_kind"], "field");
     assert_eq!(hit["detail"]["target"], id);
     assert_eq!(hit["detail"]["target_token"], 0x0a000002u32);
@@ -85,7 +85,7 @@ fn dotnet_semantic_field_refs_find_constructed_owner_and_route_to_caller_fetches
         &["--at", hit["parent_at"].as_str().unwrap(), "--raw"],
     ));
     let by_token = jsonl(&run("xref", &path, &["--at", "0x04000003"]));
-    assert_eq!(by_token[1], rows[1]);
+    assert_eq!(by_token[0], rows[0]);
 }
 
 fn proof_input() -> PathBuf {
@@ -106,7 +106,7 @@ fn proof_sites(path: &Path, tokens: &[u32]) -> Vec<Value> {
 fn assert_proof_sites(rows: &[Value], expected: &[Value]) {
     // The caller is `context_at` now; normalize both sides to the numeric token the oracle
     // stores so the comparison stays about identity, not spelling.
-    let actual: Vec<_> = rows[1..rows.len() - 1]
+    let actual: Vec<_> = rows[..]
         .iter()
         .map(|row| {
             let caller = row["context_at"].as_str().unwrap();
@@ -119,9 +119,7 @@ fn assert_proof_sites(rows: &[Value], expected: &[Value]) {
         })
         .collect();
     assert_eq!(actual, expected);
-    assert_eq!(rows[0]["schema_version"], 2);
-    assert_eq!(rows.last().unwrap()["records"], expected.len());
-    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.len(), expected.len());
 }
 
 #[test]
@@ -141,7 +139,7 @@ fn dotnet_semantic_type_refs_include_only_explicit_named_and_constructed_operand
             .unwrap();
         let rows = jsonl(&run("xref", &path, &["--at", id]));
         assert_proof_sites(&rows, &proof_sites(&path, &operands));
-        for hit in &rows[1..rows.len() - 1] {
+        for hit in &rows[..] {
             assert_eq!(hit["detail"]["target_kind"], "type");
             assert_eq!(hit["detail"]["target"], id);
             success(&run(
@@ -178,8 +176,7 @@ fn dotnet_field_refs_keep_signature_owner_instantiations_and_external_scopes_dis
     ] {
         let rows = jsonl(&run("xref", &path, &["--at", token]));
         assert_proof_sites(&rows, &proof_sites(&path, &operands));
-        assert_eq!(rows[0]["detail"]["target"]["resolution_status"], status);
-        for row in &rows[1..rows.len() - 1] {
+        for row in &rows[..] {
             assert_eq!(row["detail"]["resolution_status"], status);
             assert!(row["detail"]["signature"].is_null());
             assert!(!row["detail"]["type_signature"].is_null());
@@ -270,8 +267,7 @@ fn dotnet_field_type_reference_queries_reject_recursive_types_and_malformed_fiel
             assert!(output.stdout.is_empty());
         } else {
             success(&output);
-            let rows = jsonl(&output);
-            assert_eq!(rows.last().unwrap()["complete"], true);
+            let _rows = jsonl(&output);
         }
     }
 }

@@ -78,9 +78,7 @@ fn mcp_js_navigation_preserves_cli_identity_and_source() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(structured["header"], rows[0]);
-    assert_eq!(structured["records"], json!(&rows[1..rows.len() - 1]));
-    assert_eq!(structured["summary"], rows[rows.len() - 1]);
+    assert_eq!(structured["records"], json!(rows));
     for (name, extra) in [
         ("js_entities", json!({})),
         ("js_functions", json!({})),
@@ -307,9 +305,9 @@ fn cli_query(
     command.output().unwrap()
 }
 
-/// Mirror `query::reply`: a single JSON object is returned unchanged, a complete stream
-/// becomes header/records/summary, and any other output (XML manifest, Java/C# source)
-/// arrives as `text`.
+/// Mirror `query::reply`: a single JSON object is returned unchanged, a JSONL stream
+/// becomes `records`, and any other output (XML manifest, Java/C# source) arrives as
+/// `text`.
 fn cli_projection(name: &str, raw: &[u8]) -> Value {
     // Independent fixture-specific surrogate oracle: the CLI string has the
     // literal UTF-16 x,D800 units; preserve every other byte/record unchanged.
@@ -321,11 +319,10 @@ fn cli_projection(name: &str, raw: &[u8]) -> Value {
     } else {
         text.to_owned()
     };
-    if let Ok(value) = serde_json::from_str::<Value>(&text) {
-        // A zero-file scan is the one record that needs the recursive envelope.
-        if value["record"] == "scan_summary" {
-            return json!({"files":[],"scan_summary":value});
-        }
+    if let Ok(value) = serde_json::from_str::<Value>(&text)
+        && value.get("backend").is_some()
+        && value.get("command").is_some()
+    {
         return value;
     }
     if text
@@ -335,35 +332,12 @@ fn cli_projection(name: &str, raw: &[u8]) -> Value {
     {
         return json!({"text": text});
     }
-    let mut rows: Vec<Value> = text
+    let rows: Vec<Value> = text
         .lines()
         .filter(|line| !line.is_empty())
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let scan = rows
-        .last()
-        .is_some_and(|row| row["record"] == "scan_summary")
-        .then(|| rows.pop().unwrap());
-    let mut files = Vec::new();
-    let mut file = Vec::new();
-    for row in rows {
-        let end = row["record"] == "summary";
-        file.push(row);
-        if end {
-            let summary = file.pop().unwrap();
-            let header = file.remove(0);
-            files.push(
-                json!({"header":header,"records":std::mem::take(&mut file),"summary":summary}),
-            );
-        }
-    }
-    assert!(file.is_empty(), "CLI output has complete envelopes");
-    if let Some(scan) = scan {
-        json!({"files":files,"scan_summary":scan})
-    } else {
-        assert_eq!(files.len(), 1);
-        files.pop().unwrap()
-    }
+    json!({"records": rows})
 }
 
 fn compare_cli(name: &str, arguments: &Value, actual: &Value) {
@@ -484,9 +458,13 @@ fn mcp_html_entries_preserves_cli_catalog_and_immutable_target() {
         "html_entries",
         json!({"input":{"path":input}}),
     );
-    assert_eq!(listing["summary"]["complete"], true);
-    assert_eq!(listing["records"][1]["at"], "element:15:71");
-    assert_eq!(listing["records"][1]["detail"]["attrs"][0]["value"], "/a&b");
+    let element = listing["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["at"] == "element:15:71")
+        .unwrap();
+    assert_eq!(element["detail"]["attrs"][0]["value"], "/a&b");
     let opened = client.tool("rxd_open", json!({"path":input,"backend":"html"}));
     assert_ne!(opened["isError"], true, "{opened}");
     let target = opened["structuredContent"]["target_id"].clone();
@@ -542,7 +520,7 @@ fn mcp_html_entries_filters_follow_cli_semantics_and_the_response_budget_fails()
         "html_entries",
         json!({"input":{"path":input},"filter":"two"}),
     );
-    assert_eq!(by_text["summary"]["records"], 1);
+    assert_eq!(by_text["records"].as_array().unwrap().len(), 1);
     assert_eq!(by_text["records"][0]["detail"]["value"], "two");
     let by_tag = checked(
         &mut client,
@@ -550,7 +528,7 @@ fn mcp_html_entries_filters_follow_cli_semantics_and_the_response_budget_fails()
         "html_entries",
         json!({"input":{"path":input},"filter":"MAI"}),
     );
-    assert_eq!(by_tag["summary"]["records"], 1);
+    assert_eq!(by_tag["records"].as_array().unwrap().len(), 1);
     assert_eq!(by_tag["records"][0]["detail"]["tag"], "main");
     let empty = checked(
         &mut client,
@@ -558,8 +536,7 @@ fn mcp_html_entries_filters_follow_cli_semantics_and_the_response_budget_fails()
         "html_entries",
         json!({"input":{"path":input},"tag":"missing"}),
     );
-    assert_eq!(empty["summary"]["records"], 0);
-    assert_eq!(empty["summary"]["complete"], true);
+    assert!(empty["records"].as_array().unwrap().is_empty());
     let shallow = checked(
         &mut client,
         &tools,
@@ -1251,10 +1228,10 @@ fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {
             name,
             json!({"input":{"path":input},"encoding":"hex","include_bytecode":true}),
         );
-        assert_eq!(listed["header"]["detail"]["carrier"]["encoding"], "hex");
-        assert!(listed["header"]["detail"].get("abi_verified").is_some());
+        assert_eq!(listed["records"][0]["detail"]["carrier"]["encoding"], "hex");
+        assert!(listed["records"][0]["detail"].get("abi_verified").is_some());
         assert_eq!(
-            listed["header"]["detail"]["offset_unit"],
+            listed["records"][0]["detail"]["offset_unit"],
             "decoded_bytecode_byte"
         );
         assert!(
@@ -1322,9 +1299,12 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan_summary() {
             arguments["filter"] = json!("needle");
         }
         let result = checked(&mut client, &tools, name, arguments);
-        assert_eq!(result["files"].as_array().unwrap().len(), 2);
-        assert_eq!(result["scan_summary"]["detail"]["files"], 2);
-        assert_eq!(result["scan_summary"]["complete"], true);
+        let records = result["records"].as_array().unwrap();
+        let files: Vec<_> = records
+            .iter()
+            .filter(|record| record["record"] == "file")
+            .collect();
+        assert_eq!(files.len(), 2);
     }
     let result = checked(
         &mut client,
@@ -1332,8 +1312,7 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan_summary() {
         "js_entities",
         json!({"input":{"path":empty}}),
     );
-    assert_eq!(result["files"], json!([]));
-    assert_eq!(result["scan_summary"]["detail"]["files"], 0);
+    assert_eq!(result["records"], json!([]));
 }
 
 #[cfg(feature = "backend-asar")]
@@ -1566,6 +1545,8 @@ fn mcp_latest_evm_navigation_routes_returned_ids_to_exact_cli_fetch_and_referenc
         .iter()
         .find(|r| r["record"] == "basic_block")
         .unwrap();
+    assert!(block["at"].is_string(), "{block}");
+    assert!(function["at"].is_string(), "{function}");
     for (name, extra) in [
         ("evm_get_block", json!({"at":block["at"]})),
         ("evm_get_function", json!({"at":function["at"],"raw":true})),
@@ -1629,6 +1610,9 @@ fn mcp_latest_evm_navigation_routes_returned_ids_to_exact_cli_fetch_and_referenc
             json!({"input":{"path":input},"encoding":"hex","kind":kind,"query":query}),
         );
         for literal in literals["records"].as_array().unwrap().iter().take(1) {
+            if literal["at"].is_null() {
+                continue;
+            }
             let refs = checked(
                 &mut client,
                 &tools,

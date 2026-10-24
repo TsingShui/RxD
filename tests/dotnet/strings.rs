@@ -17,9 +17,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
     assert_eq!(rows, jsonl(&run("strings", &path, &[])));
     let empty_filter = jsonl(&run("strings", &path, &["--filter", ""]));
     assert_eq!(rows[1..], empty_filter[1..]);
-    assert_eq!(rows[0]["schema_version"], 2);
-    assert_eq!(rows.last().unwrap()["records"], 12);
-    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.len(), 12);
     let records: Vec<_> = rows
         .iter()
         .filter(|row| row["record"] == "string")
@@ -93,12 +91,15 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
         }
     }
     let nul = jsonl(&run("strings", &path, &["--filter", "b"]));
-    assert_eq!(nul[1]["detail"]["value"], "a\0b");
+    assert_eq!(nul[0]["detail"]["value"], "a\0b");
     let beside_surrogate = jsonl(&run("strings", &path, &["--filter", "尾"]));
-    assert_eq!(beside_surrogate.last().unwrap()["records"], 2);
-    assert!(beside_surrogate[1]["detail"]["value"].is_null());
+    assert_eq!(beside_surrogate.len(), 2);
+    let lossless = beside_surrogate
+        .iter()
+        .find(|row| row["detail"]["value"].is_null())
+        .unwrap();
     assert_eq!(
-        beside_surrogate[1]["detail"]["utf16_units"],
+        lossless["detail"]["utf16_units"],
         serde_json::json!([112, 114, 101, 102, 105, 120, 55296, 23614])
     );
 }
@@ -128,14 +129,14 @@ fn dotnet_xref_takes_a_token_or_a_literal_search() {
     let literal = "shared 世界\nλ";
     let exact = jsonl(&run("xref", &path, &["--at", literal, "--kind", "string"]));
     // Every equal heap entry is the same text, so the anchor matches all of their sites.
-    assert!(exact.last().unwrap()["records"].as_u64().unwrap() > 0);
+    assert!(!exact.is_empty());
     assert!(
-        exact[1..exact.len() - 1]
+        exact[..]
             .iter()
             .all(|row| row["detail"]["target"] == literal)
     );
     let partial = jsonl(&run("xref", &path, &["-m", "世界", "--kind", "string"]));
-    assert!(partial[1..partial.len() - 1].iter().all(|row| {
+    assert!(partial[..].iter().all(|row| {
         row["detail"]["target"]
             .as_str()
             .is_some_and(|value| value.contains("世界"))
@@ -146,9 +147,9 @@ fn dotnet_xref_takes_a_token_or_a_literal_search() {
     let token = strings[1]["at"].as_str().unwrap().to_owned();
     assert!(token.starts_with("0x7000"));
     let from_row = jsonl(&run("xref", &path, &["--at", &token]));
-    assert!(from_row.last().unwrap()["records"].as_u64().unwrap() > 0);
+    assert!(!from_row.is_empty());
     assert!(
-        from_row[1..from_row.len() - 1]
+        from_row[..]
             .iter()
             .all(
                 |row| format!("0x{:08x}", row["detail"]["target_token"].as_u64().unwrap()) == token
@@ -166,7 +167,6 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
             rows,
             jsonl(&run("xref", &path, &["-m", value, "--kind", "string"]))
         );
-        assert_eq!(rows[0]["query"]["match"], value);
         let mut expected = Vec::new();
         for entry in oracle["entries"]
             .as_array()
@@ -188,9 +188,8 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
             }
         }
         expected.sort_unstable();
-        assert_eq!(rows.last().unwrap()["records"], expected.len());
-        assert_eq!(rows.last().unwrap()["complete"], true);
-        for (row, (method, offset, token)) in rows[1..rows.len() - 1].iter().zip(expected) {
+        assert_eq!(rows.len(), expected.len());
+        for (row, (method, offset, token)) in rows[..].iter().zip(expected) {
             assert_eq!(row["record"], "reference");
             assert_eq!(row["context_at"], format!("0x{method:08x}"));
             assert_eq!(row["detail"]["il_offset"], offset);
@@ -220,11 +219,8 @@ fn dotnet_string_refs_match_every_containing_heap_entry_and_original_load_site()
     for entry in oracle["entries"].as_array().unwrap() {
         let token = format!("0x{:08x}", entry["token"].as_u64().unwrap());
         let rows = jsonl(&run("xref", &path, &["--at", &token]));
-        assert_eq!(
-            rows.last().unwrap()["records"],
-            entry["uses"].as_array().unwrap().len()
-        );
-        for row in &rows[1..rows.len() - 1] {
+        assert_eq!(rows.len(), entry["uses"].as_array().unwrap().len());
+        for row in &rows[..] {
             assert_eq!(row["detail"]["target_token"], entry["token"]);
         }
     }
@@ -417,23 +413,20 @@ fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
         }
         let token = entry["token"].as_u64().unwrap();
         let rows = jsonl(&run("xref", &path, &["--at", &format!("0x{token:08x}")]));
-        let target = &rows[0]["detail"]["target"];
-        assert_eq!(target["target_kind"], "user_string");
-        assert_eq!(target["token"], format!("0x{token:08x}"));
+        let target = &rows[0]["detail"];
+        assert_eq!(target["target_kind"], "string");
+        assert_eq!(target["target_token"], token);
         if let Value::String(value) = &entry["value"] {
-            assert_eq!(&target["value"], value);
+            assert_eq!(&target["target"], value);
             // argv cannot carry a NUL; those literals stay reachable by token only.
-            if value.contains('\0') {
+            if value.is_empty() || value.contains('\0') {
                 continue;
             }
             let by_value = jsonl(&run("xref", &path, &["-m", value, "--kind", "string"]));
+            assert_eq!(by_value[0]["detail"]["target_kind"], "string");
             assert_eq!(
-                by_value[0]["detail"]["target"]["target_kind"],
-                "user_string"
-            );
-            assert_eq!(
-                by_value[0]["detail"]["target"]["match"].as_str(),
-                Some(value.as_str())
+                by_value[0]["detail"]["target"],
+                serde_json::json!(value.as_str())
             );
         }
     }

@@ -1,11 +1,10 @@
 use super::{Output, static_commands::Options};
-use rxd_core::{Result, envelope, perf::Perf};
+use rxd_core::{Result, perf::Perf};
 use rxd_pyc::{
     static_analysis::Analysis,
     string_constants::{self, Literal, Query},
 };
 use serde::Serialize;
-use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Serialize)]
@@ -160,18 +159,20 @@ pub fn run(
     perf.counters.matches = Some(literals.len());
     let serialized = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = Output::new(options.budget.output_bytes);
-        append(&mut writer, &envelope::header("pyc", "strings", Some(&analysis.source_id), Some(analysis.bytes.len()),
-            json!({"filter":filter.as_deref(),"filter_hex":filter_hex.as_deref(),"version":version.map(|(major,minor)|format!("{major}.{minor}"))}),
-            json!({"analysis":"constants","python_version":analysis.version.display(),"code_count":analysis.codes.len(),"instruction_validation":"not_scanned","containers":["tuple","frozenset"]}).as_object().unwrap().clone()))?;
         for literal in &literals {
             let raw_length = analysis.payload(literal.definition).unwrap().len();
-            let alias_work = literal.aliases.iter().fold(0usize, |sum, alias| sum.saturating_add(alias.path.len()+1));
+            let alias_work = literal.aliases.iter().fold(0usize, |sum, alias| {
+                sum.saturating_add(alias.path.len() + 1)
+            });
             // Charge raw hex conversion and each path/alias projection before allocating.
-            analysis.charge_work(raw_length.saturating_add(literal.path.len()).saturating_add(alias_work))?;
+            analysis.charge_work(
+                raw_length
+                    .saturating_add(literal.path.len())
+                    .saturating_add(alias_work),
+            )?;
             let row = record(&analysis, literal)?;
             append(&mut writer, &row)?;
         }
-        append(&mut writer, &envelope::summary(literals.len(), true, json!({"code_count":analysis.codes.len(),"analysis":"constants","instruction_validation":"not_scanned"}).as_object().unwrap().clone()))?;
         Ok(writer.into_bytes())
     });
     perf.counters.work = Some(analysis.evidence.work);

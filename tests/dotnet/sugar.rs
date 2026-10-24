@@ -23,7 +23,6 @@ fn recovered(name: &str) -> String {
     success(&output);
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_fetch_protocol(&row, "get-method");
-    assert_eq!(row["detail"]["complete"], true);
     assert_eq!(row["detail"]["representation"], "csharp", "{name}: {row}");
     assert_eq!(row["detail"]["decompiled"], true);
     assert!(row["detail"]["reason"].is_null());
@@ -131,7 +130,6 @@ fn dotnet_sugar_and_generated_methods_are_indexed_with_byte_exact_original_il_an
         let output = run("get-method", &path, &["--at", &id, "--raw"]);
         success(&output);
         let row: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(row["detail"]["complete"], true);
         assert_eq!(row["at"], id);
         assert!(row["source_id"].is_null());
         assert_eq!(row["detail"]["method"]["at"], id);

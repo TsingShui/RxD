@@ -103,7 +103,7 @@ target/release/rxd skill install -a pi</code></pre>
       </div>
       <div class="feature-grid">
         <article><h3>内容绑定身份</h3><p>每个 ID 绑定输入哈希与真实字节区间。提取返回原始字节，而不是重新构造地址。</p></article>
-        <article><h3>Agent 优先输出</h3><p>稳定 JSONL 信封：header、records、summary。detail 是闭合的逐记录 schema；原始源码保持字节精确。</p></article>
+        <article><h3>Agent 优先输出</h3><p>JSONL 只含数据行：没有 header/summary 包装。detail 是闭合的逐记录 schema；原始源码保持字节精确。</p></article>
         <article><h3>显式预算</h3><p>记录数、解码量与输入大小都有显式上限。超限是错误，输出保持原子。</p></article>
         <article><h3>诚实降级</h3><p>反编译器无法恢复某个单元时，保留完整原始 IL／字节码／指令与原因，不返回部分猜测。</p></article>
       </div>

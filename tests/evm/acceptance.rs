@@ -27,32 +27,9 @@ pub(super) const HEADER_DETAIL_KEYS: &[&str] = &[
     "unknown_copy_evidence",
     "metadata",
 ];
-pub(super) const SUMMARY_DETAIL_KEYS: &[&str] = &[
-    "blocks",
-    "functions",
-    "target_kind",
-    "target_decoded_offset",
-    "references",
-    "literals",
-    "data_literals",
-    "reference_status",
-    "excluded_unindexed_pushes",
-    "resolved_edges",
-    "unknown_jumps",
-    "invalid_jumps",
-    "analysis_problems",
-    "scanned_contexts",
-    "scanned_blocks",
-    "external_call_sites",
-    "resolution_complete",
-    "discovery_complete",
-    "disassembly_complete",
-    "source_call_graph_complete",
-];
 
 fn assert_stream_schema(rows: &[Value]) {
     assert_js_keys(&rows[0]["detail"], HEADER_DETAIL_KEYS);
-    assert_js_keys(&rows.last().unwrap()["detail"], SUMMARY_DETAIL_KEYS);
 }
 
 #[test]
@@ -64,7 +41,6 @@ fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
         let outline = jsonl(&run("interface", &path, encoding, &[]));
         assert_stream_schema(&outline);
         assert_eq!(outline[0]["detail"]["target_kind"], Value::Null);
-        assert_eq!(outline.last().unwrap()["detail"]["references"], Value::Null);
         for args in [
             vec!["--kind", "number", "--query", "7"],
             vec!["--kind", "text", "--query", "RXD_DATA_NAVIGATION"],

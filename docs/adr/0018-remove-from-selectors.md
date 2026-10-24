@@ -31,7 +31,7 @@ The shared selector machinery (`selector_stream`, `Expect`, header identity chec
 Coordinates remain copy-only and file-scoped. A coordinate copied from a different input
 is not detected; callers re-run the listing for the input they are fetching.
 
-Stream headers keep their self-describing fields, including `source_id` where a backend
+The later data-row contract removes stream headers entirely (ADR 0003); `source_id` now
 has a content identity. Extract receipts keep their artifact `source_id`. Neither is a
 FETCH binding.
 

@@ -13,9 +13,7 @@ fn query(command: &str, path: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 fn rows(output: &Output) -> Vec<Value> {
-    let result = jsonl(output);
-    assert_eq!(result.last().unwrap()["complete"], true);
-    result
+    jsonl(output)
 }
 fn hits(rows: &[Value]) -> Vec<Value> {
     rows.iter()
@@ -28,7 +26,6 @@ fn hits(rows: &[Value]) -> Vec<Value> {
 fn pyc_contract_name_content_search_keeps_payloads_order_case_and_scope() {
     let path = path();
     let filtered = rows(&query("xref", &path, &["--kind", "name", "-m", "VAL"]));
-    assert_eq!(filtered[0]["query"]["case"], "insensitive");
     let found = hits(&filtered);
     assert!(!found.is_empty());
     let names: std::collections::BTreeSet<_> = found
@@ -92,14 +89,14 @@ fn pyc_contract_listing_and_constant_coordinates() {
     let path = path();
     let selected = query("codes", &path, &["--name", "same"]);
     let code_rows = rows(&selected);
-    let at = code_rows[1]["at"].as_str().unwrap();
+    let at = code_rows[0]["at"].as_str().unwrap();
     let intersected = rows(&query(
         "codes",
         &path,
         &["--at", at, "--name", "same", "-f", "SAM"],
     ));
-    assert_eq!(intersected[1], code_rows[1]);
-    assert_eq!(intersected.len(), 3);
+    assert_eq!(intersected[0], code_rows[0]);
+    assert_eq!(intersected.len(), 1);
     failure(
         query("codes", &path, &["--at", "code:9999", "--name", "missing"]),
         2,
@@ -115,7 +112,6 @@ fn pyc_contract_listing_and_constant_coordinates() {
     let literal_rows = rows(&constants);
     let literal = literal_rows[1]["at"].as_str().unwrap();
     let references = rows(&query("xref", &path, &["--at", literal]));
-    assert_eq!(references[0]["query"]["kind"], "constant");
     assert!(
         hits(&references)
             .iter()

@@ -7,7 +7,7 @@
 mod args;
 mod output;
 use output::{emit, emit_rows};
-use rxd_core::envelope::{header, summary};
+use rxd_core::envelope::{header, is_wrapper, summary};
 use serde_json::{Map, Value, json};
 
 use anyhow::{Result, bail};
@@ -792,6 +792,9 @@ fn data_record(kind: &str, detail: Value) -> Value {
 }
 
 fn append_json(payload: &mut String, value: &Value) -> Result<()> {
+    if is_wrapper(value) {
+        return Ok(());
+    }
     let encoded = serde_json::to_string(value)?;
     #[cfg(feature = "mcp")]
     if crate::query::output_limit()

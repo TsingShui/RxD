@@ -497,7 +497,7 @@ impl LiteralInventory {
                 serde_json::to_value(data.coverage(navigation, functions))
                     .expect("fixed data coverage schema"),
             ));
-            write_record(&mut output, &header)?;
+            write_record(&mut output, &crate::navigation::analysis_record(&header))?;
             for item in &found {
                 for owner in Self::routes(functions, item.literal) {
                     write_record(
@@ -561,7 +561,7 @@ impl LiteralInventory {
                 let mut output = Output { bytes: Vec::new() };
                 write_record(
                     &mut output,
-                    &references::header(
+                    &crate::navigation::analysis_record(&references::header(
                         navigation,
                         &id,
                         listing,
@@ -574,7 +574,7 @@ impl LiteralInventory {
                             excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
                             data: Some(data.coverage(navigation, functions)),
                         },
-                    ),
+                    )),
                 )?;
                 for &route in &routes {
                     write_record(
@@ -625,7 +625,7 @@ impl LiteralInventory {
             let mut output = Output { bytes: Vec::new() };
             write_record(
                 &mut output,
-                &references::header(
+                &crate::navigation::analysis_record(&references::header(
                     navigation,
                     &id,
                     listing,
@@ -639,7 +639,7 @@ impl LiteralInventory {
                         literal_scope: Some("validated_block_push_immediates"),
                         excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
                     },
-                ),
+                )),
             )?;
             let mut emitted = 0;
             for owner in routes {

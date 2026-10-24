@@ -21,9 +21,8 @@ fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_toke
     let path = input();
     let id = method_id(&path, "GenericIdentity");
     let rows = jsonl(&run("xref", &path, &["--at", &id]));
-    assert_eq!(rows[0]["schema_version"], 2);
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    let hit = &rows[1];
+    assert_eq!(rows.len(), 1);
+    let hit = &rows[0];
     assert_eq!(hit["detail"]["name"], "GenericCaller");
     assert_eq!(hit["detail"]["il_offset"], 1);
     assert_eq!(hit["detail"]["target_token"], 0x2b000001u32);
@@ -44,7 +43,7 @@ fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_toke
         &["--at", hit["parent_at"].as_str().unwrap(), "--raw"],
     ));
     let by_token = jsonl(&run("xref", &path, &["--at", "0x06000021"]));
-    assert_eq!(by_token[1], rows[1]);
+    assert_eq!(by_token[0], rows[0]);
 }
 
 fn semantic_input() -> PathBuf {
@@ -62,7 +61,7 @@ fn dotnet_semantic_method_refs_prove_local_aliases_without_matching_overloads_or
         .as_str()
         .unwrap();
     let rows = jsonl(&run("xref", &path, &["--at", id]));
-    let sites: Vec<_> = rows[1..rows.len() - 1]
+    let sites: Vec<_> = rows[..]
         .iter()
         .map(|row| {
             (
@@ -75,7 +74,7 @@ fn dotnet_semantic_method_refs_prove_local_aliases_without_matching_overloads_or
         sites,
         [(0, "call"), (5, "ldftn"), (11, "ldtoken"), (16, "jmp")]
     );
-    assert!(rows[1..rows.len() - 1].iter().all(
+    assert!(rows[..].iter().all(
         |row| row["detail"]["target"] == id && row["detail"]["resolution_status"] == "resolved"
     ));
 }
@@ -108,19 +107,19 @@ fn dotnet_reference_scans_validate_the_complete_heap_even_after_one_thousand_unu
 fn dotnet_semantic_method_refs_keep_instantiations_nested_members_and_ambiguous_targets_distinct() {
     let path = semantic_input();
     let instantiation = jsonl(&run("xref", &path, &["--at", "0x2b000001"]));
-    assert_eq!(instantiation.last().unwrap()["records"], 2);
-    assert_eq!(instantiation[1]["detail"]["target_token"], 0x2b000001u32);
-    assert_eq!(instantiation[2]["detail"]["target_token"], 0x2b000003u32);
+    assert_eq!(instantiation.len(), 2);
+    assert_eq!(instantiation[0]["detail"]["target_token"], 0x2b000001u32);
+    assert_eq!(instantiation[1]["detail"]["target_token"], 0x2b000003u32);
     let other = jsonl(&run("xref", &path, &["--at", "0x2b000002"]));
-    assert_eq!(other.last().unwrap()["records"], 1);
+    assert_eq!(other.len(), 1);
     let generic = jsonl(&run("xref", &path, &["--at", "0x06000004"]));
-    assert_eq!(generic.last().unwrap()["records"], 3);
+    assert_eq!(generic.len(), 3);
     let owners = jsonl(&run("xref", &path, &["--at", "0x06000008"]));
-    assert_eq!(owners.last().unwrap()["records"], 2);
+    assert_eq!(owners.len(), 2);
     let owner_int = jsonl(&run("xref", &path, &["--at", "0x0a000007"]));
-    assert_eq!(owner_int.last().unwrap()["records"], 1);
+    assert_eq!(owner_int.len(), 1);
     assert_eq!(
-        owner_int[1]["detail"]["owner_arguments"],
+        owner_int[0]["detail"]["owner_arguments"],
         serde_json::json!([{"kind":"primitive","element":8}])
     );
     for (token, status, canonical) in [
@@ -133,19 +132,18 @@ fn dotnet_semantic_method_refs_keep_instantiations_nested_members_and_ambiguous_
         ("0x0a000011", "unresolved", None),
     ] {
         let rows = jsonl(&run("xref", &path, &["--at", token]));
-        assert_eq!(rows.last().unwrap()["records"], 1);
-        assert_eq!(rows[1]["detail"]["resolution_status"], status);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["detail"]["resolution_status"], status);
         // `target` is the coordinate: the canonical token when the operand resolves to one,
         // otherwise the operand's own token. `target_token` stays the operand's token.
-        let operand = rows[1]["detail"]["target_token"].as_u64().unwrap() as u32;
+        let operand = rows[0]["detail"]["target_token"].as_u64().unwrap() as u32;
         assert_eq!(
-            rows[1]["detail"]["target"],
+            rows[0]["detail"]["target"],
             format!("0x{:08x}", canonical.unwrap_or(operand))
         );
-        assert_eq!(rows[0]["detail"]["target"]["resolution_status"], status);
     }
     let ambiguous_definition = jsonl(&run("xref", &path, &["--at", "0x06000005"]));
-    assert_eq!(ambiguous_definition.last().unwrap()["records"], 0);
+    assert_eq!(ambiguous_definition.len(), 0);
 }
 
 #[test]
@@ -192,7 +190,7 @@ fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_out
     assert!(file.stdout.is_empty());
     assert_eq!(fs::read(destination).unwrap(), plain.stdout);
     let semantic_rows = jsonl(&run("xref", &path, &["--at", &id]));
-    let keys = semantic_rows[1]["detail"]
+    let keys = semantic_rows[0]["detail"]
         .as_object()
         .unwrap()
         .keys()
@@ -204,7 +202,7 @@ fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_out
         vec!["-m", "世界\nλ", "--kind", "string"],
     ] {
         let rows = jsonl(&run("xref", &path, &args));
-        for row in &rows[1..rows.len() - 1] {
+        for row in &rows[..] {
             assert_eq!(
                 row["detail"]
                     .as_object()
@@ -250,23 +248,23 @@ fn dotnet_semantic_method_scans_reject_resolution_cycles_and_invalid_unselected_
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
     let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x06000001"]));
-    assert_eq!(rows.last().unwrap()["records"], 4);
+    assert_eq!(rows.len(), 4);
 }
 
 #[test]
 fn dotnet_method_refs_compare_scoped_signature_types_instead_of_display_names() {
     let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x0600000a"]));
-    assert_eq!(rows.last().unwrap()["records"], 2);
-    assert_eq!(rows[1]["detail"]["target_token"], 0x0a00000cu32);
-    assert_eq!(rows[2]["detail"]["target_token"], 0x0a00000du32);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["detail"]["target_token"], 0x0a00000cu32);
+    assert_eq!(rows[1]["detail"]["target_token"], 0x0a00000du32);
     let external = jsonl(&run("xref", &semantic_input(), &["--at", "0x0a00000e"]));
-    assert_eq!(external.last().unwrap()["records"], 1);
-    assert_eq!(external[1]["detail"]["resolution_status"], "unresolved");
+    assert_eq!(external.len(), 1);
+    assert_eq!(external[0]["detail"]["resolution_status"], "unresolved");
     assert_eq!(
-        external[1]["detail"]["target"],
+        external[0]["detail"]["target"],
         format!(
             "0x{:08x}",
-            external[1]["detail"]["target_token"].as_u64().unwrap()
+            external[0]["detail"]["target_token"].as_u64().unwrap()
         )
     );
 }
@@ -274,8 +272,8 @@ fn dotnet_method_refs_compare_scoped_signature_types_instead_of_display_names() 
 #[test]
 fn dotnet_method_refs_preserve_constructed_types_embedded_in_signatures() {
     let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x0600000b"]));
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    assert_eq!(rows[1]["detail"]["target_token"], 0x0a00000fu32);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["detail"]["target_token"], 0x0a00000fu32);
 }
 
 #[test]

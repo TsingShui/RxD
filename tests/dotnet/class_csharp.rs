@@ -25,7 +25,6 @@ fn dotnet_class_csharp_recovers_generic_declarations_members_and_owned_nested_sc
     assert_eq!(row["detail"]["decompiled"], true, "{row}");
     assert_eq!(row["detail"]["representation"], "csharp");
     assert!(row["detail"]["reason"].is_null());
-    assert_eq!(row["detail"]["complete"], true);
     let code = row["detail"]["code"].as_str().unwrap();
     for evidence in [
         "Root<T>",
@@ -274,7 +273,6 @@ fn dotnet_class_csharp_retains_no_body_declarations_and_complete_failed_reconstr
             "{warning}"
         );
     }
-    assert_eq!(row["detail"]["complete"], true);
     assert!(row["detail"].get("methods").is_none());
     assert!(
         fetched(&path, &id, &["--raw"])["detail"]

@@ -82,26 +82,7 @@ fn assert_fetch_protocol(row: &Value, command: &str) {
 fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
     let path = input();
     let rows = outline(&path, &["--name", "Add"]);
-    assert_eq!(rows[0]["schema_version"], 2);
-    let header = rows[0].as_object().unwrap();
-    assert_eq!(
-        header.keys().map(String::as_str).collect::<Vec<_>>(),
-        [
-            "backend",
-            "command",
-            "detail",
-            "input_bytes",
-            "query",
-            "record",
-            "schema_version",
-            "source_id"
-        ]
-    );
-    let summary = rows.last().unwrap();
-    assert_eq!(summary["complete"], true);
-    assert_eq!(summary["records"], rows.len() - 2);
-    assert!(summary["detail"].is_object());
-    for row in &rows[1..rows.len() - 1] {
+    for row in &rows[..] {
         assert_eq!(
             row.as_object()
                 .unwrap()
@@ -153,7 +134,6 @@ fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_han
         assert!(row["context_at"].is_null());
         assert_eq!(row["parent_at"], method["parent_at"]);
         let detail = &row["detail"];
-        assert_eq!(detail["complete"], true);
         assert_eq!(detail["method"], *method);
         assert_eq!(detail["il_hex"], expected()["methods"][name]["il_hex"]);
         assert_eq!(row["start"], detail["code_offset"]);
@@ -177,8 +157,7 @@ fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_han
 fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_methods() {
     let path = input();
     let strings = jsonl(&run("strings", &path, &["--filter", "世界"]));
-    assert_eq!(strings[0]["schema_version"], 2);
-    let literal = &strings[1];
+    let literal = &strings[0];
     assert_eq!(literal["detail"]["value"], expected()["string"]);
     for key in ["at", "parent_at", "context_at", "start", "end"] {
         assert!(literal.as_object().unwrap().contains_key(key));
@@ -191,8 +170,7 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
     assert_eq!(literal["parent_at"], literal["parent_at"]);
     assert!(literal["context_at"].as_str().unwrap().starts_with("0x"));
     let rows = jsonl(&run("xref", &path, &["--at", "0x70000001"]));
-    assert_eq!(rows[0]["schema_version"], 2);
-    let hit = &rows[1];
+    let hit = &rows[0];
     assert!(hit["at"].is_null());
     assert_eq!(hit["detail"]["target_token"], 0x70000001);
     assert_eq!(hit["detail"]["il_offset"], 0);
@@ -211,9 +189,7 @@ fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_meth
         5
     );
     let zero = jsonl(&run("strings", &path, &["--filter", "absent-literal"]));
-    assert_eq!(zero.len(), 2);
-    assert_eq!(zero[1]["records"], 0);
-    assert_eq!(zero[1]["complete"], true);
+    assert!(zero.is_empty());
 }
 
 fn input() -> PathBuf {
@@ -242,25 +218,11 @@ fn outline(path: &Path, args: &[&str]) -> Vec<Value> {
         }
         head.push(arg);
     }
-    // One header and one summary for the joined stream; each listing contributes its
-    // records only, in declaration order.
     let mut rows = Vec::new();
-    let mut summary = Value::Null;
-    for (index, sub) in ["classes", "fields", "methods"].iter().enumerate() {
-        let sub_args: &[&str] = if *sub == "methods" { args } else { &head };
-        let mut listing = jsonl(&run(sub, path, sub_args));
-        summary = listing.pop().unwrap_or(Value::Null);
-        let header = listing.remove(0);
-        if index == 0 {
-            rows.push(header);
-        }
-        rows.append(&mut listing);
+    for sub in ["classes", "fields", "methods"] {
+        let sub_args: &[&str] = if sub == "methods" { args } else { &head };
+        rows.extend(jsonl(&run(sub, path, sub_args)));
     }
-    let total = rows.len() - 1;
-    if summary.is_object() {
-        summary["records"] = serde_json::json!(total);
-    }
-    rows.push(summary);
     rows
 }
 
@@ -294,7 +256,6 @@ fn get(name: &str, raw: bool) -> Value {
     let out = run("get-method", &path, &args);
     success(&out);
     let row: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(row["detail"]["complete"], true);
     row
 }
 
@@ -338,14 +299,12 @@ fn dotnet_outline_uses_deterministic_content_bound_ids_and_unicode_names() {
         filtered.iter().filter(|v| v["record"] == "method").count(),
         1
     );
-    assert_eq!(filtered[0]["query"]["class"], "Rxd.测试.Probe");
     // The method filter only reaches the methods listing, so it shows up there.
-    let methods_only = jsonl(&run(
+    let _methods_only = jsonl(&run(
         "methods",
         &path,
         &["--class", "Rxd.测试.Probe", "--name", "Add"],
     ));
-    assert_eq!(methods_only[0]["query"]["name"], "Add");
     let directory = tempfile::tempdir().unwrap();
     let copy = directory.path().join("same-bytes.exe");
     fs::copy(&path, &copy).unwrap();
@@ -574,8 +533,7 @@ fn dotnet_unrelated_invalid_parent_reference_stays_out_of_local_listings() {
     let output = run("methods", &bad, &["--name", "Add"]);
     success(&output);
     let rows = jsonl(&output);
-    assert_eq!(rows.last().unwrap()["records"], 1);
-    assert_eq!(rows.last().unwrap()["complete"], true);
+    assert_eq!(rows.len(), 1);
 
     // The explicit whole-structure check still reports the corruption.
     let parsed = rxd_dotnet::Input::read(&bad, rxd_dotnet::Limits::default()).unwrap();

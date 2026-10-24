@@ -1,5 +1,12 @@
 # EVM bytecode analysis
 
+> **Stream contract (ADR 0003):** listing and query commands emit zero or more data
+> records only. There is no `header`, `summary`, `scan_summary`, `complete` or
+> `records` line. Any older prose below that mentions a stream header or summary
+> describes the removed envelope; success is exit 0, and zero rows is an empty
+> result. EVM keeps its bytecode/metadata evidence as a first `analysis` record.
+
+
 Status: implemented.
 
 `src/cli/evm/` is the command adapter; `crates/rxd-evm/` fixes input bytes, validates
@@ -112,10 +119,10 @@ resource parameters; stdout is unchanged.
 ## Navigation stream schema
 
 `blocks`, `interface`, `strings` and every xref branch (block/function/PUSH/data,
-including empty results) share the same fixed `header.detail` and `summary.detail` field
-sets; a value that does not apply is `null` or absent (ADR 0003). A data record carries identity in `at`, extras in
-`detail`, the caller in `context_at`, and always `source_id=null`: the header carries the
-source identity once. Objects are built before bounded serialization, so new nullable
+including empty results) share the same fixed `record detail` and leading `analysis`
+record field sets; a value that does not apply is `null` or absent (ADR 0003). The
+`analysis` record is ordinary data: it carries bytecode/carrier/metadata evidence and no
+summary/`complete` wrapper. Objects are built before bounded serialization, so new nullable
 fields and the trailing newline are serialized before publication; failure
 leaves no partial stdout and preserves an existing `-o` file.
 
@@ -146,14 +153,14 @@ fields.
 
 ## Basic blocks
 
-`evm blocks INPUT --encoding raw|hex [-f FILTER]` emits a schema-v2 JSONL header, zero or
-more `basic_block` records and a summary; the filter is a substring of
+`evm blocks INPUT --encoding raw|hex [-f FILTER]` emits one leading `analysis` record and
+zero or more `basic_block` data records; the filter is a substring of
 the block coordinate. `evm get-block INPUT --encoding raw|hex --at COORDINATE` returns one
 `block` JSON record with only the selected block's raw bytes/instructions. The native
 `basic-blocks` command remains the original EVMole range array.
 
 A row prints the copy-only coordinate `<raw|hex>:block:<decoded-start>:<decoded-end-exclusive>`
-because the header already carries the source identity. That coordinate is the whole
+because coordinates are file-scoped. That coordinate is the whole
 identity: encoding is raw/hex; offsets are canonical decimal without leading zeros
 (except 0). The scan is bound to the fixed carrier and explicit encoding interpretation;
 decoded SHA-256 stays in detail. Copy/rename does not change the coordinate.
@@ -202,8 +209,8 @@ is separate from decode/analyze.
 
 ## Function candidates and FETCH
 
-`interface` lists `function` candidates as its own JSONL stream; the
-summary counts them in `functions`. Each row additionally carries EVMole's own
+`interface` lists `function` candidates as its own JSONL stream; the leading `analysis`
+record describes the scan. Each row additionally carries EVMole's own
 `arguments` (comma-joined Solidity type names or null) and `stateMutability` (producer
 spelling, or null for a candidate only witnessed by its dispatcher comparison), taken from
 the same single in-memory analysis that seeds discovery. The filter is a
@@ -348,9 +355,9 @@ conditions hold on a real path; evidence_kind and ownership_status preserve scop
 
 Only edges with `resolution=resolved` and a target exactly matching the queried
 coordinate produce hits. Unknown dynamic targets and known invalid targets count
-separately in summary.unknown_jumps/invalid_jumps; they cannot produce a forged target
+separately in analysis unknown_jumps/invalid_jumps; they cannot produce a forged target
 hit. Zero hits with resolution_complete=true differ from false; coordinate/budget/read
-failure exits non-zero with no success summary. resolution_complete only says this contextual/
+failure exits non-zero with no partial output. resolution_complete only says this contextual/
 block-local scan had no unknown/invalid edges, analysis problems or undecoded tail; it
 is not an arbitrary runtime call graph, complete selector discovery, source-function
 boundary or execution trace.
@@ -362,8 +369,9 @@ source_call_verified/abi_call_verified are always false and source_call_graph_co
 abi_verified false. Data, metadata and unknown ownership are never promoted to executed
 function calls.
 
-`xref` header query is `{encoding, at, reference_scope}` (the copy-only coordinate), plus
-`kind`/`match` for a content search; code scope is `static_control_flow`. Header detail uses the common nullable schema with target_kind
+`xref` invocation carries `--encoding` and `--at` (the copy-only coordinate), plus
+`kind`/`match` for a content search; code scope is `static_control_flow`. The leading
+analysis detail uses the common nullable schema with target_kind
 block/function, target_decoded_offset (target PC), target_semantics (exact_block_start/
 validated_candidate_entry/unvalidated_candidate_entry), coverage
 (contextual_and_block_local), source_call_graph_complete=false, abi_verified=false;
@@ -398,7 +406,7 @@ Budgets: work/states/stack_cells build the function graph and scan contexts/edge
 problems/raw blocks/instructions/external opcode sites; local stack shape/transfer also
 charges work and stack_cells. Hits are bounded by max_records and a per-record writer.
 Failure is atomic with empty stdout and preserved output; a normal empty result still has
-header+summary. Perf separates query/serialize; counters.records/matches are hits,
+analysis record. Perf separates query/serialize; counters.records/matches are hits,
 semantic_references is scanned edges; resource_limits echoes work/states/stack_cells.
 
 ## `strings` and data candidates
@@ -477,16 +485,16 @@ evidence_kind, reference_kind, instruction_carrier_start/end; evidence_kind=deco
 reference_kind=push_immediate. The field set never varies by query kind; it is a distinct
 discriminator from code_reference.
 
-Strings summary uses the fixed nullable schema: literals is the number of distinct
+Strings analysis detail uses the fixed nullable schema: literals is the number of distinct
 matching PUSH/data occurrences, data_literals the data count, references/reference_status
-null. Refs summary uses the same 20-field schema with target_kind=literal,
+null. Refs analysis detail uses the same 20-field schema with target_kind=literal,
 target_decoded_offset=opcode PC, literals=1, references=delivered routes,
 data_literals=0,
 reference_status=decoded_push_use, excluded_unindexed_pushes/disassembly_complete/
 discovery_complete inherited from the immediate scope; graph fields null,
 source_call_graph_complete=false. Null means the graph scan did not run, not proof of
 zero unknown jumps. Records count actual route records; a zero-hit SEARCH still emits
-header + complete summary.
+data records.
 
 Data candidates: `strings` also returns `data_literal`, and `xref --at` accepts its
 coordinate as `data_reference`. Origins are static evidence, not proof of bytecode role:
@@ -543,15 +551,15 @@ range; uncopied candidate bytes never fill reference evidence.
 A SEARCH candidate without a witness keeps context_at/context_kind/context_index null.
 reference_status=statically_copied means a known source-range witness; unreferenced means
 none in the supported scope; unknown operands or unvisited CODECOPY sites mean
-unreferenced_or_unknown. A zero-reference xref result still emits header + complete summary
+unreferenced_or_unknown. A zero-reference xref result still emits data records
 and zero data records. discovery_complete=null; delivery completeness does not prove no
 dynamic use, source string use, executable path or function boundary.
 
-Header detail includes data_scope, metadata_range, copy_witnesses,
+The leading analysis detail includes data_scope, metadata_range, copy_witnesses,
 unknown_copy_witnesses, unvisited_copy_sites, data_reference_coverage,
 unknown_copy_evidence. Strings/data xref set them; PUSH/code-unit xref set them null and
-do not claim a data scan. Data xref keep the common three-key query, 23-field header and
-20-field summary; target_kind=literal, target_decoded_offset=candidate start,
+do not claim a data scan. Data xref keep the common three-key query, 23-field analysis record and
+20-field analysis detail; target_kind=literal, target_decoded_offset=candidate start,
 target_semantics=bytecode_data_candidate, coverage=contextual_static_evidence,
 literal_scope=null, data_scope=unindexed_and_contextually_copied_bytecode,
 data_reference_coverage=contextual_static_evidence, metadata_range null or
@@ -587,7 +595,7 @@ evidence_kind=contextual_constant_codecopy, resolution=resolved means only stati
 source-range evidence. available_* is the copy∩input; copied_* is the further
 intersection with the candidate. Outer `at`/source_id are null; `context_at` is the
 witness function/block FETCH; start/end is the copied intersection's carrier range;
-instruction_carrier_* is the actual CODECOPY opcode. Data xref summary literals/data_literals=1, references/records =
+instruction_carrier_* is the actual CODECOPY opcode. Data xref analysis detail literals/data_literals=1, references/records =
 contextual witness routes, reference_status as above.
 
 Budgets preserve fixed input, atomic output and old-file protection. The shared work

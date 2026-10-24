@@ -58,12 +58,11 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc --at cod
 target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.marshal --version 3.12 -o target/codes.jsonl
 ```
 
-`codes` is schema-v2 header/code/summary JSONL: root index 0, deterministic DFS preorder,
+`codes` is schema-v2 code-row JSONL: root index 0, deterministic DFS preorder,
 and both `-f/--filter` (substring, `--case sensitive` for exact case) and `--name` (exact) preserve the
-matching results with their original indices. Zero matches still returns complete
-header/summary; a missing `--at code:N` exits 2 with `NOT_FOUND`.
+matching results with their original indices. Zero matches is empty output and exit 0; a missing `--at code:N` exits 2 with `NOT_FOUND`.
 `--at`, `--name` and `-f` intersect. Each row prints the copy-only
-`at: code:<index>`; the header carries the input identity digest, so coordinates do not
+`at: code:<index>`; coordinates do not
 change on rename. Parent is first containment; kind is `unknown`, not a runtime type
 judgment. Original marshal definition/field/payload and alias sites use real half-open
 file spans; when there are no new contiguous occurrence bytes they are null.
@@ -131,7 +130,7 @@ target/debug/rxd pyc get-code tests/corpus/pyc/3.12.14/graph.timestamp.pyc --at 
 ```
 
 `get-code` accepts any enumerated module/class/function/lambda/comprehension code and
-returns one schema-v2 `code_view` envelope (no header/summary) with original body,
+returns one schema-v2 `code_view` object with original body,
 instruction rows, tables, values, line mapping and exceptions. `--at` takes the short
 `code:<index>` a codes row prints. Code coordinates do not embed a digest; re-run the
 listing for a different input. `complete: true` means original body bytes were accounted

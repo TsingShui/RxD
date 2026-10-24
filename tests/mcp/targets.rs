@@ -38,11 +38,6 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
     fs::write(&path, "function replacement(){return 0;}\n").unwrap();
     let entities = client.tool("js_entities", json!({"input":input}));
     let entities = success(&entities);
-    assert_eq!(
-        entities["header"]["source_id"],
-        rxd_core::identity::input_id(source.as_bytes())
-    );
-    assert_eq!(entities["header"]["detail"]["path"], json!(path));
     let entity = entities["records"]
         .as_array()
         .unwrap()
@@ -201,28 +196,34 @@ fn mcp_recursive_target_freezes_selected_sources_and_preserves_file_boundaries()
     fs::write(root.path().join("added.js"), "function added(){}\n").unwrap();
     let entities = client.tool("js_entities", json!({"input":{"target_id":target}}));
     let entities = success(&entities);
-    assert_eq!(entities["scan_summary"]["complete"], true);
-    assert_eq!(entities["scan_summary"]["detail"]["files"], 2);
-    let files = entities["files"].as_array().unwrap();
+    let records = entities["records"].as_array().unwrap();
+    let files: Vec<_> = records
+        .iter()
+        .filter(|record| record["record"] == "file")
+        .collect();
     assert_eq!(files.len(), 2);
-    assert_eq!(files[0]["header"]["detail"]["path"], json!(first));
-    assert_eq!(files[1]["header"]["detail"]["path"], json!(second));
+    assert_eq!(files[0]["detail"]["path"], json!(first));
+    assert_eq!(files[1]["detail"]["path"], json!(second));
     assert!(
-        files[0]["records"]
-            .as_array()
-            .unwrap()
+        records
             .iter()
             .any(|record| record["detail"]["name"] == "first")
     );
     assert!(
-        files[1]["records"]
-            .as_array()
-            .unwrap()
+        records
             .iter()
             .any(|record| record["detail"]["name"] == "second")
     );
     let changed = client.tool("js_entities", json!({"input":{"path":root.path()}}));
-    assert_eq!(success(&changed)["scan_summary"]["detail"]["files"], 3);
+    assert_eq!(
+        success(&changed)["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|record| record["record"] == "file")
+            .count(),
+        3
+    );
 }
 
 #[cfg(all(feature = "backend-dex", feature = "backend-js"))]
@@ -372,7 +373,6 @@ fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking(
         "INVALID_INPUT",
     );
     let entities = client.tool("js_entities", json!({"input":{"path":alias}}));
-    assert_eq!(success(&entities)["header"]["detail"]["path"], json!(alias));
     assert!(
         success(&entities)["records"]
             .as_array()
@@ -435,10 +435,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
         let result = client.tool("js_entities", json!({"input":{"path":input_path}}));
         if result["isError"] != true {
             let result = success(&result);
-            assert_eq!(
-                result["header"]["source_id"],
-                rxd_core::identity::input_id(source.as_bytes())
-            );
+            assert!(!result["records"].as_array().unwrap().is_empty());
             assert!(
                 result["records"]
                     .as_array()
@@ -450,10 +447,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
     }
     drop(mutator);
     let result = client.tool("js_entities", json!({"input":{"path":input_path}}));
-    assert_eq!(
-        success(&result)["header"]["source_id"],
-        rxd_core::identity::input_id(source.as_bytes())
-    );
+    assert!(!success(&result)["records"].as_array().unwrap().is_empty());
 }
 
 #[cfg(unix)]
@@ -538,9 +532,11 @@ fn mcp_closing_a_target_keeps_already_acquired_worker_bytes_available() {
     drop(stopped);
     let completed = client.receive();
     assert_eq!(completed["id"], 100);
-    assert_eq!(
-        success(&completed["result"])["header"]["source_id"],
-        rxd_core::identity::input_id(source.as_bytes())
+    assert!(
+        !success(&completed["result"])["records"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 }
 

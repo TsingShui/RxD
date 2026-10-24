@@ -383,9 +383,8 @@ fn extract_asar(
     })
 }
 
-/// Shape a captured stdout stream without knowing which backend produced it: a stream
-/// keeps its header/records/summary rows, a single JSON result is returned unchanged,
-/// and source text (XML, Java) arrives as `text`.
+/// Shape a captured stdout stream: JSONL streams become `{records:[...]}`, a
+/// single-object result keeps its own envelope, and source text arrives as `text`.
 fn reply(bytes: &[u8], record_limit: usize) -> Result<Value, QueryError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|error| QueryError::new("INTERNAL_ERROR", error.to_string()))?;
@@ -395,18 +394,12 @@ fn reply(bytes: &[u8], record_limit: usize) -> Result<Value, QueryError> {
     }
     if trimmed.starts_with('{')
         && let Ok(record) = lossless::parse(trimmed.as_bytes())
+        && record.get("backend").is_some()
+        && record.get("command").is_some()
     {
-        // A zero-file scan reports only its summary; keep the recursive envelope that
-        // already-matching files produce so a caller reads one shape.
-        if record["record"] == "scan_summary" {
-            return Ok(json!({"files":[],"scan_summary":record}));
-        }
-        // A single-object result (a FETCH record or a whole-class document) is returned
-        // unchanged; only multi-line streams need the header/records/summary shape.
         return Ok(record);
     }
     let mut rows = Vec::new();
-    let mut data_records = 0;
     for line in bytes
         .split(|&byte| byte == b'\n')
         .filter(|line| !line.is_empty())
@@ -414,56 +407,10 @@ fn reply(bytes: &[u8], record_limit: usize) -> Result<Value, QueryError> {
         let Ok(row) = lossless::parse(line) else {
             return Ok(json!({"text": text}));
         };
-        if !matches!(
-            row["record"].as_str(),
-            Some("header" | "summary" | "scan_summary")
-        ) {
-            data_records += 1;
-            if data_records > record_limit {
-                return Err(QueryError::new("RESOURCE_LIMIT", "record budget exceeded"));
-            }
-        }
         rows.push(row);
-    }
-    if rows.first().is_some_and(|row| row["record"] == "header")
-        && rows.last().is_some_and(|row| row["record"] == "summary")
-    {
-        let summary = rows.pop().unwrap();
-        let header = rows.remove(0);
-        if rows.iter().any(|row| row["record"] == "header") {
-            let mut files = Vec::new();
-            let mut records = Vec::new();
-            let mut current = header;
-            for row in rows {
-                match row["record"].as_str() {
-                    Some("header") => current = row,
-                    Some("summary") => {
-                        files.push(json!({"header":current,"records":std::mem::take(&mut records),"summary":row}));
-                        current = Value::Null;
-                    }
-                    _ => records.push(row),
-                }
-            }
-            if !current.is_null() {
-                files.push(json!({"header":current,"records":records,"summary":summary}));
-            }
-            return Ok(json!({"files":files}));
+        if rows.len() > record_limit {
+            return Err(QueryError::new("RESOURCE_LIMIT", "record budget exceeded"));
         }
-        return Ok(json!({"header":header,"records":rows,"summary":summary}));
-    }
-    if let Some(scan_summary) = rows.pop_if(|row| row["record"] == "scan_summary") {
-        let mut files = Vec::new();
-        let mut current: Vec<Value> = Vec::new();
-        for row in rows {
-            let ends = row["record"] == "summary";
-            current.push(row);
-            if ends {
-                let summary = current.pop().unwrap();
-                let header = current.remove(0);
-                files.push(json!({"header":header,"records":std::mem::take(&mut current),"summary":summary}));
-            }
-        }
-        return Ok(json!({"files":files,"scan_summary":scan_summary}));
     }
     Ok(json!({"records": rows}))
 }

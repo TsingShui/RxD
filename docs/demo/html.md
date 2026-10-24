@@ -36,14 +36,14 @@ Header backend is `html`, command `entries`, with path/`analysis: lexical`/`pars
 html5gum`/`parser_version: 0.8.4`/`lexical_profile: lexical_naive_v1`. Structured output
 follows [ADR 0003](../adr/0003-output-envelope.md), `schema_version=2`. Records appear in
 source order: doctype/comment/element/text. A record's `at` is
-`<kind>:<start>:<end>`; the container's `source_id` lives in the header.
+`<kind>:<start>:<end>`; coordinates are file-scoped.
 
 Element detail: tag, ordered attrs, self_closing, void, depth, end_tag,
 content_start/content_end. Text/comment/doctype detail: value and depth. Attribute values
 are decoded (`/x&amp;y` reports `/x&y`); text and extracted bytes remain original slices.
 Summary detail: nodes/elements/texts/comments/doctypes plus tokenizer_errors/
 unmatched_end_tags/missing_end_tags. The sample has seven nodes; `--tag script` returns
-one element while `summary.detail.nodes` remains seven, distinguishing filtered output
+one element while the unfiltered catalog still has seven rows, distinguishing filtered output
 from parse scope.
 
 `list -o FILE` writes the same bytes as stdout. Filters are exact AND combinations:

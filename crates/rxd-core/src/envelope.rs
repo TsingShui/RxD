@@ -57,6 +57,14 @@ pub fn reference(meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
     record(REFERENCE, meta, detail)
 }
 
+/// True for the stream wrapper rows a JSONL stream must not carry.
+pub fn is_wrapper(value: &Value) -> bool {
+    matches!(
+        value.get("record").and_then(Value::as_str),
+        Some("header" | "summary" | "scan_summary")
+    )
+}
+
 pub fn record(record: &str, meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
     let mut value = json!({
         "record": record,

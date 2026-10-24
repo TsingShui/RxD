@@ -256,7 +256,7 @@ impl<'a> References<'a> {
         );
         let coverage = &self.coverage;
         let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &header)?;
+        write_record(&mut output, &crate::navigation::analysis_record(&header))?;
         let mut emitted = 0;
         for hit in &self.hits {
             let record = self.record(navigation, functions, hit);
