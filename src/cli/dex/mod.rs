@@ -15,6 +15,7 @@ use anyhow::{Result, bail};
 pub(crate) use args::Command;
 use rayon::prelude::*;
 use rxd_dex::{apk, manifest, query};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::Instant;
 
@@ -528,7 +529,9 @@ fn run_command(
                     let path = target.to_str().ok_or_else(|| {
                         anyhow::anyhow!("INVALID_QUERY: output path must be UTF-8")
                     })?;
-                    let sha256 = rxd_core::identity::input_id(bytes);
+                    // The receipt names the exact bytes written, so it reports their full
+                    // SHA-256 rather than the sampled stream identity in `source_id`.
+                    let sha256 = format!("{:x}", Sha256::digest(bytes));
                     append_json(
                         &mut payload,
                         &data_record(

@@ -158,7 +158,7 @@ pub fn run(
         for hit in &scan.hits {
             analysis.charge_work(1usize.saturating_add(hit.constant_id.as_ref().map_or(0, String::len)).saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
             append(&mut out, &Record {record:envelope::REFERENCE, at:None, source_id:None, parent_at:None,
-                context_at:envelope::at_of(&analysis.code_id(hit.code_index)).into_owned(), start:hit.start, end:hit.end, detail:hit})?;
+                context_at:analysis.code_id(hit.code_index), start:hit.start, end:hit.end, detail:hit})?;
         }
         analysis.charge_work(scan.unsupported.len())?;
         append(&mut out, &envelope::summary(scan.hits.len(), scan.unsupported.is_empty(),

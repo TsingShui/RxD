@@ -28,7 +28,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
+    pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             name: &'a JsString,

@@ -39,8 +39,9 @@ file is readable. Range status uses the container length at open time.
 An `extract` receipt has `source_id` (identity digest of the extracted file bytes) and
 `detail` with `complete`, output `path`, `file_bytes`, `storage`,
 `representation: original` and `origin`. `origin` contains the container path,
-`format: asar`, `entry` and `header_id`; `header_id` hashes the header Pickle and is
-not a whole-archive integrity claim. The caller chooses the output path; host paths
+`format: asar` and `entry`. Neither the receipt nor a row hashes the header Pickle:
+identity belongs to the extracted bytes, and re-hashing the index on every query only
+described a structure the caller already opened. The caller chooses the output path; host paths
 are never derived from untrusted entry names. Neither the existing archive nor the
 selected unpacked input may be the output target.
 

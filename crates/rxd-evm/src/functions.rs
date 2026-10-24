@@ -1163,7 +1163,7 @@ impl FunctionNavigation {
         }
         let id =
             id.ok_or_else(|| Error::new("INVALID_QUERY", "select a function --at or --selector"))?;
-        let canonical = crate::canonical_id(&navigation.carrier.source_id, id);
+        let canonical = id.to_string();
         let fields: Vec<_> = canonical.split(':').collect();
         let invalid = || Error::new("INVALID_QUERY", "expected an EVM function coordinate");
         if fields.len() != 5

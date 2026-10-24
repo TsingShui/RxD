@@ -79,11 +79,9 @@ pub fn fetch(
             backend: "pyc",
             command: "get-code",
             record: "code_view",
-            at: rxd_core::envelope::at_of(&analysis.code_id(selected)).into_owned(),
+            at: analysis.code_id(selected),
             source_id: None,
-            parent_at: entry
-                .parent
-                .map(|i| rxd_core::envelope::at_of(&analysis.code_id(i)).into_owned()),
+            parent_at: entry.parent.map(|i| analysis.code_id(i)),
             context_at: None,
             start: span.start,
             end: span.end,

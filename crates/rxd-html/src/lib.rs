@@ -365,11 +365,11 @@ fn attribute_name_valid(name: &str) -> bool {
 }
 
 /// A record's identity is its self-describing `kind:start:end` coordinate.
-fn record_id(_hash: &str, kind: &str, start: usize, end: usize) -> String {
+fn record_id(kind: &str, start: usize, end: usize) -> String {
     format!("{kind}:{start}:{end}")
 }
 
-fn canonical_id(id: &str) -> bool {
+fn is_coordinate(id: &str) -> bool {
     let parts: Vec<_> = id.split(':').collect();
     parts.len() == 3
         && matches!(parts[0], "element" | "text" | "comment" | "doctype")
@@ -380,8 +380,8 @@ fn canonical_id(id: &str) -> bool {
         })
 }
 
-fn validate_id(id: &str, _hash: &str, ids: &[String]) -> Result<usize> {
-    if !canonical_id(id) {
+fn validate_id(id: &str, ids: &[String]) -> Result<usize> {
+    if !is_coordinate(id) {
         return Err(Error::new("INVALID_QUERY", "malformed HTML record ID"));
     }
     ids.iter()
@@ -396,7 +396,6 @@ fn validate_id(id: &str, _hash: &str, ids: &[String]) -> Result<usize> {
 
 fn parse_catalog<'a>(
     text: &'a str,
-    hash: &str,
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<(Catalog<'a>, Vec<String>)> {
@@ -450,7 +449,7 @@ fn parse_catalog<'a>(
     let ids: Vec<String> = catalog
         .nodes
         .iter()
-        .map(|node| record_id(hash, node.kind, node.start, node.end))
+        .map(|node| record_id(node.kind, node.start, node.end))
         .collect();
     if ids.iter().collect::<HashSet<_>>().len() != ids.len() {
         return Err(invalid("duplicate HTML record identity"));
@@ -514,10 +513,10 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         .to_str()
         .ok_or_else(|| invalid("HTML input path must be UTF-8"))?;
     let (text, hash) = read_source(input, limits, perf)?;
-    let (catalog, ids) = parse_catalog(&text, &hash, limits, perf)?;
+    let (catalog, ids) = parse_catalog(&text, limits, perf)?;
     let order = perf.measure("query", || -> Result<Vec<usize>> {
         let root = if let Some(id) = within.as_deref() {
-            let index = validate_id(id, &hash, &ids)?;
+            let index = validate_id(id, &ids)?;
             if catalog.nodes[index].kind != "element" {
                 return Err(Error::new("INVALID_QUERY", "--within requires an element ID"));
             }
@@ -574,7 +573,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         for &index in &order {
             let node = &catalog.nodes[index];
             let id = &ids[index];
-            let parent = node.parent.and_then(|index| catalog.nodes.get(index)).map(|parent| record_id(&hash, parent.kind, parent.start, parent.end));
+            let parent = node.parent.and_then(|index| catalog.nodes.get(index)).map(|parent| record_id(parent.kind, parent.start, parent.end));
             let detail = match &node.detail {
                 Detail::Element { tag, attrs, self_closing, is_void, end_tag, content_start, content_end } =>
                     json!({"tag":tag,"attrs":attrs,"self_closing":self_closing,"void":is_void,"depth":node.depth,"end_tag":end_tag,"content_start":content_start,"content_end":content_end}),
@@ -622,8 +621,8 @@ impl Source {
         let destination_path = output
             .to_str()
             .ok_or_else(|| invalid("output path must be UTF-8"))?;
-        let (catalog, ids) = parse_catalog(text, hash, self.limits, perf)?;
-        let index = validate_id(id, hash, &ids)?;
+        let (catalog, ids) = parse_catalog(text, self.limits, perf)?;
+        let index = validate_id(id, &ids)?;
         let node = &catalog.nodes[index];
         let (start, end, part) = if content {
             match &node.detail {

@@ -138,8 +138,8 @@ total_funcs` with `analysis: metadata`. Function and `function_view` records use
 function coordinate as `at`; function ranges are the module file's half-open
 code-body range, including locals, and other records have `start/end: null`.
 
-`at` coordinates are short, copy-only and self-describing; a short coordinate passed
-back to `--at` is expanded against the header hash before validation.
+`at` coordinates are self-describing and passed back to `--at` verbatim; there is no
+hash to expand them against.
 
 | Record | `at` |
 | --- | --- |

@@ -195,7 +195,7 @@ pub fn scan(
                 reserve(a, scan, 192)?;
                 scan.unsupported.push(Unsupported {
                     code_index: owner,
-                    context_at: rxd_core::envelope::at_of(&a.code_id(owner)).into_owned(),
+                    context_at: a.code_id(owner),
                     offset: ins.offset,
                     start: span.start + ins.offset,
                     end: span.start + ins.offset + 2,

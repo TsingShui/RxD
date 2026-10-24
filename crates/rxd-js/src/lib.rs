@@ -580,7 +580,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for &i in &indices {
-                    output.json(&collector.entities[i].entity.envelope(&source.id))?;
+                    output.json(&collector.entities[i].entity.envelope())?;
                 }
                 output.json(&summary(indices.len(), true, Default::default()))?;
                 Ok(())
@@ -593,7 +593,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for found in &collector.matches {
-                    output.json(&found.envelope(&source.id))?;
+                    output.json(&found.envelope())?;
                 }
                 output.json(&summary(collector.matches.len(), true, Default::default()))?;
                 Ok(())
@@ -698,7 +698,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for identifier in &result {
-                    output.json(&identifier.envelope(&source.id))?;
+                    output.json(&identifier.envelope())?;
                 }
                 output.json(&summary(result.len(), true, Default::default()))
             })?;
@@ -717,7 +717,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for call in &result {
-                    output.json(&call.envelope(&source.id))?;
+                    output.json(&call.envelope())?;
                 }
                 output.json(&summary(result.len(), true, Default::default()))
             })?;
@@ -741,7 +741,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for member in &result {
-                    output.json(&member.envelope(&source.id))?;
+                    output.json(&member.envelope())?;
                 }
                 output.json(&summary(result.len(), true, Default::default()))
             })?;
@@ -772,7 +772,7 @@ pub fn run_source(
                 .map(|context| context.id);
             let mut parent = collector.entities[target].parent;
             while let Some(i) = parent {
-                ancestors.push(collector.entities[i].entity.envelope(&source.id));
+                ancestors.push(collector.entities[i].entity.envelope());
                 parent = collector.entities[i].parent;
             }
             perf.record("query", query_start);
@@ -799,7 +799,7 @@ pub fn run_source(
                 },
                 Located {
                     complete: true,
-                    entity: entity.envelope(&source.id),
+                    entity: entity.envelope(),
                     ancestors,
                     syntax: syntax_info.syntax,
                     declaration_file: syntax_info.declaration_file,
@@ -828,7 +828,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for record in &result.records {
-                    output.json(&record.envelope(&source.id))?;
+                    output.json(&record.envelope())?;
                 }
                 output.json(&summary(records, true, Default::default()))
             })?;
@@ -919,7 +919,7 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 output.json(&header)?;
                 for reference in &references {
-                    output.json(&reference.envelope(&source.id))?;
+                    output.json(&reference.envelope())?;
                 }
                 output.json(&summary(records, true, Default::default()))
             })?;
@@ -1000,7 +1000,7 @@ pub fn run_source(
                 let original = &source.text[range.start as usize..range.end as usize];
                 perf.counters.records = Some(1);
                 if json {
-                    let symbol = definition.symbol.envelope(&source.id);
+                    let symbol = definition.symbol.envelope();
                     let extracted = envelope::body(
                         "source",
                         RecordMeta {
@@ -1050,7 +1050,7 @@ pub fn run_source(
                         complete: true,
                         representation: "original",
                         source: original,
-                        entity: Some(target.entity.envelope(&source.id)),
+                        entity: Some(target.entity.envelope()),
                         symbol: None::<()>,
                         declaration: None,
                         fragment: None::<()>,

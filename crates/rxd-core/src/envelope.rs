@@ -7,9 +7,8 @@ pub const SCHEMA_VERSION: u32 = 2;
 
 /// Navigation and byte offsets; absent values serialize as null, never omitted keys.
 ///
-/// `at` values are the backend's own copy-only coordinates. The stream header
-/// carries `source_id`, so no row repeats a hash and an Agent passes the printed
-/// coordinate back with `--at`.
+/// `at` values are the backend's own coordinates, emitted verbatim: the stream header
+/// carries `source_id`, and an Agent passes a printed coordinate back with `--at`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RecordMeta<'a> {
     pub at: Option<&'a str>,
@@ -18,30 +17,6 @@ pub struct RecordMeta<'a> {
     pub context_at: Option<&'a str>,
     pub start: Option<usize>,
     pub end: Option<usize>,
-}
-
-/// Normalize a coordinate a row printed into the copy-only form `--at` accepts.
-///
-/// A `.NET` coordinate *is* its ECMA-335 metadata token, which already encodes its
-/// table in the high byte, so it is printed as `0x0600000b`; every other backend
-/// keeps its own self-describing coordinate (`func:42`, `1234..5678`).
-pub fn at_of(coordinate: &str) -> std::borrow::Cow<'_, str> {
-    use std::borrow::Cow;
-    dotnet_token(coordinate).map_or_else(|| Cow::Borrowed(coordinate), Cow::Owned)
-}
-
-/// `method:0600000b` / `0x0600000b` / `0600000b` -> `0x0600000b`.
-fn dotnet_token(value: &str) -> Option<String> {
-    let tail = value.rsplit(':').next().unwrap_or(value);
-    let body = tail
-        .strip_prefix("0x")
-        .or_else(|| tail.strip_prefix("0X"))
-        .unwrap_or(tail);
-    if body.len() != 8 || !body.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let token = u32::from_str_radix(body, 16).ok()?;
-    Some(format!("0x{token:08x}"))
 }
 
 /// Build a stream header. Use null for query parameters that do not apply.
@@ -85,10 +60,10 @@ pub fn reference(meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
 pub fn record(record: &str, meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
     let mut value = json!({
         "record": record,
-        "at": meta.at.map(at_of),
+        "at": meta.at,
         "source_id": meta.source_id,
-        "parent_at": meta.parent_at.map(at_of),
-        "context_at": meta.context_at.map(at_of),
+        "parent_at": meta.parent_at,
+        "context_at": meta.context_at,
         "start": meta.start,
         "end": meta.end,
     });

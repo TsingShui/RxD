@@ -37,7 +37,7 @@ pub struct Reference {
 }
 
 impl Reference {
-    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
+    pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             /// The shared skeleton every xref row carries: what this row refers to.

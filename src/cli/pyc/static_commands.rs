@@ -1,6 +1,5 @@
 use super::Output;
 use clap::Args;
-use rxd_core::envelope;
 use rxd_core::{Result, perf::Perf};
 use rxd_pyc::static_analysis::{Analysis, Limits};
 use serde::Serialize;
@@ -64,7 +63,6 @@ struct Field {
 }
 #[derive(Serialize)]
 struct Incoming<'a> {
-    #[serde(serialize_with = "crate::cli::pyc::short_id")]
     owner_id: String,
     constant_path: &'a [usize],
     start: Option<usize>,
@@ -182,11 +180,9 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
     let body_status = analysis.body_status(index);
     Ok(Record {
         record: "code",
-        at: envelope::at_of(&analysis.code_id(index)).into_owned(),
+        at: analysis.code_id(index),
         source_id: None,
-        parent_at: entry
-            .parent
-            .map(|parent| envelope::at_of(&analysis.code_id(parent)).into_owned()),
+        parent_at: entry.parent.map(|parent| analysis.code_id(parent)),
         context_at: None,
         start: definition.span.start,
         end: definition.span.end,

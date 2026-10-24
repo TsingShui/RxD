@@ -201,7 +201,7 @@ impl DataInventory {
 
     fn select(&self, navigation: &Navigation, at: &str) -> Result<&DataLiteral> {
         let invalid = || Error::new("INVALID_QUERY", "expected an EVM data literal coordinate");
-        let canonical = crate::canonical_id(&navigation.carrier.source_id, at);
+        let canonical = at.to_string();
         let fields: Vec<_> = canonical.split(':').collect();
         if fields.len() != 6
             || fields[1] != "literal"
@@ -275,7 +275,7 @@ impl DataInventory {
             copy_witnesses: self.witnesses.len(), unknown_copy_witnesses: self.unknown,
             unvisited_copy_sites: self.unvisited, data_reference_coverage: "contextual_static_evidence",
             unknown_copy_evidence: self.witnesses.iter().enumerate().filter(|(_,w)| w.operation.source.is_none() || w.operation.length.is_none()).map(|(i,w)|json!({
-                "instruction_offset":w.operation.pc,"block_id":navigation.block_coordinate(&navigation.blocks[w.block]),"context_at":self.context(navigation,functions,Some(i)).map(|context|crate::coordinate(&context)),"context_index":w.context,"context_entry_state":self.entry(functions,i).json(),"entry_evidence_block_ids":w.entry_blocks.iter().map(|&b|navigation.block_coordinate(&navigation.blocks[b])).collect::<Vec<_>>(),
+                "instruction_offset":w.operation.pc,"block_id":navigation.block_coordinate(&navigation.blocks[w.block]),"context_at":self.context(navigation,functions,Some(i)),"context_index":w.context,"context_entry_state":self.entry(functions,i).json(),"entry_evidence_block_ids":w.entry_blocks.iter().map(|&b|navigation.block_coordinate(&navigation.blocks[b])).collect::<Vec<_>>(),
                 "source_offset_hex":w.operation.source.map(|v|format!("{v:064x}")),"length_hex":w.operation.length.map(|v|format!("{v:064x}")),
                 "destination_offset_hex":w.operation.destination.map(|v|format!("{v:064x}")),"reason":match (w.operation.source,w.operation.length){(None,None)=>"source_offset_and_length_unknown",(None,_)=>"source_offset_unknown",_=>"length_unknown"}
             })).collect(),
@@ -422,7 +422,7 @@ impl DataInventory {
             .filter(|&route| {
                 filter.is_none_or(|needle| {
                     self.context(navigation, functions, Some(route))
-                        .is_some_and(|context| needle.matches(&crate::coordinate(&context)))
+                        .is_some_and(|context| needle.matches(&context))
                 })
             })
             .collect();

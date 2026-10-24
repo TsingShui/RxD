@@ -64,15 +64,10 @@ fn record<'a>(analysis: &'a Analysis, literal: &'a Literal) -> Result<Record<'a>
     }
     Ok(Record {
         record: "string",
-        at: rxd_core::envelope::at_of(&string_constants::constant_id(
-            analysis,
-            literal.owner,
-            &literal.path,
-        ))
-        .into_owned(),
+        at: string_constants::constant_id(analysis, literal.owner, &literal.path),
         source_id: None,
-        parent_at: rxd_core::envelope::at_of(&analysis.code_id(literal.owner)).into_owned(),
-        context_at: rxd_core::envelope::at_of(&analysis.code_id(literal.owner)).into_owned(),
+        parent_at: analysis.code_id(literal.owner),
+        context_at: analysis.code_id(literal.owner),
         start: actual_payload.map(|span| span.start),
         end: actual_payload.map(|span| span.end),
         detail: Detail {

@@ -4623,10 +4623,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
         assert_eq!(receipt["detail"]["representation"], "original");
         assert_eq!(receipt["detail"]["storage"], storage);
         assert_eq!(receipt["detail"]["origin"]["entry"], name);
-        assert_eq!(
-            receipt["source_id"],
-            format!("{:x}", Sha256::digest(expected))
-        );
+        assert_eq!(receipt["source_id"], rxd_core::identity::input_id(expected));
         let perf: Vec<Value> = String::from_utf8(result.stderr)
             .unwrap()
             .lines()

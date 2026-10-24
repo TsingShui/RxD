@@ -288,8 +288,6 @@ pub struct Origin {
     pub container: String,
     pub format: &'static str,
     pub entry: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub header_id: Option<String>,
 }
 
 /// Read one bounded binary buffer from a regular local file.

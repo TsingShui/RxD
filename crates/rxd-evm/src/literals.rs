@@ -250,7 +250,7 @@ impl LiteralInventory {
 
     fn select<'a>(&'a self, navigation: &Navigation, at: &str) -> Result<&'a Literal> {
         let invalid = || Error::new("INVALID_QUERY", "expected an EVM PUSH literal coordinate");
-        let canonical = crate::canonical_id(&navigation.carrier.source_id, at);
+        let canonical = at.to_string();
         let fields: Vec<_> = canonical.split(':').collect();
         if fields.len() != 5
             || fields[1] != "literal"
@@ -530,7 +530,7 @@ impl LiteralInventory {
         let needle = listing
             .filter
             .map(|needle| rxd_core::filter::Contains::new(needle, listing.case_sensitive));
-        let id = crate::canonical_id(&navigation.carrier.source_id, at);
+        let id = at.to_string();
         if id.split(':').nth(2) == Some("data") {
             let data = crate::data::DataInventory::discover(navigation, functions, limits, perf)?;
             let stage = perf.start_stage();

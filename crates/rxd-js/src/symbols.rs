@@ -42,7 +42,7 @@ impl Record {
         }
     }
 
-    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
+    pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
         #[serde(untagged)]
         enum Detail<'a> {

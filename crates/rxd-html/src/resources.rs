@@ -429,7 +429,7 @@ pub fn resources(
         .to_str()
         .ok_or_else(|| Error::new("INVALID_INPUT", "HTML input path must be UTF-8"))?;
     let (text, hash) = read_source(input, limits, perf)?;
-    let (catalog, ids) = parse_catalog(&text, &hash, limits, perf)?;
+    let (catalog, ids) = parse_catalog(&text, limits, perf)?;
     let (base, template, total, empty_inline, selected) =
         perf.measure("query", || -> Result<_> {
             let (candidates, template, empty_inline) = candidates(&catalog);
@@ -492,7 +492,7 @@ pub fn resources(
     perf.measure("serialize", || -> Result<()> {
         output.json(&envelope::header("html", "resources", Some(&hash), Some(text.len()),
             json!({"base_url":query.base_url,"kind":query.kind,"location":query.location,"filter":query.filter,"case":if query.case_sensitive {"sensitive"} else {"insensitive"},"include_content":query.include_content}),
-            json!({"path":path,"analysis":"lexical","parser":"html5gum","parser_version":"0.8.4","lexical_profile":"lexical_naive_v1","resource_profile":"resource_candidates_v1","duplicate_attributes":"first","base":{"document_url":base.document.as_ref().map(Url::as_str),"url":base.url.as_ref().map(Url::as_str),"href":base.href,"at":base.node.map(|index| envelope::at_of(&ids[index])),"status":base.status}}).as_object().unwrap().clone()))?;
+            json!({"path":path,"analysis":"lexical","parser":"html5gum","parser_version":"0.8.4","lexical_profile":"lexical_naive_v1","resource_profile":"resource_candidates_v1","duplicate_attributes":"first","base":{"document_url":base.document.as_ref().map(Url::as_str),"url":base.url.as_ref().map(Url::as_str),"href":base.href,"at":base.node.map(|index| ids[index].as_str()),"status":base.status}}).as_object().unwrap().clone()))?;
         for entry in &selected {
             let candidate = &entry.candidate;
             let node = &catalog.nodes[candidate.node];

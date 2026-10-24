@@ -180,7 +180,7 @@ impl Navigation {
     }
 
     pub fn select_block(&self, id: &str) -> Result<&BasicBlock> {
-        let canonical = crate::canonical_id(&self.carrier.source_id, id);
+        let canonical = id.to_string();
         let fields: Vec<_> = canonical.split(':').collect();
         let invalid = || Error::new("INVALID_QUERY", "expected an EVM block coordinate");
         if fields.len() != 4 || fields[1] != "block" || !matches!(fields[0], "raw" | "hex") {

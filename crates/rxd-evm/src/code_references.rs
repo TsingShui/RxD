@@ -212,13 +212,13 @@ impl<'a> References<'a> {
                 ..RecordMeta::default()
             },
             object(
-                json!({"target":crate::coordinate(self.id),"target_kind":self.target_kind,"target_decoded_offset":self.target,
+                json!({"target":self.id,"target_kind":self.target_kind,"target_decoded_offset":self.target,
             "reference_kind":hit.edge.kind,"resolution":hit.edge.resolution,"instruction_offset":hit.edge.instruction_offset,
             "opcode":instruction.opcode,"operand_hex":instruction.operand_hex,"context_kind":if hit.function.is_some(){"function"}else{"block"},
-            "referencing_block_id":crate::coordinate(&block_id),"referencing_context_index":hit.context,"target_context_index":hit.edge.target_context,
+            "referencing_block_id":block_id,"referencing_context_index":hit.context,"target_context_index":hit.edge.target_context,
             "incoming_stack_words":hit.incoming_stack_words,
             "evidence_kind":if hit.function.is_some(){"contextual_stack"}else{"block_local_stack"},
-            "owner_ids":if hit.function.is_some(){vec![crate::coordinate(&context_id)]}else{vec![]},
+            "owner_ids":if hit.function.is_some(){vec![context_id.clone()]}else{vec![]},
             "shared":functions.owners[hit.block].len()>1,"ownership_status":if hit.function.is_some(){"candidate"}else{"unresolved"},
             "source_call_verified":false,"abi_call_verified":false}),
             ),

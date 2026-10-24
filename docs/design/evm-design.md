@@ -309,9 +309,8 @@ timed separately.
 `evm xref INPUT --encoding raw|hex --at COORDINATE [-f FILTER]` accepts the block,
 function or literal coordinate a listing row prints and emits a schema-v2 JSONL header,
 zero or more reference records and a summary. Grammar/canonical validation/carrier/
-encoding/unit validation follow the corresponding FETCH, and a short coordinate is
-expanded against the analysed carrier first; stale/forged/wrong-kind IDs are errors, not
-zero hits. Copy/rename remains valid for the copy-only coordinate. `-f` is a
+encoding/unit validation follow the corresponding FETCH; a coordinate that no catalogued
+unit carries is an error, not a zero-hit result. Copy/rename remains valid for the copy-only coordinate. `-f` is a
 substring of the caller coordinate (`context_at`), folded unless `--case sensitive`.
 
 Block queries match that block's exact decoded start; function queries match only a

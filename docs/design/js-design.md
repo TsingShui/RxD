@@ -638,7 +638,7 @@ Header detail fields:
 Resource binding derivation is independently identified by `binding_profile`. `source_type` is the final
 script/module mode. `root_id` always points at program (`parent_id: null`,
 `detail.depth: 0`). `origin` is the container adapter's
-`container, format, entry, header_id` or null for a direct file; an entry path is the
+`container, format, entry` or null for a direct file; an entry path is the
 archive path, while identity and offsets use the entry's original bytes. Refs
 `selected` is `name, role, start, end, entity_id, context_id, type_reference,
 value_reference`; `declaration` is `start, end, entity_id` or null. These header

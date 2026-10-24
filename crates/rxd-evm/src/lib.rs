@@ -81,19 +81,6 @@ impl Default for Limits {
     }
 }
 
-/// The canonical form of a coordinate a record prints.
-///
-/// A record's identity is its self-describing coordinate such as `hex:block:0:4`.
-/// The stream header already carries the source identity, so no row repeats it.
-pub(crate) fn canonical_id(_source_id: &str, at: &str) -> String {
-    at.to_string()
-}
-
-/// Normalize a coordinate for printing next to its record.
-pub(crate) fn coordinate(id: &str) -> String {
-    rxd_core::envelope::at_of(id).into_owned()
-}
-
 /// One fixed carrier and its explicitly selected decoded interpretation.
 pub struct Carrier {
     pub path: String,

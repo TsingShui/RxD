@@ -56,7 +56,7 @@ pub struct Match {
 }
 
 impl Entity {
-    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
+    pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             kind: &'a str,
@@ -90,7 +90,7 @@ impl Entity {
 }
 
 impl Match {
-    pub fn envelope(&self, _source_id: &str) -> impl Serialize {
+    pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
             literal_kind: &'a str,

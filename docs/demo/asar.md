@@ -76,9 +76,9 @@ never the file content.
 
 The receipt is one `file` record (`schema_version=2`): backend/command/schema_version
 and the extracted file's identity digest `source_id` outside; `detail` contains output path, file_bytes,
-storage, `representation: original`, `origin.container/format/entry/header_id` and
-`complete`. `header_id` identifies the index header, not a whole-archive hash or
-signature. The caller creates the output parent directory; neither the archive nor the
+storage, `representation: original`, `origin.container/format/entry` and `complete`.
+The receipt carries no archive hash: `source_id` identifies the extracted bytes alone.
+The caller creates the output parent directory; neither the archive nor the
 selected unpacked input may be the output. Read/validation/budget/write failures keep
 the old `-o`; a stdout failure after replacement may leave the output, so check both
 exit status and a success receipt.

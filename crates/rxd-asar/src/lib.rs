@@ -124,7 +124,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                     None,
                     None,
                     json!(null),
-                    json!({"analysis":"metadata", "container":path, "header_id":archive.header_id})
+                    json!({"analysis":"metadata", "container":path})
                         .as_object()
                         .unwrap()
                         .clone(),
@@ -216,8 +216,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                         "path":destination_path,
                         "storage":storage(entry),
                         "representation":"original",
-                        "origin":Origin { container:path.to_owned(), format:"asar", entry:file,
-                            header_id:Some(archive.header_id) },
+                        "origin":Origin { container:path.to_owned(), format:"asar", entry:file },
                     })
                     .as_object()
                     .unwrap()

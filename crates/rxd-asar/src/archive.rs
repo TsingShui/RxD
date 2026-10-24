@@ -12,7 +12,6 @@ use serde::{
     Deserialize, Deserializer,
     de::{MapAccess, Visitor},
 };
-use sha2::{Digest, Sha256};
 
 use crate::{
     Entry, Storage,
@@ -59,7 +58,6 @@ pub struct Archive {
     file: File,
     data_start: u64,
     archive_size: u64,
-    pub header_id: String,
     unpacked: PathBuf,
 }
 
@@ -130,7 +128,6 @@ impl Archive {
                 file,
                 data_start,
                 archive_size,
-                header_id: format!("{:x}", Sha256::digest(&header)),
                 unpacked: PathBuf::from(unpacked),
             },
             index.entries,
