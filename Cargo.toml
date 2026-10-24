@@ -43,7 +43,7 @@ rxd-pyc = { path = "crates/rxd-pyc" }
 
 [features]
 default = ["all-feature"]
-all-feature = ["all-backends", "mcp", "bundled-ilspy"]
+all-feature = ["all-backends", "mcp"]
 all-backends = [
     "backend-js",
     "backend-asar",

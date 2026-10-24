@@ -12,7 +12,8 @@ git submodule update --init third_party/kuna
 python3 scripts/build-bundled.py --jobs 1
 # Complete single-file product including ILSpy:
 python3 scripts/build-ilspy.py osx-arm64
-python3 scripts/build-bundled.py --jobs 1 --features bundled-ilspy
+RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
+  python3 scripts/build-bundled.py --jobs 1 --features bundled-ilspy
 ```
 
 The build-only slacomp compiles specs under `target/kuna/<host>/`. The generated

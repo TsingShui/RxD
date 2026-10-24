@@ -21,18 +21,21 @@ adaptation delegates `IAssemblyResolver.BeginSnapshot` to the underlying
 resolver; reference restrictions, C# 10 settings and output/limit policies stay
 unchanged.
 
-## Consume the checked-in runtime without an SDK
+## Build and embed the native runtime
+
+Desktop ILSpy is produced per target; no desktop bundle is checked in.
 
 ```sh
-cargo build --release --features bundled-ilspy
+python3 scripts/build-ilspy.py osx-arm64
+RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
+  cargo build --release --features bundled-ilspy
 ```
 
-With no `RXD_ILSPY_EMBED_RS` override, Cargo verifies the matching `prebuilt/ilspy/`
-archive, manifest and native source identity, then embeds it. It never downloads
-or invokes .NET; missing/stale/corrupt target artifacts fail. macOS is ARM64 only.
-See [`prebuilt/README.md`](../../prebuilt/README.md) and
-[ADR 0010](../../docs/adr/0010-prebuilt-ilspy-runtimes.md). Native production below
-is a producer operation, not a prerequisite for every ordinary Cargo build.
+Cargo embeds only the explicit producer include and never downloads or invokes
+.NET. `bundled-ilspy` without `RXD_ILSPY_EMBED_RS` fails with the producer command.
+macOS is ARM64 only. See [`prebuilt/README.md`](../../prebuilt/README.md) and
+[ADR 0019](../../docs/adr/0019-native-desktop-ilspy.md). The only checked-in ILSpy
+prebuilt is the separate Android App C ABI bundle.
 
 ## Build the NativeAOT shared library
 
@@ -43,7 +46,6 @@ The CI matrix builds natively for Linux x64/arm64, Windows x64 and macOS arm64.
 
 ```sh
 python3 scripts/build-ilspy.py osx-arm64
-python3 scripts/prebuilt-ilspy.py add osx-arm64  # after validation; --replace for an intentional refresh
 python3 scripts/build-ilspy.py linux-x64
 python3 scripts/build-ilspy.py linux-arm64
 python scripts/build-ilspy.py win-x64
@@ -71,8 +73,10 @@ For the complete single-file distribution:
 ```sh
 python3 scripts/build-bundled.py --features bundled-ilspy
 export RXD_KUNA_EMBED_RS="$PWD/target/kuna/aarch64-apple-darwin/embed.rs"
-cargo test --test cli --features bundled-kuna,bundled-ilspy
-cargo test --release --test cli --features bundled-kuna,bundled-ilspy
+RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
+  cargo test --test cli --features bundled-kuna,bundled-ilspy
+RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
+  cargo test --release --test cli --features bundled-kuna,bundled-ilspy
 ```
 
 `build-ilspy.py` also emits `bundle.tar.gz`, `manifest.json` and `embed.rs` in
@@ -100,7 +104,7 @@ External-library development is still supported:
 cargo build --release --features csharp-decompiler
 ```
 
-This mode locates the prebuilt library under `target/dotnet-native/<rid>/`,
+This mode locates the produced library under `target/dotnet-native/<rid>/`,
 with a build-time `RXD_DOTNET_NATIVE_LIBRARY` override. At runtime, an explicit
 override wins, followed by an adjacent library. Only a binary still in its
 original Cargo profile directory falls back to the build-time path. The prepared
@@ -109,10 +113,11 @@ library's adjacent `dotnet-refs/` is supplied through the initialization ABI.
 The CI archive requires only `rxd` / `rxd.exe` at runtime. The package check
 copies the executable with no engine or metadata beside it and removes runtime
 overrides before testing Kuna, C# async/class recovery, lazy extraction and
-cached-library corruption rejection. Default Cargo now enables the complete
-`all-feature` profile using checked-in prebuilts. Explicit unbundled builds
-(`--no-default-features --features all-backends`) return original IL/EH when C# is unavailable. Explicit invalid external libraries retain
-that fallback; an embedded-runtime integrity failure is an error.
+cached-library corruption rejection. Default `all-feature` enables all parsers and
+MCP but not desktop ILSpy; explicit unbundled builds
+(`--no-default-features --features all-backends`) return original IL/EH when C# is
+unavailable. Explicit invalid external libraries retain that fallback; an
+embedded-runtime integrity failure is an error.
 Latency acceptance below is macOS-specific; CI correctness tests do
 not claim Linux/Windows latency acceptance.
 

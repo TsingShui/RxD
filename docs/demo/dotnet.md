@@ -107,23 +107,23 @@ fixed service policy and can still reject this larger scan.
 
 ## Enable C# and syntax sugar
 
-A registered prebuilt bundle needs no .NET SDK (macOS ARM64 only):
-
-```sh
-cargo build --release --no-default-features --features backend-dotnet,bundled-ilspy
-```
-
-Cargo validates the matching `prebuilt/ilspy/` target and source identity offline;
-missing/stale bundles fail instead of compiling or downloading automatically. The
-NativeAOT producer is only for bundle maintenance:
+Desktop C# reconstruction needs a native engine produced on this OS:
 
 ```sh
 python3 scripts/build-ilspy.py osx-arm64  # linux-x64, linux-arm64, win-x64
+RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
+  cargo build --release --no-default-features --features backend-dotnet,bundled-ilspy
 ```
+
+The producer creates the deterministic engine archive, reference metadata, manifest
+and `embed.rs` under `target/dotnet-native/<rid>/`; Cargo embeds that explicit include
+and never calls dotnet. There is no checked-in desktop ILSpy bundle; `bundled-ilspy`
+without `RXD_ILSPY_EMBED_RS` fails with the producer command. The Android App bundle
+under `prebuilt/android-ilspy/` is separate and is not a desktop CLI runtime.
 
 The pinned engine is ILSpy `11.1.0.9782`; see [ADR 0009](../adr/0009-dotnet-ilspy-v11.md)
 and [`prebuilt/README.md`](../../prebuilt/README.md). Native builds need .NET 10 SDK and
-the platform toolchain; Cargo never calls dotnet. Analysis only reads assemblies.
+the platform toolchain. Analysis only reads assemblies.
 
 ```sh
 sugar=tests/fixtures/dotnet/sugar/Sugar.dll

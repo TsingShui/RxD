@@ -170,12 +170,11 @@ unpack, then run `rxd-windows-x86_64\rxd.exe --version`. The shell installer onl
 supports the three Unix targets above.
 
 **Build from source**: initialize the Kuna submodule, then a normal Cargo build
-enables `all-feature` (all backend namespaces, MCP and embedded ILSpy) and reuses
-verified ILSpy bundles without a .NET SDK or extra environment variables. Kuna is
+enables `all-feature` (all backend namespaces and MCP). Desktop ILSpy is not
+checked in and is not embedded by default; C# reconstruction is opt-in. Kuna is
 not built or embedded by default. Rust and system linker tools are still required;
 the first dependency download needs network access. macOS is ARM64-only; Linux
-supports ARM64/x86_64; Windows ILSpy prebuilts still require a producer or an
-explicitly prepared bundle.
+supports ARM64/x86_64; Windows x64 is supported.
 
 ```sh
 git submodule update --init third_party/kuna
@@ -183,8 +182,12 @@ cargo build --release
 target/release/rxd skill install -a pi
 # Reduced builds remain explicit:
 cargo build --release --no-default-features --features backend-js
-# Backends only; no embedded native engine or MCP:
-cargo build --release --no-default-features --features all-backends
+# Backends and MCP, without a native C# engine:
+cargo build --release --no-default-features --features all-backends,mcp
+# C# reconstruction: produce the engine once on this OS, then embed it:
+python3 scripts/build-ilspy.py linux-x64
+RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/linux-x64/embed.rs" \
+  cargo build --release --features bundled-ilspy
 ```
 
 `backend-kuna` (the `rxd kuna` command namespace, alias `rxd bin`) is a default feature, but the
@@ -193,8 +196,9 @@ and reports `KUNA_NOT_BUNDLED` when it runs; release bundles and
 `scripts/build-bundled.py` opt in, while `--no-default-features` removes the
 namespace entirely.
 
-Prebuilt bundles are documented in [`prebuilt/README.md`](prebuilt/README.md);
-the full maintenance and release flow is in
+The only checked-in native prebuilt is the separate Android App bundle documented
+in [`prebuilt/README.md`](prebuilt/README.md); the full maintenance and release
+flow is in
 [Build and verification](docs/demo/ci.md#build-and-verification-details).
 
 **Agent skills**: after installing the binary, use the root entry point to select

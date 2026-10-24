@@ -124,15 +124,17 @@ python3 scripts/test-release.py
 
 ## Build and verification details
 
-Build order: verified ILSpy prebuilt preparation, pinned Kuna specs, linked Kuna CLI,
-then complete rxd release. Registered prebuilt targets skip .NET SDK setup and NativeAOT
-production. A missing target uses the explicit native producer job; a present but invalid
-artifact fails rather than silently rebuilding. See
-[prebuilt policy](../../prebuilt/README.md). macOS is ARM64 only. Submodule checkout
-includes full history for Kuna version calculation. Rust dependencies and Kuna compiler/
-spec outputs are cached per platform/toolchain. Newer PR runs cancel stale runs of that
-PR; main commits have separate concurrency groups so a later docs-only push cannot cancel
-an earlier required native build. Tags are never cancelled by newer runs.
+Build order: native ILSpy production, pinned Kuna specs, linked Kuna CLI, then
+complete rxd release. Every native runner installs the pinned .NET 10 SDK and builds
+the engine once on that OS; no desktop ILSpy prebuilt is checked in or prepared. See
+[ADR 0019](../adr/0019-native-desktop-ilspy.md) and
+[prebuilt policy](../../prebuilt/README.md). The separate Android App bundle is
+validated independently and is not part of the desktop CLI build. macOS is ARM64
+only. Submodule checkout includes full history for Kuna version calculation. Rust
+dependencies and Kuna compiler/spec outputs are cached per platform/toolchain. Newer
+PR runs cancel stale runs of that PR; main commits have separate concurrency groups
+so a later docs-only push cannot cancel an earlier required native build. Tags are
+never cancelled by newer runs.
 
 All platforms run release CLI and real stdio MCP E2E. Linux x86_64 also checks formatting,
 strict workspace Clippy, debug CLI/MCP tests and a no-MCP build. Packaging tests a
@@ -145,7 +147,7 @@ establish cross-platform latency.
 Local macOS arm64 equivalent:
 
 ```sh
-python3 scripts/prebuilt-ilspy.py prepare osx-arm64
+python3 scripts/build-ilspy.py osx-arm64
 python3 scripts/build-bundled.py --features bundled-ilspy,mcp
 KUNA_VERSION="$(python3 -c 'import json; print(json.load(open("target/kuna/aarch64-apple-darwin/manifest.json"))["version"])')" \
 RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \

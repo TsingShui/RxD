@@ -81,17 +81,20 @@ design document.
 
 Build binaries, benchmark reports, and demo outputs belong under ignored
 `target/`, not in source or documentation directories. Curated, verified
-runtime bundles under `prebuilt/` are the only exception; keep their manifests,
-source/package identities and licenses, but never SDKs, caches or
-intermediates. See `prebuilt/README.md`.
+Android runtime bundles under `prebuilt/` are the only exception; keep their
+manifests, source/package identities and licenses, but never SDKs, caches or
+intermediates. Desktop ILSpy is built per target under `target/`. See
+`prebuilt/README.md`.
 
 ## Build, Test, and Development Commands
 
 - `cargo build`: compile the complete development binary with default
-  `all-feature` (all backend namespaces, MCP and embedded ILSpy; Kuna remains
+  `all-feature` (all backend namespaces and MCP; Kuna and desktop ILSpy remain
   explicitly optional). Initialize `third_party/kuna` for Cargo path
-  resolution; curated ILSpy bundles need no SDK or preparation env. Use
-  `--no-default-features` for reduced builds.
+  resolution. Desktop ILSpy has no checked-in prebuilt: run
+  `python3 scripts/build-ilspy.py <rid>` and set `RXD_ILSPY_EMBED_RS` to its
+  `embed.rs` when building `bundled-ilspy`. Only the separate Android App
+  bundle is prebuilt. Use `--no-default-features` for reduced builds.
 - `cargo test --test cli`: run all-backend CLI E2E for shared product changes,
   not every commit. During backend development prefer the real focused CLI,
   for example
@@ -102,7 +105,8 @@ intermediates. See `prebuilt/README.md`.
   changed-path CI scope (includes local tracked/untracked changes). See
   `docs/agents/testing.md` for scoped gates and validation reuse.
 - `cargo test --features mcp --test cli`: include real stdio MCP contracts;
-  distributed builds use `mcp,bundled-kuna,bundled-ilspy`.
+  distributed builds use `mcp,bundled-kuna,bundled-ilspy` with a native
+  producer `RXD_ILSPY_EMBED_RS` and the pinned Kuna submodule.
 - `python3 scripts/format-workspace.py --check`: check Rust formatting.
 - `cargo clippy --workspace --all-targets -- -D warnings`: check lint warnings.
 - `cargo build --release`: build for performance measurements.

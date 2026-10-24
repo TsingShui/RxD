@@ -90,7 +90,7 @@ class ScopeCli(unittest.TestCase):
         self.put("crates/rxd-dotnet/native/Exports.cs")
         report, _ = self.discover()
         self.assertTrue(report["full"])
-        self.put("prebuilt/ilspy/aarch64-apple-darwin/manifest.json")
+        self.put("prebuilt/android-ilspy/aarch64-linux-android/manifest.json")
         report, _ = self.discover()
         self.assertTrue(report["full"])
         self.assertTrue(report["tools"])

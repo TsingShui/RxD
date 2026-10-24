@@ -199,8 +199,9 @@ them by name, which is why the module filter is not used as evidence for those t
 
 ## Rebuilding the prebuilt bundles
 
-`prebuilt/linux-arm64`, `prebuilt/linux-x64` and `prebuilt/android-ilspy/aarch64-linux-android`
-predate every one of these surface changes and must be rebuilt from the final commit
+Desktop ILSpy runtimes are no longer checked in; build them from the final commit
+with `scripts/build-ilspy.py <rid>`. The separate Android App bundle under
+`prebuilt/android-ilspy/` must be re-produced from the final shared native sources
 (`prebuilt/README.md` has the manifest/licence contract).
 
 ## Notes for future work

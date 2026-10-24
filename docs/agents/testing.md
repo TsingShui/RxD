@@ -64,11 +64,14 @@ cargo test -p rxd --no-default-features --features backend-dotnet --test cli dot
 cargo test --release -p rxd --no-default-features --features backend-dotnet --test cli dotnet::
 ```
 
-Default `cargo build/test` now enables `all-feature` (all backend namespaces,
-MCP and embedded ILSpy, but not the optional Kuna engine/specs). Use `--no-default-features --features all-backends`
-for the unbundled all-backend variant, and add `mcp` explicitly for that transport
-variant. Quick CI chooses those configurations deliberately; a default-build
-milestone must actually exercise the complete default profile.
+Default `cargo build/test` enables `all-feature` (all backend namespaces and MCP,
+but not the optional Kuna engine/specs or desktop ILSpy). C# reconstruction needs
+`bundled-ilspy` plus an `RXD_ILSPY_EMBED_RS` produced by
+`scripts/build-ilspy.py <rid>`, or `csharp-decompiler` plus an external native
+library. Use `--no-default-features --features all-backends` for the unbundled
+all-backend variant, and add `mcp` explicitly for that transport variant. Quick CI
+chooses those configurations deliberately; a default-build milestone must
+actually exercise the complete default profile.
 
 A Cargo test-name filter reduces **execution**, not necessarily compilation. Use
 package selection and backend features too. Do not churn between gratuitous

@@ -1,6 +1,7 @@
 # ADR 0012: Enable all-feature defaults with embedded ILSpy
 
-Status: accepted. Kuna remains opt-in; only ILSpy is embedded by default.
+Status: superseded by [ADR 0019](0019-native-desktop-ilspy.md). This record is
+retained for the earlier default-profile rationale.
 
 ## Decision
 

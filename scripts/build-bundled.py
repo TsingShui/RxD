@@ -19,6 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'third_party/kuna'
 BUILD = ROOT / 'target/kuna'
 PROFILE = {'OPT_LEVEL': '3', 'LTO': 'thin', 'CODEGEN_UNITS': '1', 'STRIP': 'symbols'}
+HOST_RIDS = {
+    'x86_64-unknown-linux-gnu': 'linux-x64',
+    'aarch64-unknown-linux-gnu': 'linux-arm64',
+    'x86_64-pc-windows-msvc': 'win-x64',
+    'aarch64-apple-darwin': 'osx-arm64',
+}
 
 
 def capture(args, cwd=ROOT):
@@ -153,10 +159,20 @@ def main():
         env['RXD_KUNA_EMBED_RS'] = str(embed)
         env['CARGO_TARGET_DIR'] = str(ROOT / 'target')
         features = ','.join(x for x in ('bundled-kuna', args.features) if x)
-        if 'bundled-ilspy' in features.split(',') and env.get('RXD_ILSPY_EMBED_RS'):
-            if not Path(env['RXD_ILSPY_EMBED_RS']).is_file():
+        if 'bundled-ilspy' in features.split(','):
+            embed = env.get('RXD_ILSPY_EMBED_RS')
+            if not embed:
+                rid = HOST_RIDS.get(host)
+                candidate = ROOT / 'target/dotnet-native' / rid / 'embed.rs' if rid else None
+                if candidate is not None and candidate.is_file():
+                    env['RXD_ILSPY_EMBED_RS'] = str(candidate)
+                else:
+                    raise RuntimeError(
+                        'bundled-ilspy requires a native engine; run '
+                        'python3 scripts/build-ilspy.py ' + (rid or '<rid>') +
+                        ' or set RXD_ILSPY_EMBED_RS to its embed.rs')
+            elif not Path(embed).is_file():
                 raise RuntimeError('Explicit RXD_ILSPY_EMBED_RS does not exist')
-        # Without an explicit override, rxd-dotnet selects its verified target prebuilt.
         run(['cargo', 'build', '--release', '--locked', '--features', features, '-j', str(args.jobs)]
             + (['--offline'] if args.offline else []), env=env)
 

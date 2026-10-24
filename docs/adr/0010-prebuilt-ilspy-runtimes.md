@@ -1,8 +1,9 @@
 # ADR 0010: Consume verified NativeAOT runtimes from prebuilt/
 
-Status: accepted. Supplements [ADR 0005](0005-single-file-distribution.md) and
-[ADR 0009](0009-dotnet-ilspy-v11.md); it does not change runtime analysis
-semantics.
+Status: accepted; its desktop ILSpy prebuilt decision is superseded by
+[ADR 0019](0019-native-desktop-ilspy.md). The desktop import/prepare instructions
+below are retained as history. The Android App collection and runtime semantics
+remain current.
 
 ## Problem
 

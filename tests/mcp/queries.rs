@@ -1476,23 +1476,12 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
     );
     assert_ne!(result["isError"], true, "{result}");
     assert_eq!(result["structuredContent"], expected);
-    let manifest_path = if let Some(embed) = option_env!("RXD_ILSPY_EMBED_RS") {
-        std::path::Path::new(embed)
-            .parent()
-            .unwrap()
-            .join("manifest.json")
-    } else {
-        let target = match (std::env::consts::OS, std::env::consts::ARCH) {
-            ("macos", "aarch64") => "aarch64-apple-darwin",
-            ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
-            ("linux", "x86_64") => "x86_64-unknown-linux-gnu",
-            ("windows", "x86_64") => "x86_64-pc-windows-msvc",
-            _ => panic!("no supported prebuilt target"),
-        };
-        root.join("prebuilt/ilspy")
-            .join(target)
-            .join("manifest.json")
-    };
+    let embed = option_env!("RXD_ILSPY_EMBED_RS")
+        .expect("bundled ILSpy tests require the producer-generated embed.rs");
+    let manifest_path = std::path::Path::new(embed)
+        .parent()
+        .unwrap()
+        .join("manifest.json");
     let manifest: Value = serde_json::from_slice(&std::fs::read(manifest_path).unwrap()).unwrap();
     for cache in [&cli_cache, &mcp_cache] {
         let published = cache

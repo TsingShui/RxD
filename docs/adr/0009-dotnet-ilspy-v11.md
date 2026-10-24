@@ -82,7 +82,9 @@ Only an engine that returns no payload at all — crash, exception, absent entry
 reached resource budget — degrades the record to original IL.
 
 This changes observable output for bodies that previously degraded to `il_warning`.
-Because the native library is a pinned prebuilt per target, the source change requires
-rebuilding every registered bundle (`prebuilt/ilspy/*` and `prebuilt/android-ilspy`) —
-`scripts/prebuilt-ilspy.py check` compares each manifest's `source_inputs` with the
-current source and fails until they match.
+Desktop engines are now produced per target by `scripts/build-ilspy.py` during the
+release build, so the source change is compiled into each distributed engine. The
+separate Android App bundle remains a checked-in artifact and requires its own
+producer/import when shared native sources change;
+`scripts/prebuilt-ilspy.py --android-app check` compares its manifest's
+`source_inputs` with the current source and fails until they match.

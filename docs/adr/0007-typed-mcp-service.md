@@ -52,9 +52,11 @@ analysis also runs outside the long-lived protocol process.
    Optional Kuna MCP coverage is only native JSON function enumeration and single-function
    decompilation; it retains the pinned upstream JSON contracts, without inventing rxd IDs.
    Linked Kuna's one-shot global setup remains confined to workers. No upstream source edits.
-8. Distributed single-file builds include `mcp,bundled-kuna,bundled-ilspy`; default source
-   builds can omit MCP. Engine initialization stays lazy. Four-platform CI runs public-process
-   release contracts and relocated smoke; passing cross-compilation is not runtime evidence.
+8. Distributed single-file builds include `mcp,bundled-kuna,bundled-ilspy` with a
+   native producer. Default source builds include MCP and all backend namespaces but
+   no desktop native engine; engine initialization stays lazy. Four-platform CI runs
+   public-process release contracts and relocated smoke; passing cross-compilation
+   is not runtime evidence.
 
 ## Consequences and acceptance
 

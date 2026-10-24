@@ -18,23 +18,24 @@ dependency enabled by `csharp-decompiler`; the default Cargo build does not invo
 .NET. It only decompiles and never loads/executes the analyzed assembly.
 
 See [ADR 0009](../adr/0009-dotnet-ilspy-v11.md) for the current engine pin and
-[ADR 0010](../adr/0010-prebuilt-ilspy-runtimes.md) for prebuilt runtime handling.
+[ADR 0019](../adr/0019-native-desktop-ilspy.md) for native desktop production and
+the separate Android prebuilt.
 
 ## Distribution and engine loading
 
-`cargo build --features bundled-ilspy` selects `prebuilt/ilspy/` by Rust `TARGET`,
-validates the manifest/archive SHA-256 and current native C#/project/NOTICE identity,
-then generates embedded data without a .NET SDK, network access or NativeAOT build.
-Missing targets, corrupt bundles or stale source artifacts fail the build explicitly.
-macOS supports ARM64 only, not x64. See `prebuilt/README.md`.
+`scripts/build-ilspy.py <rid>` is the desktop producer: validate the pinned NuGet
+package, build the NativeAOT shared library, and create a deterministic archive with
+the engine, .NET 10 reference assemblies and licenses. It writes
+`target/dotnet-native/<rid>/{bundle.tar.gz,manifest.json,embed.rs}`.
+`cargo build --features bundled-ilspy` requires `RXD_ILSPY_EMBED_RS` pointing at that
+generated `embed.rs`; there is no checked-in desktop fallback. Cargo never downloads,
+invokes .NET or produces NativeAOT. `scripts/build-bundled.py --features
+bundled-ilspy` auto-selects the host's prepared include and otherwise fails with the
+producer command. macOS supports ARM64 only, not x64. See `prebuilt/README.md`.
 
-`scripts/build-ilspy.py <rid>` is the explicit producer/update path: validate the
-pinned NuGet package, build the NativeAOT shared library, and create a deterministic
-archive with the engine, .NET 10 reference assemblies and licenses. Then
-`scripts/prebuilt-ilspy.py add <rid>` validates and imports it.
-`scripts/build-bundled.py --features bundled-ilspy` builds the default backends with
-embedded C# and Kuna as a single binary. No CI assumption is part of the runtime
-contract.
+Desktop release builds run the producer on each native target and then embed the
+engine, reference metadata and licenses into the single rxd executable. The only
+checked-in ILSpy prebuilt is the separate Android App C ABI collection below.
 
 `bundled-ilspy` implies `csharp-decompiler`. The first C# FETCH validates and atomically
 extracts `<cache-base>/rxd-ilspy/<archive-sha256>/` through `rxd-core::bundle`, then
@@ -47,11 +48,12 @@ changing process environment or probing input directories. Explicit
 development mode remains available. Reference assemblies are for static metadata
 resolution only; runtime does not depend on a .NET SDK/runtime.
 
-`prebuilt/android-ilspy/` separately stores an ARM64 Bionic engine, private OpenSSL,
-reference metadata, C ABI headers and licenses for App embedding. It is validated with
-`scripts/prebuilt-ilspy.py --android-app check`, is not registered in the desktop CLI
-runtime index, and does not enable a full rxd Android build. Consumers provide their
-own App JNI/NDK adapter; probe APKs and signing material are not distributed.
+`prebuilt/android-ilspy/` separately stores the only checked-in ILSpy prebuilt: an
+ARM64 Bionic engine, private OpenSSL, reference metadata, C ABI headers and licenses
+for App embedding. It is validated with
+`scripts/prebuilt-ilspy.py --android-app check`, is not a desktop CLI runtime, and
+does not enable a full rxd Android build. Consumers provide their own App JNI/NDK
+adapter; probe APKs and signing material are not distributed.
 
 ## Inputs and identity
 

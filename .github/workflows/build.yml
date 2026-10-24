@@ -71,11 +71,9 @@ jobs:
           python3 -B -m unittest discover -s devtools/testing -p 'test_*.py'
           python3 -B -m unittest discover -s devtools/upstream -p 'test_*.py'
           python3 -B -m unittest discover -s devtools/prebuilt -p 'test_*.py'
-      - name: Verify registered prebuilt runtime identities
+      - name: Verify the Android App prebuilt identity
         if: steps.scope.outputs.full == 'true'
-        run: |
-          python3 scripts/prebuilt-ilspy.py check
-          python3 scripts/prebuilt-ilspy.py --android-app check
+        run: python3 scripts/prebuilt-ilspy.py --android-app check
 
   quick:
     name: Quick checks (${{ matrix.scope }})
@@ -185,7 +183,6 @@ jobs:
         run: python scripts/verify-release.py --tag "$RELEASE_TAG" --check-version
 
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) == ''
         with:
           dotnet-version: '10.0.x'
 
@@ -214,12 +211,7 @@ jobs:
             target/kuna/${{ matrix.target }}/specs-commit
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Prepare the verified ILSpy prebuilt without an SDK
-        if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) != ''
-        run: python scripts/prebuilt-ilspy.py prepare '${{ matrix.rid }}'
-
-      - name: Build an unavailable ILSpy target once
-        if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) == ''
+      - name: Build the ILSpy NativeAOT engine on this target
         run: python scripts/build-ilspy.py '${{ matrix.rid }}'
 
       - name: Build single-file rxd with embedded Kuna and ILSpy
