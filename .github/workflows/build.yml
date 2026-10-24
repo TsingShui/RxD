@@ -187,7 +187,7 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         if: hashFiles(format('prebuilt/ilspy/{0}/manifest.json', matrix.target)) == ''
         with:
-          dotnet-version: '10.0.401'
+          dotnet-version: '10.0.x'
 
       - name: Install native build prerequisites
         if: runner.os == 'Linux'

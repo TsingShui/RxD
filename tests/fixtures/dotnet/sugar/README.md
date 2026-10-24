@@ -16,6 +16,9 @@ The handcrafted `../Fixture.dll`, its generator and expectations are unchanged.
 
 ## Pinned provenance
 
+Any .NET 10 SDK regenerates these fixtures (`global.json` rolls forward within the
+10.0 feature bands); the values below are what produced the committed oracle.
+
 - SDK: .NET **10.0.401**, SDK/MSBuild commit `e34a38d2ae`, MSBuild `18.9.11`.
 - Roslyn `csc -version`: **5.9.0-1.26423.113
   (e34a38d2ae1fc26406a317517196e55c68ff83ab)**.

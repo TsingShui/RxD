@@ -8,8 +8,10 @@ types, abstract/PInvoke declarations, struct and enum declarations, and catch EH
 
 Ordinary CLI E2E reads the committed DLL and `expected.json` offline without an
 SDK. Explicit regeneration is `python3 tests/fixtures/dotnet/closure/generate.py`
-with the pinned SDK 10.0.401 and trusted PEReader inspector. The oracle reads
-original metadata, IL and ordered EH through System.Reflection.Metadata and
+with any .NET 10 SDK (the recorded 10.0.401 is what produced the committed oracle;
+`global.json` rolls forward within the 10.0 feature bands) and the trusted PEReader
+inspector. The oracle reads original metadata, IL and ordered EH through
+System.Reflection.Metadata and
 System.Reflection.PortableExecutable; it never derives expectations from rxd or
 loads the target assembly. No NuGet packages are referenced. Exact SDK/compiler,
 source and input SHA-256, framework version, MVID and timestamp are recorded in
