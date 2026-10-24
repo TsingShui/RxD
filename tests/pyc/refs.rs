@@ -365,7 +365,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
 }
 
 #[test]
-fn pyc_refs_fail_scanned_corruption_atomically_and_expose_unsupported_coverage() {
+fn pyc_refs_fail_scanned_corruption_atomically_and_ignore_unused_cache_payload() {
     let original = corpus("graph.timestamp.pyc");
     let bytes = fs::read(&original).unwrap();
     let oracle: Value =
@@ -386,11 +386,12 @@ fn pyc_refs_fail_scanned_corruption_atomically_and_expose_unsupported_coverage()
         "INVALID_INPUT",
     );
     assert_eq!(fs::read(&output).unwrap(), b"keep");
-    let _safe = rows(&refs(
+    let safe = rows(&refs(
         &damaged,
         "absent",
         &["--within", ids[0]["at"].as_str().unwrap()],
     ));
+    assert!(safe.is_empty());
     let start = oracle["marshal_ranges"]["code_ranges"][0]["pyc_bytecode_start"]
         .as_u64()
         .unwrap() as usize;
@@ -401,11 +402,12 @@ fn pyc_refs_fail_scanned_corruption_atomically_and_expose_unsupported_coverage()
     let incomplete = rows(&refs(&unknown_path, "absent", &[]));
     assert!(incomplete.is_empty());
     let ids = code_rows(&unknown_path, &[]);
-    let _scoped = rows(&refs(
+    let scoped = rows(&refs(
         &unknown_path,
         "absent",
         &["--within", ids[4]["at"].as_str().unwrap()],
     ));
+    assert!(scoped.is_empty());
     let mut cache = bytes.clone();
     cache[start + 60] = 116;
     cache[start + 61] = 0; // LOAD_GLOBAL-like raw cache payload is never a reference.

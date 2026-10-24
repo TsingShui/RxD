@@ -1277,7 +1277,7 @@ fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {
 
 #[cfg(feature = "backend-js")]
 #[test]
-fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan_summary() {
+fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan() {
     let directory = tempfile::tempdir().unwrap();
     let sources = directory.path().join("sources");
     std::fs::create_dir(&sources).unwrap();

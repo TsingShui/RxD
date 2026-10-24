@@ -267,7 +267,12 @@ fn dotnet_field_type_reference_queries_reject_recursive_types_and_malformed_fiel
             assert!(output.stdout.is_empty());
         } else {
             success(&output);
-            let _rows = jsonl(&output);
+            let rows = jsonl(&output);
+            assert!(!rows.is_empty());
+            assert!(
+                rows.iter()
+                    .all(|row| row["detail"]["target_kind"] == "type")
+            );
         }
     }
 }

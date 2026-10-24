@@ -889,11 +889,12 @@ fn pyc_final_versions_distinguish_malformed_selected_evidence_from_unknown_opcod
             fetched["detail"]["instructions"][0]["status"],
             "UNSUPPORTED_OPCODE"
         );
-        let _refs = rows(&command(
+        let refs = rows(&command(
             "xref",
             &path,
             &["--kind", "name", "--at", "no-hit", "--version", minor],
         ));
+        assert!(refs.is_empty());
     }
 }
 
@@ -993,11 +994,12 @@ fn pyc_final_versions_reject_unverified_headers_versions_and_stale_ids() {
             &["--filter", "no-literal-matches"],
         ));
         assert_eq!(zero.len(), 0);
-        let _raw = rows(&command(
+        let raw = rows(&command(
             "codes",
             &corpus(version, "graph.marshal"),
             &["--version", minor],
         ));
+        assert!(!raw.is_empty());
     }
 }
 fn analysis_perf(output: &Output) -> Value {

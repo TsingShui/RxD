@@ -212,7 +212,6 @@ fn html_list_reports_source_bound_lexical_catalog_and_atomic_file() {
     fs::write(&path, source).unwrap();
     let output = run(&path, &[]);
     let entries = rows(&output);
-    let _hash = rxd_core::identity::input_id(source);
     assert_eq!(entries.len(), 5);
     let kinds: Vec<_> = entries[..]
         .iter()
@@ -435,7 +434,7 @@ fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity(
         .find(|r| r["detail"]["tag"] == "script")
         .unwrap();
     let destination = dir.path().join("inline.js");
-    let _record = receipt(&extract(
+    receipt(&extract(
         &path,
         script["at"].as_str().unwrap(),
         &destination,

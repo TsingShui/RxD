@@ -37,9 +37,6 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
         success(&output);
         let rows = jsonl(&output);
         let count = oracle["counts"][command].as_u64().unwrap() as usize;
-        // The input identity samples both ends rather than hashing every byte;
-        // the whole-file SHA-256 above still pins the fixture itself.
-        let _bytes = fs::read(&path).unwrap();
         assert_eq!(rows.len(), count);
         for (index, row) in rows[..].iter().enumerate() {
             assert_eq!(row["record"], record);

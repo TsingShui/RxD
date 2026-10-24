@@ -945,7 +945,8 @@ fn evm_function_ids_validate_discovered_units_carriers_and_selector_queries() {
     assert_eq!(raw_fetch["detail"]["segments"][0]["carrier_start"], 32);
     assert_eq!(raw_fetch["detail"]["segments"][0]["carrier_end"], 46);
     fs::write(&raw, []).unwrap();
-    let _empty = jsonl(&run("interface", &raw, "raw", &[]));
+    let empty = jsonl(&run("interface", &raw, "raw", &[]));
+    assert!(empty.iter().all(|row| row["record"] == "analysis"));
     failure(
         run("get-function", &raw, "raw", &["--selector", "11223344"]),
         1,

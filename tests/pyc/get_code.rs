@@ -252,7 +252,6 @@ fn pyc_get_code_matches_extended_operands_tables_locations_and_file_spans() {
         let oracle: Value =
             serde_json::from_slice(&fs::read(corpus(&format!("{label}.oracle.json"))).unwrap())
                 .unwrap();
-        let _hash = format!("{:x}", Sha256::digest(&input));
         let ids = code_ids(&path, &[]);
         for (index, code) in oracle["codes"].as_array().unwrap().iter().enumerate() {
             let output = fetch(&path, ids[index]["at"].as_str().unwrap(), &[]);

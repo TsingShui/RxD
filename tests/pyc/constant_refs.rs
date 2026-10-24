@@ -417,7 +417,6 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
     // A coordinate names a slot in whatever input is queried; rewriting a string keeps the
     // slot, so the same coordinate still resolves.
     success(&invoke("xref", &copied, &["--version", "3.12", "--at", id]));
-    success(&invoke("xref", &copied, &["--version", "3.12", "--at", id]));
     let mutable = module(&[121, 0], b")\x01[\x01\0\0\0z\x01x");
     fs::write(&copied, &mutable).unwrap();
     let forged = "const:0:0.0".to_owned();
@@ -426,11 +425,6 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         2,
         "INVALID_QUERY",
     );
-    let _names = rows(&invoke(
-        "xref",
-        &path,
-        &["--version", "3.12", "--kind", "name", "--at", "x"],
-    ));
 }
 
 fn perf_row(output: &Output) -> Value {
@@ -575,7 +569,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
 }
 
 #[test]
-fn pyc_constant_refs_expose_unknown_coverage_and_fail_structural_damage_in_owner() {
+fn pyc_constant_refs_fail_structural_damage_in_owner() {
     let (dir, path) = fixture(
         module(&[17, 0, 121, 0], b")\x02z\x01xz\x06unused"),
         "unknown.marshal",

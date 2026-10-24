@@ -79,7 +79,7 @@ fn assert_fetch_protocol(row: &Value, command: &str) {
 }
 
 #[test]
-fn dotnet_outline_uses_the_shared_envelope_and_keeps_fetch_ids_navigable() {
+fn dotnet_outline_rows_have_a_fixed_schema_and_keep_fetch_ids_navigable() {
     let path = input();
     let rows = outline(&path, &["--name", "Add"]);
     for row in &rows[..] {
@@ -154,7 +154,7 @@ fn dotnet_method_fetch_envelope_preserves_original_byte_ranges_and_exception_han
 }
 
 #[test]
-fn dotnet_search_and_reference_envelopes_route_exact_token_hits_to_original_methods() {
+fn dotnet_search_and_reference_streams_route_exact_token_hits_to_original_methods() {
     let path = input();
     let strings = jsonl(&run("strings", &path, &["--filter", "世界"]));
     let literal = &strings[0];
@@ -300,11 +300,13 @@ fn dotnet_outline_uses_deterministic_content_bound_ids_and_unicode_names() {
         1
     );
     // The method filter only reaches the methods listing, so it shows up there.
-    let _methods_only = jsonl(&run(
+    let methods_only = jsonl(&run(
         "methods",
         &path,
         &["--class", "Rxd.测试.Probe", "--name", "Add"],
     ));
+    assert_eq!(methods_only.len(), 1);
+    assert_eq!(methods_only[0]["detail"]["name"], "Add");
     let directory = tempfile::tempdir().unwrap();
     let copy = directory.path().join("same-bytes.exe");
     fs::copy(&path, &copy).unwrap();

@@ -1994,7 +1994,6 @@ fn symbols_discovers_distinct_bindings_with_content_ids_and_original_spans() {
         assert_eq!(row["end"], start + raw.len());
         assert_eq!(row["at"], format!("symbol:{start}:{}", start + raw.len()));
         assert!(ids.insert(row["at"].clone().to_string()));
-        let _refs = jsonl(&invoke("xref", &path, &["--byte", &start.to_string()]));
         let extracted = invoke(
             "slice",
             &path,
@@ -2458,7 +2457,7 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
 }
 
 #[test]
-fn recursive_queries_preserve_sorted_per_file_streams_and_content_ids() {
+fn recursive_queries_preserve_sorted_per_file_streams_and_boundaries() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir(dir.path().join("nested")).unwrap();
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/artifacts");
@@ -2555,7 +2554,7 @@ fn recursive_scan_supports_module_modes_unicode_depth_and_perf_totals() {
 }
 
 #[test]
-fn recursive_empty_scans_and_explicit_files_are_complete() {
+fn recursive_empty_scans_and_explicit_files_succeed() {
     let dir = tempfile::tempdir().unwrap();
     for command in ["entities", "find"] {
         let mut args = vec![];
@@ -3396,8 +3395,6 @@ fn the_same_span_resolves_after_content_changes() {
 #[test]
 fn forged_entity_bounds_kinds_and_versions_are_rejected() {
     let (_dir, path) = fixture("function a(){}", "bundle.js");
-    let records = outline_rows(&path, &[]);
-    let _ = &records;
     for id in [
         "function_declaration:0:3".to_owned(),
         "arrow_function:0:14".to_owned(),
@@ -4353,7 +4350,7 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
 }
 
 #[test]
-fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() {
+fn asar_extract_then_js_queries_preserve_exact_navigation() {
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("app.asar");
     let source = "\u{feff}const 名称='你好';\r\nfunction run(value){return 名称+value;}".as_bytes();
@@ -4371,7 +4368,6 @@ fn asar_extract_then_js_queries_preserve_source_identity_and_exact_navigation() 
         .as_str()
         .unwrap()
         .to_owned();
-    let _ = rows;
     let get = invoke("slice", &destination, &["--at", &id]);
     success(&get);
     assert_eq!(

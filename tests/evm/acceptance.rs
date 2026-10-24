@@ -33,7 +33,7 @@ fn assert_stream_schema(rows: &[Value]) {
 }
 
 #[test]
-fn evm_navigation_streams_share_one_fixed_nullable_header_and_summary() {
+fn evm_navigation_streams_share_one_fixed_nullable_analysis_record() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/evm");
     for encoding in ["raw", "hex"] {
         let suffix = if encoding == "raw" { "bin" } else { "hex" };

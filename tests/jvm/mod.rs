@@ -337,8 +337,12 @@ fn jvm_decoded_metadata_is_bounded_even_when_names_share_a_constant() {
     }
     bytes.extend_from_slice(&[0, 0, 0, 0]);
     assert!(bytes.len() < 2000);
-    // The metadata budget is a crate-level floor; the CLI exposes no knob for it.
-    let _ = bytes;
+    // The metadata budget is a crate-level floor; the CLI exposes no knob for it, so a
+    // class with many names sharing a long constant still lists normally.
+    let (_dir, path) = fixture(bytes, "LAmplified.class");
+    let rows = jvm_jsonl(&run(&["classes"], &path));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["at"], "LAmplified;");
 }
 
 #[test]
