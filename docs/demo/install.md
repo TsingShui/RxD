@@ -302,7 +302,7 @@ rxd skill install --print
 ```
 
 The skill covers all current backends; identical bytes are not rewritten. Skill
-targets/detection differ from MCP: see the [MCP demo](mcp.md). The old
+targets/detection differ from MCP: see [README](../../README.md#-installation). The old
 `rxd dex skill` entry is removed. Unsupported clients can still use manual stdio
 registration with the exact absolute executable/base/roots: see the
 [MCP demo](mcp.md). Never put a shell command string in an argv field.

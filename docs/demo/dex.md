@@ -47,7 +47,7 @@ target/release/rxd skill install --dir target/skills
 ```
 
 The second writes `target/skills/rxd/SKILL.md`; see the
-[installation guide](install.md) for user Agent directories.
+[installation guide](../../README.md#-installation) for user Agent directories.
 
 `-o` writes the same bytes while still emitting stdout; the `--perf` record goes to
 stderr. Multi-input index commands may repeat `--apk` or supply multiple files. Method

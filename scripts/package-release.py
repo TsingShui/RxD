@@ -108,6 +108,7 @@ def main():
         shutil.copy2(ROOT / 'target/release' / binary_name, stage / binary_name)
         shutil.copy2(native_dir / 'manifest.json', stage / 'ilspy-manifest.json')
         shutil.copy2(kuna_dir / 'manifest.json', stage / 'kuna-manifest.json')
+        shutil.copy2(ROOT / 'README.md', stage / 'README.md')
         licenses = stage / 'licenses'
         shutil.copytree(ROOT / 'target/dotnet-native/licenses', licenses / 'dotnet')
         (licenses / 'kuna').mkdir(parents=True)

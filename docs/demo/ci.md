@@ -65,8 +65,8 @@ commit, Rust target, bundled features and per-file hashes in `build-info.json`.
 Fixed asset names: `rxd-linux-x86_64.tar.gz`, `rxd-linux-arm64.tar.gz`,
 `rxd-macos-arm64.tar.gz`, `rxd-windows-x86_64.zip` and `install.sh`. Every asset has a
 sibling `.sha256` containing `<sha256>  <asset-name>` and a newline. An archive has one
-`rxd-<platform>/` root. Only `rxd` (`rxd.exe` on Windows) is needed at runtime; manifests and
-licenses remain for audit.
+`rxd-<platform>/` root. Only `rxd` (`rxd.exe` on Windows) is needed at runtime; manifests,
+README and licenses remain for audit.
 
 The publication job downloads all four verified build artifacts, adds the installer from
 the same source commit, validates the complete set, stages a draft, uploads all ten
