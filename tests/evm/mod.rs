@@ -1393,25 +1393,6 @@ fn evm_lists_one_kind_per_command_and_filters_by_the_row_name() {
             .count(),
         2
     );
-    let one = jsonl(&run(
-        "xref",
-        &path,
-        "hex",
-        &["--at", "hex:block:60:66", "-f", "1122"],
-    ));
-    let selected: Vec<_> = one
-        .iter()
-        .filter(|r| r["record"] == "code_reference")
-        .collect();
-    assert_eq!(selected.len(), 1);
-    assert!(selected[0]["context_at"].as_str().unwrap().contains("1122"));
-    assert!(
-        selected[0]["detail"]["target"]
-            .as_str()
-            .unwrap()
-            .contains("60:66")
-    );
-    assert_eq!(one.last().unwrap()["detail"]["references"], 1);
 }
 
 mod reconstruction;
@@ -1791,10 +1772,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
             "detail",
         ],
     );
-    assert_js_keys(
-        &rows[0]["query"],
-        &["encoding", "at", "filter", "reference_scope"],
-    );
+    assert_js_keys(&rows[0]["query"], &["encoding", "at", "reference_scope"]);
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(
         &rows[1],
@@ -2329,7 +2307,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     );
     assert_js_keys(
         &reference_rows[0]["query"],
-        &["encoding", "at", "filter", "reference_scope"],
+        &["encoding", "at", "reference_scope"],
     );
     assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
     assert_js_keys(

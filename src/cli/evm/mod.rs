@@ -67,11 +67,6 @@ pub struct XrefOptions {
     /// The coordinate a block, function or literal row prints.
     #[arg(long)]
     at: String,
-    /// Substring over the caller coordinate of each reference, folded unless `--case sensitive`.
-    #[arg(short = 'f', long)]
-    filter: Option<String>,
-    #[command(flatten)]
-    case: CaseArgs,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -316,8 +311,8 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                     &refs.at,
                     Listing {
                         include_bytecode: options.include_bytecode,
-                        filter: refs.filter.as_deref(),
-                        case_sensitive: refs.case.sensitive(),
+                        filter: None,
+                        case_sensitive: false,
                     },
                     limits,
                     &mut perf,

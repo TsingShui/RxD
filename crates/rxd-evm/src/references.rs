@@ -48,7 +48,7 @@ pub(crate) fn header(
         "xref",
         Some(&navigation.carrier.source_id),
         Some(navigation.carrier.bytes.len()),
-        json!({"encoding":navigation.carrier.encoding,"at":id,"filter":listing.filter,
+        json!({"encoding":navigation.carrier.encoding,"at":id,
             "reference_scope":if detail.target_kind=="literal"{"exact_literal_occurrence"}else{"static_control_flow"}}),
         header_detail(object(json!({
             "carrier":navigation.carrier_detail(),"bytecode":navigation.bytecode_detail(listing.include_bytecode),

@@ -135,7 +135,7 @@ resolution_complete, discovery_complete, disassembly_complete and
 source_call_graph_complete.
 
 Query echoes are fixed: blocks `{encoding, filter}`; interface `{encoding, filter}`;
-strings `{encoding, kind, query, match_mode, filter}`; xref `{encoding, at, filter,
+strings `{encoding, kind, query, match_mode, filter}`; xref `{encoding, at,
 reference_scope}`. Null does not mean an analysis
 ran or a count is zero. `blocks.basic_block_end=exclusive` and
 `boundary_status=producer_candidate`; xref keeps source_call_graph/ABI false. Function
@@ -308,12 +308,12 @@ timed separately.
 
 ## `xref`
 
-`evm xref INPUT --encoding raw|hex --at COORDINATE [-f FILTER]` accepts the block,
+`evm xref INPUT --encoding raw|hex --at COORDINATE` accepts the block,
 function or literal coordinate a listing row prints and emits a schema-v2 JSONL header,
 zero or more reference records and a summary. Grammar/canonical validation/carrier/
 encoding/unit validation follow the corresponding FETCH; a coordinate that no catalogued
-unit carries is an error, not a zero-hit result. Copy/rename remains valid for the copy-only coordinate. `-f` is a
-substring of the caller coordinate (`context_at`), folded unless `--case sensitive`.
+unit carries is an error, not a zero-hit result. Copy/rename remains valid for the
+copy-only coordinate.
 
 Block queries match that block's exact decoded start; function queries match only a
 validated candidate's decoded entry, not every owned block. A producer-candidate entry

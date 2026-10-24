@@ -72,7 +72,6 @@ native `basic-blocks` command stays the raw EVMole range array.
 rxd evm interface tests/corpus/evm/authored-navigation.runtime.hex --encoding hex -o target/evm-ref-interface.jsonl
 TARGET_AT=$(jq -r 'select(.record=="function") | .at' target/evm-ref-interface.jsonl | head -n 1)
 rxd evm xref tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --at "$TARGET_AT" -o target/evm-code-xref.jsonl
-rxd evm xref tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --at "$TARGET_AT" -f 1ba64846
 CONTEXT_AT=$(jq -r 'select(.record=="code_reference") | .context_at' target/evm-code-xref.jsonl | head -n 1)
 rxd evm get-function tests/corpus/evm/authored-navigation.runtime.hex --encoding hex --at "$CONTEXT_AT" --raw
 ```
