@@ -616,4 +616,22 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
     ));
     assert!(!empty.iter().any(|v| v["record"] == "reference"));
     assert_eq!(empty.last().unwrap()["complete"], true);
+
+    // Clap rejects both anchor faces before the query runs.
+    failure(
+        run(
+            &[
+                "xref",
+                "--at",
+                "Lfixture/FlowFixture;",
+                "-f",
+                "add",
+                "--kind",
+                "method",
+            ],
+            &path,
+        ),
+        2,
+        "cannot be used",
+    );
 }

@@ -248,6 +248,16 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
         1,
         "it needs --kind method or --kind field",
     );
+    // Clap rejects both anchor faces before the query runs.
+    failure(
+        query(
+            "xref",
+            &path,
+            &["--at", "LFixture0;", "-f", "m", "--kind", "method"],
+        ),
+        2,
+        "cannot be used",
+    );
 }
 
 #[test]

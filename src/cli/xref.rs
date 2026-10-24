@@ -163,7 +163,7 @@ impl Selector {
 pub struct TargetArgs {
     /// Exact target coordinate, as a row prints it: `Lx/y;`, `Lx/y;->name(proto)`,
     /// `Lx/y;->name:type`, or, with `--kind string`, a literal.
-    #[arg(long, value_name = "COORD")]
+    #[arg(long, value_name = "COORD", conflicts_with = "filter")]
     pub at: Option<String>,
     /// Substring of the target's value, name or type; folded unless `--case sensitive`.
     #[arg(short = 'f', long, value_name = "PATTERN")]
@@ -185,6 +185,7 @@ pub struct TargetArgs {
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl TargetArgs {
     pub fn resolve(&self) -> Result<Target> {
+        // Clap rejects `--at` with `--filter`; keep the check for direct callers.
         if self.at.is_some() && self.filter.is_some() {
             bail!(
                 "--at names one identity and --filter searches content; give one of them, \
