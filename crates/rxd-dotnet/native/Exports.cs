@@ -51,7 +51,7 @@ public static unsafe class Exports
     [UnmanagedCallersOnly(EntryPoint = "rxd_free", CallConvs = new[] { typeof(CallConvCdecl) })]
     public static void Free(byte* buffer) => NativeMemory.Free(buffer);
 
-    private static byte* Decompile(byte* module, int moduleLen, int? token, bool classScope, int* outLen)
+    private static byte* Decompile(byte* module, int moduleLen, int token, bool classScope, int* outLen)
     {
         if (outLen == null)
             return null;
@@ -65,29 +65,25 @@ public static unsafe class Exports
             // The PEFile never opens the synthetic name or executes analyzed code.
             using var stream = new MemoryStream(new ReadOnlySpan<byte>(module, moduleLen).ToArray(), writable: false);
             using var file = new PEFile("rxd-input.dll", stream);
-            EntityHandle handle = default;
+            var handle = MetadataTokens.EntityHandle(token);
             var selectedMethods = new HashSet<int>();
-            if (token.HasValue)
+            int row = MetadataTokens.GetRowNumber(handle);
+            if (classScope)
             {
-                handle = MetadataTokens.EntityHandle(token.Value);
-                int row = MetadataTokens.GetRowNumber(handle);
-                if (classScope)
-                {
-                    if (handle.Kind != HandleKind.TypeDefinition || row <= 0 || row > file.Metadata.TypeDefinitions.Count)
-                        return Failure("invalid_type_token", outLen);
-                    var definition = file.Metadata.GetTypeDefinition((TypeDefinitionHandle)handle);
-                    if (row == 1 && file.Metadata.GetString(definition.Name) == "<Module>")
-                        return Failure("invalid_type_token", outLen);
-                    SelectMethods(file.Metadata, (TypeDefinitionHandle)handle, selectedMethods, new HashSet<TypeDefinitionHandle>(), 0);
-                }
-                else
-                {
-                    if (handle.Kind != HandleKind.MethodDefinition || row <= 0 || row > file.Metadata.MethodDefinitions.Count)
-                        return Failure("invalid_method_token", outLen);
-                    if (file.Metadata.GetMethodDefinition((MethodDefinitionHandle)handle).RelativeVirtualAddress == 0)
-                        return Failure("method_without_il", outLen);
-                    selectedMethods.Add(token.Value);
-                }
+                if (handle.Kind != HandleKind.TypeDefinition || row <= 0 || row > file.Metadata.TypeDefinitions.Count)
+                    return Failure("invalid_type_token", outLen);
+                var definition = file.Metadata.GetTypeDefinition((TypeDefinitionHandle)handle);
+                if (row == 1 && file.Metadata.GetString(definition.Name) == "<Module>")
+                    return Failure("invalid_type_token", outLen);
+                SelectMethods(file.Metadata, (TypeDefinitionHandle)handle, selectedMethods, new HashSet<TypeDefinitionHandle>(), 0);
+            }
+            else
+            {
+                if (handle.Kind != HandleKind.MethodDefinition || row <= 0 || row > file.Metadata.MethodDefinitions.Count)
+                    return Failure("invalid_method_token", outLen);
+                if (file.Metadata.GetMethodDefinition((MethodDefinitionHandle)handle).RelativeVirtualAddress == 0)
+                    return Failure("method_without_il", outLen);
+                selectedMethods.Add(token);
             }
             var settings = new DecompilerSettings(LanguageVersion.CSharp10_0) {
                 ShowXmlDocumentation = false,
@@ -101,7 +97,7 @@ public static unsafe class Exports
             var diagnostics = new CollectDiagnostics();
             decompiler.ILTransforms.Insert(0, diagnostics);
             decompiler.ILTransforms.Add(diagnostics);
-            var tree = token.HasValue ? decompiler.Decompile(handle) : decompiler.DecompileWholeModuleAsSingleFile();
+            var tree = decompiler.Decompile(handle);
             foreach (var function in tree.DescendantsAndSelf.SelectMany(node => node.Annotations.OfType<ILFunction>()))
                 diagnostics.Check(function);
             using var text = new BoundedCodeWriter();
@@ -113,19 +109,16 @@ public static unsafe class Exports
             if (Encoding.UTF8.GetByteCount(code) > MaxOutputBytes)
                 return Failure("output_limit", outLen);
             var mapping = new SortedSet<(int MethodToken, int Offset, int Line)>();
-            if (token.HasValue)
+            foreach (var entry in decompiler.CreateSequencePoints(tree))
             {
-                foreach (var entry in decompiler.CreateSequencePoints(tree))
-                {
-                    // Generated state machines/closures have independent offset domains.
-                    // ILSpy labels recovered async/iterator functions with the kickoff
-                    // token, but their sequence points still belong to MoveNext's IL.
-                    if (entry.Key.MoveNextMethod != null || entry.Key.Method == null || entry.Key.Method.MetadataToken.Kind != HandleKind.MethodDefinition || !selectedMethods.Contains(MetadataTokens.GetToken(entry.Key.Method.MetadataToken)) || entry.Key.Method.ParentModule != typeSystem.MainModule)
-                        continue;
-                    foreach (var point in entry.Value)
-                        if (!point.IsHidden && point.Offset >= 0 && point.StartLine > 0)
-                            mapping.Add((classScope ? MetadataTokens.GetToken(entry.Key.Method.MetadataToken) : 0, point.Offset, point.StartLine));
-                }
+                // Generated state machines/closures have independent offset domains.
+                // ILSpy labels recovered async/iterator functions with the kickoff
+                // token, but their sequence points still belong to MoveNext's IL.
+                if (entry.Key.MoveNextMethod != null || entry.Key.Method == null || entry.Key.Method.MetadataToken.Kind != HandleKind.MethodDefinition || !selectedMethods.Contains(MetadataTokens.GetToken(entry.Key.Method.MetadataToken)) || entry.Key.Method.ParentModule != typeSystem.MainModule)
+                    continue;
+                foreach (var point in entry.Value)
+                    if (!point.IsHidden && point.Offset >= 0 && point.StartLine > 0)
+                        mapping.Add((classScope ? MetadataTokens.GetToken(entry.Key.Method.MetadataToken) : 0, point.Offset, point.StartLine));
             }
             return CopyOut(Payload(null, code, mapping, diagnostics.Messages), outLen);
         }

@@ -395,9 +395,11 @@ The production path produces structured, source-like C# by calling the pinned IL
    layer.
 2. **C ABI marshal layer**: export `rxd_decompile_method(buf_ptr, buf_len, token,
    out_len)`, optional `rxd_decompile_class(buf_ptr, buf_len, type_token, out_len)`, and
-   `rxd_free`. Input is a fixed memory buffer and token; output is a UTF-8 byte buffer. Rich objects never cross the
-   boundary. `UniversalAssemblyResolver` uses explicit search paths; cross-assembly
-   resolution is out of scope.
+   `rxd_free`. Both decompile entry points take one validated metadata token; there is
+   no whole-module or assembly decompilation ABI. Input is a fixed memory buffer and
+   token; output is a UTF-8 byte buffer. Rich objects never cross the boundary.
+   `UniversalAssemblyResolver` uses explicit search paths; cross-assembly resolution is
+   out of scope.
 3. **ILSpy engine**: `CSharpDecompiler` performs IL→ILAst→C#, recovering loops,
    conditions, switches, expressions and syntax sugar. The marshal layer returns text
    to Rust, which adapts it to this backend's JSON contract.
