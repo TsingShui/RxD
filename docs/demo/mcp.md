@@ -102,6 +102,26 @@ try {
 }
 ```
 
+ZIP uses the same child-target contract. For example, extract a JAR from an AAR
+and analyze its immutable bytes without a caller-managed output file:
+
+```js
+const parent = await call("rxd_open", {path: "/workspace/sdk.aar", backend: "zip"});
+let child;
+try {
+  const files = await call("zip_entries", {input: {target_id: parent.target_id}, filter: "classes.jar"});
+  const entry = files.records.find(row => row.detail.path === "classes.jar");
+  const extracted = await call("zip_extract", {input: {target_id: parent.target_id}, at: entry.at});
+  child = extracted.child_target;
+  const classes = await call("jar_classes", {input: {target_id: child.target_id}});
+} finally {
+  if (child) await call("rxd_close", {target_id: child.target_id});
+  await call("rxd_close", {target_id: parent.target_id});
+}
+```
+
+CLI `--entry` is not an MCP argument; use extraction and the returned child target.
+
 Directory targets require `backend: "js"`. A complete ambiguous candidate result is a
 domain error, not one arbitrarily chosen definition. EVM always requires explicit
 `encoding: "raw"` or `"hex"`. Kuna functions/decompile are available only in linked builds.

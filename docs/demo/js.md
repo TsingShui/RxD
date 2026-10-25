@@ -23,10 +23,12 @@ executes input. Its query surface is:
 | `symbols` | Discover declarations, external bindings and unresolved references in a region | JSONL |
 
 Structure listings, `find` and `resources` accept a file or scan a directory; `locate/slice/xref/symbols/
-identifiers/calls/members` accept one file. With `backend-asar`, every JS query also
-accepts an ASAR input plus `--entry ENTRY_PATH`, copied from `rxd asar entries.at`.
+identifiers/calls/members` accept one file. With `backend-asar` or `backend-zip`,
+every JS query also accepts the corresponding archive plus `--entry ENTRY`.
+Use ASAR `entries.at`, ZIP `entries.at` (`zip:N`), or a unique exact ZIP path.
 The selected entry is read in memory; `--at` and byte offsets remain entry-relative,
-and auto syntax uses the entry extension. See the [ASAR demo](asar.md#analyze-javascript-without-extracting).
+and auto syntax uses the entry extension. See the [ASAR](asar.md#analyze-javascript-without-extracting)
+and [ZIP](zip.md#javascript-without-extraction) demos.
 Identical bytes and parse options keep the same coordinates and source identity.
 For a local HTML capture,
 use [`rxd html resources`](html.md#resource-discovery-and-batch-inline-handoff):

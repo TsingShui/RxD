@@ -3,7 +3,7 @@ name = "rxd"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
-description = "Agent-oriented JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML analysis CLI"
+description = "Agent-oriented JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML analysis CLI"
 license = "Apache-2.0"
 publish = false
 
@@ -12,6 +12,7 @@ members = [
     "crates/rxd-core",
     "crates/rxd-js",
     "crates/rxd-asar",
+    "crates/rxd-zip",
     "crates/rxd-html",
     "crates/rxd-dex",
     "crates/rxd-jvm",
@@ -38,6 +39,7 @@ oxc_syntax = "=0.153.0"
 rxd-core = { path = "crates/rxd-core" }
 rxd-js = { path = "crates/rxd-js" }
 rxd-asar = { path = "crates/rxd-asar" }
+rxd-zip = { path = "crates/rxd-zip" }
 rxd-html = { path = "crates/rxd-html" }
 rxd-pyc = { path = "crates/rxd-pyc" }
 
@@ -47,6 +49,7 @@ all-feature = ["all-backends", "mcp"]
 all-backends = [
     "backend-js",
     "backend-asar",
+    "backend-zip",
     "backend-html",
     "backend-dex",
     "backend-jvm",
@@ -58,6 +61,7 @@ all-backends = [
 ]
 backend-js = ["dep:rxd-js", "dep:rayon"]
 backend-asar = ["dep:rxd-asar"]
+backend-zip = ["dep:rxd-zip"]
 backend-html = ["dep:rxd-html"]
 backend-dex = ["dep:rxd-dex", "dep:rayon", "dep:sha2"]
 backend-jvm = ["dep:rxd-jvm"]
@@ -93,6 +97,7 @@ tempfile = "3.27"
 rxd-core.workspace = true
 rxd-js = { workspace = true, optional = true }
 rxd-asar = { workspace = true, optional = true }
+rxd-zip = { workspace = true, optional = true }
 rxd-html = { workspace = true, optional = true }
 rxd-pyc = { workspace = true, optional = true }
 

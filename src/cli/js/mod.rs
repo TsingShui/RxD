@@ -16,8 +16,8 @@ pub(super) fn execute(
     let input = common.input.clone();
     let destination = common.output.clone();
     let emit_perf = common.perf;
-    #[cfg(feature = "backend-asar")]
-    let entry = common.entry.clone();
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
+    let entry = common.container.entry.clone();
     let mode = match common.source_type {
         Mode::Auto => SourceMode::Auto,
         Mode::Script => SourceMode::Script,
@@ -32,7 +32,7 @@ pub(super) fn execute(
     };
     let scan = command.scan().map(|s| s.threads);
     let directory = scan.is_some() && input.symlink_metadata().is_ok_and(|m| m.is_dir());
-    #[cfg(feature = "backend-asar")]
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
     let directory = directory && entry.is_none();
     let budget = if directory {
         // Discovery has its own depth/concurrency protection; each file gets its own policy.
@@ -83,19 +83,14 @@ pub(super) fn execute(
     };
     let result = (|| {
         let (source, limits) = (None::<rxd_core::Source>, limits);
-        #[cfg(feature = "backend-asar")]
+        #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
         let (source, limits) = if let Some(entry) = entry {
-            let selected = super::input::asar_entry(
-                &input,
-                &entry,
-                destination.as_deref(),
-                policy,
-                &mut perf,
-            )?;
+            let selected =
+                super::input::entry(&input, &entry, destination.as_deref(), policy, &mut perf)?;
             let limits = Limits::from(selected.budget);
             perf.limits = Some(limits);
             let mut source =
-                rxd_core::Source::from_bytes(entry, selected.bytes, limits, &mut perf)?;
+                rxd_core::Source::from_bytes(selected.path, selected.bytes, limits, &mut perf)?;
             source.origin = Some(selected.origin);
             (Some(source), limits)
         } else {

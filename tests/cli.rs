@@ -10,6 +10,9 @@ mod container_entry;
 mod html;
 #[path = "resource_policy/mod.rs"]
 mod resource_policy;
+#[cfg(feature = "backend-zip")]
+#[path = "zip/mod.rs"]
+mod zip_backend;
 
 #[cfg(feature = "backend-dotnet")]
 #[path = "dotnet/mod.rs"]
@@ -79,6 +82,8 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         ("html", "extract", "entries.at"),
         #[cfg(feature = "backend-asar")]
         ("asar", "extract", "entries.at"),
+        #[cfg(feature = "backend-zip")]
+        ("zip", "extract", "entries.at"),
         #[cfg(feature = "backend-dex")]
         ("dex", "get-method", "methods.at"),
         #[cfg(feature = "backend-jvm")]

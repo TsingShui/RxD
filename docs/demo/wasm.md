@@ -8,10 +8,11 @@ MCP service quotas remain independent and unchanged.
 The examples use the repository's independently rebuildable handwritten WASM fixture;
 modules are never instantiated.
 
-With `backend-asar`, every WASM command also accepts an ASAR input plus
-`--entry ENTRY_PATH`. All coordinates, ranges and instruction offsets remain relative
-to that module. Function FETCH carries ASAR `detail.origin`; listings are unchanged.
-See the runnable [ASAR workflow](asar.md#html-and-wasm-entries).
+With `backend-asar` or `backend-zip`, every WASM command also accepts that container plus
+`--entry ENTRY`. Use ASAR paths or ZIP coordinates/unique exact paths. Coordinates,
+ranges and instruction offsets remain module-relative. Function FETCH carries
+container `detail.origin`; listings are unchanged. See the runnable
+[ASAR](asar.md#html-and-wasm-entries) and [ZIP](zip.md#html-and-wasm) workflows.
 
 ## What the backend covers
 

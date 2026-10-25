@@ -204,10 +204,9 @@ pub enum Command {
 
 #[derive(Args)]
 pub struct Options {
-    /// Select one ASAR entry; function coordinates and offsets remain module-relative.
-    #[cfg(feature = "backend-asar")]
-    #[arg(long, value_name = "ENTRY_PATH")]
-    entry: Option<String>,
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
+    #[command(flatten)]
+    container: super::input::EntryArgs,
     /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
@@ -329,12 +328,11 @@ fn execute_inner(
     let options = command.options();
     let budget = policy.for_file(path)?;
     let (selected, budget) = (None::<Vec<u8>>, budget);
-    #[cfg(feature = "backend-asar")]
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
     let mut origin = None;
-    #[cfg(feature = "backend-asar")]
-    let (selected, budget) = if let Some(entry) = &options.entry {
-        let selected =
-            super::input::asar_entry(path, entry, options.output.as_deref(), policy, perf)?;
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
+    let (selected, budget) = if let Some(entry) = &options.container.entry {
+        let selected = super::input::entry(path, entry, options.output.as_deref(), policy, perf)?;
         origin = Some(selected.origin);
         (Some(selected.bytes), selected.budget)
     } else {
@@ -412,7 +410,7 @@ fn execute_inner(
                 .as_object()
                 .unwrap()
                 .clone();
-                #[cfg(feature = "backend-asar")]
+                #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
                 if let Some(origin) = &origin {
                     fields.insert("origin".into(), json!(origin));
                 }

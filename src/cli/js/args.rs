@@ -37,14 +37,9 @@ pub(crate) enum MemberAccessArg {
 pub(crate) struct Common {
     /// Local UTF-8 JavaScript file; structure/find/resources listings also accept directories.
     pub(super) input: PathBuf,
-    /// Select one ASAR file entry using its entries.at; offsets remain entry-relative.
-    #[cfg(feature = "backend-asar")]
-    #[arg(
-        long,
-        value_name = "ENTRY_PATH",
-        long_help = "Analyze one ASAR entry in memory. Copy asar entries.at; --at still selects a JS entity.\nExample: rxd js entities app.asar --entry dist/main.ts"
-    )]
-    pub(super) entry: Option<String>,
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
+    #[command(flatten)]
+    pub(super) container: super::super::input::EntryArgs,
     #[arg(long, value_enum, default_value = "auto")]
     pub(super) source_type: Mode,
     /// Select JS/JSX/TS/TSX independently of script/module mode.

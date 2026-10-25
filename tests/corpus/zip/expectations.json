@@ -1,0 +1,46 @@
+[
+  {
+    "file": "core-1.15.0.aar",
+    "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.15.0/core-1.15.0.aar",
+    "bytes": 1336135,
+    "sha256": "432b85a1974076e14b487ece4a28c59a84f1b9efc3fc8be72cd7f05d32055e51",
+    "entries": 240,
+    "file_bytes": 1521077,
+    "selected": [
+      {
+        "at": "zip:1",
+        "path": "classes.jar",
+        "bytes": 1357224,
+        "compressed_bytes": 1230572,
+        "crc32": "f6ed6260",
+        "sha256": "e4d3c02d3d3cc92f0c6d59df0a7c7d8faa04936aeabaa4f5f3e55c050f076d9b"
+      }
+    ]
+  },
+  {
+    "file": "vscode-yaml-2.0.0-400.vsix",
+    "url": "https://github.com/redhat-developer/vscode-yaml/releases/download/2.0.0/vscode-yaml-2.0.0-400.vsix",
+    "bytes": 1104200,
+    "sha256": "4bba62ccda962b720dcb0829e85cf4109c94e86653dcd39fd7500c3687ad8c60",
+    "entries": 45,
+    "file_bytes": 4241891,
+    "selected": [
+      {
+        "at": "zip:7",
+        "path": "extension/LICENSE.txt",
+        "bytes": 1081,
+        "compressed_bytes": 643,
+        "crc32": "4eb3ccf1",
+        "sha256": "2a6ebc3c5b441f0aef19c5190d17f5bfc1ab4f729db49fabb2db7d10bd9a6146"
+      },
+      {
+        "at": "zip:18",
+        "path": "extension/dist/extension.js",
+        "bytes": 745879,
+        "compressed_bytes": 186232,
+        "crc32": "6b962f69",
+        "sha256": "7b8c643f9af70b97947f99a9910a5cb39223876a7922cdf8f84d31ab2431fcc5"
+      }
+    ]
+  }
+]

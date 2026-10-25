@@ -4,6 +4,7 @@ pub(crate) use output::Output;
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
+    feature = "backend-zip",
     feature = "backend-html",
     feature = "backend-jvm",
     feature = "backend-dotnet",
@@ -17,6 +18,7 @@ use rxd_core::Result;
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
+    feature = "backend-zip",
     feature = "backend-html",
     feature = "backend-dotnet",
     feature = "backend-evm",
@@ -27,6 +29,7 @@ use rxd_core::perf::Perf;
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
+    feature = "backend-zip",
     feature = "backend-html",
     feature = "backend-jvm",
     feature = "backend-dotnet",
@@ -49,7 +52,7 @@ mod filter;
 #[cfg(feature = "backend-html")]
 mod html;
 #[cfg(all(
-    feature = "backend-asar",
+    any(feature = "backend-asar", feature = "backend-zip"),
     any(
         feature = "backend-js",
         feature = "backend-html",
@@ -72,6 +75,7 @@ mod wasm;
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
+    feature = "backend-zip",
     feature = "backend-html",
     feature = "backend-dex",
     feature = "backend-jvm",
@@ -81,11 +85,13 @@ mod wasm;
     feature = "backend-pyc"
 ))]
 mod xref;
+#[cfg(feature = "backend-zip")]
+mod zip;
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze Native binaries, JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files",
+    about = "Analyze Native binaries, JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML files",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
@@ -93,6 +99,7 @@ mod xref;
   rxd js --help        JS/TS/JSX/TSX: original structure and source
   rxd html --help      Local HTML: nodes, resource candidates, extraction
   rxd asar --help      Electron ASAR: entries and original file extraction
+  rxd zip --help       ZIP/AAR/VSIX: entries and selected-entry extraction
   rxd wasm --help      Binary core WASM: functions and instructions/C-like
   rxd pyc --help       CPython bytecode: codes, constants, Python reconstruction
   rxd evm --help       Local raw/hex EVM bytecode: specify --encoding
@@ -196,6 +203,15 @@ Extraction returns original bytes and a receipt; analyze the extracted file sepa
         #[command(subcommand)]
         command: asar::Command,
     },
+    #[cfg(feature = "backend-zip")]
+    /// List and extract ZIP-family archives (ZIP, AAR, VSIX, XPI, wheel, NuGet).
+    #[command(
+        after_long_help = "Examples:\n  rxd zip entries sdk.aar\n  rxd zip extract sdk.aar --at classes.jar -o target/classes.jar\n  rxd js entities extension.vsix --entry extension/dist/main.js\nCopy entries.at to select duplicates unambiguously. Stored/Deflate entries only; no automatic nested recursion."
+    )]
+    Zip {
+        #[command(subcommand)]
+        command: zip::Command,
+    },
     #[cfg(feature = "backend-dex")]
     /// Analyze APK archives and standalone DEX files.
     #[command(
@@ -276,6 +292,7 @@ impl Cli {
             #[cfg(any(
                 feature = "backend-js",
                 feature = "backend-asar",
+                feature = "backend-zip",
                 feature = "backend-html",
                 feature = "backend-jvm",
                 feature = "backend-dotnet",
@@ -299,6 +316,8 @@ impl Cli {
             Backend::Js { command } => command.perf(),
             #[cfg(feature = "backend-asar")]
             Backend::Asar { command } => command.perf(),
+            #[cfg(feature = "backend-zip")]
+            Backend::Zip { command } => command.perf(),
             #[cfg(feature = "backend-html")]
             Backend::Html { command } => command.perf(),
             #[cfg(feature = "backend-dex")]
@@ -326,6 +345,8 @@ impl Cli {
             Backend::Js { .. } => "js",
             #[cfg(feature = "backend-asar")]
             Backend::Asar { .. } => "asar",
+            #[cfg(feature = "backend-zip")]
+            Backend::Zip { .. } => "zip",
             #[cfg(feature = "backend-html")]
             Backend::Html { .. } => "html",
             #[cfg(feature = "backend-dex")]
@@ -353,6 +374,8 @@ impl Cli {
             Backend::Js { command } => command.name(),
             #[cfg(feature = "backend-asar")]
             Backend::Asar { command } => command.name(),
+            #[cfg(feature = "backend-zip")]
+            Backend::Zip { command } => command.name(),
             #[cfg(feature = "backend-html")]
             Backend::Html { command } => command.name(),
             #[cfg(feature = "backend-dex")]
@@ -415,6 +438,8 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::Js { command } => js::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-asar")]
         Backend::Asar { command } => asar::execute(command, policy, output).map(|()| 0),
+        #[cfg(feature = "backend-zip")]
+        Backend::Zip { command } => zip::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-html")]
         Backend::Html { command } => html::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-dex")]
@@ -460,6 +485,7 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
+    feature = "backend-zip",
     feature = "backend-html",
     feature = "backend-dotnet",
     feature = "backend-evm",
@@ -477,6 +503,7 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
+    feature = "backend-zip",
     feature = "backend-html",
     feature = "backend-jvm",
     feature = "backend-dotnet",

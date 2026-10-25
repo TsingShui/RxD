@@ -1,6 +1,6 @@
 ---
 name: rxd
-description: Analyze JavaScript, ASAR, HTML, APK/DEX, JVM class/JAR, .NET IL, EVM bytecode, WebAssembly and CPython bytecode with the rxd CLI. Select a backend, locate structures or literals, trace explicit references and fetch selected original code or reconstruction; use optional Kuna for native binaries and optional MCP for typed tools.
+description: Analyze JavaScript, ASAR, ZIP-family archives, HTML, APK/DEX, JVM class/JAR, .NET IL, EVM bytecode, WebAssembly and CPython bytecode with the rxd CLI. Select a backend, locate structures or literals, trace explicit references and fetch selected original code or reconstruction; use optional Kuna for native binaries and optional MCP for typed tools.
 ---
 
 # RxD
@@ -17,6 +17,7 @@ explicitly, then locate → associate
 | --- | --- | --- |
 | JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
 | Electron ASAR | `rxd asar` | `entries` / JS, HTML and WASM queries accept `rxd BACKEND COMMAND app.asar --entry ENTRY_PATH`; other backends use `extract --at` first |
+| ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; JS/HTML/WASM also accept `--entry` with a printed `zip:N` coordinate or unique exact path |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
@@ -27,17 +28,21 @@ explicitly, then locate → associate
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
-conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR is a
-container: with ASAR and the requested backend enabled, copy `asar entries.at` into
-`rxd BACKEND COMMAND app.asar --entry ENTRY_PATH` with backend `js`, `html` or `wasm`
-to analyze that entry without extraction. `--at` and byte offsets select inside the
-entry; JS auto syntax uses its extension. HTML resources are not automatically followed into other entries.
-Other backends use explicit extraction. ASAR itself has no code-reference semantics. HTML is a lexical container
+conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR and ZIP
+are containers: with the container and requested backend enabled, use
+`rxd BACKEND COMMAND ARCHIVE --entry ENTRY` with backend `js`, `html` or `wasm`
+to analyze one entry in memory. ASAR uses an exact path; ZIP accepts `zip entries.at`
+(`zip:N`, required for duplicate paths) or a unique exact path. `--at` and byte
+offsets select inside the entry; JS auto syntax uses the selected filename, not
+its coordinate. Other backends use explicit extraction. AAR code normally lives
+in `classes.jar` or `libs/*.jar`: extract the JAR, then use `rxd jar`. ZIP supports
+Stored/Deflate and ZIP64, not encrypted entries, links or automatic nested recursion.
+HTML resources are not automatically followed into other entries. Containers have no code-reference semantics. HTML is a lexical container
 (`lexical_naive_v1`, not a DOM or browser parse): `entries` enumerates
 `element`/`text`/`comment`/`doctype` records with copy-only coordinates, `extract`
 returns the exact original interval, and inline JS/TS is then handed to the code
-backend with artifact-side offsets. PyInstaller/zipapp (`pyz`)
-container handling is planned, not an available command.
+backend with artifact-side offsets. Unprefixed ZIP-based zipapps can be enumerated
+with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling remain planned.
 
 ## Consume results and preserve identity
 
@@ -125,6 +130,16 @@ rxd js entities extracted-main.js
 
 ASAR extract requires an output file and returns a receipt; it does not extract
 the whole application implicitly.
+
+```sh
+rxd zip entries extension.vsix -f main
+rxd js entities extension.vsix --entry extension/dist/main.js
+rxd zip entries sdk.aar -f jar
+rxd zip extract sdk.aar --at classes.jar -o target/classes.jar
+rxd jar classes target/classes.jar
+```
+
+MCP uses `zip_extract` → child target → backend query, not CLI `--entry`.
 
 HTML is a lexical container: `entries` returns `element`/`text`/`comment`/`doctype`
 records with copy-only coordinates and decoded attribute values; `extract` copies

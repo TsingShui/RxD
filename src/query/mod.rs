@@ -11,11 +11,19 @@ mod schema;
 pub use catalog::{catalog, validate};
 use clap::Parser;
 use rxd_core::Error;
-#[cfg(any(feature = "backend-asar", feature = "backend-html"))]
+#[cfg(any(
+    feature = "backend-asar",
+    feature = "backend-zip",
+    feature = "backend-html"
+))]
 use rxd_core::perf::Perf;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-#[cfg(any(feature = "backend-asar", feature = "backend-html"))]
+#[cfg(any(
+    feature = "backend-asar",
+    feature = "backend-zip",
+    feature = "backend-html"
+))]
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -93,9 +101,17 @@ pub fn execute(
             "worker thread and shared byte budgets must be positive",
         ));
     }
-    #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
+    #[cfg(any(
+        feature = "backend-asar",
+        feature = "backend-zip",
+        feature = "backend-html"
+    ))]
     let input = &inputs[0];
-    #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
+    #[cfg(any(
+        feature = "backend-asar",
+        feature = "backend-zip",
+        feature = "backend-html"
+    ))]
     let budget = if std::fs::metadata(&input.path)
         .map_err(Error::from)?
         .is_dir()
@@ -111,6 +127,10 @@ pub fn execute(
     #[cfg(feature = "backend-asar")]
     if name == "asar_extract" {
         return extract_asar(&arguments, inputs, budget);
+    }
+    #[cfg(feature = "backend-zip")]
+    if name == "zip_extract" {
+        return extract_zip(&arguments, inputs, budget);
     }
     #[cfg(feature = "backend-html")]
     if name == "html_extract" {
@@ -146,7 +166,11 @@ pub fn execute(
 }
 
 /// Use a distinct synthetic output path solely to build/normalize extract receipts.
-#[cfg(any(feature = "backend-asar", feature = "backend-html"))]
+#[cfg(any(
+    feature = "backend-asar",
+    feature = "backend-zip",
+    feature = "backend-html"
+))]
 fn synthetic_extraction_destination(input: &Path) -> PathBuf {
     let mut destination = input.with_file_name(".rxd-mcp-extracted");
     if destination == input {
@@ -156,7 +180,11 @@ fn synthetic_extraction_destination(input: &Path) -> PathBuf {
 }
 
 /// Blank synthetic extract destinations and restore captured original paths.
-#[cfg(any(feature = "backend-asar", feature = "backend-html"))]
+#[cfg(any(
+    feature = "backend-asar",
+    feature = "backend-zip",
+    feature = "backend-html"
+))]
 fn project_extract_receipt(
     receipt: &[u8],
     inputs: &[CapturedInput],
@@ -246,6 +274,50 @@ fn extract_asar(
         artifact: Some(ExtractedArtifact {
             bytes,
             name: at,
+            source_id,
+        }),
+    })
+}
+
+#[cfg(feature = "backend-zip")]
+fn extract_zip(
+    arguments: &Value,
+    inputs: &[CapturedInput],
+    budget: rxd_core::Budget,
+) -> Result<QueryResult, QueryError> {
+    let at = arguments["at"]
+        .as_str()
+        .ok_or_else(|| {
+            QueryError::new(
+                "INVALID_QUERY",
+                "zip_extract requires at from zip_entries.at",
+            )
+        })?
+        .to_owned();
+    let destination = synthetic_extraction_destination(&inputs[0].path);
+    let mut perf = Perf::new(false, "analysis", "zip", "extract");
+    let response = rxd_zip::run(
+        rxd_zip::Query::Extract { at },
+        rxd_zip::Options {
+            input: &inputs[0].path,
+            output: Some(&destination),
+            budget,
+        },
+        &mut perf,
+    )?;
+    let rxd_zip::Response::Extract { bytes, receipt } = response else {
+        unreachable!()
+    };
+    let (structured, source_id) = project_extract_receipt(&receipt, inputs)?;
+    let name = structured["detail"]["entry_path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    Ok(QueryResult {
+        structured,
+        artifact: Some(ExtractedArtifact {
+            bytes,
+            name,
             source_id,
         }),
     })

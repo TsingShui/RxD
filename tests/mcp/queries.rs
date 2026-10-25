@@ -411,6 +411,8 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("js_slice", "js", "slice"),
     ("asar_entries", "asar", "entries"),
     ("asar_extract", "asar", "extract"),
+    ("zip_entries", "zip", "entries"),
+    ("zip_extract", "zip", "extract"),
     ("html_entries", "html", "entries"),
     ("html_resources", "html", "resources"),
     ("html_extract", "html", "extract"),
@@ -569,7 +571,7 @@ fn compare_cli(name: &str, arguments: &Value, actual: &Value) {
     );
 }
 
-/// Both extract tools return the CLI receipt with its host destination blanked and the
+/// Extract tools return the CLI receipt with its host destination blanked and the
 /// extracted artifact published as `child_target`; everything else must match byte-exact.
 fn compare_extract(name: &str, arguments: &Value, path: &str, actual: &Value) {
     let (_, backend, command) = CLI_ROUTES.iter().find(|route| route.0 == name).unwrap();
@@ -1100,6 +1102,84 @@ fn mcp_asar_extraction_returns_original_bytes_for_js_navigation() {
     );
 }
 
+#[cfg(all(feature = "backend-zip", feature = "backend-js"))]
+#[test]
+fn mcp_zip_extraction_preserves_immutable_parent_and_typed_child_source() {
+    let directory = tempfile::tempdir().unwrap();
+    let archive = directory.path().join("extension.vsix");
+    let source = "export const value: string = 'captured';\n";
+    super::super::zip_backend::pack(&archive, &[("extension/main.ts", source.as_bytes())]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
+    client.initialize();
+    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
+    let definition = tools
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "zip_extract")
+        .unwrap();
+    assert_eq!(definition["annotations"]["readOnlyHint"], false);
+    let opened = client.tool("rxd_open", json!({"path":archive,"backend":"zip"}));
+    assert_ne!(opened["isError"], true, "{opened}");
+    let parent = opened["structuredContent"]["target_id"].clone();
+    let listing = checked(
+        &mut client,
+        &tools,
+        "zip_entries",
+        json!({"input":{"target_id":parent}}),
+    );
+    assert_eq!(listing["records"][0]["at"], "zip:0");
+    compare_cli("zip_entries", &json!({"input":{"path":archive}}), &listing);
+    let arguments = json!({"input":{"target_id":parent},"at":"zip:0","include_bytes":true});
+    let extracted = checked(&mut client, &tools, "zip_extract", arguments.clone());
+    compare_extract(
+        "zip_extract",
+        &arguments,
+        archive.to_str().unwrap(),
+        &extracted,
+    );
+    std::fs::write(&archive, b"replaced after capture").unwrap();
+    let repeated = checked(
+        &mut client,
+        &tools,
+        "zip_extract",
+        json!({"input":{"target_id":parent},"at":"zip:0"}),
+    );
+    assert_eq!(repeated["source_id"], extracted["source_id"]);
+    let child = extracted["child_target"]["target_id"].clone();
+    assert_ne!(
+        client.tool("rxd_close", json!({"target_id":parent}))["isError"],
+        true
+    );
+    std::fs::remove_file(&archive).unwrap();
+    std::fs::write(directory.path().join("main.ts"), source).unwrap();
+    let entities = checked(
+        &mut client,
+        &tools,
+        "js_entities",
+        json!({"input":{"target_id":child}}),
+    );
+    let cli = cli_query("js_entities", &json!({}), "main.ts", Some(directory.path()));
+    assert!(cli.status.success(), "{cli:?}");
+    assert_eq!(entities, cli_projection("js_entities", &cli.stdout));
+    let at = entities["records"][0]["at"].clone();
+    let fetched = checked(
+        &mut client,
+        &tools,
+        "js_slice",
+        json!({"input":{"target_id":child},"at":at}),
+    );
+    assert_eq!(fetched["detail"]["source"], source);
+    let rejected = client.tool(
+        "js_entities",
+        json!({"input":{"target_id":child},"entry":"zip:0"}),
+    );
+    assert_eq!(
+        rejected["structuredContent"]["error"]["code"],
+        "INVALID_QUERY"
+    );
+}
+
 #[cfg(feature = "backend-dex")]
 use super::super::dex::support as dex_inputs;
 
@@ -1606,6 +1686,7 @@ fn mcp_builtin_catalog_has_exactly_the_public_cli_parity_matrix_operations() {
     let enabled: std::collections::BTreeSet<_> = [
         ("js", cfg!(feature = "backend-js")),
         ("asar", cfg!(feature = "backend-asar")),
+        ("zip", cfg!(feature = "backend-zip")),
         ("html", cfg!(feature = "backend-html")),
         ("dex", cfg!(feature = "backend-dex")),
         ("jar", cfg!(feature = "backend-jvm")),

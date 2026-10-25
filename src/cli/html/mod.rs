@@ -18,22 +18,22 @@ pub(super) fn execute(
     let mut perf = Perf::new(common.perf, "analysis", "html", name);
     perf.limits = Some(limits);
     let emit_perf = common.perf;
-    #[cfg(feature = "backend-asar")]
-    let entry = common.entry.clone();
-    #[cfg(feature = "backend-asar")]
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
+    let entry = common.container.entry.clone();
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
     let input = common.input.clone();
-    #[cfg(feature = "backend-asar")]
+    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
     let output = common.output.clone();
     let result = (|| {
         let (source, limits) = (None::<rxd_html::Source>, limits);
-        #[cfg(feature = "backend-asar")]
+        #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
         let (source, limits) = if let Some(entry) = entry {
             let selected =
-                super::input::asar_entry(&input, &entry, output.as_deref(), policy, &mut perf)?;
+                super::input::entry(&input, &entry, output.as_deref(), policy, &mut perf)?;
             let limits = Limits::from(selected.budget);
             perf.limits = Some(limits);
             let mut source =
-                rxd_html::Source::from_bytes(entry, selected.bytes, limits, &mut perf)?;
+                rxd_html::Source::from_bytes(selected.path, selected.bytes, limits, &mut perf)?;
             source.container_origin = Some(selected.origin);
             (Some(source), limits)
         } else {

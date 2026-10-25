@@ -84,8 +84,10 @@ impl AnalysisService {
             Tool::new("rxd_close","Invalidate a process-local target handle; acquired requests retain their immutable bytes.",schema::<CloseArgs>()).with_raw_output_schema(Arc::new(with_error(schema::<Closed>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
         ];
         for definition in catalog {
-            let creates_target =
-                matches!(definition.name.as_str(), "asar_extract" | "html_extract");
+            let creates_target = matches!(
+                definition.name.as_str(),
+                "asar_extract" | "zip_extract" | "html_extract"
+            );
             let mut tool = Tool::new(
                 definition.name,
                 definition.description,
@@ -550,7 +552,7 @@ fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {
         "js" => Ok(CaptureMode::JavaScriptDirectory),
         "asar" => Ok(CaptureMode::Asar),
         "dex" => Ok(CaptureMode::Bundle),
-        "file" | "html" | "jar" | "dotnet" | "wasm" | "pyc" | "evm" | "kuna" => {
+        "file" | "zip" | "html" | "jar" | "dotnet" | "wasm" | "pyc" | "evm" | "kuna" => {
             Ok(CaptureMode::File)
         }
         _ => Err(QueryError::new(

@@ -7,11 +7,12 @@ include inline bodies; `extract` fetches one original range. JS content is passe
 `rxd js` with its own source identity.
 `lexical_naive_v1` is a lexical approximation, not a browser parser.
 
-With `backend-asar`, every HTML command accepts `--entry ENTRY_PATH` on an ASAR
-input. Nodes and resource ranges remain entry-relative. See the runnable
-[ASAR workflow](asar.md#html-and-wasm-entries). `--base-url` retains its ordinary
+With `backend-asar` or `backend-zip`, every HTML command accepts `--entry ENTRY` on that
+container. Use ASAR paths or ZIP coordinates/unique exact paths. Nodes and resource
+ranges remain entry-relative. See the [ASAR](asar.md#html-and-wasm-entries) and
+[ZIP](zip.md#html-and-wasm) workflows. `--base-url` retains its ordinary
 HTTP(S) meaning; resource discovery never automatically reads other archive entries.
-Extraction receipts retain HTML `detail.origin` plus the enclosing ASAR
+Extraction receipts retain HTML `detail.origin` plus the enclosing container
 `detail.container_origin`.
 
 ## Setup

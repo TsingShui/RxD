@@ -12,7 +12,7 @@ Project site: [tsingshui.github.io/RxD](https://tsingshui.github.io/RxD/) · [Ex
 [![Build RxD](https://github.com/TsingShui/RxD/actions/workflows/build.yml/badge.svg)](https://github.com/TsingShui/RxD/actions/workflows/build.yml)
 [![Rust](https://img.shields.io/badge/rust-1.97%2B-orange?logo=rust)](https://www.rust-lang.org)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](docs/demo/ci.md)
-[![Formats](https://img.shields.io/badge/formats-10-success)](#-supported-formats)
+[![Formats](https://img.shields.io/badge/formats-11-success)](#-supported-formats)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![No Exec](https://img.shields.io/badge/input-never%20executed-critical)](#safety-model)
 
@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, JavaScript, EVM, ASAR, HTML, .NET, PYC and WASM |
+| 🧩 **Broad coverage** | Native, APK, JAR, JavaScript, EVM, ASAR, ZIP, HTML, .NET, PYC and WASM |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |
@@ -225,6 +225,7 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
 | **JavaScript** | `rxd js` | JS/TS/JSX/TSX and recursive directories; structure, strings, byte locations, lexical references, original source extraction | ✅ |
 | **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; JS/HTML/WASM queries read selected entries directly with `--entry` | ✅ |
+| **ZIP family** | `rxd zip` | ZIP/AAR/VSIX/XPI/wheel/NuGet metadata and selected Stored/Deflate extraction; shared JS/HTML/WASM `--entry`, ZIP64 and duplicate-name coordinates | ✅ |
 | **HTML** | `rxd html` | Local-page lexical catalog and node-level raw extraction (element/text/comment/doctype) | ✅ |
 | **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |

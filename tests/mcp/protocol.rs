@@ -27,6 +27,7 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
     let expected: BTreeSet<_> = [
         ("js", cfg!(feature = "backend-js")),
         ("asar", cfg!(feature = "backend-asar")),
+        ("zip", cfg!(feature = "backend-zip")),
         ("html", cfg!(feature = "backend-html")),
         ("dex", cfg!(feature = "backend-dex")),
         ("jar", cfg!(feature = "backend-jvm")),

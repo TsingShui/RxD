@@ -3432,6 +3432,7 @@ dependencies = [
  "rxd-kuna-cli",
  "rxd-pyc",
  "rxd-wasm",
+ "rxd-zip",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -3584,6 +3585,17 @@ dependencies = [
  "rxd-core",
  "serde",
  "wasmparser",
+]
+
+[[package]]
+name = "rxd-zip"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "rxd-core",
+ "serde_json",
+ "tempfile",
+ "zip",
 ]
 
 [[package]]

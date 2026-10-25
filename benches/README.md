@@ -109,6 +109,26 @@ separately; the full find_context_slice includes two fresh processes, ID routing
 output. Reports also list fragment and containing-structure raw bytes for each selected
 sample, not average task/token benefit.
 
+## ZIP-family and shared container inputs
+
+```sh
+python3 benches/zip.py
+# Reuse a release executable with recorded build provenance:
+python3 benches/zip.py --skip-build --samples 20
+```
+
+The default builds release and runs 17 workloads with 20 fresh processes each,
+including actual atomic `-o` writes and receipt output. Published AndroidX AAR,
+Red Hat YAML VSIX and Gson JAR inputs are pinned offline. Direct VSIX JS is
+compared with byte-identical decoded-file output. Synthetic HTML/WASM carriers,
+5000-entry index scale, a sparse 256 MiB ZIP and ASAR acceptance checks are labeled
+separately; handwritten WASM is not production-wide performance evidence.
+
+`target/benchmarks/zip/results.json` retains every sample, per-workload median,
+nearest-rank P95, proportions over 150 ms, input/output sizes and hashes, exact
+argv, binary/source hashes, hardware and warm-file-cache conditions. Generated
+inputs and outputs stay under `target/`; inputs are never installed or executed.
+
 ## 150 ms design gate
 
 Within backend scope, ordinary representative release CLI queries must complete within

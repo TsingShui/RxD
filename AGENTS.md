@@ -21,7 +21,8 @@ The current layout is:
   disposable analysis-worker scheduling.
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/js/`, `src/cli/asar/`,
   `src/cli/dex/`, `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`,
-  `src/cli/evm/`, `src/cli/wasm/`, and `src/cli/pyc/`: peer command adapters.
+  `src/cli/evm/`, `src/cli/wasm/`, `src/cli/zip/`, and `src/cli/pyc/`: peer command adapters.
+  `src/cli/input.rs` shares ASAR/ZIP entry arguments and loading for JS/HTML/WASM.
   JavaScript discovery is in `src/cli/js/recursive.rs`. DEX preserves streaming
   and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
@@ -30,6 +31,8 @@ The current layout is:
   (`src/structure.rs`), decoded literals (`src/strings.rs`), on-demand lexical
   references (`src/refs.rs`), and original source extraction.
 - `crates/rxd-asar/`: ASAR index and on-demand raw file extraction.
+- `crates/rxd-zip/`: ZIP-family index, duplicate-safe coordinates and selected
+  Stored/Deflate decoding with CRC/length validation.
 - `crates/rxd-dex/`: APK/DEX analysis, Manifest and Java emission; the shared
   typed service is provided by `src/mcp/`.
 - `crates/rxd-jvm/`: class/JAR parsing and JVM stack front end; lifts bytecode
