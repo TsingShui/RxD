@@ -6,7 +6,7 @@
 //! declared size disagree with the bytes that get inflated.
 
 use crate::bytes::{read_u16, read_u32};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use libdeflater::{DecompressionError, Decompressor};
 use std::borrow::Cow;
 
@@ -164,15 +164,8 @@ pub(crate) fn parse_zip_entries_bounded<S: BytesSource + ?Sized>(
     Ok(entries)
 }
 
-/// Default ceiling on what one entry may inflate to.
-///
-/// The first allocation is bounded by the *compressed* size, but the buffer still grows with
-/// whatever the deflate stream really produces, so a few megabytes of input can expand to
-/// gigabytes (a "zip bomb"). The limit makes this a reported error instead of an allocation
-/// failure.
-/// Real DEX entries are tens of MiB - the largest in the 343 MiB sample APK is 11.4 MiB - so
-/// this is far above any legitimate archive while keeping the worst case survivable.
-/// One archive entry's ceiling, from the shared budget table.
+/// Default explicit library-caller quota for one inflated entry. Ordinary CLI/MCP
+/// analysis leaves it unset. Exact declared sizes and fallible allocation remain.
 pub(crate) const DEFAULT_MAX_INFLATED_ENTRY: usize = rxd_core::MAX_ENTRY_BYTES;
 
 /// The message for an entry that needs more room than the ceiling allows.
@@ -233,22 +226,32 @@ fn compressed_slice<'a, S: BytesSource + ?Sized>(
 pub(crate) fn inflate_prefix<S: BytesSource + ?Sized>(
     source: &S,
     entry: &ZipEntry,
-    max_inflated: usize,
+    max_inflated: impl Into<Option<usize>>,
     aim: usize,
 ) -> Result<Vec<u8>> {
+    let max_inflated = max_inflated.into();
     const MARGIN: usize = 64 * 1024;
     if entry.compression != 8 {
         return inflate_entry(source, entry, max_inflated);
     }
     let aim = aim.min(entry.uncompressed_size);
-    if aim > max_inflated {
-        return Err(over_limit(entry, max_inflated));
+    if let Some(limit) = max_inflated
+        && aim > limit
+    {
+        return Err(over_limit(entry, limit));
     }
     let compressed = compressed_slice(source, entry)?;
     if compressed.is_empty() {
         bail!("deflate made no progress for {}", entry.name);
     }
-    let mut buffer = vec![0u8; aim + MARGIN];
+    let capacity = aim
+        .checked_add(MARGIN)
+        .context("RESOURCE_LIMIT: inflate prefix size overflow")?;
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(capacity)
+        .context("RESOURCE_LIMIT: inflate prefix allocation")?;
+    buffer.resize(capacity, 0);
     let mut decompressor = Decompressor::new();
     match decompressor.deflate_decompress(&compressed, &mut buffer) {
         Ok(written) => buffer.truncate(written),
@@ -284,8 +287,9 @@ pub(crate) fn stored_entry<'a, S: BytesSource + ?Sized>(
 pub(crate) fn inflate_entry<S: BytesSource + ?Sized>(
     source: &S,
     entry: &ZipEntry,
-    max_inflated: usize,
+    max_inflated: impl Into<Option<usize>>,
 ) -> Result<Vec<u8>> {
+    let max_inflated = max_inflated.into();
     if entry.compression == 0 {
         return Ok(stored_entry(source, entry)?.into_owned());
     }
@@ -295,21 +299,36 @@ pub(crate) fn inflate_entry<S: BytesSource + ?Sized>(
         8 => {
             let declared = entry.uncompressed_size;
             let initial = declared.min(entry.compressed_size.saturating_mul(4).max(64 * 1024));
-            if initial > max_inflated {
-                return Err(over_limit(entry, max_inflated));
+            if let Some(limit) = max_inflated
+                && initial > limit
+            {
+                return Err(over_limit(entry, limit));
             }
             let (output, written) = {
-                let mut output = vec![0; initial];
+                let mut output = Vec::new();
+                output
+                    .try_reserve_exact(initial)
+                    .context("RESOURCE_LIMIT: inflate allocation")?;
+                output.resize(initial, 0);
                 let mut decompressor = Decompressor::new();
                 let written = loop {
                     match decompressor.deflate_decompress(compressed, &mut output) {
                         Ok(written) => break written,
                         Err(DecompressionError::InsufficientSpace) if output.len() < declared => {
                             let grown = output.len().saturating_mul(2).max(64 * 1024).min(declared);
-                            if grown > max_inflated {
-                                return Err(over_limit(entry, max_inflated));
+                            if let Some(limit) = max_inflated
+                                && grown > limit
+                            {
+                                return Err(over_limit(entry, limit));
                             }
-                            output = vec![0; grown];
+                            ensure!(
+                                grown > output.len(),
+                                "INVALID_INPUT: deflate made no progress"
+                            );
+                            output
+                                .try_reserve_exact(grown - output.len())
+                                .context("RESOURCE_LIMIT: inflate allocation")?;
+                            output.resize(grown, 0);
                         }
                         Err(_error) => return Err(incomplete_stream(entry)),
                     }

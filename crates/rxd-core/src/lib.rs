@@ -196,7 +196,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// length and the format's span limit instead (see `Budget::for_input_bytes`).
 pub const MAX_INPUT_BYTES: usize = 8 << 30;
 
-/// Explicit caller/service entry quota and small-input expansion allowance.
+/// Default explicit library-caller entry quota; ordinary CLI/MCP leaves it unset.
 pub const MAX_ENTRY_BYTES: usize = 256 << 20;
 
 /// Explicit caller/service archive-index quota and small-input allowance.
@@ -205,7 +205,7 @@ pub const MAX_ARCHIVE_ENTRIES: usize = 1 << 20;
 /// Explicit caller/service metadata quota and small-input storage allowance.
 pub const MAX_METADATA_BYTES: usize = 128 << 20;
 
-/// Explicit caller/service work quota and small-input work allowance.
+/// Default explicit library-caller work quota; ordinary CLI/MCP leaves it unset.
 pub const MAX_WORK_UNITS: usize = 1_000_000;
 
 /// Explicit resource bounds projected into backend limits. `default()` preserves
@@ -214,8 +214,8 @@ pub const MAX_WORK_UNITS: usize = 1_000_000;
 pub struct Budget {
     /// One input file.
     pub input_bytes: usize,
-    /// One archive entry (a DEX entry, a class file, an embedded resource).
-    pub entry_bytes: usize,
+    /// Optional caller quota for one archive entry, not a format-width guard.
+    pub entry_bytes: Option<usize>,
     /// Decoded metadata one analysis may hold.
     pub metadata_bytes: usize,
     /// Explicit caller output quota, including envelope and newlines.
@@ -223,10 +223,10 @@ pub struct Budget {
     pub output_bytes: Option<usize>,
     /// Physical archive entries.
     pub entries: usize,
-    /// Instructions one method may decode to.
-    pub instructions: usize,
-    /// Work units one query may spend.
-    pub work: usize,
+    /// Optional caller quota for instructions decoded in one method.
+    pub instructions: Option<usize>,
+    /// Optional caller quota; ordinary CLI/MCP analysis has no work quota.
+    pub work: Option<usize>,
     /// AST nesting one syntax tree may reach, checked after parsing.
     pub ast_depth: usize,
     /// Semantic index nodes one query may allocate.
@@ -237,12 +237,12 @@ impl Default for Budget {
     fn default() -> Self {
         Self {
             input_bytes: MAX_INPUT_BYTES,
-            entry_bytes: MAX_ENTRY_BYTES,
+            entry_bytes: Some(MAX_ENTRY_BYTES),
             metadata_bytes: MAX_METADATA_BYTES,
             output_bytes: Some(MAX_METADATA_BYTES),
             entries: MAX_ARCHIVE_ENTRIES,
-            instructions: 100_000,
-            work: MAX_WORK_UNITS,
+            instructions: Some(100_000),
+            work: Some(MAX_WORK_UNITS),
             ast_depth: 512,
             semantic_nodes: 1_000_000,
         }
@@ -260,7 +260,7 @@ pub struct Limits {
     pub semantic_nodes: usize,
     pub metadata_bytes: usize,
     pub output_bytes: Option<usize>,
-    pub work: usize,
+    pub work: Option<usize>,
 }
 
 impl From<Budget> for Limits {

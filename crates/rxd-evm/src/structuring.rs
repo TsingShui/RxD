@@ -77,7 +77,11 @@ impl Budget<'_> {
     fn charge(&mut self, amount: usize) -> Result<()> {
         self.counts.structuring_work = self.counts.structuring_work.saturating_add(amount);
         self.counts.work = self.counts.work.saturating_add(amount);
-        if self.counts.work > self.limits.reconstruction_work {
+        if self
+            .limits
+            .reconstruction_work
+            .is_some_and(|limit| self.counts.work > limit)
+        {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "EVM control-flow structuring work budget exceeded",

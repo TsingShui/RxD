@@ -70,7 +70,7 @@ pub struct MethodSignature {
 
 impl MethodSignature {
     pub(crate) fn charge_clone(&self, work: &mut Work, depth: usize) -> Result<()> {
-        work.charge(std::mem::size_of::<Self>())?;
+        work.retain(std::mem::size_of::<Self>())?;
         self.return_type.charge_clone(work, depth + 1)?;
         charge_types(&self.parameters, work, depth + 1)
     }
@@ -88,7 +88,7 @@ impl TypeSignature {
     // expanded storage before clone(), even when a small blob repeats !0.
     pub(crate) fn charge_clone(&self, work: &mut Work, depth: usize) -> Result<()> {
         ensure!(depth <= 64, "RESOURCE_LIMIT: semantic signature nesting");
-        work.charge(std::mem::size_of::<Self>())?;
+        work.retain(std::mem::size_of::<Self>())?;
         match self {
             Self::Specification { value, .. }
             | Self::Pointer { value }
@@ -101,7 +101,7 @@ impl TypeSignature {
                 bounds,
                 ..
             } => {
-                work.charge(
+                work.retain(
                     sizes.len() * std::mem::size_of::<u32>()
                         + bounds.len() * std::mem::size_of::<i32>(),
                 )?;
@@ -220,7 +220,7 @@ impl Parser<'_, '_> {
             count <= self.bytes.len(),
             "INVALID_INPUT: signature collection count"
         );
-        self.work.charge(
+        self.work.retain(
             count
                 .checked_mul(std::mem::size_of::<TypeSignature>())
                 .context("RESOURCE_LIMIT: signature collection")?,
@@ -274,7 +274,7 @@ impl Parser<'_, '_> {
     }
     fn ty(&mut self, depth: usize, allow_void: bool) -> Result<TypeSignature> {
         ensure!(depth <= 64, "RESOURCE_LIMIT: signature nesting");
-        self.work.charge(std::mem::size_of::<TypeSignature>())?;
+        self.work.retain(std::mem::size_of::<TypeSignature>())?;
         let element = self.byte()?;
         Ok(match element {
             1 if allow_void => TypeSignature::Primitive { element },

@@ -27,7 +27,7 @@ fn dotnet_metadata_budget_real_listings_and_method_stream_preserve_complete_orig
         rxd_dotnet::Limits::default().work,
         rxd_core::Budget::default().work
     );
-    assert_eq!(rxd_dotnet::Limits::default().work, 1_000_000);
+    assert_eq!(rxd_dotnet::Limits::default().work, Some(1_000_000));
     for (command, record, table) in [
         ("classes", "class", 2u32),
         ("fields", "field", 4),
@@ -343,11 +343,11 @@ fn dotnet_metadata_budget_deferred_call_projection_keeps_generic_contexts_indepe
 
     // A deferred projection cannot reset the work already consumed by metadata.
     // Find the public read boundary rather than bake in platform-dependent costs.
-    let (mut low, mut high) = (0, rxd_dotnet::Limits::default().work);
+    let (mut low, mut high) = (0, rxd_dotnet::Limits::default().work.unwrap());
     while high - low > 1 {
         let work = low + (high - low) / 2;
         let limits = rxd_dotnet::Limits {
-            work,
+            work: Some(work),
             ..rxd_dotnet::Limits::default()
         };
         match rxd_dotnet::Input::read(&input(), limits) {
@@ -359,7 +359,7 @@ fn dotnet_metadata_budget_deferred_call_projection_keeps_generic_contexts_indepe
         }
     }
     let limits = rxd_dotnet::Limits {
-        work: high,
+        work: Some(high),
         ..rxd_dotnet::Limits::default()
     };
     let exhausted = rxd_dotnet::Input::read(&input(), limits).unwrap();

@@ -46,10 +46,12 @@ pub struct Navigation {
     pub decoded_end: usize,
 }
 
-pub(crate) fn work(perf: &mut Perf, amount: usize, limit: usize) -> Result<()> {
+pub(crate) fn work(perf: &mut Perf, amount: usize, limit: Option<usize>) -> Result<()> {
     let count = perf.counters.work.get_or_insert(0);
-    *count = count.saturating_add(amount);
-    if *count > limit {
+    *count = count
+        .checked_add(amount)
+        .ok_or_else(|| Error::new("RESOURCE_LIMIT", "EVM work counter overflow"))?;
+    if limit.is_some_and(|limit| *count > limit) {
         return Err(Error::new(
             "RESOURCE_LIMIT",
             "EVM navigation work budget exceeded",

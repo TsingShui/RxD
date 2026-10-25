@@ -207,7 +207,7 @@ fn pyc_codes_bounds_exact_name_match_work_cumulatively() {
         "match.marshal",
     );
     let mut limits = shared_static_limits();
-    limits.work = 20;
+    limits.work = Some(20);
     let mut perf = pyc_perf("codes");
     let mut analysis =
         rxd_pyc::static_analysis::Analysis::load(&path, Some((3, 12)), limits, &mut perf).unwrap();
@@ -345,11 +345,10 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         analysis["resource_limits"],
         serde_json::json!({
             "input_bytes": budget.input_bytes,
-            "entities": budget.work,
-            "work": budget.work,
+            "entities": budget.semantic_nodes,
             "metadata_bytes": budget.metadata_bytes,
-            "marshal_objects": budget.work,
-            "marshal_expanded_objects": budget.work,
+            "marshal_objects": budget.semantic_nodes,
+            "marshal_expanded_objects": budget.semantic_nodes,
             "marshal_copied_bytes": budget.metadata_bytes,
         })
     );
@@ -368,7 +367,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         match field {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
-            _ => exact.work = amount,
+            _ => exact.work = Some(amount),
         }
         let mut perf = pyc_perf("codes");
         let mut loaded =
@@ -379,7 +378,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
         match field {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
-            _ => less.work = amount - 1,
+            _ => less.work = Some(amount - 1),
         }
         let mut perf = pyc_perf("codes");
         let error = rxd_pyc::static_analysis::Analysis::load(&path, None, less, &mut perf)
@@ -487,7 +486,7 @@ fn pyc_codes_perf_retains_parser_and_index_counters_on_budget_errors() {
     ] {
         let mut limits = shared_static_limits();
         limits.entities = limit;
-        limits.work = limit;
+        limits.work = Some(limit);
         if field == "entities" {
             limits.work = shared_static_limits().work;
         }

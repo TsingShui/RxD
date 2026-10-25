@@ -391,11 +391,10 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
         perf["resource_limits"],
         serde_json::json!({
             "input_bytes": budget.input_bytes,
-            "entities": budget.work,
-            "work": budget.work,
+            "entities": budget.semantic_nodes,
             "metadata_bytes": budget.metadata_bytes,
-            "marshal_objects": budget.work,
-            "marshal_expanded_objects": budget.work,
+            "marshal_objects": budget.semantic_nodes,
+            "marshal_expanded_objects": budget.semantic_nodes,
             "marshal_copied_bytes": budget.metadata_bytes,
         })
     );
@@ -421,7 +420,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
         match field {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
-            _ => exact.work = amount,
+            _ => exact.work = Some(amount),
         }
         assert!(
             strings_library(&path, None, None, None, exact).1.is_ok(),
@@ -431,7 +430,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
         match field {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
-            _ => less.work = amount - 1,
+            _ => less.work = Some(amount - 1),
         }
         let error = strings_library(&path, None, None, None, less)
             .1
@@ -536,7 +535,7 @@ fn pyc_strings_bound_long_match_work_and_deep_paths_without_false_output_limits(
     );
     let needle = format!("{}b", "a".repeat(200));
     let mut limits = all_limits;
-    limits.work = 5_000;
+    limits.work = Some(5_000);
     let (perf, literals) = strings_library(&path, Some((3, 12)), Some(&needle), None, limits);
     assert_eq!(literals.err().unwrap().code, "RESOURCE_LIMIT");
     let perf = perf_value(&perf);

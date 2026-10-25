@@ -43,7 +43,7 @@ pub fn instruction_view(module: &Module, position: usize) -> Result<FunctionView
             .map_err(|e| anyhow::anyhow!("INVALID_INPUT: operator decode: {e}"))?;
         budget += 1;
         ensure!(
-            budget <= limits.instructions,
+            limits.instructions.is_none_or(|limit| budget <= limit),
             "RESOURCE_LIMIT: per-function instructions"
         );
         let mnemonic = mnemonic(&op);

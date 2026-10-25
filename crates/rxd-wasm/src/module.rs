@@ -485,7 +485,7 @@ impl Module {
                 .context("INVALID_INPUT: operator decode")?;
             budget += 1;
             ensure!(
-                budget <= self.limits.instructions,
+                self.limits.instructions.is_none_or(|limit| budget <= limit),
                 "RESOURCE_LIMIT: per-function instructions"
             );
             ops.push(DecodedOp {

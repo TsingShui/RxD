@@ -174,7 +174,11 @@ struct Builder<'a> {
 impl Builder<'_> {
     fn charge(&mut self, amount: usize) -> BuildResult<()> {
         self.counts.work = self.counts.work.saturating_add(amount);
-        if self.counts.work > self.limits.reconstruction_work {
+        if self
+            .limits
+            .reconstruction_work
+            .is_some_and(|limit| self.counts.work > limit)
+        {
             return Err(Failure::Resource(Error::new(
                 "RESOURCE_LIMIT",
                 "EVM reconstruction work budget exceeded",

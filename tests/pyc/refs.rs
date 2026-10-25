@@ -502,13 +502,13 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
         ("input_bytes", bytes.len(), budget.instructions),
         ("entities", entities, budget.instructions),
         ("work", work, budget.instructions),
-        ("instructions", 0, 99),
+        ("instructions", 0, Some(99)),
     ] {
         let mut exact = base;
         match field {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
-            "work" => exact.work = amount,
+            "work" => exact.work = Some(amount),
             _ => {}
         }
         assert!(
@@ -521,7 +521,7 @@ fn pyc_refs_budgets_are_cumulative_exact_and_preserve_atomic_outputs() {
         match field {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
-            "work" => less.work = amount - 1,
+            "work" => less.work = Some(amount - 1),
             _ => {}
         }
         let instructions = if field == "instructions" { 98 } else { 99 };

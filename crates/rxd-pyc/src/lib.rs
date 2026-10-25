@@ -11,7 +11,7 @@ use rxd_core::{Error, Result, perf::Perf};
 #[derive(Clone, Copy)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub work: usize,
+    pub work: Option<usize>,
     pub ast_depth: usize,
     pub output_bytes: Option<usize>,
     pub marshal: pycdc::marshal::Limits,
@@ -19,8 +19,8 @@ pub struct Limits {
 
 pub fn marshal_limits(budget: rxd_core::Budget) -> pycdc::marshal::Limits {
     pycdc::marshal::Limits {
-        objects: budget.work,
-        expanded_objects: budget.work,
+        objects: budget.semantic_nodes,
+        expanded_objects: budget.semantic_nodes,
         copied_bytes: budget.metadata_bytes,
     }
 }
@@ -50,7 +50,6 @@ pub fn run(
 ) -> Result<Decompilation> {
     perf.resource_limits = Some(std::collections::BTreeMap::from([
         ("input_bytes", limits.input_bytes),
-        ("work", limits.work),
         ("ast_depth", limits.ast_depth),
         ("marshal_depth", 128),
         ("marshal_objects", limits.marshal.objects),
@@ -58,6 +57,9 @@ pub fn run(
         ("marshal_copied_bytes", limits.marshal.copied_bytes),
         ("marshal_long_work", 16_777_216),
     ]));
+    if let Some(work) = limits.work {
+        perf.resource_limits.as_mut().unwrap().insert("work", work);
+    }
     if let Some(output_bytes) = limits.output_bytes {
         perf.resource_limits
             .as_mut()

@@ -24,7 +24,8 @@ Ordinary tools take input: {path: ...} or input: {target_id: ...}, not a bare pa
 For repeated queries: rxd_open -> use returned target_id -> rxd_close.
 Schemas/descriptions include query examples; copy result at/context_at for navigation.
 Analysis budgets scale with input exactly as in CLI queries; no per-query limits object.
-Serialized output has no input-derived byte quota; shared in-flight storage still applies.
+Work, instruction count, expanded-entry bytes and output have no input-derived quotas.
+Shared in-flight storage still applies; linked engines retain their own protections.
 Targets remain valid until rxd_close or shutdown; no target TTL or count quota.
 Service byte envelopes include metadata and protocol copies, not hard process RSS.
 Raise the listed storage/deadline/RSS settings for larger workloads.")]

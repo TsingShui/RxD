@@ -85,7 +85,10 @@ impl Input {
                 .checked_add(summary.row_count as usize)
                 .context("RESOURCE_LIMIT: row count")?;
         }
-        ensure!(total <= limits.work, "RESOURCE_LIMIT: metadata work");
+        ensure!(
+            limits.work.is_none_or(|limit| total <= limit),
+            "RESOURCE_LIMIT: metadata work"
+        );
         let mut input = Self {
             source_id,
             file_bytes,
@@ -580,51 +583,46 @@ fn hex_token(value: &str) -> Result<u32> {
 }
 
 pub(crate) struct Work {
-    initial: usize,
-    remaining: usize,
+    used: usize,
+    remaining: Option<usize>,
     metadata_reserved: usize,
     metadata_limit: usize,
 }
 impl Work {
-    pub(crate) fn new(limit: usize, metadata_limit: usize) -> Self {
+    pub(crate) fn new(limit: Option<usize>, metadata_limit: usize) -> Self {
         Self {
-            initial: limit,
+            used: 0,
             remaining: limit,
             metadata_reserved: 0,
             metadata_limit,
         }
     }
     pub(crate) fn used(&self) -> usize {
-        self.initial - self.remaining
+        self.used
     }
-
-    // Retained containers are a byte budget, not repeated parsing work. Include
-    // charged work as a conservative allowance for decoded/copied string payloads.
     pub(crate) fn retain(&mut self, bytes: usize) -> Result<()> {
         let reserved = self
             .metadata_reserved
             .checked_add(bytes)
             .context("RESOURCE_LIMIT: metadata bytes")?;
+        // Retained allocations are storage; repeated work is not resident memory.
         ensure!(
-            reserved.saturating_add(self.used()) <= self.metadata_limit,
+            reserved <= self.metadata_limit,
             "RESOURCE_LIMIT: metadata bytes"
         );
         self.metadata_reserved = reserved;
         Ok(())
     }
-
     pub(crate) fn charge(&mut self, amount: usize) -> Result<()> {
-        if amount > self.remaining {
-            bail!("RESOURCE_LIMIT: analysis work");
+        if let Some(remaining) = self.remaining.as_mut() {
+            *remaining = remaining
+                .checked_sub(amount)
+                .context("RESOURCE_LIMIT: analysis work")?;
         }
-        ensure!(
-            self.metadata_reserved
-                .saturating_add(self.used())
-                .saturating_add(amount)
-                <= self.metadata_limit,
-            "RESOURCE_LIMIT: metadata bytes"
-        );
-        self.remaining -= amount;
+        self.used = self
+            .used
+            .checked_add(amount)
+            .context("RESOURCE_LIMIT: work counter overflow")?;
         Ok(())
     }
 }

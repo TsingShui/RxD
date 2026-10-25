@@ -21,14 +21,14 @@ use std::time::Instant;
 ///
 /// `0` and unparseable values preserve the built-in default, matching the existing CLI
 /// contract. The returned policy is immutable and passed explicitly to archive operations.
-fn archive_policy_from_env(default: usize) -> apk::ArchivePolicy {
+fn archive_policy_from_env(default: Option<usize>) -> apk::ArchivePolicy {
     archive_policy(
         std::env::var("RASC_MAX_INFLATED_ENTRY").ok().as_deref(),
         default,
     )
 }
 
-fn archive_policy(value: Option<&str>, default: usize) -> apk::ArchivePolicy {
+fn archive_policy(value: Option<&str>, default: Option<usize>) -> apk::ArchivePolicy {
     let mut policy = apk::ArchivePolicy {
         max_inflated_entry: default,
     };
@@ -36,7 +36,7 @@ fn archive_policy(value: Option<&str>, default: usize) -> apk::ArchivePolicy {
         && let Ok(bytes) = value.trim().parse::<usize>()
         && bytes != 0
     {
-        policy.max_inflated_entry = bytes;
+        policy.max_inflated_entry = Some(bytes);
     }
     policy
 }

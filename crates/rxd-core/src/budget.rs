@@ -1,12 +1,13 @@
 //! Input-scaled CLI bounds, separate from explicit caller/service quotas.
 //!
 //! The constant allowances preserve existing small-input behavior. They are not total
-//! CLI ceilings: encoded input contributes finite work and storage allowances.
-//! Ordinary CLI serialization has no output-byte quota; allocation can still fail.
+//! CLI ceilings: encoded input contributes metadata/index storage allowances.
+//! Ordinary CLI has no work, instruction, entry-byte or output-byte quota;
+//! allocation can still fail.
 //! Amplification/recursion guards still fail explicitly; this is not an unlimited mode.
 use std::path::Path;
 
-use crate::{Budget, Error, Failure, MAX_SPAN_BYTES, Result};
+use crate::{Budget, Error, Failure, Result};
 
 #[derive(Clone, Copy, Debug)]
 pub enum BudgetPolicy {
@@ -35,9 +36,9 @@ impl BudgetPolicy {
 }
 
 impl Budget {
-    /// Bound amplification relative to admitted physical input, without a fixed total
-    /// work/metadata quota. Serialization has no byte quota, represented by `None`,
-    /// never an unlimited numeric sentinel. All derived arithmetic is checked.
+    /// Bound metadata/index storage relative to admitted input. Work, instructions,
+    /// individual entry bytes and serialization have no quota (`None`), never a
+    /// numeric unlimited sentinel. All derived arithmetic is checked.
     ///
     /// These are safety envelopes, not proofs of semantic completeness or RSS ceilings.
     /// Formats with compressed/shared structures keep their local expansion guards too.
@@ -54,13 +55,12 @@ impl Budget {
         };
         Ok(Self {
             input_bytes: bytes,
-            // Expansion remains bounded even for dishonest compressed-size declarations.
-            entry_bytes: grow(base.entry_bytes, 16)?.min(MAX_SPAN_BYTES),
+            entry_bytes: None,
             metadata_bytes: grow(base.metadata_bytes, 64)?,
             output_bytes: None,
             entries: grow(base.entries, 1)?,
-            instructions: grow(base.instructions, 1)?,
-            work: grow(base.work, 128)?,
+            instructions: None,
+            work: None,
             ast_depth: base.ast_depth,
             semantic_nodes: grow(base.semantic_nodes, 4)?,
         })
@@ -76,7 +76,9 @@ mod tests {
         let fixed = Budget::default();
         let scaled = Budget::for_input_bytes(1024).unwrap();
         assert_eq!(scaled.input_bytes, 1024);
-        assert!(scaled.work > fixed.work);
+        assert_eq!(scaled.work, None);
+        assert_eq!(scaled.instructions, None);
+        assert_eq!(scaled.entry_bytes, None);
         assert!(scaled.metadata_bytes > fixed.metadata_bytes);
         assert_eq!(scaled.output_bytes, None);
         assert!(fixed.output_bytes.is_some());

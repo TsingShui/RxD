@@ -50,7 +50,10 @@ impl Input {
             }
             // Only scanned bodies need their signatures resolved (argument bounds).
             self.resolve_method(index)?;
-            let remaining = self.limits.work - work.used();
+            let remaining = self
+                .limits
+                .work
+                .map(|limit| limit.saturating_sub(work.used()));
             let body = crate::il::scan_body(self, &self.methods[index], remaining, &boundaries)?;
             work.charge(body.work_used)?;
             for instruction in body.instructions {

@@ -31,7 +31,7 @@ impl Options {
             input_bytes: budget.input_bytes,
             // Every evidence occurrence consumes the selected work allowance;
             // there is no separate CLI entity-count knob.
-            entities: budget.work,
+            entities: budget.semantic_nodes,
             metadata_bytes: budget.metadata_bytes,
             marshal: rxd_pyc::marshal_limits(budget),
             work: budget.work,

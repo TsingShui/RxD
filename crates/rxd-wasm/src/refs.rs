@@ -10,7 +10,7 @@ use crate::module::{Module, OpSummary};
 pub fn refs(module: &Module, targets: &[u32]) -> Result<Vec<Reference>> {
     let limits = module.limits();
     ensure!(
-        targets.len() <= limits.work,
+        limits.work.is_none_or(|limit| targets.len() <= limit),
         rxd_core::Error::failure(rxd_core::Failure::Resource, "reference targets")
     );
     for target in targets {
@@ -33,7 +33,10 @@ pub fn refs(module: &Module, targets: &[u32]) -> Result<Vec<Reference>> {
     for position in 0..module.functions.len() {
         let (_locals, ops) = module.decode_body(position)?;
         work = work.saturating_add(ops.len());
-        ensure!(work <= limits.work, "RESOURCE_LIMIT: refs work");
+        ensure!(
+            limits.work.is_none_or(|limit| work <= limit),
+            "RESOURCE_LIMIT: refs work"
+        );
         let function = module.function_at(position);
         for decoded in &ops {
             let (opcode, target) = match &decoded.op {

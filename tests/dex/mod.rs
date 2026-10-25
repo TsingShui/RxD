@@ -235,6 +235,38 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
 }
 
 #[test]
+fn dex_inflation_has_no_default_quota_but_preserves_explicit_override() {
+    let payload = vec![7u8; 1024 * 1024];
+    let bytes = deflated_zip(&[("payload.bin", &payload)]);
+    let (dir, input) = fixture(&bytes, "payload.apk");
+    let dest = dir.path().join("payload.bin");
+    fs::write(&dest, b"preserved").unwrap();
+    let failed = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dex", "extract"])
+        .arg(&input)
+        .args(["--name", "payload.bin", "-o"])
+        .arg(&dest)
+        .env("RASC_MAX_INFLATED_ENTRY", "1024")
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+    assert_eq!(fs::read(&dest).unwrap(), b"preserved");
+    let complete = query(
+        "extract",
+        &input,
+        &["--name", "payload.bin", "-o", dest.to_str().unwrap()],
+    );
+    success(&complete);
+    assert_eq!(fs::read(&dest).unwrap(), payload);
+    assert!(
+        rxd_core::Budget::for_input_bytes(bytes.len())
+            .unwrap()
+            .entry_bytes
+            .is_none()
+    );
+}
+
+#[test]
 fn dex_extract_writes_original_entry_bytes_and_a_receipt() {
     let (dir, path) = fixture(
         deflated_zip(&[

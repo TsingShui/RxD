@@ -2,18 +2,24 @@
 use super::*;
 
 #[test]
-fn dotnet_semantic_signature_expansion_consumes_work_before_cloning() {
+fn dotnet_semantic_signature_expansion_has_no_work_quota_and_preserves_atomic_output() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/dotnet/semantic/expanded/References.dll");
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("refs.jsonl");
     fs::write(&destination, b"preserved").unwrap();
     // The independent assembler substitutes a 1,000-parameter function pointer into
-    // 101 !0 positions. The work budget that admits those copies is an internal floor,
-    // so the query completes and the output is complete rather than a partial rewrite.
+    // 101 !0 positions. Repeated analysis work is not retained memory or a quota.
     let output = run("xref", &path, &["--at", "0x0a000007"]);
-    failure(output, 1, "RESOURCE_LIMIT");
-    assert_eq!(fs::read(destination).unwrap(), b"preserved");
+    success(&output);
+    let written = run(
+        "xref",
+        &path,
+        &["--at", "0x0a000007", "-o", destination.to_str().unwrap()],
+    );
+    success(&written);
+    assert!(written.stdout.is_empty());
+    assert_eq!(fs::read(destination).unwrap(), output.stdout);
 }
 
 #[test]

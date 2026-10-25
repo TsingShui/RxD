@@ -115,7 +115,14 @@ pub(crate) fn build<'a>(input: &'a Input, root_token: u32) -> Result<ClassBody<'
                 .context("RESOURCE_LIMIT: class metadata output")?;
         }
         let body = if method.has_body {
-            let body = crate::il::body_with_budget(input, method, input.limits.work - work.used())?;
+            let body = crate::il::body_with_budget(
+                input,
+                method,
+                input
+                    .limits
+                    .work
+                    .map(|limit| limit.saturating_sub(work.used())),
+            )?;
             work.charge(body.work_used)?;
             if input.limits.output_bytes.is_some() {
                 serde_json::to_writer(&mut footprint, &body)

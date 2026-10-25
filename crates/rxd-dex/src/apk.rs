@@ -31,13 +31,13 @@ enum Archive {
 /// Immutable limits applied while reading one archive command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ArchivePolicy {
-    pub max_inflated_entry: usize,
+    pub max_inflated_entry: Option<usize>,
 }
 
 impl Default for ArchivePolicy {
     fn default() -> Self {
         Self {
-            max_inflated_entry: crate::archive::DEFAULT_MAX_INFLATED_ENTRY,
+            max_inflated_entry: Some(crate::archive::DEFAULT_MAX_INFLATED_ENTRY),
         }
     }
 }
@@ -180,7 +180,7 @@ struct InflatedDex<'a> {
     source: &'a Archive,
     started: Instant,
     /// Per-entry inflation ceiling for this command.
-    max_inflated: usize,
+    max_inflated: Option<usize>,
     data: OnceCell<(Vec<u8>, Duration)>,
 }
 
@@ -1475,10 +1475,10 @@ mod tests {
         let zip = build_zip(&[("AndroidManifest.xml", payload.as_slice(), true)]);
         let path = temp_apk("policy-isolation", &zip);
         let restrictive = ArchivePolicy {
-            max_inflated_entry: 1024,
+            max_inflated_entry: Some(1024),
         };
         let permissive = ArchivePolicy {
-            max_inflated_entry: usize::MAX,
+            max_inflated_entry: None,
         };
 
         assert!(read_entry_with_policy(&path, restrictive, "AndroidManifest.xml").is_err());

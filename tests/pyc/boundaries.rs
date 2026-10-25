@@ -452,11 +452,11 @@ fn pyc_decompile_work_budget_is_exact_shared_and_reported() {
     );
     assert_no_budget_flags(&path, "decompile");
     let mut exact = base;
-    exact.work = work as usize;
+    exact.work = Some(work as usize);
     let (_, result) = decompile_library(&path, Some((3, 12)), exact);
     assert!(result.is_ok());
     let mut less = exact;
-    less.work = work as usize - 1;
+    less.work = Some(work as usize - 1);
     let (perf, result) = decompile_library(&path, Some((3, 12)), less);
     assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
     let perf = perf_value(&perf);
@@ -549,7 +549,7 @@ fn pyc_shares_work_across_repeated_nested_code_references() {
     );
     assert_no_budget_flags(&path, "decompile");
     let mut limits = shared_decompile_limits();
-    limits.work = once_work;
+    limits.work = Some(once_work);
     assert_eq!(
         decompile_library(&path, Some((3, 12)), limits)
             .1
@@ -573,7 +573,7 @@ fn pyc_rejects_operand_driven_expansion_before_allocation() {
     let (_dir, path) = fixture(&bytes, "expand.marshal");
     assert_no_budget_flags(&path, "decompile");
     let mut limits = shared_decompile_limits();
-    limits.work = 256;
+    limits.work = Some(256);
     let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
     assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
     let perf = perf_value(&perf);
@@ -582,7 +582,7 @@ fn pyc_rejects_operand_driven_expansion_before_allocation() {
     let small = raw_module(&[151, 0, 100, 1, 102, 1, 90, 0, 121, 0], b"N");
     fs::write(&path, small).unwrap();
     let mut ok = shared_decompile_limits();
-    ok.work = 4096;
+    ok.work = Some(4096);
     assert!(decompile_library(&path, Some((3, 12)), ok).1.is_ok());
 }
 
@@ -602,7 +602,7 @@ fn pyc_charges_borrowed_name_copies_before_generation() {
     let (_dir, path) = fixture(&bytes, "name-copy.marshal");
     assert_no_budget_flags(&path, "decompile");
     let mut limits = shared_decompile_limits();
-    limits.work = 8_192;
+    limits.work = Some(8_192);
     let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
     assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
     assert_eq!(
@@ -613,7 +613,7 @@ fn pyc_charges_borrowed_name_copies_before_generation() {
     );
     assert_eq!(fs::read(&path).unwrap(), bytes);
     let mut ok = shared_decompile_limits();
-    ok.work = 200_000;
+    ok.work = Some(200_000);
     assert!(decompile_library(&path, Some((3, 12)), ok).1.is_ok());
 }
 
@@ -635,7 +635,7 @@ fn pyc_charges_ast_signature_copies_before_generation() {
     let (_dir, path) = fixture(&bytes, "signature-copy.marshal");
     assert_no_budget_flags(&path, "decompile");
     let mut limits = shared_decompile_limits();
-    limits.work = 50_000;
+    limits.work = Some(50_000);
     let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
     assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
     assert_eq!(
@@ -646,7 +646,7 @@ fn pyc_charges_ast_signature_copies_before_generation() {
     );
     assert_eq!(fs::read(&path).unwrap(), bytes);
     let mut ok = shared_decompile_limits();
-    ok.work = 1_000_000;
+    ok.work = Some(1_000_000);
     assert!(decompile_library(&path, Some((3, 12)), ok).1.is_ok());
 }
 
@@ -665,7 +665,7 @@ fn pyc_charges_reused_format_spec_copies_before_recovery_allocation() {
         let (_dir, path) = fixture(&bytes, "reused-format-spec.marshal");
         assert_no_budget_flags(&path, "decompile");
         let mut limits = shared_decompile_limits();
-        limits.work = 100_000;
+        limits.work = Some(100_000);
         let (perf, result) = decompile_library(&path, Some((3, 12)), limits);
         assert_eq!(result.err().unwrap().code, "RESOURCE_LIMIT");
         let perf = perf_value(&perf);
@@ -686,7 +686,7 @@ fn pyc_charges_reused_format_spec_copies_before_recovery_allocation() {
         "small-format-spec.marshal",
     );
     let mut limits = shared_decompile_limits();
-    limits.work = 8_192;
+    limits.work = Some(8_192);
     let result = decompile_library(&path, Some((3, 12)), limits).1.unwrap();
     assert!(result.complete);
     assert!(result.source.contains("{None:04.2}"));

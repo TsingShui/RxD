@@ -49,7 +49,9 @@ impl RecordBudget {
         self.bytes = self
             .bytes
             .saturating_add(label.len_utf16().saturating_mul(2) + 512);
-        if self.records > budget.work || self.bytes > budget.metadata_bytes {
+        if budget.work.is_some_and(|limit| self.records > limit)
+            || self.bytes > budget.metadata_bytes
+        {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "JS name listing budget exceeded",

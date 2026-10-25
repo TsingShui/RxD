@@ -277,9 +277,9 @@ Treat analyzed files as untrusted data. Never execute input code or instantiate
 input modules. Parse and extract from one fixed source buffer, validate
 coordinates and byte ranges against that input, and enforce explicit resource budgets.
 
-Ordinary CLI work and metadata admission grows with input instead of fixed total
-quotas. Complete serialization has no input-derived output-byte quota; allocation
-failures remain explicit. Preserve format/address validation, recursion/cycle/expansion guards
+Ordinary CLI metadata/index admission grows with input instead of fixed total
+quotas. Work, instruction count, individual expanded-entry bytes and serialization
+have no input-derived quotas; allocation failures remain explicit. Preserve format/address validation, recursion/cycle/expansion guards
 and explicit failure; never substitute an unlimited sentinel. MCP uses the same
 input-scaled analysis policy and adds configurable service-wide snapshot/in-flight
 byte admission, worker/thread concurrency, deadlines and Native worker RSS protection.

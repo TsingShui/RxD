@@ -1037,7 +1037,7 @@ fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
         assert!(selected.is_ok(), "{version}/codes");
         let work = work_of(&perf_value(&perf));
         let mut less = base;
-        less.work = work - 1;
+        less.work = Some(work - 1);
         assert_eq!(
             codes_library(&path, None, None, None, None, less)
                 .1
@@ -1053,7 +1053,7 @@ fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
         assert!(literals.is_ok(), "{version}/strings");
         let work = work_of(&perf_value(&perf));
         let mut less = base;
-        less.work = work - 1;
+        less.work = Some(work - 1);
         assert_eq!(
             strings_library(&path, None, None, None, less)
                 .1
@@ -1069,7 +1069,7 @@ fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
         assert!(scan.is_ok(), "{version}/xref");
         let work = work_of(&perf_value(&perf));
         let mut less = base;
-        less.work = work - 1;
+        less.work = Some(work - 1);
         assert_eq!(
             xref_name_library(&path, None, "arg", None, less, max_units)
                 .1
@@ -1094,7 +1094,7 @@ fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
         assert!(evidence.is_ok(), "{version}/get-code");
         let work = work_of(&perf_value(&perf));
         let mut less = base;
-        less.work = work - 1;
+        less.work = Some(work - 1);
         assert_eq!(
             get_code_library(&path, None, at, less, units)
                 .1

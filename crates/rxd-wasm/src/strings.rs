@@ -16,7 +16,10 @@ pub fn strings(module: &Module) -> Result<Vec<StringRecord>> {
     for segment in &module.data_segments {
         let bytes = module.data_segment_bytes(segment.index as usize);
         work = work.saturating_add(bytes.len());
-        ensure!(work <= limits.work, "RESOURCE_LIMIT: strings work");
+        ensure!(
+            limits.work.is_none_or(|limit| work <= limit),
+            "RESOURCE_LIMIT: strings work"
+        );
         let mut i = 0usize;
         while i < bytes.len() {
             // Collect a maximal run of non-NUL bytes.

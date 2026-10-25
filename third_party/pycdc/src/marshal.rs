@@ -137,7 +137,7 @@ impl<'a> MarshalReader<'a> {
         version: PythonVersion,
         base: usize,
         max_entities: usize,
-        max_work: usize,
+        max_work: impl Into<Option<usize>>,
     ) -> Self {
         let mut reader = Self::new(data, version);
         reader.base = base;
@@ -146,7 +146,7 @@ impl<'a> MarshalReader<'a> {
             entities: 0,
             work: 0,
             max_entities,
-            max_work,
+            max_work: max_work.into(),
         });
         reader
     }
@@ -161,7 +161,7 @@ impl<'a> MarshalReader<'a> {
 
     fn evidence_charge(&mut self) -> Result<()> {
         if let Some(e) = &mut self.evidence {
-            if e.entities >= e.max_entities || e.work >= e.max_work {
+            if e.entities >= e.max_entities || e.max_work.is_some_and(|limit| e.work >= limit) {
                 return Err(PycError::ResourceLimit(
                     "marshal entity/work budget exceeded",
                 ));
@@ -302,7 +302,7 @@ impl<'a> MarshalReader<'a> {
     fn reserve_children(&self, count: usize) -> Result<()> {
         if let Some(e) = &self.evidence {
             if count > e.max_entities.saturating_sub(e.entities)
-                || count > e.max_work.saturating_sub(e.work)
+                || e.max_work.is_some_and(|limit| count > limit.saturating_sub(e.work))
             {
                 return Err(PycError::ResourceLimit(
                     "marshal container entity/work budget exceeded",

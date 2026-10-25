@@ -7,8 +7,8 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub work: usize,
-    pub instructions: usize,
+    pub work: Option<usize>,
+    pub instructions: Option<usize>,
     pub metadata_bytes: usize,
 }
 

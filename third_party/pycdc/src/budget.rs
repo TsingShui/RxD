@@ -12,7 +12,7 @@ use std::{
 
 #[derive(Clone, Copy)]
 pub struct Limits {
-    pub work: usize,
+    pub work: Option<usize>,
     pub ast_depth: usize,
 }
 #[derive(Default, Clone, Copy)]
@@ -64,12 +64,8 @@ pub fn charge(units: usize) {
         let Some(s) = state.as_mut() else {
             return false;
         };
-        if units > s.limits.work.saturating_sub(s.usage.work) {
-            true
-        } else {
-            s.usage.work += units;
-            false
-        }
+        if s.limits.work.is_some_and(|limit| units > limit.saturating_sub(s.usage.work)) { return true; }
+        if let Some(next) = s.usage.work.checked_add(units) { s.usage.work = next; false } else { true }
     });
     if exhausted {
         resume_unwind(Box::new(Cancel("decompile work budget exceeded")));

@@ -698,10 +698,12 @@ fn build_blocks(
     Ok(blocks)
 }
 
-fn charge(remaining: &mut usize, cost: usize) -> Result<()> {
-    *remaining = remaining
-        .checked_sub(cost)
-        .context("RESOURCE_LIMIT: JVM dataflow work budget exceeded")?;
+fn charge(remaining: &mut Option<usize>, cost: usize) -> Result<()> {
+    if let Some(remaining) = remaining {
+        *remaining = remaining
+            .checked_sub(cost)
+            .context("RESOURCE_LIMIT: JVM dataflow work budget exceeded")?;
+    }
     Ok(())
 }
 
@@ -710,7 +712,7 @@ fn merge(
     incoming: &[Type],
     queue: &mut VecDeque<usize>,
     index: usize,
-    remaining: &mut usize,
+    remaining: &mut Option<usize>,
 ) -> Result<()> {
     charge(
         remaining,

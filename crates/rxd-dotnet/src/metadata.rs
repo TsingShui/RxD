@@ -524,7 +524,7 @@ fn generic_parameters(
                 let owner = row.owner.token.value();
                 input.check_token(owner, &[2, 6])?;
                 let name = input.name(row.name)?;
-                work.charge(name.len() + std::mem::size_of::<crate::GenericParameter>())?;
+                work.retain(name.len() + std::mem::size_of::<crate::GenericParameter>())?;
                 let items = result.entry(owner).or_default();
                 ensure!(
                     !items.iter().any(|parameter| parameter.number == row.number),
@@ -585,7 +585,7 @@ pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
                 .and_then(|maps| bytes.checked_add(maps))
         })
         .context("RESOURCE_LIMIT: relationship collections")?;
-    work.charge(collection_bytes)?;
+    work.retain(collection_bytes)?;
     let maps = tables
         .table::<PropertyMapRaw>()
         .map(|rows| rows.iter().collect::<dotscope::Result<Vec<_>>>())
@@ -733,7 +733,7 @@ pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
                         && accessor.semantics == row.semantics),
                 "INVALID_INPUT: duplicate accessor association"
             );
-            work.charge(std::mem::size_of::<crate::Accessor>())?;
+            work.retain(std::mem::size_of::<crate::Accessor>())?;
             accessors.push(crate::Accessor {
                 method_token: token,
                 semantics: row.semantics,

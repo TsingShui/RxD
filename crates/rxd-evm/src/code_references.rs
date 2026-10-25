@@ -131,11 +131,13 @@ impl<'a> References<'a> {
         }
         // Preserve the original per-instruction work charge, including the first
         // rejected unit, without scanning opcodes for discarded coverage counts.
-        let remaining = limits.work.saturating_sub(perf.counters.work.unwrap_or(0));
-        let charge = navigation
-            .instructions
-            .len()
-            .min(remaining.saturating_add(1));
+        let charge = limits.work.map_or(navigation.instructions.len(), |limit| {
+            navigation.instructions.len().min(
+                limit
+                    .saturating_sub(perf.counters.work.unwrap_or(0))
+                    .saturating_add(1),
+            )
+        });
         work(perf, charge, limits.work)?;
         perf.counters.records = Some(references.hits.len());
         perf.counters.matches = Some(references.hits.len());

@@ -19,7 +19,7 @@ pub(crate) fn body(input: &Input, method: &Method) -> Result<MethodBody> {
 pub(crate) fn body_with_budget(
     input: &Input,
     method: &Method,
-    work_limit: usize,
+    work_limit: Option<usize>,
 ) -> Result<MethodBody> {
     decode_body(input, method, work_limit, None)
 }
@@ -27,7 +27,7 @@ pub(crate) fn body_with_budget(
 pub(crate) fn scan_body(
     input: &Input,
     method: &Method,
-    work_limit: usize,
+    work_limit: Option<usize>,
     strings: &BTreeSet<u32>,
 ) -> Result<MethodBody> {
     decode_body(input, method, work_limit, Some(strings))
@@ -36,7 +36,7 @@ pub(crate) fn scan_body(
 fn decode_body(
     input: &Input,
     method: &Method,
-    work_limit: usize,
+    work_limit: Option<usize>,
     strings: Option<&BTreeSet<u32>>,
 ) -> Result<MethodBody> {
     ensure!(
@@ -77,7 +77,10 @@ fn decode_body(
         .checked_add(header_size)
         .context("INVALID_INPUT: code offset")?;
     ensure!(code_size > 0, "INVALID_INPUT: empty method code");
-    ensure!(code_size <= work_limit, "RESOURCE_LIMIT: method code work");
+    ensure!(
+        work_limit.is_none_or(|limit| code_size <= limit),
+        "RESOURCE_LIMIT: method code work"
+    );
     let code = slice(bytes, code_offset, code_size)?;
     let last_rva = (method.rva as usize)
         .checked_add(header_size)
@@ -116,7 +119,10 @@ fn decode_body(
     }
     while parser.has_more_data() {
         ensure!(
-            instructions.len() < input.limits.instructions,
+            input
+                .limits
+                .instructions
+                .is_none_or(|limit| instructions.len() < limit),
             "RESOURCE_LIMIT: instructions"
         );
         work.charge(1)?;
@@ -440,7 +446,7 @@ fn handlers(
             result
                 .len()
                 .checked_add(count)
-                .is_some_and(|n| n <= input.limits.instructions),
+                .is_some_and(|n| input.limits.instructions.is_none_or(|limit| n <= limit)),
             "RESOURCE_LIMIT: exception clauses"
         );
         for row in data[4..].chunks_exact(row_size) {

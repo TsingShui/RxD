@@ -66,6 +66,9 @@ See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls a
 result consumption. In a linked MCP build, `kuna_decompile` selects one function with
 exactly one `name` or `address` string (for example, a preceding `kuna_functions` entry's
 `address_hex`). The native worker has a nominal 5 ms sampled RSS guard;
-`--max-native-worker-bytes` defaults to and is capped at 256 MiB, and startup may lower
-it. Observed excess is an explicit `RESOURCE_LIMIT` with worker cleanup, not an
-instantaneous OS cap.
+`--max-native-worker-bytes` defaults to 1 GiB and may be raised or lowered.
+Observed excess is an explicit `RESOURCE_LIMIT` with worker cleanup, not an
+instantaneous OS cap. RxD no longer injects its input-derived instruction quota;
+the unchanged pinned engine retains its own `maxinstruction` default (100,000).
+Direct `rxd kuna` calls can adjust it through upstream `--option maxinstruction N`;
+MCP does not advertise a per-request `limits` object.

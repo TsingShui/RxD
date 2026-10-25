@@ -406,13 +406,17 @@ fn value(a: &Analysis, d: usize) -> Result<Value> {
 }
 /// Caller owns complete bounded serialization. Allocation preflight is conservative and
 /// additionally guards raw rows/tables/hex payload before those allocations.
-pub fn build(a: &mut Analysis, owner: usize, max_instructions: usize) -> Result<Evidence> {
+pub fn build(
+    a: &mut Analysis,
+    owner: usize,
+    max_instructions: impl Into<Option<usize>>,
+) -> Result<Evidence> {
     if a.body_status(owner) == "unavailable" {
         return Err(invalid("selected code has no readable bytecode body"));
     }
     let code = a.codes[owner].code.clone();
     let n = code.code.len() / 2;
-    if n > max_instructions {
+    if max_instructions.into().is_some_and(|limit| n > limit) {
         return Err(Error::new(
             "RESOURCE_LIMIT",
             "selected code instruction budget exceeded",

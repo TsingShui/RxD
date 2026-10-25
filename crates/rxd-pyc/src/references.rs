@@ -112,9 +112,10 @@ pub fn scan(
     a: &mut Analysis,
     query: &Query<'_>,
     within: Option<usize>,
-    max_instructions: usize,
+    max_instructions: impl Into<Option<usize>>,
     scan: &mut Scan,
 ) -> Result<()> {
+    let max_instructions = max_instructions.into();
     let table = table_for(a.version).map_err(crate::input_error)?;
     let scope = match query {
         Query::Name(_) | Query::NameFilter(_) => within.map_or(0..a.codes.len(), |i| i..i + 1),
@@ -129,7 +130,7 @@ pub fn scan(
         }
         let code = a.codes[owner].code.clone();
         let units = code.code.len() / 2;
-        if units > max_instructions {
+        if max_instructions.is_some_and(|limit| units > limit) {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "scanned code instruction budget exceeded",

@@ -49,10 +49,12 @@ pub fn fetch(
 ) -> Result<()> {
     super::validate_output(&input, options.common.output.as_deref())?;
     let loaded = options.common.load(&input, version, perf);
-    perf.resource_limits
-        .as_mut()
-        .unwrap()
-        .insert("instructions", options.common.budget.instructions);
+    if let Some(instructions) = options.common.budget.instructions {
+        perf.resource_limits
+            .as_mut()
+            .unwrap()
+            .insert("instructions", instructions);
+    }
     let mut analysis = loaded?;
     let at = selector.resolve().map_err(super::super::classify)?;
     let selected = perf.measure("query", || analysis.parse_code_id(&at));

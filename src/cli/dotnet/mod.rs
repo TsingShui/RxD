@@ -222,10 +222,13 @@ fn execute_inner(
     let limits = options.limits(budget);
     perf.resource_limits = Some(std::collections::BTreeMap::from([
         ("input_bytes", budget.input_bytes),
-        ("work", budget.work),
         ("metadata_bytes", budget.metadata_bytes),
-        ("instructions", budget.instructions),
     ]));
+    for (name, limit) in [("work", budget.work), ("instructions", budget.instructions)] {
+        if let Some(limit) = limit {
+            perf.resource_limits.as_mut().unwrap().insert(name, limit);
+        }
+    }
     if let Some(output_bytes) = budget.output_bytes {
         perf.resource_limits
             .as_mut()

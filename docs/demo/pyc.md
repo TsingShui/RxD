@@ -75,14 +75,14 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name s
 `codes` does not scan bytecode or recover source; `instruction_validation: not_scanned`.
 Body status is present/empty/unavailable. Static entry accepts only the six final magic
 formats listed below; other versions/implementations are rejected explicitly.
-Ordinary CLI input/work/metadata allowances grow with admitted input; serialized
-output has no input-derived byte quota and no command exposes a `--max-*` flag.
+Ordinary CLI input/metadata allowances grow with admitted input; work, instruction
+count and output have no input-derived quotas and no command exposes a `--max-*` flag.
 Perf stderr `resource_limits` echoes active quotas; `counters.output_bytes` reports
 actual writes. Errors do not replace existing `-o`.
 
 ```sh
 target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc --json --perf
-# stderr resource_limits: input_bytes/work/ast_depth; counters.output_bytes: actual size
+# stderr resource_limits: input_bytes/ast_depth; counters.work/output_bytes: actual usage
 ```
 
 Work covers actual recovery, repeated nested calls, scans, AST checks/copies and source
@@ -167,8 +167,8 @@ Static commands support final CPython 3.8.20, 3.9.6, 3.10.16, 3.11.11, 3.12.14 a
 3.13.2. `.pyc` headers allow PEP 552 flags 0/1/3; raw marshal requires `--version X.Y`.
 The code index uses deterministic DFS preorder and first containment, with IDs stable
 across renames and processes. codes/strings/get-code/xref share the selected
-input-scaled CLI or fixed MCP policy; get-code and xref also use its instruction
-allowance. All
+metadata/index policy in CLI and MCP. Work and instruction count have no
+input-derived quota. All
 output is complete before atomic stdout/`-o` publication. `rxd pyz` and PyInstaller
 containers are separate and still planned.
 

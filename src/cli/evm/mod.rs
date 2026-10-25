@@ -272,8 +272,10 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     let mut effective_limits = [("input_bytes", limits.input_bytes)]
         .into_iter()
         .collect::<std::collections::BTreeMap<_, _>>();
-    if command.query().is_none() {
-        effective_limits.insert("work", limits.work);
+    if command.query().is_none()
+        && let Some(work) = limits.work
+    {
+        effective_limits.insert("work", work);
     }
     if matches!(
         command,
@@ -283,7 +285,9 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
         effective_limits.insert("stack_cells", limits.stack_cells);
     }
     if matches!(&command, Command::GetFunction(function) if !function.raw) {
-        effective_limits.insert("reconstruction_work", limits.reconstruction_work);
+        if let Some(work) = limits.reconstruction_work {
+            effective_limits.insert("reconstruction_work", work);
+        }
         effective_limits.insert("values", limits.values);
     }
     perf.resource_limits = Some(effective_limits);

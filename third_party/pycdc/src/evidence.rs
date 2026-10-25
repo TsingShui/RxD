@@ -33,5 +33,5 @@ pub struct MarshalEvidence {
     pub entities: usize,
     pub work: usize,
     pub max_entities: usize,
-    pub max_work: usize,
+    pub max_work: Option<usize>,
 }

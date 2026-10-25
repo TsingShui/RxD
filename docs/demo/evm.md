@@ -108,8 +108,8 @@ IDs bind one exact occurrence/range; zero hits still succeed with no data rows b
 
 ## Budgets and performance
 
-EVM is capability-first and has no numeric latency gate. Ordinary CLI admission and
-navigation/reconstruction work scale with input; there is no `--max-*` flag or
+EVM is capability-first and has no numeric latency gate. Ordinary CLI has no
+input-derived navigation/reconstruction work quota; there is no `--max-*` flag or
 fixed record/output quota. Interpreter guards remain 100,000 states and 1,048,576
 stack cells/arena entries. MCP service quotas remain separate.
 Failures are atomic with no partial stdout and preserve existing `-o` files. `--perf`

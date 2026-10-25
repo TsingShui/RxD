@@ -57,7 +57,7 @@ pub fn decompile(module: &Module, position: usize) -> Result<Attempt> {
             .read_with_offset()
             .map_err(|e| anyhow::anyhow!("INVALID_INPUT: operator decode: {e}"))?;
         budget += 1;
-        if budget > limit {
+        if limit.is_some_and(|limit| budget > limit) {
             anyhow::bail!("RESOURCE_LIMIT: per-function instructions");
         }
         match d.step(&op, pos - base) {

@@ -188,7 +188,9 @@ impl<'s> Visitor<'_, 's> {
             }
             + 512;
         self.bytes = self.bytes.saturating_add(bytes);
-        if self.records.len() >= budget.work || self.bytes > budget.metadata_bytes {
+        if budget.work.is_some_and(|limit| self.records.len() >= limit)
+            || self.bytes > budget.metadata_bytes
+        {
             self.error = Some(Error::new(
                 "RESOURCE_LIMIT",
                 "JS value projection budget exceeded",

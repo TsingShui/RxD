@@ -119,7 +119,7 @@ fn xref_library(
     selector: &str,
     within: Option<&str>,
     limits: rxd_pyc::static_analysis::Limits,
-    instructions: usize,
+    instructions: impl Into<Option<usize>>,
 ) -> (
     rxd_core::perf::Perf,
     rxd_core::Result<rxd_pyc::references::Scan>,
@@ -153,7 +153,7 @@ fn get_code_library(
     version: Option<(u8, u8)>,
     at: &str,
     limits: rxd_pyc::static_analysis::Limits,
-    instructions: usize,
+    instructions: impl Into<Option<usize>>,
 ) -> (
     rxd_core::perf::Perf,
     rxd_core::Result<rxd_pyc::code_view::Evidence>,
@@ -200,7 +200,7 @@ fn xref_name_library(
     name: &str,
     within: Option<&str>,
     limits: rxd_pyc::static_analysis::Limits,
-    instructions: usize,
+    instructions: impl Into<Option<usize>>,
 ) -> (
     rxd_core::perf::Perf,
     rxd_core::Result<rxd_pyc::references::Scan>,

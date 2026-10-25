@@ -161,21 +161,18 @@ pub fn execute(
     name: &str,
     arguments: &Value,
     input: &CapturedInput,
-    budget: rxd_core::Budget,
     inflight_bytes: usize,
 ) -> Result<QueryResult, QueryError> {
-    let input_bytes = input.input_bytes.map_or_else(
-        || {
-            std::fs::metadata(&input.path)
-                .map(|metadata| metadata.len())
-                .map_err(|error| QueryError::new("IO_ERROR", error.to_string()))
-        },
-        |bytes| Ok(bytes as u64),
-    )?;
-    if input_bytes > budget.input_bytes as u64 {
+    let input_bytes = std::fs::metadata(&input.path)
+        .map_err(|error| QueryError::new("IO_ERROR", error.to_string()))?
+        .len();
+    if input
+        .input_bytes
+        .is_some_and(|bytes| input_bytes != bytes as u64)
+    {
         return Err(QueryError::new(
-            "RESOURCE_LIMIT",
-            "native input byte budget exceeded",
+            "SOURCE_MISMATCH",
+            "native input length changed after capture",
         ));
     }
     let path = input
@@ -185,7 +182,6 @@ pub fn execute(
     let logical = input.original_path.to_str().ok_or_else(|| {
         QueryError::new("INVALID_QUERY", "native logical input path must be UTF-8")
     })?;
-    let instructions = budget.instructions.min(u32::MAX as usize);
     match name {
         "kuna_functions" => {
             let args = vec![
@@ -194,9 +190,6 @@ pub fn execute(
                 "--json".into(),
                 "--jobs".into(),
                 "1".into(),
-                "--option".into(),
-                "maxinstruction".into(),
-                instructions.to_string(),
             ];
             let (status, bytes) = run(args, inflight_bytes)?;
             let mut document: FunctionInventory = parse(&bytes, status)?;
@@ -233,9 +226,6 @@ pub fn execute(
                 path.into(),
                 target,
                 "--json".into(),
-                "--option".into(),
-                "maxinstruction".into(),
-                instructions.to_string(),
                 "--option".into(),
                 "errortoomanyinstructions".into(),
                 "on".into(),

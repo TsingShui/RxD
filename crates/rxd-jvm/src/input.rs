@@ -177,7 +177,7 @@ impl Input {
         let entry = zip.by_index(index)?;
         let size = usize::try_from(entry.size()).context("RESOURCE_LIMIT: class size overflow")?;
         ensure!(
-            size <= limits.class_bytes,
+            limits.class_bytes.is_none_or(|limit| size <= limit),
             "RESOURCE_LIMIT: class byte budget exceeded: {wanted}"
         );
         ensure!(
@@ -191,8 +191,8 @@ impl Input {
             "INVALID_INPUT: inconsistent class size: {wanted}"
         );
         let class_id = hash(&data);
-        let class =
-            ClassFile::parse_bounded(data, limits.class_bytes).with_context(|| wanted.clone())?;
+        let class = ClassFile::parse_bounded(data, limits.expanded_bytes)
+            .with_context(|| wanted.clone())?;
         ensure!(
             class.metadata_bytes <= limits.expanded_bytes,
             "RESOURCE_LIMIT: archive metadata budget exceeded"
@@ -252,13 +252,13 @@ impl Input {
                 uncompressed_size: file_bytes,
             });
             ensure!(
-                bytes.len() <= limits.class_bytes,
+                limits.class_bytes.is_none_or(|limit| bytes.len() <= limit),
                 "RESOURCE_LIMIT: class byte budget exceeded"
             );
             classes.push(InputClass {
                 entry: None,
                 source_id: source_id.clone(),
-                class: ClassFile::parse_bounded(bytes, limits.class_bytes)?,
+                class: ClassFile::parse_bounded(bytes, limits.expanded_bytes)?,
             });
         } else {
             check_directory(&bytes, limits.entries)?;
@@ -348,7 +348,7 @@ impl Input {
                 let size =
                     usize::try_from(entry.size()).context("RESOURCE_LIMIT: class size overflow")?;
                 ensure!(
-                    size <= limits.class_bytes,
+                    limits.class_bytes.is_none_or(|limit| size <= limit),
                     "RESOURCE_LIMIT: class byte budget exceeded: {name}"
                 );
                 expanded = expanded
@@ -365,7 +365,7 @@ impl Input {
                     "INVALID_INPUT: inconsistent class size: {name}"
                 );
                 let id = hash(&data);
-                let class = ClassFile::parse_bounded(data, limits.class_bytes)
+                let class = ClassFile::parse_bounded(data, limits.expanded_bytes)
                     .with_context(|| name.clone())?;
                 metadata_bytes = metadata_bytes
                     .checked_add(class.metadata_bytes)

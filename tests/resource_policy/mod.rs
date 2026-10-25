@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn cli_serialization_has_no_numeric_output_quota_and_keeps_atomic_file_parity() {
+fn cli_has_no_work_instruction_or_output_quota_and_keeps_atomic_file_parity() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let directory = TempDir::new().unwrap();
     let destination = directory.path().join("output.jsonl");
@@ -38,6 +38,12 @@ fn cli_serialization_has_no_numeric_output_quota_and_keeps_atomic_file_parity() 
             .find(|row| row["scope"] == "analysis")
             .unwrap();
         assert!(perf["limits"]["output_bytes"].is_null(), "{command:?}");
+        assert!(perf["limits"]["work"].is_null(), "{command:?}");
+        assert!(perf["resource_limits"]["work"].is_null(), "{command:?}");
+        assert!(
+            perf["resource_limits"]["instructions"].is_null(),
+            "{command:?}"
+        );
         assert!(
             perf["resource_limits"]["output_bytes"].is_null(),
             "{command:?}"
@@ -103,8 +109,8 @@ fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
     assert_eq!(analysis["status"], "ok");
     let budget =
         rxd_core::Budget::for_input_bytes(fs::metadata(&input).unwrap().len() as usize).unwrap();
-    assert!(budget.work > 1_000_000);
-    assert_eq!(analysis["resource_limits"]["work"], budget.work);
+    assert_eq!(budget.work, None);
+    assert!(analysis["resource_limits"].get("work").is_none());
     assert_eq!(
         analysis["resource_limits"]["metadata_bytes"],
         budget.metadata_bytes

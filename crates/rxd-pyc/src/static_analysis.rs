@@ -21,19 +21,22 @@ pub struct Limits {
     pub entities: usize,
     pub metadata_bytes: usize,
     pub marshal: pycdc::marshal::Limits,
-    pub work: usize,
+    pub work: Option<usize>,
 }
 impl Limits {
     pub fn perf_limits(self) -> BTreeMap<&'static str, usize> {
-        BTreeMap::from([
+        let mut limits = BTreeMap::from([
             ("input_bytes", self.input_bytes),
             ("entities", self.entities),
             ("metadata_bytes", self.metadata_bytes),
             ("marshal_objects", self.marshal.objects),
             ("marshal_expanded_objects", self.marshal.expanded_objects),
             ("marshal_copied_bytes", self.marshal.copied_bytes),
-            ("work", self.work),
-        ])
+        ]);
+        if let Some(work) = self.work {
+            limits.insert("work", work);
+        }
+        limits
     }
 }
 
@@ -124,7 +127,11 @@ impl Analysis {
     }
 
     pub fn charge_work(&mut self, amount: usize) -> Result<()> {
-        if amount > self.limits.work.saturating_sub(self.evidence.work) {
+        if self
+            .limits
+            .work
+            .is_some_and(|limit| amount > limit.saturating_sub(self.evidence.work))
+        {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "static traversal work budget exceeded",

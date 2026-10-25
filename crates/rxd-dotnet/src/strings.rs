@@ -35,7 +35,10 @@ pub(crate) fn uses(
         work_used,
     } = scan(input)?;
     let mut work = Work::new(
-        input.limits.work.saturating_sub(work_used),
+        input
+            .limits
+            .work
+            .map(|limit| limit.saturating_sub(work_used)),
         input.limits.metadata_bytes,
     );
     let mut owners: BTreeMap<(u32, u32), Vec<u32>> = BTreeMap::new();
@@ -130,7 +133,10 @@ pub(crate) fn references(
         work_used,
     } = scan(input)?;
     let mut work = Work::new(
-        input.limits.work.saturating_sub(work_used),
+        input
+            .limits
+            .work
+            .map(|limit| limit.saturating_sub(work_used)),
         input.limits.metadata_bytes,
     );
     work.charge(pattern.len())?;
@@ -165,7 +171,10 @@ pub(crate) fn token_references(input: &mut Input, token: u32) -> Result<Vec<Stri
         work_used,
     } = scan(input)?;
     let mut work = Work::new(
-        input.limits.work.saturating_sub(work_used),
+        input
+            .limits
+            .work
+            .map(|limit| limit.saturating_sub(work_used)),
         input.limits.metadata_bytes,
     );
     work.charge(literals.len())?;

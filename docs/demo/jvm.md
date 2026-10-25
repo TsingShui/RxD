@@ -1,6 +1,7 @@
 # JVM method queries
 
-Ordinary CLI archive/index/entry/work envelopes scale with admitted input. JVM
+Ordinary CLI metadata/index storage scales with admitted input; work and individual
+class-entry bytes have no input-derived quotas. JVM
 format widths, code length and reconstruction-state guards remain; valid metadata
 names are not capped at 4096 units.
 MCP service quotas remain independent and unchanged.

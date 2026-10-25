@@ -374,7 +374,7 @@ pub fn find_refs(input: &Input, query: &RefQuery, limits: Limits) -> anyhow::Res
             for insn in bytecode(class, method)? {
                 work += 1;
                 anyhow::ensure!(
-                    work <= limits.work,
+                    limits.work.is_none_or(|limit| work <= limit),
                     "RESOURCE_LIMIT: scan work budget exceeded"
                 );
                 let Some(index) = insn.constant_index else {
@@ -572,10 +572,10 @@ fn pool_member(
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub class_bytes: usize,
+    pub class_bytes: Option<usize>,
     pub expanded_bytes: usize,
     pub entries: usize,
-    pub work: usize,
+    pub work: Option<usize>,
 }
 
 impl Default for Limits {

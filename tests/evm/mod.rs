@@ -429,7 +429,7 @@ fn evm_block_navigation_reports_effective_limits_and_publishes_atomically() {
     assert_eq!(profiled.stdout, plain.stdout);
     let reports = perf_reports(&profiled);
     // The shared budget table supplies every ceiling; no CLI flag overrides one.
-    assert_eq!(reports[0]["resource_limits"]["work"], 1_001_280);
+    assert!(reports[0]["resource_limits"].get("work").is_none());
     assert!(reports[0]["resource_limits"].get("records").is_none());
     // Five decoded bytes, four complete instructions, two native blocks.
     assert_eq!(reports[0]["counters"]["work"], 11);
@@ -1290,12 +1290,7 @@ fn evm_input_scaled_work_allows_large_linear_scans_with_complete_output() {
     assert_eq!((rows.len() - 1), 1);
     let reports = perf_reports(&output);
     assert_eq!(reports[0]["error_code"], Value::Null);
-    assert_eq!(
-        reports[0]["resource_limits"]["work"],
-        rxd_core::Budget::for_input_bytes(fs::metadata(&path).unwrap().len() as usize)
-            .unwrap()
-            .work
-    );
+    assert!(reports[0]["resource_limits"].get("work").is_none());
     assert!(reports[0]["counters"]["work"].as_u64().unwrap() > 1_000_000);
 }
 

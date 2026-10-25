@@ -1,8 +1,9 @@
 # DEX CLI examples
 
-Ordinary CLI per-entry inflation uses an input-scaled expansion envelope, not a
-fixed 256 MiB total. Missing/zero/invalid `RASC_MAX_INFLATED_ENTRY` uses that
-envelope; an explicit nonzero compatibility override still works.
+Ordinary CLI has no per-entry inflated-byte quota. Missing/zero/invalid
+`RASC_MAX_INFLATED_ENTRY` leaves it unset; an explicit nonzero compatibility
+override still works. Declared sizes, exact decompression, allocation failure and
+format/address checks remain.
 MCP service quotas remain independent and unchanged.
 
 Run `cargo build --release`. `INPUT` is an authorized APK, DEX or ZIP with a root DEX;

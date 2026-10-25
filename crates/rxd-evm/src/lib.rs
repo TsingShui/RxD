@@ -49,10 +49,10 @@ const STATES: usize = 100_000;
 pub struct Limits {
     pub input_bytes: usize,
     /// Explicit work budget for navigation; native producer queries retain their own budgets.
-    pub work: usize,
+    pub work: Option<usize>,
     pub states: usize,
     pub stack_cells: usize,
-    pub reconstruction_work: usize,
+    pub reconstruction_work: Option<usize>,
     pub values: usize,
 }
 

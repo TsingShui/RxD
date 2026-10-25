@@ -4,8 +4,8 @@ use std::sync::Arc;
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
-    pub work: usize,
-    pub instructions: usize,
+    pub work: Option<usize>,
+    pub instructions: Option<usize>,
     pub metadata_bytes: usize,
     /// Optional caller quota for complete class/type projection, including nested bodies.
     pub output_bytes: Option<usize>,

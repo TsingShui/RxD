@@ -57,8 +57,8 @@ container handling is planned, not an available command.
   DEX member indices/code units, WASM code-body offsets, PYC code-relative bytes,
   EVM decoded PCs versus original raw/hex carrier ranges. Do not interchange them.
 - Narrow before FETCH with selectors (`-f`, `--kind`, `--class`, `--within`,
-  `--depth`). Ordinary CLI work and metadata bounds grow with admitted input;
-  serialized output has no input-derived byte quota. Format, recursion and
+  `--depth`). Ordinary CLI metadata/index bounds grow with admitted input. Work,
+  instruction counts, expanded-entry bytes and output have no input-derived quotas. Format, recursion and
   expansion guards remain. MCP shares that analysis policy; its adjustable
   service-wide storage/concurrency/deadline protections are listed by
   `rxd mcp serve --help`, not per-query `limits`. Backend CLI queries have no

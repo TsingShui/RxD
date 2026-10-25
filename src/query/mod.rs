@@ -143,17 +143,9 @@ pub fn execute(
             "worker thread and shared byte budgets must be positive",
         ));
     }
-    #[cfg(any(
-        feature = "bundled-kuna",
-        feature = "backend-asar",
-        feature = "backend-html"
-    ))]
+    #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
     let input = &inputs[0];
-    #[cfg(any(
-        feature = "bundled-kuna",
-        feature = "backend-asar",
-        feature = "backend-html"
-    ))]
+    #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
     let budget = if std::fs::metadata(&input.path)
         .map_err(Error::from)?
         .is_dir()
@@ -164,7 +156,7 @@ pub fn execute(
     };
     #[cfg(feature = "bundled-kuna")]
     if name.starts_with("kuna_") {
-        return kuna::execute(name, &arguments, &inputs[0], budget, options.inflight_bytes);
+        return kuna::execute(name, &arguments, &inputs[0], options.inflight_bytes);
     }
     #[cfg(feature = "backend-asar")]
     if name == "asar_extract" {

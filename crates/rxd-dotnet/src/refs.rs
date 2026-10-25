@@ -99,12 +99,12 @@ impl Input {
 
 impl ScopeIdentity {
     fn charge_clone(&self, work: &mut Work) -> Result<()> {
-        work.charge(std::mem::size_of::<Self>())?;
+        work.retain(std::mem::size_of::<Self>())?;
         match self {
             Self::Assembly {
                 name, culture, key, ..
-            } => work.charge(name.len() + culture.len() + key.len()),
-            Self::ModuleRef { name } => work.charge(name.len()),
+            } => work.retain(name.len() + culture.len() + key.len()),
+            Self::ModuleRef { name } => work.retain(name.len()),
             Self::Nested { parent_scope, .. } => parent_scope.charge_clone(work),
             _ => Ok(()),
         }
@@ -112,7 +112,7 @@ impl ScopeIdentity {
 }
 impl SemanticTarget {
     fn charge_clone(&self, work: &mut Work) -> Result<()> {
-        work.charge(
+        work.retain(
             std::mem::size_of::<Self>()
                 + self.resolution_status.len()
                 + self.owner_name.len()
@@ -131,7 +131,7 @@ impl SemanticTarget {
 }
 impl Owner {
     fn bounded_clone(&self, work: &mut Work) -> Result<Self> {
-        work.charge(std::mem::size_of::<Self>())?;
+        work.retain(std::mem::size_of::<Self>())?;
         self.scope.charge_clone(work)?;
         signature::charge_types(&self.arguments, work, 0)?;
         Ok(self.clone())
@@ -141,7 +141,7 @@ impl Owner {
 impl<'a> Resolver<'a> {
     pub(crate) fn new(input: &'a Input, used: usize) -> Result<Self> {
         let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
-        work.charge(used)?;
+        work.retain(used)?;
         Ok(Self {
             input,
             work,
@@ -161,7 +161,7 @@ impl<'a> Resolver<'a> {
         if self.method_index.is_none() {
             let mut index = MemberIndex::new();
             for method in &self.input.methods {
-                self.work.charge(1 + method.name.len())?;
+                self.work.retain(1 + method.name.len())?;
                 index
                     .entry((method.declaring_type_token, method.name.clone()))
                     .or_default()
@@ -183,7 +183,7 @@ impl<'a> Resolver<'a> {
         if self.field_index.is_none() {
             let mut index = MemberIndex::new();
             for field in &self.input.fields {
-                self.work.charge(1 + field.name.len())?;
+                self.work.retain(1 + field.name.len())?;
                 index
                     .entry((field.declaring_type_token, field.name.clone()))
                     .or_default()
@@ -210,7 +210,7 @@ impl<'a> Resolver<'a> {
         if self.type_index.is_none() {
             let mut index = TypeIndex::new();
             for ty in &self.input.types {
-                self.work.charge(1 + ty.name.len() + ty.namespace.len())?;
+                self.work.retain(1 + ty.name.len() + ty.namespace.len())?;
                 index
                     .entry((
                         ty.declaring_type_token,
@@ -232,7 +232,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn enter(&mut self, token: u32) -> Result<()> {
-        self.work.charge(1)?;
+        self.work.retain(1)?;
         ensure!(
             self.active.len() < 64,
             "RESOURCE_LIMIT: semantic resolution depth"
@@ -245,7 +245,7 @@ impl<'a> Resolver<'a> {
     }
     pub(crate) fn method(&mut self, token: u32) -> Result<Rc<SemanticTarget>> {
         self.input.check_token(token, &[6, 10, 43])?;
-        self.work.charge(1)?;
+        self.work.retain(1)?;
         if let Some(target) = self.methods.get(&token) {
             return Ok(target.clone());
         }
@@ -342,7 +342,7 @@ impl<'a> Resolver<'a> {
             self.owner(owner_token)?
         };
         let name = self.input.name(row.name)?.to_owned();
-        self.work.charge(name.len())?;
+        self.work.retain(name.len())?;
         let signature =
             signature::method(self.input, self.input.blob(row.signature)?, &mut self.work)?;
         let signature = self.normalize_method(signature, Some(&owner.arguments), 0)?;
@@ -367,7 +367,7 @@ impl<'a> Resolver<'a> {
             let candidates = self.method_candidates(definition, &name)?;
             let mut matches = Vec::new();
             for candidate in candidates {
-                self.work.charge(1)?;
+                self.work.retain(1)?;
                 let row = self
                     .input
                     .view
@@ -397,7 +397,7 @@ impl<'a> Resolver<'a> {
     }
     fn field(&mut self, token: u32) -> Result<Rc<SemanticTarget>> {
         self.input.check_token(token, &[4, 10])?;
-        self.work.charge(1)?;
+        self.work.retain(1)?;
         if let Some(target) = self.fields.get(&token) {
             return Ok(target.clone());
         }
@@ -436,7 +436,7 @@ impl<'a> Resolver<'a> {
                 self.input.blob(row.signature)?,
             )
         };
-        self.work.charge(name.len())?;
+        self.work.retain(name.len())?;
         let owner = self.owner(owner_token)?;
         let signature = signature::field(self.input, bytes, &mut self.work)?;
         let signature = self.normalize(signature, Some(&owner.arguments), 0)?;
@@ -463,7 +463,7 @@ impl<'a> Resolver<'a> {
             let candidates = self.field_candidates(definition, &name)?;
             let mut matches = Vec::new();
             for candidate in candidates {
-                self.work.charge(1)?;
+                self.work.retain(1)?;
                 let row = self
                     .input
                     .view
@@ -496,7 +496,7 @@ impl<'a> Resolver<'a> {
     }
     fn ty(&mut self, token: u32) -> Result<Rc<SemanticTarget>> {
         self.input.check_token(token, &[1, 2, 27])?;
-        self.work.charge(1)?;
+        self.work.retain(1)?;
         if let Some(target) = self.type_targets.get(&token) {
             return Ok(target.clone());
         }
@@ -569,7 +569,7 @@ impl<'a> Resolver<'a> {
         }
     }
     fn owner(&mut self, token: u32) -> Result<Owner> {
-        self.work.charge(1)?;
+        self.work.retain(1)?;
         if let Some(owner) = self.owners.get(&token) {
             return owner.bounded_clone(&mut self.work);
         }
@@ -601,7 +601,7 @@ impl<'a> Resolver<'a> {
                 .get(token & 0xffffff)?
                 .context("INVALID_INPUT: ModuleRef row")?;
             let name = self.input.name(row.name)?.to_owned();
-            self.work.charge(name.len())?;
+            self.work.retain(name.len())?;
             return Ok(Owner {
                 token,
                 definition: None,
@@ -679,7 +679,7 @@ impl<'a> Resolver<'a> {
             .context("INVALID_INPUT: TypeRef row")?;
         let name = self.input.name(row.type_name)?.to_owned();
         let namespace = self.input.name(row.type_namespace)?.to_owned();
-        self.work.charge(name.len() + namespace.len())?;
+        self.work.retain(name.len() + namespace.len())?;
         let scope_token = row.resolution_scope.token.value();
         let (scope, parent, local, unresolved_status) = match scope_token >> 24 {
             0 if scope_token == 1 => (ScopeIdentity::Module, None, true, "unresolved"),
@@ -774,7 +774,7 @@ impl<'a> Resolver<'a> {
         } else {
             format!("token(0x{:08x})", owner.token)
         };
-        self.work.charge(name.len())?;
+        self.work.retain(name.len())?;
         Ok(name)
     }
     fn validate_kind(&self, element: u8, owner: &Owner) -> Result<()> {
@@ -854,7 +854,7 @@ impl<'a> Resolver<'a> {
         } else {
             self.input.blob(key)?.to_vec()
         };
-        self.work.charge(name.len() + culture.len() + key.len())?;
+        self.work.retain(name.len() + culture.len() + key.len())?;
         // Keep key/full-key flag and all identity flags exact. A full key and
         // public-key token are deliberately not equated without proof.
         Ok(ScopeIdentity::Assembly {
@@ -886,7 +886,7 @@ impl<'a> Resolver<'a> {
         depth: usize,
     ) -> Result<TypeSignature> {
         ensure!(depth <= 64, "RESOURCE_LIMIT: semantic signature nesting");
-        self.work.charge(1)?;
+        self.work.retain(1)?;
         Ok(match ty {
             TypeSignature::TypeParameter { index } if args.is_some_and(|args| !args.is_empty()) => {
                 let argument = args
@@ -1162,7 +1162,7 @@ impl Input {
                 continue;
             }
             if let Some(resolver) = &mut resolver {
-                resolver.work.charge(1)?;
+                resolver.work.retain(1)?;
             }
             footprint.add(std::mem::size_of::<Reference>() + site.mnemonic.len())?;
             references.push(Reference {

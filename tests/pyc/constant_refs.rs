@@ -472,7 +472,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         match field {
             "input_bytes" => exact.input_bytes = amount,
             "entities" => exact.entities = amount,
-            "work" => exact.work = amount,
+            "work" => exact.work = Some(amount),
             _ => {}
         }
         let limit = if field == "instructions" {
@@ -490,7 +490,7 @@ fn pyc_constant_refs_charge_path_decode_matches_and_complete_output_atomically()
         match field {
             "input_bytes" => less.input_bytes = amount - 1,
             "entities" => less.entities = amount - 1,
-            "work" => less.work = amount - 1,
+            "work" => less.work = Some(amount - 1),
             _ => {}
         }
         let limit = if field == "instructions" {

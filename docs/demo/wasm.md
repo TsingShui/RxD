@@ -1,7 +1,7 @@
 # WebAssembly static queries
 
-Ordinary CLI work, instructions and retained references scale with admitted module
-size. Complete serialized output has no byte quota. Canonical coordinates, body bounds and
+Ordinary CLI retained references scale with admitted module size. Work, instruction
+count and complete serialized output have no input-derived quotas. Canonical coordinates, body bounds and
 validation of original instructions remain unchanged.
 MCP service quotas remain independent and unchanged.
 

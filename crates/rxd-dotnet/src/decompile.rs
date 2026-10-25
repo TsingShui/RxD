@@ -40,7 +40,9 @@ pub fn render_class(
     for item in &class.methods {
         if let Some(body) = &item.body {
             ensure!(
-                body.instructions.len() <= limits.instructions,
+                limits
+                    .instructions
+                    .is_none_or(|limit| body.instructions.len() <= limit),
                 "RESOURCE_LIMIT: IL instruction budget exceeded"
             );
             validate_operands(input, item.method, body, &mut work)?;
@@ -63,7 +65,9 @@ pub fn render(
         "RESOURCE_LIMIT: input bytes"
     );
     ensure!(
-        body.instructions.len() <= limits.instructions,
+        limits
+            .instructions
+            .is_none_or(|limit| body.instructions.len() <= limit),
         "RESOURCE_LIMIT: IL instruction budget exceeded"
     );
     let entities = input
@@ -73,10 +77,11 @@ pub fn render(
         .saturating_add(input.methods.len());
     // Admission uses analysis units, not file bytes (padding is not analysis work).
     ensure!(
-        body.work_used
+        limits.work.is_none_or(|limit| body
+            .work_used
             .saturating_add(body.instructions.len())
             .saturating_add(entities)
-            <= limits.work,
+            <= limit),
         "RESOURCE_LIMIT: decompilation work budget exceeded"
     );
     let mut work = Work::new(limits.work, limits.metadata_bytes);
