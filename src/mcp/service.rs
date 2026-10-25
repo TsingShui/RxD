@@ -1,4 +1,5 @@
 //! Tools and analysis scheduling are independent of the protocol transport.
+use super::resources::{Reservation, Responses, json_envelope};
 use super::{
     Options,
     targets::{
@@ -7,7 +8,7 @@ use super::{
     },
     worker::{self, WorkerPayload, WorkerRequest},
 };
-use crate::query::{QueryBudgets, QueryError};
+use crate::query::{QueryError, QueryOptions};
 use base64::Engine as _;
 use rmcp::{
     RoleServer, ServerHandler,
@@ -37,12 +38,10 @@ pub struct AnalysisService {
     pub admission: Arc<Semaphore>,
     pub worker_slots: usize,
     shutdown: CancellationToken,
-    budgets: QueryBudgets,
+    options: QueryOptions,
     deadline: Duration,
-    ipc_limit: usize,
     native_rss_limit: usize,
-    response_limit: usize,
-    max_files: usize,
+    responses: Responses,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -65,17 +64,15 @@ struct Closed {
 }
 
 impl AnalysisService {
-    pub fn new(options: &Options, shutdown: CancellationToken) -> Result<Self> {
-        if options.max_response_bytes < 1024 || options.max_frame_bytes < 128 {
+    pub fn new(
+        options: &Options,
+        shutdown: CancellationToken,
+        responses: Responses,
+    ) -> Result<Self> {
+        if options.max_inflight_bytes < 16 * 1024 || options.max_frame_bytes < 128 {
             return Err(Error::new(
                 "INVALID_QUERY",
-                "MCP response/frame budgets must hold error and lifecycle messages",
-            ));
-        }
-        if options.max_native_worker_bytes > super::native_memory::MAX_RSS_BYTES {
-            return Err(Error::new(
-                "INVALID_QUERY",
-                "native worker RSS limit must be 1..=268435456 bytes",
+                "MCP shared byte/frame budgets must hold protocol errors",
             ));
         }
         let catalog = crate::query::catalog();
@@ -134,24 +131,13 @@ impl AnalysisService {
             options.root.clone()
         };
         let limits = TargetLimits {
-            max_targets: options.max_targets,
-            max_live_captures: options.max_live_captures,
             max_total_bytes: options.max_snapshot_bytes,
-            max_capture_bytes: options.max_capture_bytes,
-            max_files: options.max_snapshot_files,
             max_depth: options.max_snapshot_depth,
-            max_directory_entries: options.max_snapshot_entries,
-            ttl: Duration::from_millis(options.target_ttl_ms as u64),
         };
         let worker_slots = options.max_workers.min(options.max_threads);
-        let budgets = QueryBudgets {
-            input_bytes: options
-                .max_capture_bytes
-                .min(QueryBudgets::default().input_bytes),
-            output_bytes: (options.max_response_bytes / 4)
-                .min(QueryBudgets::default().output_bytes),
+        let query_options = QueryOptions {
             threads: options.max_threads / worker_slots,
-            ..Default::default()
+            inflight_bytes: options.max_inflight_bytes,
         };
         Ok(Self {
             tools: Arc::new(tools),
@@ -159,23 +145,10 @@ impl AnalysisService {
             admission: Arc::new(Semaphore::new(worker_slots)),
             worker_slots,
             shutdown,
-            budgets,
+            options: query_options,
             deadline: Duration::from_millis(options.deadline_ms as u64),
-            ipc_limit: options.max_worker_bytes,
             native_rss_limit: options.max_native_worker_bytes,
-            response_limit: options.max_response_bytes,
-            max_files: options.max_snapshot_files,
-        })
-    }
-
-    pub fn spawn_reaper(&self, cadence: Duration) -> tokio::task::JoinHandle<()> {
-        let store = self.store.clone();
-        let shutdown = self.shutdown.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(cadence);
-            loop {
-                tokio::select! {_=shutdown.cancelled()=>break,_=interval.tick()=>{if let Err(error)=store.purge_expired(){eprintln!("{error}");}}}
-            }
+            responses,
         })
     }
 
@@ -185,7 +158,7 @@ impl AnalysisService {
         arguments: Value,
         cancellation: CancellationToken,
         _permit: OwnedSemaphorePermit,
-    ) -> std::result::Result<Value, QueryError> {
+    ) -> std::result::Result<(Value, Reservation), QueryError> {
         let start = Instant::now();
         if name == "rxd_open" {
             let args: OpenArgs = decode(arguments)?;
@@ -232,8 +205,22 @@ impl AnalysisService {
             let capture = self.prepare(capture, mode, start, &cancellation).await?;
             self.check_live(start, &cancellation)?;
             let info = self.store.publish(capture).map_err(QueryError::from)?;
+            let memory = json_envelope(&info, self.responses.bytes.limit())
+                .and_then(|size| self.responses.bytes.reserve(size));
+            let mut memory = match memory {
+                Ok(memory) => memory,
+                Err(error) => {
+                    let _ = self.store.close(&info.target_id);
+                    return Err(error.into());
+                }
+            };
+            let store = self.store.clone();
+            let target = info.target_id.clone();
+            memory.rollback(move || {
+                let _ = store.close(&target);
+            });
             return match serde_json::to_value(&info) {
-                Ok(value) => Ok(value),
+                Ok(value) => Ok((value, memory)),
                 Err(error) => {
                     let _ = self.store.close(&info.target_id);
                     Err(QueryError::new("INVALID_INPUT", error.to_string()))
@@ -277,14 +264,14 @@ impl AnalysisService {
             .iter()
             .map(|capture| capture.worker_input())
             .collect();
-        let reply = worker::run(
+        let (reply, mut memory) = worker::run(
             WorkerRequest::Query {
                 name,
                 arguments: arguments.clone(),
                 inputs,
-                budgets: self.budgets,
+                options: self.options,
             },
-            self.ipc_limit,
+            self.responses.bytes.clone(),
             self.native_rss_limit,
             self.remaining(start)?,
             cancellation.clone(),
@@ -300,6 +287,11 @@ impl AnalysisService {
         self.check_live(start, &cancellation)?;
         if let Some(artifact) = result.artifact {
             if arguments["include_bytes"] == true {
+                memory
+                    .grow(artifact.bytes.len().checked_mul(16).ok_or_else(|| {
+                        QueryError::new("RESOURCE_LIMIT", "artifact envelope overflow")
+                    })?)
+                    .map_err(QueryError::from)?;
                 result.structured["bytes_base64"] =
                     json!(base64::engine::general_purpose::STANDARD.encode(&artifact.bytes));
             }
@@ -327,6 +319,11 @@ impl AnalysisService {
             .await
             .map_err(join_error)?
             .map_err(QueryError::from)?;
+            let store = self.store.clone();
+            let target = info.target_id.clone();
+            memory.rollback(move || {
+                let _ = store.close(&target);
+            });
             if let Err(error) = self.check_live(start, &cancellation) {
                 let _ = self.store.close(&info.target_id);
                 return Err(error);
@@ -353,7 +350,7 @@ impl AnalysisService {
                         .map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))?,
                 );
         }
-        Ok(result.structured)
+        Ok((result.structured, memory))
     }
 
     async fn prepare(
@@ -367,13 +364,11 @@ impl AnalysisService {
         if !matches!(mode, CaptureMode::Asar) || capture.worker_input().asar_dependencies_captured {
             return Ok(capture);
         }
-        let reply = worker::run(
+        let (reply, _memory) = worker::run(
             WorkerRequest::AsarPlan {
                 input: capture.worker_input(),
-                max_files: self.max_files,
-                output_bytes: self.budgets.output_bytes,
             },
-            self.ipc_limit,
+            self.responses.bytes.clone(),
             self.native_rss_limit,
             self.remaining(start)?,
             cancellation.clone(),
@@ -436,34 +431,61 @@ impl AnalysisService {
     }
     fn response(
         &self,
-        result: std::result::Result<Value, QueryError>,
-        rpc_overhead: usize,
+        result: std::result::Result<(Value, Reservation), QueryError>,
+        id: &rmcp::model::RequestId,
     ) -> CallToolResult {
-        let cleanup = result
-            .as_ref()
-            .ok()
-            .and_then(|value| {
-                value["child_target"]["target_id"]
-                    .as_str()
-                    .or_else(|| value["target_id"].as_str())
-            })
-            .map(str::to_owned);
-        let result = match result {
-            Ok(value) => CallToolResult::structured(value),
-            Err(error) => tool_error(error),
-        };
-        if serde_json::to_vec(&result).map_or(true, |bytes| {
-            bytes.len().saturating_add(rpc_overhead) > self.response_limit
-        }) {
-            if let Some(target) = cleanup {
-                let _ = self.store.close(&target);
+        #[derive(Serialize)]
+        struct Envelope<'a> {
+            jsonrpc: &'static str,
+            id: &'a rmcp::model::RequestId,
+            result: &'a CallToolResult,
+        }
+        let key = serde_json::to_string(id).expect("request ID serialization");
+        self.responses.release_request(&key);
+        let prepared = result.and_then(|(value, mut memory)| {
+            memory
+                .resize(
+                    json_envelope(&value, self.responses.bytes.limit())
+                        .map_err(QueryError::from)?,
+                )
+                .map_err(QueryError::from)?;
+            let result = CallToolResult::structured(value);
+            memory
+                .resize(
+                    json_envelope(
+                        &Envelope {
+                            jsonrpc: "2.0",
+                            id,
+                            result: &result,
+                        },
+                        self.responses.bytes.limit(),
+                    )
+                    .map_err(QueryError::from)?,
+                )
+                .map_err(QueryError::from)?;
+            Ok((result, memory))
+        });
+        match prepared {
+            Ok((result, memory)) => {
+                self.responses.retain(&key, memory);
+                result
             }
-            tool_error(QueryError::new(
-                "RESOURCE_LIMIT",
-                "complete MCP response exceeds transport budget",
-            ))
-        } else {
-            result
+            Err(error) => {
+                let result = tool_error(error);
+                if let Ok(memory) = json_envelope(
+                    &Envelope {
+                        jsonrpc: "2.0",
+                        id,
+                        result: &result,
+                    },
+                    self.responses.bytes.limit(),
+                )
+                .and_then(|size| self.responses.bytes.reserve(size))
+                {
+                    self.responses.retain(&key, memory);
+                }
+                result
+            }
         }
     }
 }
@@ -501,10 +523,7 @@ impl ServerHandler for AnalysisService {
                 None,
             ));
         }
-        // Include the caller's correlation ID and fixed protocol/SDK metadata in the complete-response budget.
-        let rpc_overhead = serde_json::to_vec(&context.id)
-            .map_or(self.response_limit, |bytes| bytes.len())
-            .saturating_add(512);
+        let id = context.id.clone();
         let arguments = Value::Object(request.arguments.unwrap_or_default());
         if request.name == "rxd_close" {
             return Ok(self
@@ -513,25 +532,42 @@ impl ServerHandler for AnalysisService {
                         self.store
                             .close(&args.target_id)
                             .map_err(QueryError::from)?;
-                        Ok(json!({"target_id":args.target_id,"closed":true}))
+                        let value = json!({"target_id":args.target_id,"closed":true});
+                        let memory = self
+                            .responses
+                            .bytes
+                            .reserve(json_envelope(&value, self.responses.bytes.limit())?)
+                            .map_err(QueryError::from)?;
+                        Ok((value, memory))
                     }),
-                    rpc_overhead,
+                    &id,
                 )
                 .into());
         }
         let permit = match self.admission.clone().try_acquire_owned() {
             Ok(permit) => permit,
             Err(_) => {
-                return Ok(tool_error(QueryError::new(
-                    "RESOURCE_LIMIT",
-                    "analysis worker admission budget exceeded",
-                ))
-                .into());
+                return Ok(self
+                    .response(
+                        Err(QueryError::new(
+                            "RESOURCE_LIMIT",
+                            "analysis worker admission budget exceeded",
+                        )),
+                        &id,
+                    )
+                    .into());
             }
         };
         let service = self.clone();
+        let request_memory = json_envelope(&arguments, self.responses.bytes.limit())
+            .and_then(|bytes| self.responses.bytes.reserve(bytes));
+        let request_memory = match request_memory {
+            Ok(memory) => memory,
+            Err(error) => return Ok(self.response(Err(error.into()), &id).into()),
+        };
         // The task owns its permit through capture cleanup and worker reaping even if a client disconnects.
         let result = tokio::spawn(async move {
+            let _request_memory = request_memory;
             service
                 .execute_tool(request.name.to_string(), arguments, context.ct, permit)
                 .await
@@ -539,7 +575,7 @@ impl ServerHandler for AnalysisService {
         .await
         .map_err(join_error)
         .and_then(|result| result);
-        Ok(self.response(result, rpc_overhead).into())
+        Ok(self.response(result, &id).into())
     }
 }
 fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {
@@ -591,5 +627,5 @@ fn open_schema(options: &Options) -> serde_json::Map<String, Value> {
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    json!({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string","minLength":1},"paths":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"maxItems":options.max_snapshot_files},"backend":{"type":"string","enum":backends}},"oneOf":[{"required":["path"],"not":{"required":["paths"]}},{"required":["paths"],"not":{"required":["path"]}}]}).as_object().unwrap().clone()
+    json!({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string","minLength":1},"paths":{"type":"array","items":{"type":"string","minLength":1},"minItems":1},"backend":{"type":"string","enum":backends}},"oneOf":[{"required":["path"],"not":{"required":["paths"]}},{"required":["paths"],"not":{"required":["path"]}}]}).as_object().unwrap().clone()
 }

@@ -76,60 +76,53 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
 
 #[cfg(feature = "backend-js")]
 #[test]
-fn mcp_one_shot_queries_do_not_consume_durable_target_slots() {
+fn mcp_one_shot_queries_release_snapshot_storage_after_each_call() {
     let root = tempfile::tempdir().unwrap();
-    let first = root.path().join("first.js");
-    let second = root.path().join("second.js");
-    fs::write(&first, "function first(){}\n").unwrap();
-    fs::write(&second, "function second(){}\n").unwrap();
+    let path = root.path().join("source.js");
+    fs::write(&path, format!("function ready(){{}}{}", " ".repeat(20_000))).unwrap();
     let mut client = Client::start(&[
         "--root",
         root.path().to_str().unwrap(),
         "--backends",
         "js",
-        "--max-targets",
-        "1",
+        "--max-snapshot-bytes",
+        "30000",
     ]);
     client.initialize();
-    let opened = client.tool("rxd_open", json!({"path":first}));
-    let target = success(&opened)["target_id"].as_str().unwrap();
-    error(
-        &client.tool("rxd_open", json!({"path":second})),
-        "RESOURCE_LIMIT",
-    );
     for _ in 0..3 {
-        let query = client.tool("js_entities", json!({"input":{"path":second}}));
+        let result = client.tool("js_entities", json!({"input":{"path":path}}));
         assert!(
-            success(&query)["records"]
+            success(&result)["records"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|record| record["detail"]["name"] == "second")
+                .any(|row| row["detail"]["name"] == "ready")
         );
     }
-    success(&client.tool("rxd_close", json!({"target_id":target})));
-    success(&client.tool("rxd_open", json!({"path":second})));
+    success(&client.tool("rxd_open", json!({"path":path})));
 }
-
 #[cfg(feature = "backend-js")]
 #[test]
-fn mcp_snapshot_byte_quotas_fail_explicitly_and_release_after_close() {
+fn mcp_snapshot_bytes_include_empty_file_metadata_and_release_after_close() {
     let root = tempfile::tempdir().unwrap();
     let first = root.path().join("first.js");
     let second = root.path().join("second.js");
     let large = root.path().join("large.js");
-    fs::write(&first, "const x=1;").unwrap();
-    fs::write(&second, "const y=2;").unwrap();
-    fs::write(&large, [b' '; 17]).unwrap();
+    fs::write(&first, " ".repeat(20_000)).unwrap();
+    fs::write(&second, " ".repeat(20_000)).unwrap();
+    fs::write(&large, " ".repeat(30_001)).unwrap();
+    let empty = root.path().join("empty");
+    fs::create_dir(&empty).unwrap();
+    for index in 0..100 {
+        fs::write(empty.join(format!("{index}.js")), b"").unwrap();
+    }
     let mut client = Client::start(&[
         "--root",
         root.path().to_str().unwrap(),
         "--backends",
         "js",
-        "--max-capture-bytes",
-        "16",
         "--max-snapshot-bytes",
-        "16",
+        "30000",
     ]);
     client.initialize();
     let opened = client.tool("rxd_open", json!({"path":first}));
@@ -143,37 +136,35 @@ fn mcp_snapshot_byte_quotas_fail_explicitly_and_release_after_close() {
         "RESOURCE_LIMIT",
     );
     success(&client.tool("rxd_close", json!({"target_id":target})));
+    error(
+        &client.tool("rxd_open", json!({"path":empty,"backend":"js"})),
+        "RESOURCE_LIMIT",
+    );
     success(&client.tool("rxd_open", json!({"path":second})));
 }
-
 #[cfg(feature = "backend-js")]
 #[test]
-fn mcp_expired_target_handles_fail_and_their_slot_can_be_reused() {
+fn mcp_targets_have_no_fixed_count_or_expiry_and_remain_valid_until_close() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("expiry.js");
-    fs::write(&path, "function expiry(){}\n").unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        root.path().to_str().unwrap(),
-        "--backends",
-        "js",
-        "--max-targets",
-        "1",
-        "--target-ttl-ms",
-        "20",
-    ]);
+    let path = root.path().join("retained.js");
+    fs::write(
+        &path,
+        "function retained(){}
+",
+    )
+    .unwrap();
+    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
     client.initialize();
-    let opened = client.tool("rxd_open", json!({"path":path}));
-    let target = success(&opened)["target_id"].as_str().unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(80));
-    error(
-        &client.tool("js_entities", json!({"input":{"target_id":target}})),
-        "TARGET_INVALID",
-    );
-    let reopened = client.tool("rxd_open", json!({"path":path}));
-    assert_ne!(success(&reopened)["target_id"], target);
+    let mut targets = Vec::new();
+    for _ in 0..70 {
+        let opened = client.tool("rxd_open", json!({"path":path}));
+        targets.push(success(&opened)["target_id"].as_str().unwrap().to_owned());
+    }
+    success(&client.tool("js_entities", json!({"input":{"target_id":targets[0]}})));
+    for target in targets {
+        success(&client.tool("rxd_close", json!({"target_id":target})));
+    }
 }
-
 #[cfg(feature = "backend-js")]
 #[test]
 fn mcp_recursive_target_freezes_selected_sources_and_preserves_file_boundaries() {
@@ -468,8 +459,8 @@ fn mcp_asar_dependency_capture_rejects_missing_and_linked_sources_and_releases_f
         root.path().to_str().unwrap(),
         "--backends",
         "asar",
-        "--max-live-captures",
-        "1",
+        "--max-snapshot-bytes",
+        "30000",
     ]);
     client.initialize();
     error(

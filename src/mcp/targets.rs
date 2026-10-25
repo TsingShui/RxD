@@ -1,16 +1,16 @@
 //! Process-local immutable input snapshots and bounded target lifetimes.
 //!
 //! A target owns private copies, not an open descriptor to a caller's mutable file.
-//! Acquiring an Arc retains storage and quota after the handle is closed or expires.
+//! Acquiring an Arc retains storage and its byte reservation after the handle is closed.
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
 };
 
+use super::resources::{ByteBudget, Reservation};
 use rxd_core::{Error, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -51,27 +51,15 @@ pub enum CaptureMode {
 
 #[derive(Clone, Copy, Debug)]
 pub struct TargetLimits {
-    pub max_targets: usize,
-    pub max_live_captures: usize,
     pub max_total_bytes: usize,
-    pub max_capture_bytes: usize,
-    pub max_files: usize,
     pub max_depth: usize,
-    pub max_directory_entries: usize,
-    pub ttl: Duration,
 }
 
 impl Default for TargetLimits {
     fn default() -> Self {
         Self {
-            max_targets: 64,
-            max_live_captures: 128,
             max_total_bytes: 1024 * 1024 * 1024,
-            max_capture_bytes: 256 * 1024 * 1024,
-            max_files: 10_000,
-            max_depth: 64,
-            max_directory_entries: 100_000,
-            ttl: Duration::from_secs(600),
+            max_depth: 256,
         }
     }
 }
@@ -175,67 +163,44 @@ struct Root {
     directory: File,
 }
 
-#[derive(Default)]
-struct Usage {
-    captures: usize,
-    bytes: usize,
-}
-
 struct CaptureLease {
-    usage: Arc<Mutex<Usage>>,
+    memory: Reservation,
     bytes: usize,
     limits: TargetLimits,
     control: Option<CaptureCheck>,
 }
 
 impl CaptureLease {
-    fn new(usage: Arc<Mutex<Usage>>, limits: TargetLimits, control: CaptureCheck) -> Result<Self> {
+    fn new(usage: ByteBudget, limits: TargetLimits, control: CaptureCheck) -> Result<Self> {
         control()?;
-        {
-            let mut current = usage.lock().map_err(|_| poisoned())?;
-            if current.captures >= limits.max_live_captures {
-                return Err(resource("live snapshot count budget exceeded"));
-            }
-            current.captures += 1;
-        }
         Ok(Self {
-            usage,
+            memory: usage.reserve(1024)?,
             bytes: 0,
             limits,
             control: Some(control),
         })
     }
-
     fn check(&self) -> Result<()> {
         check_capture(self.control.as_ref())
     }
-
     fn charge(&mut self, bytes: usize) -> Result<()> {
         self.check()?;
-        if bytes > self.limits.max_capture_bytes.saturating_sub(self.bytes) {
-            return Err(resource("snapshot capture byte budget exceeded"));
-        }
-        let mut current = self.usage.lock().map_err(|_| poisoned())?;
-        if bytes > self.limits.max_total_bytes.saturating_sub(current.bytes) {
-            return Err(resource("total snapshot byte budget exceeded"));
-        }
-        current.bytes += bytes;
-        self.bytes += bytes;
+        self.memory.grow(bytes)?;
+        self.bytes = self
+            .bytes
+            .checked_add(bytes)
+            .ok_or_else(|| resource("snapshot size overflows"))?;
         Ok(())
     }
-}
-
-impl Drop for CaptureLease {
-    fn drop(&mut self) {
-        let mut current = self.usage.lock().unwrap_or_else(|error| error.into_inner());
-        current.bytes = current.bytes.saturating_sub(self.bytes);
-        current.captures = current.captures.saturating_sub(1);
+    fn metadata(&mut self, bytes: usize) -> Result<()> {
+        self.check()?;
+        self.memory.grow(bytes)
     }
 }
 
 struct Handle {
     capture: Arc<CapturedInput>,
-    expires: Instant,
+    _memory: Reservation,
 }
 
 #[derive(Default)]
@@ -250,22 +215,16 @@ pub struct TargetStore {
     limits: TargetLimits,
     storage: Arc<TempDir>,
     storage_canonical: PathBuf,
-    usage: Arc<Mutex<Usage>>,
+    usage: ByteBudget,
     registry: Mutex<Registry>,
 }
 
 impl TargetStore {
     pub fn new(base: PathBuf, roots: Vec<PathBuf>, limits: TargetLimits) -> Result<Self> {
-        if limits.max_targets == 0
-            || limits.max_live_captures == 0
-            || limits.max_total_bytes == 0
-            || limits.max_capture_bytes == 0
-            || limits.max_files == 0
-            || limits.max_depth == 0
-            || limits.max_directory_entries == 0
-            || limits.ttl.is_zero()
-        {
-            return Err(invalid_query("snapshot limits must all be nonzero"));
+        if limits.max_total_bytes == 0 || limits.max_depth == 0 {
+            return Err(invalid_query(
+                "snapshot byte budget and depth must be positive",
+            ));
         }
         // Capture traversal runs in the protocol process, whose blocking threads
         // use a smaller stack than the isolated analysis worker. Never accept an
@@ -273,11 +232,6 @@ impl TargetStore {
         if limits.max_depth > 256 {
             return Err(invalid_query(
                 "snapshot depth cannot exceed the safe server ceiling of 256",
-            ));
-        }
-        if limits.max_capture_bytes > limits.max_total_bytes {
-            return Err(invalid_query(
-                "capture byte budget exceeds total snapshot budget",
             ));
         }
         if roots.is_empty() {
@@ -320,7 +274,7 @@ impl TargetStore {
             limits,
             storage,
             storage_canonical,
-            usage: Arc::new(Mutex::new(Usage::default())),
+            usage: ByteBudget::new(limits.max_total_bytes),
             registry: Mutex::new(Registry::default()),
         })
     }
@@ -337,8 +291,8 @@ impl TargetStore {
                 self.capture_paths(std::slice::from_ref(&path.path), mode, check)
             }
             InputRef::Target(target) => {
-                let mut registry = self.registry.lock().map_err(|_| poisoned())?;
-                expire(&mut registry);
+                let registry = self.registry.lock().map_err(|_| poisoned())?;
+
                 let capture = registry
                     .handles
                     .get(&target.target_id)
@@ -361,19 +315,11 @@ impl TargetStore {
 
     pub fn close(&self, target_id: &str) -> Result<()> {
         let mut registry = self.registry.lock().map_err(|_| poisoned())?;
-        expire(&mut registry);
         registry
             .handles
             .remove(target_id)
             .map(|_| ())
             .ok_or_else(target_invalid)
-    }
-
-    /// Release expired handles even when the service has no analysis requests.
-    pub fn purge_expired(&self) -> Result<()> {
-        let mut registry = self.registry.lock().map_err(|_| poisoned())?;
-        expire(&mut registry);
-        Ok(())
     }
 
     pub fn child(
@@ -383,9 +329,9 @@ impl TargetStore {
         origin: TargetOrigin,
         check: CaptureCheck,
     ) -> Result<TargetInfo> {
-        self.purge_expired()?;
         let name = safe_name(name)?;
-        let mut lease = CaptureLease::new(Arc::clone(&self.usage), self.limits, check)?;
+        let mut lease = CaptureLease::new(self.usage.clone(), self.limits, check)?;
+        lease.metadata(2048usize.saturating_add(origin.entry.len().saturating_mul(8)))?;
         lease.charge(bytes.len())?;
         let directory = tempfile::Builder::new()
             .prefix("child-")
@@ -428,10 +374,7 @@ impl TargetStore {
             ));
         }
         let mut registry = self.registry.lock().map_err(|_| poisoned())?;
-        expire(&mut registry);
-        if registry.handles.len() >= self.limits.max_targets {
-            return Err(resource("target handle count budget exceeded"));
-        }
+        let memory = self.usage.reserve(512)?;
         registry.serial = registry
             .serial
             .checked_add(1)
@@ -448,9 +391,7 @@ impl TargetStore {
             id,
             Handle {
                 capture,
-                expires: Instant::now()
-                    .checked_add(self.limits.ttl)
-                    .ok_or_else(|| invalid_query("target retention is too large"))?,
+                _memory: memory,
             },
         );
         Ok(info)
@@ -463,19 +404,12 @@ impl TargetStore {
         check: CaptureCheck,
     ) -> Result<Arc<CapturedInput>> {
         check()?;
-        {
-            let mut registry = self.registry.lock().map_err(|_| poisoned())?;
-            expire(&mut registry);
-        }
         if paths.is_empty() || (paths.len() != 1 && !matches!(mode, CaptureMode::Bundle)) {
             return Err(invalid_query(
                 "capture requires one path or an explicit input bundle",
             ));
         }
-        if paths.len() > self.limits.max_files {
-            return Err(resource("snapshot file count budget exceeded"));
-        }
-        let mut lease = CaptureLease::new(Arc::clone(&self.usage), self.limits, check)?;
+        let mut lease = CaptureLease::new(self.usage.clone(), self.limits, check)?;
         let directory = tempfile::Builder::new()
             .prefix("capture-")
             .tempdir_in(self.storage.path())?;
@@ -491,6 +425,11 @@ impl TargetStore {
             if matches!(mode, CaptureMode::JavaScriptDirectory) && canonical.is_dir() {
                 return self.capture_directory(original, canonical, directory, lease);
             }
+            lease.metadata(
+                1024usize
+                    .saturating_add(original.as_os_str().len().saturating_mul(8))
+                    .saturating_add(canonical.as_os_str().len().saturating_mul(8)),
+            )?;
             original_paths.push(original.clone());
             canonical_paths.push(canonical.clone());
             if let Some((path, info)) = seen.get(&original) {
@@ -572,7 +511,6 @@ impl TargetStore {
             Path::new(""),
             1,
             &mut WalkState {
-                entries: 0,
                 files: &mut files,
                 lease: &mut lease,
                 original_root: &original,
@@ -619,14 +557,6 @@ impl TargetStore {
         if capture.input.asar_dependencies_captured {
             return Ok(capture);
         }
-        if dependencies.len()
-            > self
-                .limits
-                .max_files
-                .saturating_sub(capture.input.files.len())
-        {
-            return Err(resource("snapshot dependency count budget exceeded"));
-        }
         let captured = Arc::get_mut(&mut capture).ok_or_else(|| {
             invalid_query("ASAR capture must be finalized before it is published or acquired")
         })?;
@@ -657,6 +587,12 @@ impl TargetStore {
         let original_unpacked = PathBuf::from(original_unpacked);
         let snapshot_unpacked = PathBuf::from(snapshot_unpacked);
         let mut seen = std::collections::HashSet::new();
+        captured._lease.metadata(
+            dependencies
+                .len()
+                .checked_mul(128)
+                .ok_or_else(|| resource("dependency metadata overflows"))?,
+        )?;
         for dependency in dependencies {
             captured._lease.check()?;
             validate_entry(&dependency.entry)?;
@@ -665,14 +601,6 @@ impl TargetStore {
             }
             if !seen.insert(&dependency.entry) {
                 return Err(invalid_input("duplicate ASAR dependency in worker plan"));
-            }
-            if dependency.size
-                > self
-                    .limits
-                    .max_capture_bytes
-                    .saturating_sub(captured._lease.bytes) as u64
-            {
-                return Err(resource("snapshot dependency byte budget exceeded"));
             }
             let relative = PathBuf::from(&dependency.entry);
             let original_path = original_unpacked.join(&relative);
@@ -786,13 +714,7 @@ fn walk_directory(
     if depth > state.lease.limits.max_depth {
         return Err(resource("snapshot directory depth budget exceeded"));
     }
-    let names = directory_names(
-        source,
-        &state.canonical_root.join(relative),
-        &mut state.entries,
-        state.lease.limits.max_directory_entries,
-        state.lease.control.as_ref(),
-    )?;
+    let names = directory_names(source, &state.canonical_root.join(relative), state.lease)?;
     for (name, kind) in names {
         state.lease.check()?;
         if name.to_str().is_none() {
@@ -820,9 +742,6 @@ fn walk_directory(
                     Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx")
                 ) =>
             {
-                if state.files.len() >= state.lease.limits.max_files {
-                    return Err(resource("snapshot file count budget exceeded"));
-                }
                 let file = open_child_file(source, &name, &canonical_path)?;
                 state.files.push(copy_file(
                     file,
@@ -846,7 +765,6 @@ fn walk_directory(
 }
 
 struct WalkState<'a> {
-    entries: usize,
     files: &'a mut Vec<InputInfo>,
     lease: &'a mut CaptureLease,
     original_root: &'a Path,
@@ -866,9 +784,7 @@ enum LocalKind {
 fn directory_names(
     source: &File,
     _original: &Path,
-    entries: &mut usize,
-    max: usize,
-    control: Option<&CaptureCheck>,
+    lease: &mut CaptureLease,
 ) -> Result<Vec<(std::ffi::OsString, LocalKind)>> {
     use std::{
         ffi::CStr,
@@ -901,7 +817,7 @@ fn directory_names(
     let stream = DirectoryStream(stream);
     let mut names = Vec::new();
     loop {
-        check_capture(control)?;
+        lease.check()?;
         set_errno(0);
         // SAFETY: stream remains live; each returned record is used before the next call.
         let item = unsafe { libc::readdir(stream.0) };
@@ -917,10 +833,7 @@ fn directory_names(
         if matches!(name, b"." | b"..") {
             continue;
         }
-        if *entries >= max {
-            return Err(resource("snapshot directory entry budget exceeded"));
-        }
-        *entries += 1;
+        lease.metadata(256usize.saturating_add(name.len().saturating_mul(8)))?;
         let name = std::ffi::OsStr::from_bytes(name).to_owned();
         let kind = directory_kind(source, &name)?;
         names.push((name, kind));
@@ -997,9 +910,7 @@ fn open_child_file(source: &File, name: &std::ffi::OsStr, _original: &Path) -> R
 fn directory_names(
     source: &File,
     _original: &Path,
-    entries: &mut usize,
-    max: usize,
-    control: Option<&CaptureCheck>,
+    lease: &mut CaptureLease,
 ) -> Result<Vec<(std::ffi::OsString, LocalKind)>> {
     use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
     #[repr(C)]
@@ -1028,7 +939,7 @@ fn directory_names(
     let mut names = Vec::new();
     let mut class = 11; // FileIdBothDirectoryRestartInfo, followed by continuation class 10.
     loop {
-        check_capture(control)?;
+        lease.check()?;
         // SAFETY: source is an opened directory, buffer is aligned writable memory.
         let status = unsafe {
             GetFileInformationByHandleEx(
@@ -1050,7 +961,7 @@ fn directory_names(
         let name_start = std::mem::offset_of!(DirectoryRecord, name);
         let mut offset = 0usize;
         loop {
-            check_capture(control)?;
+            lease.check()?;
             if offset
                 .checked_add(std::mem::size_of::<DirectoryRecord>())
                 .is_none_or(|end| end > bytes)
@@ -1082,10 +993,7 @@ fn directory_names(
             };
             let name = std::ffi::OsString::from_wide(name);
             if name != "." && name != ".." {
-                if *entries >= max {
-                    return Err(resource("snapshot directory entry budget exceeded"));
-                }
-                *entries += 1;
+                lease.metadata(256usize.saturating_add(name_bytes.saturating_mul(8)))?;
                 let kind = if record.attributes & (0x400 | 0x40) != 0 {
                     LocalKind::Other
                 } else if record.attributes & 0x10 != 0 {
@@ -1113,9 +1021,7 @@ fn directory_names(
 fn directory_names(
     _source: &File,
     _original: &Path,
-    _entries: &mut usize,
-    _max: usize,
-    _control: Option<&CaptureCheck>,
+    _lease: &mut CaptureLease,
 ) -> Result<Vec<(std::ffi::OsString, LocalKind)>> {
     Err(invalid_input(
         "snapshot directory handles are unsupported on this platform",
@@ -1142,11 +1048,6 @@ fn open_child_file(_source: &File, _name: &std::ffi::OsStr, original: &Path) -> 
     )
 }
 
-fn expire(registry: &mut Registry) {
-    let now = Instant::now();
-    registry.handles.retain(|_, handle| handle.expires > now);
-}
-
 fn copy_file(
     mut source: File,
     destination: &Path,
@@ -1159,9 +1060,15 @@ fn copy_file(
     if !before.is_file() {
         return Err(invalid_input("expected a regular local file"));
     }
-    if before.len() > lease.limits.max_capture_bytes.saturating_sub(lease.bytes) as u64 {
-        return Err(resource("snapshot capture byte budget exceeded"));
-    }
+    lease.metadata(
+        2048usize
+            .saturating_add(original_path.as_os_str().len().saturating_mul(8))
+            .saturating_add(
+                relative_path
+                    .as_ref()
+                    .map_or(0, |p| p.as_os_str().len().saturating_mul(8)),
+            ),
+    )?;
     let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1476,7 +1383,7 @@ fn invalid_input(message: &str) -> Error {
 fn target_invalid() -> Error {
     Error::new(
         "TARGET_INVALID",
-        "target is unknown, closed, expired, or belongs to another server process",
+        "target is unknown, closed, or belongs to another server process",
     )
 }
 fn poisoned() -> Error {

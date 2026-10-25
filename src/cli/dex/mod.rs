@@ -54,16 +54,6 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> rxd_c
     result
 }
 
-/// Execute in an isolated MCP worker, preserving domain errors for the typed adapter.
-#[cfg(feature = "mcp")]
-pub(crate) fn execute_query(command: Command, max_entry_bytes: usize) -> rxd_core::Result<i32> {
-    let mut policy = apk::ArchivePolicy::default();
-    policy.max_inflated_entry = policy.max_inflated_entry.min(max_entry_bytes);
-    run_command(command, policy)
-        .map(|()| 0)
-        .map_err(super::classify)
-}
-
 /// Whether an error is only a consumer that closed the pipe.
 fn is_broken_pipe(error: &anyhow::Error) -> bool {
     error.chain().any(|cause| {
@@ -125,8 +115,6 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
             // bytes a stable one would: equal lines are identical lines, and there is
             // nothing else to tie-break. Sorting a wide query's ~90k lines in parallel is
             // what keeps it off the main thread.
-            #[cfg(feature = "mcp")]
-            crate::query::check_records(hits.len())?;
             let sorted = scan_started.elapsed();
             // Assembling the payload line by line: a pre-sized buffer measured no faster
             // than letting the String grow (macOS's allocator re-extends the large block in
@@ -165,22 +153,6 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 args.threads,
                 args.perf,
             )?;
-            #[cfg(feature = "mcp")]
-            if crate::query::is_capturing() {
-                crate::query::check_records(
-                    classes
-                        .iter()
-                        .filter(|entry| {
-                            class
-                                .as_ref()
-                                .is_none_or(|wanted| entry.descriptor == *wanted)
-                                && filter.as_ref().is_none_or(|pattern| {
-                                    pattern.matches(&entry.java_name().replace('/', "."))
-                                })
-                        })
-                        .count(),
-                )?;
-            }
             let listed = started.elapsed();
             // Keep the existing parallel, ordered chunk rendering for large class indexes.
             const RENDER_CHUNK: usize = 8192;
@@ -249,8 +221,6 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 args.limit,
                 args.offset,
             )?;
-            #[cfg(feature = "mcp")]
-            crate::query::check_records(strings.len())?;
             let mut payload = String::new();
             {
                 use rayon::prelude::*;
@@ -344,8 +314,6 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 apk::list_entries(&args.apk_path)
             })?;
             rxd_dex::profile::count(rxd_dex::profile::Counter::Entries, entries.len() as u64);
-            #[cfg(feature = "mcp")]
-            crate::query::check_records(entries.len())?;
             let mut payload = String::new();
             let pattern = args
                 .filter

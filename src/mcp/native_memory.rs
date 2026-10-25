@@ -4,8 +4,6 @@ use crate::query::QueryError;
 use std::time::Duration;
 use tokio::process::Child;
 
-pub const MAX_RSS_BYTES: usize = 256 * 1024 * 1024;
-
 pub struct Monitor {
     process: platform::OwnedProcess,
     limit: u64,
@@ -13,10 +11,10 @@ pub struct Monitor {
 
 impl Monitor {
     pub fn new(child: &Child, limit: usize) -> Result<Self, QueryError> {
-        if limit == 0 || limit > MAX_RSS_BYTES {
+        if limit == 0 {
             return Err(QueryError::new(
                 "INVALID_QUERY",
-                "native worker RSS limit must be 1..=256 MiB",
+                "native worker RSS limit must be positive",
             ));
         }
         Ok(Self {

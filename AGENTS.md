@@ -279,8 +279,11 @@ coordinates and byte ranges against that input, and enforce explicit resource bu
 
 Ordinary CLI resource admission is input-scaled: work, metadata and bounded
 serialization grow with admitted input instead of fixed total quotas. Preserve format/address validation, recursion/cycle/expansion guards
-and explicit failure; never substitute an unlimited sentinel. MCP service quotas
-remain independent and unchanged. These envelopes are not hard RSS/time limits.
+and explicit failure; never substitute an unlimited sentinel. MCP uses the same
+input-scaled analysis policy and adds configurable service-wide snapshot/in-flight
+byte admission, worker/thread concurrency, deadlines and Native worker RSS protection.
+It has no separate file/entry/target counts or target TTL. Storage envelopes are not
+hard RSS/time limits.
 
 ## Agent skills
 

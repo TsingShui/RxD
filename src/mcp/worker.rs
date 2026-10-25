@@ -1,6 +1,7 @@
 //! Bounded one-shot analysis IPC. No parser is invoked in the protocol process.
+use super::resources::{ByteBudget, Reservation, json_envelope};
 use super::targets::{AsarDependency, WorkerInput};
-use crate::query::{CapturedInput, QueryBudgets, QueryError, QueryResult};
+use crate::query::{CapturedInput, QueryError, QueryOptions, QueryResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -20,12 +21,10 @@ pub enum WorkerRequest {
         name: String,
         arguments: Value,
         inputs: Vec<WorkerInput>,
-        budgets: QueryBudgets,
+        options: QueryOptions,
     },
     AsarPlan {
         input: WorkerInput,
-        max_files: usize,
-        output_bytes: usize,
     },
 }
 #[derive(Serialize, Deserialize)]
@@ -39,17 +38,13 @@ struct WorkerReply {
 }
 
 #[cfg(feature = "backend-asar")]
-fn plan_asar(
-    input: WorkerInput,
-    max_files: usize,
-    output_bytes: usize,
-) -> Result<WorkerPayload, QueryError> {
+fn plan_asar(input: WorkerInput) -> Result<WorkerPayload, QueryError> {
     let path = input
         .paths
         .first()
         .ok_or_else(|| QueryError::new("INVALID_QUERY", "ASAR capture has no input"))?;
-    let _ = output_bytes;
-    let limits = rxd_core::Limits::default();
+    let budget = rxd_core::BudgetPolicy::InputScaled.for_file(path)?;
+    let limits = budget.into();
     let mut perf = rxd_core::perf::Perf::new(false, "analysis", "asar", "entries");
     let rxd_asar::Response::List(bytes) = rxd_asar::run(
         rxd_asar::Query::Entries {
@@ -60,8 +55,8 @@ fn plan_asar(
             input: path,
             output: None,
             limits,
-            max_entries: max_files,
-            max_header_bytes: 8 * 1024 * 1024,
+            max_entries: budget.entries,
+            max_header_bytes: budget.metadata_bytes,
         },
         &mut perf,
     )
@@ -92,11 +87,7 @@ fn plan_asar(
 }
 
 #[cfg(not(feature = "backend-asar"))]
-fn plan_asar(
-    _input: WorkerInput,
-    _max_files: usize,
-    _output_bytes: usize,
-) -> Result<WorkerPayload, QueryError> {
+fn plan_asar(_input: WorkerInput) -> Result<WorkerPayload, QueryError> {
     Err(QueryError::new(
         "INVALID_QUERY",
         "ASAR backend is not enabled in this build",
@@ -126,18 +117,14 @@ pub fn entry(limit: usize) -> ExitCode {
                     name,
                     arguments,
                     inputs,
-                    budgets,
+                    options,
                 } => {
                     let inputs: Vec<CapturedInput> =
                         inputs.into_iter().flat_map(query_inputs).collect();
-                    crate::query::execute(&name, arguments, &inputs, budgets)
+                    crate::query::execute(&name, arguments, &inputs, options)
                         .map(WorkerPayload::Query)
                 }
-                WorkerRequest::AsarPlan {
-                    input,
-                    max_files,
-                    output_bytes,
-                } => plan_asar(input, max_files, output_bytes),
+                WorkerRequest::AsarPlan { input } => plan_asar(input),
             }
         })
         .map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))
@@ -191,12 +178,16 @@ impl Write for LimitedBuffer {
 
 pub async fn run(
     request: WorkerRequest,
-    limit: usize,
+    bytes: ByteBudget,
     native_rss_limit: usize,
     deadline: Duration,
     cancellation: CancellationToken,
     shutdown: CancellationToken,
-) -> Result<WorkerPayload, QueryError> {
+) -> Result<(WorkerPayload, Reservation), QueryError> {
+    let limit = bytes.limit();
+    let mut memory = bytes
+        .reserve(json_envelope(&request, limit).map_err(QueryError::from)?)
+        .map_err(QueryError::from)?;
     let native = matches!(&request, WorkerRequest::Query {name, ..} if name.starts_with("kuna_"));
     let mut wire = LimitedBuffer {
         bytes: Vec::new(),
@@ -204,6 +195,7 @@ pub async fn run(
     };
     serde_json::to_writer(&mut wire, &request)
         .map_err(|_| QueryError::new("RESOURCE_LIMIT", "worker request IPC budget exceeded"))?;
+
     let executable =
         std::env::current_exe().map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))?;
     let mut command = Command::new(executable);
@@ -228,7 +220,7 @@ pub async fn run(
     } else {
         None
     };
-    let memory = async {
+    let rss = async {
         match monitor {
             Some(monitor) => monitor.exceeded().await,
             None => std::future::pending().await,
@@ -267,7 +259,7 @@ pub async fn run(
         };
         let (_, output, diagnostics, status) = tokio::try_join!(
             send,
-            read_bounded(stdout, limit),
+            read_shared(stdout, &mut memory),
             read_bounded(stderr, 64 * 1024),
             wait
         )?;
@@ -286,7 +278,7 @@ pub async fn run(
         reply.result
     };
     let result = tokio::select! {
-        error=memory=>Err(error),
+        error=rss=>Err(error),
         result=operation=>result,
         _=cancellation.cancelled()=>Err(QueryError::new("CANCELLED","analysis request cancelled")),
         _=shutdown.cancelled()=>Err(QueryError::new("CANCELLED","server transport closed")),
@@ -297,8 +289,37 @@ pub async fn run(
         let _ = child.start_kill();
     }
     let _ = child.wait().await;
-    result
+    result.map(|reply| (reply, memory))
 }
+async fn read_shared(
+    mut reader: impl AsyncRead + Unpin,
+    memory: &mut Reservation,
+) -> Result<Vec<u8>, QueryError> {
+    let mut bytes = Vec::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .await
+            .map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))?;
+        if count == 0 {
+            break;
+        }
+        memory
+            .grow(
+                count
+                    .checked_mul(12)
+                    .ok_or_else(|| QueryError::new("RESOURCE_LIMIT", "IPC metadata overflow"))?,
+            )
+            .map_err(QueryError::from)?;
+        bytes
+            .try_reserve(count)
+            .map_err(|_| QueryError::new("RESOURCE_LIMIT", "IPC allocation failed"))?;
+        bytes.extend_from_slice(&buffer[..count]);
+    }
+    Ok(bytes)
+}
+
 async fn read_bounded(reader: impl AsyncRead + Unpin, limit: usize) -> Result<Vec<u8>, QueryError> {
     let mut bytes = Vec::new();
     reader

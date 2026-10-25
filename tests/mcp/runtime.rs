@@ -29,19 +29,21 @@ fn error(response: &Value, code: &str) {
 }
 
 #[test]
-fn mcp_complete_responses_and_worker_ipc_fail_explicitly_at_budgets() {
+fn mcp_shared_inflight_budget_rejects_large_output_and_recovers() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("source.js");
     fs::write(
         &path,
-        format!("function large(){{return \"{}\";}}", "x".repeat(10_000)),
+        format!(r#"function large(){{return "{}";}}"#, "x".repeat(10_000)),
     )
     .unwrap();
     let mut client = Client::start(&[
         "--root",
         root.path().to_str().unwrap(),
-        "--max-response-bytes",
-        "16384",
+        "--backends",
+        "js",
+        "--max-inflight-bytes",
+        "131072",
     ]);
     client.initialize();
     let entities = client.tool("js_entities", json!({"input":{"path":path}}));
@@ -53,20 +55,12 @@ fn mcp_complete_responses_and_worker_ipc_fail_explicitly_at_budgets() {
         fetched["structuredContent"]["error"]["code"],
         "RESOURCE_LIMIT"
     );
-    let mut ipc = Client::start(&[
-        "--root",
-        root.path().to_str().unwrap(),
-        "--max-worker-bytes",
-        "256",
-    ]);
-    ipc.initialize();
-    let failed = ipc.tool("js_entities", json!({"input":{"path":path}}));
-    assert_eq!(
-        failed["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
-        "{failed}"
+    assert!(fetched["structuredContent"].get("detail").is_none());
+    assert_ne!(
+        client.tool("js_entities", json!({"input":{"path":path}}))["isError"],
+        true
     );
 }
-
 #[test]
 fn mcp_deadline_failure_leaves_the_protocol_process_usable() {
     let (root, large, _small) = fixture();
@@ -272,41 +266,47 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
 }
 
 #[test]
-fn mcp_response_budget_includes_rpc_identity_and_rolls_back_unreachable_targets() {
+fn mcp_inflight_budget_counts_rpc_identity_and_rolls_back_unreachable_targets() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("source.js");
-    fs::write(&path, "function original(){}\n").unwrap();
+    fs::write(
+        &path,
+        "function original(){}
+",
+    )
+    .unwrap();
     let mut client = Client::start(&[
         "--root",
         root.path().to_str().unwrap(),
-        "--max-response-bytes",
-        "4096",
-        "--max-targets",
-        "1",
+        "--backends",
+        "js",
+        "--max-inflight-bytes",
+        "65536",
+        "--max-snapshot-bytes",
+        "10000",
     ]);
     client.initialize();
-    let long_id = "x".repeat(3000);
+    let long_id = "x".repeat(4500);
     client.send(json!({"jsonrpc":"2.0","id":long_id,"method":"tools/call","params":{"name":"rxd_open","arguments":{"path":path}}}));
     let response = client.receive();
     assert_eq!(response["id"], long_id);
     error(&response, "RESOURCE_LIMIT");
-    let opened = client.tool("rxd_open", json!({"path":path}));
-    assert_ne!(opened["isError"], true, "{opened}");
-    let closed = client.tool(
-        "rxd_close",
-        json!({"target_id":opened["structuredContent"]["target_id"]}),
-    );
-    assert_ne!(closed["isError"], true, "{closed}");
-    client.send(json!({"jsonrpc":"2.0","id":"x".repeat(5000),"method":"tools/call","params":{"name":"rxd_open","arguments":{"path":path}}}));
-    let rejected = client.receive();
-    assert!(rejected["id"].is_null(), "{rejected}");
-    assert_eq!(rejected["error"]["code"], -32600, "{rejected}");
-    assert_ne!(
-        client.tool("rxd_open", json!({"path":path}))["isError"],
-        true
-    );
+    // String IDs must release the same reservation/key as transport admission.
+    for index in 0..20 {
+        let id = format!("open-{index}");
+        client.send(json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"rxd_open","arguments":{"path":path}}}));
+        let opened = client.receive();
+        assert_eq!(opened["id"], id);
+        assert_ne!(opened["result"]["isError"], true, "{opened}");
+        assert_ne!(
+            client.tool(
+                "rxd_close",
+                json!({"target_id":opened["result"]["structuredContent"]["target_id"]})
+            )["isError"],
+            true
+        );
+    }
 }
-
 #[test]
 #[cfg(target_os = "linux")]
 fn mcp_unrepresentable_snapshot_metadata_does_not_leak_a_target_slot() {
@@ -324,8 +324,8 @@ fn mcp_unrepresentable_snapshot_metadata_does_not_leak_a_target_slot() {
     let mut client = Client::start(&[
         "--root",
         root.path().to_str().unwrap(),
-        "--max-targets",
-        "1",
+        "--max-snapshot-bytes",
+        "10000",
     ]);
     client.initialize();
     let invalid = client.tool("rxd_open", json!({"path":directory,"backend":"js"}));

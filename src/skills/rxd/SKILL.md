@@ -59,8 +59,10 @@ container handling is planned, not an available command.
 - Narrow before FETCH with selectors (`-f`, `--kind`, `--class`, `--within`,
   `--depth`). Ordinary CLI work, metadata and serialization bounds grow with the
   admitted input, rather than using fixed total quotas. Format, recursion and
-  expansion guards remain; MCP retains independent fixed service quotas. There is
-  no `--max-*` flag to tune. Resource failure is not evidence of absence, and
+  expansion guards remain. MCP shares that analysis policy; its adjustable
+  service-wide storage/concurrency/deadline protections are listed by
+  `rxd mcp serve --help`, not per-query `limits`. Backend CLI queries have no
+  `--max-*` flags. Resource failure is not evidence of absence, and
   partial output is never discarded silently.
   Zero hits in a complete query are valid within that query's stated scope.
 - Default JS `slice` returns original bytes. Java/C#/C-like/Python reconstruction is

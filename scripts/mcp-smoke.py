@@ -5,7 +5,6 @@ import hashlib
 import os
 from pathlib import Path
 import tempfile
-from input_identity import input_id
 from mcp_client import Client, structured
 
 
@@ -19,22 +18,22 @@ def verify(binary, directory, env, expect_native=False):
             client.initialize()
             packet, _, _ = client.request('tools/list', {})
             names = {tool['name'] for tool in packet['result']['tools']}
-            assert {'rxd_open', 'rxd_close', 'js_find', 'js_get', 'evm_analyze'} <= names
+            assert {'rxd_open', 'rxd_close', 'js_find', 'js_slice', 'evm_analyze'} <= names
             assert ('kuna_functions' in names) == expect_native, names
             opened = structured(client.tool('rxd_open', {'path': str(source)})[0])
-            assert opened['source_id'] == input_id(original)
+            assert opened['source_id'] == hashlib.sha256(original).hexdigest()
             source.write_bytes(b'changed source')
-            selected = {'input': {'target_id': opened['target_id']}, 'string': 'MCP'}
+            selected = {'input': {'target_id': opened['target_id']}, 'filter': 'MCP'}
             found = structured(client.tool('js_find', selected)[0])
-            assert found['summary']['complete'] and len(found['records']) == 1, found
+            assert len(found['records']) == 1, found
             record = found['records'][0]
             assert record['detail']['value'] == 'MCP \u03bb', record
-            fetched = structured(client.tool('js_get', {
+            fetched = structured(client.tool('js_slice', {
                 'input': selected['input'], 'at': record['context_at']})[0])
             assert fetched['detail']['source'].encode() == original[fetched['start']:fetched['end']], fetched
             outlined = structured(client.tool('js_entities', {'input': selected['input']})[0])
-            root = outlined['header']['detail']['root_id']
-            fetched = structured(client.tool('js_get', {'input': selected['input'], 'at': root})[0])
+            root = next(row['at'] for row in outlined['records'] if row['detail']['kind'] == 'program')
+            fetched = structured(client.tool('js_slice', {'input': selected['input'], 'at': root})[0])
             assert fetched['detail']['source'].encode() == original, fetched
             closed = structured(client.tool('rxd_close', {'target_id': opened['target_id']})[0])
             assert closed['target_id'] == opened['target_id'], closed

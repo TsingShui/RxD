@@ -60,8 +60,9 @@ try {
 }
 ```
 
-The copied input stays fixed even if the original path changes. Handles expire and belong
-to one server process. Direct one-shot calls need no open:
+The copied input stays fixed even if the original path changes. Handles belong to one
+server process and stay valid until `rxd_close` or shutdown; there is no TTL. Direct
+one-shot calls need no open:
 
 ```js
 const out = await call("jar_methods", {
@@ -99,6 +100,18 @@ Directory targets require `backend: "js"`. A complete ambiguous candidate result
 domain error, not one arbitrarily chosen definition. EVM always requires explicit
 `encoding: "raw"` or `"hex"`. Kuna functions/decompile are available only in linked builds.
 No result creates new DEX/EVM entity IDs or guarantees decompiled semantic equivalence.
+
+Backend analysis uses the same finite, input-scaled budget policy as the CLI. There
+are no MCP-only work, instruction, record, file, entry, capture or target-count quotas
+and no per-query `limits` object. Structural depth, expansion and address checks remain.
+
+`rxd mcp serve --help` lists the adjustable service protections: incoming frames,
+active requests, workers/threads, deadlines, shared snapshot storage (including
+metadata and empty files), shared in-flight request/IPC/response storage, and sampled
+Kuna worker RSS. Snapshot and in-flight envelopes default to 1 GiB each; these are
+accounted storage envelopes, not hard process RSS limits. Failed or cancelled
+requests release their reservations and undelivered child targets. Raise service
+settings explicitly for larger workloads. ILSpy retains its native-layer limits.
 
 A standard-library relocated smoke is available during development:
 

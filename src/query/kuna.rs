@@ -1,42 +1,15 @@
 //! Whitelisted typed calls to the unchanged native Kuna producer, worker-only.
 use super::kuna_dto::{Decompilation, FunctionInventory, Nullable};
-use super::{CapturedInput, QueryBudgets, QueryError, QueryResult, catalog::ToolDefinition};
+use super::{CapturedInput, QueryError, QueryResult, catalog::ToolDefinition};
 use crate::mcp::targets::{InputRef, PathInput, TargetInput};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const NATIVE_MAX_INSTRUCTIONS: usize = 100_000;
-
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct FunctionsArgs {
     input: InputRef,
-    limits: Option<FunctionsLimits>,
-}
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct FunctionsLimits {
-    #[schemars(range(min = 1))]
-    input_bytes: Option<usize>,
-    #[schemars(range(min = 1))]
-    output_bytes: Option<usize>,
-    #[schemars(range(min = 1))]
-    records: Option<usize>,
-    #[schemars(range(min = 1))]
-    entities: Option<usize>,
-}
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct DecompileLimits {
-    #[schemars(range(min = 1))]
-    input_bytes: Option<usize>,
-    #[schemars(range(min = 1))]
-    output_bytes: Option<usize>,
-    #[schemars(range(min = 1))]
-    records: Option<usize>,
-    #[schemars(range(min = 1))]
-    instructions: Option<usize>,
 }
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -44,7 +17,6 @@ struct NamedArgs {
     input: InputRef,
     #[schemars(length(min = 1, max = 4096))]
     name: String,
-    limits: Option<DecompileLimits>,
 }
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -52,7 +24,6 @@ struct AddressArgs {
     input: InputRef,
     #[schemars(regex(pattern = "^0[xX][0-9a-fA-F]{1,16}$"))]
     address: String,
-    limits: Option<DecompileLimits>,
 }
 #[derive(Deserialize, JsonSchema)]
 #[serde(untagged)]
@@ -117,18 +88,10 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
         "kuna_functions" => {
             let args: FunctionsArgs = decode(arguments)?;
             validate_input(&args.input)?;
-            if let Some(limits) = args.limits {
-                positive([
-                    limits.input_bytes,
-                    limits.output_bytes,
-                    limits.records,
-                    limits.entities,
-                ])?;
-            }
         }
         "kuna_decompile" => {
             let args: DecompileArgs = decode(arguments)?;
-            let limits = match args {
+            match args {
                 DecompileArgs::Name(args) => {
                     validate_input(&args.input)?;
                     if args.name.is_empty()
@@ -144,7 +107,6 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
                             "native name must be one unambiguous non-flag selector; use returned address_hex for special names",
                         ));
                     }
-                    args.limits
                 }
                 DecompileArgs::Address(args) => {
                     validate_input(&args.input)?;
@@ -162,17 +124,8 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
                             "native address must be exact 0x-prefixed hexadecimal (1..16 digits)",
                         ));
                     }
-                    args.limits
                 }
             };
-            if let Some(limits) = limits {
-                positive([
-                    limits.input_bytes,
-                    limits.output_bytes,
-                    limits.records,
-                    limits.instructions,
-                ])?;
-            }
         }
         _ => {
             return Err(QueryError::new(
@@ -184,15 +137,6 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
     Ok(())
 }
 
-fn positive<const N: usize>(limits: [Option<usize>; N]) -> Result<(), QueryError> {
-    if limits.into_iter().flatten().any(|limit| limit == 0) {
-        return Err(QueryError::new(
-            "INVALID_QUERY",
-            "native request limits must be positive",
-        ));
-    }
-    Ok(())
-}
 fn validate_input(input: &InputRef) -> Result<(), QueryError> {
     let value = match input {
         InputRef::Path(PathInput { path }) => path
@@ -217,7 +161,7 @@ pub fn execute(
     name: &str,
     arguments: &Value,
     input: &CapturedInput,
-    budgets: QueryBudgets,
+    budget: rxd_core::Budget,
 ) -> Result<QueryResult, QueryError> {
     let input_bytes = input.input_bytes.map_or_else(
         || {
@@ -227,7 +171,7 @@ pub fn execute(
         },
         |bytes| Ok(bytes as u64),
     )?;
-    if input_bytes > budgets.input_bytes as u64 {
+    if input_bytes > budget.input_bytes as u64 {
         return Err(QueryError::new(
             "RESOURCE_LIMIT",
             "native input byte budget exceeded",
@@ -240,10 +184,9 @@ pub fn execute(
     let logical = input.original_path.to_str().ok_or_else(|| {
         QueryError::new("INVALID_QUERY", "native logical input path must be UTF-8")
     })?;
-    let instructions = budgets.instructions.min(NATIVE_MAX_INSTRUCTIONS);
+    let instructions = budget.instructions.min(u32::MAX as usize);
     match name {
         "kuna_functions" => {
-            let cap = budgets.records.min(budgets.entities);
             let args = vec![
                 "functions".into(),
                 path.into(),
@@ -253,10 +196,8 @@ pub fn execute(
                 "--option".into(),
                 "maxinstruction".into(),
                 instructions.to_string(),
-                "--limit".into(),
-                cap.saturating_add(1).to_string(),
             ];
-            let (status, bytes) = run(args, budgets.output_bytes)?;
+            let (status, bytes) = run(args, budget.output_bytes)?;
             let mut document: FunctionInventory = parse(&bytes, status)?;
             document.binary = logical.to_owned();
             restore_error(&mut document.error.0, path, logical);
@@ -264,12 +205,6 @@ pub fn execute(
                 return Err(QueryError::new(
                     "WORKER_ERROR",
                     "native function count differs from emitted records",
-                ));
-            }
-            if document.total > cap as u64 || document.count > cap as u64 {
-                return Err(QueryError::new(
-                    "RESOURCE_LIMIT",
-                    "native function record/entity budget exceeded",
                 ));
             }
             if let Some(message) = document.error.0.clone() {
@@ -307,7 +242,7 @@ pub fn execute(
             if address {
                 args.push("--addr".into());
             }
-            let (status, bytes) = run(args, budgets.output_bytes)?;
+            let (status, bytes) = run(args, budget.output_bytes)?;
             let mut document: Decompilation = parse(&bytes, status)?;
             document.binary = logical.to_owned();
             restore_error(&mut document.error.0, path, logical);
@@ -326,12 +261,6 @@ pub fn execute(
                     "native name selected multiple functions; use returned address_hex".into(),
                     document,
                 );
-            }
-            if document.count > budgets.records as u64 {
-                return Err(QueryError::new(
-                    "RESOURCE_LIMIT",
-                    "native function record budget exceeded",
-                ));
             }
             let failure = document.error.0.clone().or_else(|| {
                 document

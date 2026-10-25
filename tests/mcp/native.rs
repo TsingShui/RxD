@@ -223,10 +223,10 @@ fn mcp_native_ambiguous_name_preserves_complete_native_error_and_address_navigat
 }
 
 #[test]
-fn mcp_native_instruction_budget_preserves_native_failure_without_partial_success() {
+fn mcp_native_rejects_removed_instruction_limits_and_decompiles_completely() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let path = fixture();
-    let mut client = Client::start(&["--root", root.to_str().unwrap()]);
+    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "kuna"]);
     client.initialize();
     let result = client.tool(
         "kuna_decompile",
@@ -234,53 +234,29 @@ fn mcp_native_instruction_budget_preserves_native_failure_without_partial_succes
     );
     assert_eq!(result["isError"], true, "{result}");
     assert_eq!(
-        result["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
-        "{result}"
+        result["structuredContent"]["error"]["code"],
+        "INVALID_QUERY"
     );
-    let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args([
-            "kuna",
-            "decompile",
-            path.to_str().unwrap(),
-            "main",
-            "--json",
-            "--option",
-            "maxinstruction",
-            "1",
-            "--option",
-            "errortoomanyinstructions",
-            "on",
-        ])
-        .output()
-        .unwrap();
-    assert!(!cli.status.success());
-    let expected: Value = serde_json::from_slice(&cli.stdout).unwrap();
-    assert_eq!(result["structuredContent"]["error"]["candidates"], expected);
-    assert!(
-        expected["functions"][0]["error"]
-            .as_str()
-            .unwrap()
-            .contains("Flow exceeded maximum allowable instructions")
-    );
-    let catalog = client.request("tools/list", json!({}));
-    let schema = &catalog["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == "kuna_decompile")
-        .unwrap()["outputSchema"];
-    assert_schema(&result["structuredContent"], schema);
     let recovery = client.tool(
         "kuna_decompile",
         json!({"input":{"path":path},"name":"main"}),
     );
     assert_ne!(recovery["isError"], true, "{recovery}");
+    assert_eq!(recovery["structuredContent"]["count"], 1);
+    let tools = client.request("tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "kuna_decompile")
+        .unwrap();
+    assert!(!tool["inputSchema"].to_string().contains("DecompileLimits"));
+    assert_schema(&recovery["structuredContent"], &tool["outputSchema"]);
 }
-
 #[test]
-fn mcp_native_inventory_byte_and_record_budgets_fail_completely_and_recover() {
+fn mcp_native_inventory_has_no_ignored_byte_or_record_limit_parameters() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut client = Client::start(&["--root", root.to_str().unwrap()]);
+    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "kuna"]);
     client.initialize();
     for limits in [
         json!({"input_bytes":1}),
@@ -294,23 +270,16 @@ fn mcp_native_inventory_byte_and_record_budgets_fail_completely_and_recover() {
         );
         assert_eq!(result["isError"], true, "{result}");
         assert_eq!(
-            result["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
-            "{result}"
+            result["structuredContent"]["error"]["code"],
+            "INVALID_QUERY"
         );
-        assert!(
-            result["structuredContent"].get("functions").is_none(),
-            "{result}"
-        );
+        assert!(result["structuredContent"].get("functions").is_none());
     }
-    let complete = client.tool(
-        "kuna_functions",
-        json!({"input":{"path":fixture()},"limits":{"records":21,"entities":21}}),
-    );
+    let complete = client.tool("kuna_functions", json!({"input":{"path":fixture()}}));
     assert_ne!(complete["isError"], true, "{complete}");
     assert_eq!(complete["structuredContent"]["count"], 21);
     assert_eq!(complete["structuredContent"]["total"], 21);
 }
-
 #[test]
 fn mcp_native_selectors_cannot_inject_flags_multi_selection_or_external_io() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

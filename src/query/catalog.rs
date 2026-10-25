@@ -4,7 +4,7 @@
 //! descriptions, flags, types and enums; this module only adds the MCP-specific
 //! envelope (captured inputs, artifact output, server resource ceilings) and the
 //! output schema.
-use super::{CapturedInput, QueryBudgets, QueryError, reflect, schema};
+use super::{CapturedInput, QueryError, reflect, schema};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -141,22 +141,22 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
 /// Apply the server's thread budget to a command that declares `--threads`. Every other
 /// ceiling lives in `rxd_core::Budget` and has no CLI flag, so nothing else is projected:
 /// a caller may ask for fewer threads, never for more, and no backend flag is invented.
-fn bound_threads(spec: &reflect::ToolSpec, b: QueryBudgets) -> Option<(&'static str, usize)> {
+fn bound_threads(spec: &reflect::ToolSpec, threads: usize) -> Option<(&'static str, usize)> {
     spec.exposed()
         .any(|arg| arg.key == "threads")
-        .then_some(("threads", b.threads))
+        .then_some(("threads", threads))
 }
 
 pub(super) fn argv(
     name: &str,
     arguments: &Value,
     inputs: &[CapturedInput],
-    b: QueryBudgets,
+    threads: usize,
 ) -> Result<Vec<std::ffi::OsString>, QueryError> {
     let spec = spec(name)?;
     let paths: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
     let mut arguments = arguments.clone();
-    if let Some((key, ceiling)) = bound_threads(&spec, b) {
+    if let Some((key, ceiling)) = bound_threads(&spec, threads) {
         let requested = arguments
             .get(key)
             .and_then(Value::as_u64)

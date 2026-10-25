@@ -408,10 +408,7 @@ pub fn restore_default_sigpipe() {
 pub fn restore_default_sigpipe() {}
 
 pub fn execute(cli: Cli) -> Result<i32> {
-    execute_with_policy(cli, rxd_core::BudgetPolicy::InputScaled)
-}
-
-fn execute_with_policy(cli: Cli, policy: rxd_core::BudgetPolicy) -> Result<i32> {
+    let policy = rxd_core::BudgetPolicy::InputScaled;
     let _ = policy;
     match cli.backend {
         #[cfg(feature = "mcp")]
@@ -439,20 +436,6 @@ fn execute_with_policy(cli: Cli, policy: rxd_core::BudgetPolicy) -> Result<i32> 
         Backend::Pyc { command } => pyc::execute(command, policy).map(|()| 0),
     }
 }
-#[cfg(feature = "mcp")]
-pub(crate) fn execute_query(cli: Cli, input_limit: usize) -> Result<i32> {
-    #[cfg(not(feature = "backend-dex"))]
-    let _ = input_limit;
-    match cli.backend {
-        #[cfg(feature = "backend-dex")]
-        Backend::Dex { command } => dex::execute_query(command, input_limit),
-        _ => execute_with_policy(
-            cli,
-            rxd_core::BudgetPolicy::Fixed(rxd_core::Budget::default()),
-        ),
-    }
-}
-
 /// Default worker count for a parallel scan phase.
 ///
 /// One worker per logical CPU. Each phase here holds one parsed unit resident per worker

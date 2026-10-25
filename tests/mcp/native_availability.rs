@@ -50,12 +50,14 @@ fn mcp_native_catalog_reports_only_compiled_coverage_with_object_root_schemas() 
 }
 
 #[test]
-fn mcp_native_worker_memory_ceiling_rejects_unsafe_server_configuration() {
+fn mcp_native_worker_memory_limit_is_adjustable_without_a_fixed_ceiling() {
+    let mut client = Client::start(&["--max-native-worker-bytes", "2147483648"]);
+    client.initialize();
+    assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["mcp", "serve", "--max-native-worker-bytes", "268435457"])
+        .args(["mcp", "serve", "--max-native-worker-bytes", "0"])
         .output()
         .unwrap();
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("native worker RSS limit"));
 }

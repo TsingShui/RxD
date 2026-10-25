@@ -145,19 +145,18 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
 
 #[cfg(feature = "backend-dotnet")]
 #[test]
-fn mcp_keeps_independent_fixed_service_budgets_after_cli_input_scaling() {
+fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
-    // The CLI scales its output envelope with the input. This server fixes a much
-    // smaller response-derived projection budget, so the same request is admitted by
-    // the CLI and rejected by the service.
+    // CLI and MCP share the input-scaled analysis policy. A deliberately small
+    // service-wide storage envelope rejects this result without narrowing its rows.
     let mut client = Client::start(&[
         "--root",
         root.to_str().unwrap(),
         "--backends",
         "dotnet",
-        "--max-response-bytes",
-        "1024",
+        "--max-inflight-bytes",
+        "16384",
     ]);
     client.initialize();
     let rejected = client.tool(
@@ -190,6 +189,63 @@ fn mcp_keeps_independent_fixed_service_budgets_after_cli_input_scaling() {
         String::from_utf8_lossy(&cli.stderr)
     );
 }
+#[cfg(feature = "backend-dotnet")]
+#[test]
+fn mcp_input_scaled_dotnet_xref_finishes_above_the_old_fixed_work_budget() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
+    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "dotnet"]);
+    client.initialize();
+    let result = client.tool(
+        "dotnet_xref",
+        json!({"input":{"path":input},"kind":"string","match":"__rxd_nonexistent_budget_probe__"}),
+    );
+    assert_ne!(result["isError"], true, "{result}");
+    assert!(
+        result["structuredContent"]["records"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[cfg(feature = "backend-js")]
+#[test]
+fn mcp_input_scaled_listings_can_exceed_the_old_row_and_output_quotas() {
+    let root = tempfile::tempdir().unwrap();
+    let input = root.path().join("literals.js");
+    // More than the old 100,000-row quota; complete JSON also exceeds 8 MiB.
+    std::fs::write(&input, r#""x";"#.repeat(100_001)).unwrap();
+    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    client.initialize();
+    let result = client.tool("js_find", json!({"input":{"path":input},"filter":"x"}));
+    assert_ne!(
+        result["isError"], true,
+        "MCP rejected an input-scaled listing"
+    );
+    let records = result["structuredContent"]["records"].as_array().unwrap();
+    assert_eq!(records.len(), 100_001);
+    let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["js", "find"])
+        .arg(&input)
+        .args(["-f", "x"])
+        .output()
+        .unwrap();
+    assert!(
+        cli.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    assert!(cli.stdout.len() > 8 * 1024 * 1024);
+    for (record, line) in records.iter().zip(
+        cli.stdout
+            .split(|b| *b == b'\n')
+            .filter(|line| !line.is_empty()),
+    ) {
+        assert_eq!(record, &serde_json::from_slice::<Value>(line).unwrap());
+    }
+}
+
 #[cfg(feature = "backend-js")]
 #[test]
 fn mcp_js_navigation_preserves_cli_identity_and_source() {
@@ -712,8 +768,8 @@ fn mcp_html_entries_filters_follow_cli_semantics_and_the_response_budget_fails()
         directory.path().to_str().unwrap(),
         "--backends",
         "html",
-        "--max-response-bytes",
-        "1024",
+        "--max-inflight-bytes",
+        "16384",
     ]);
     bounded.initialize();
     let rejected = bounded.tool("html_entries", json!({"input":{"path":input}}));
@@ -925,15 +981,15 @@ fn mcp_html_extract_failure_paths_do_not_leak_children() {
         .unwrap()
         .to_owned();
 
-    // Publication failure (target-handle budget) leaves no unreachable child.
+    // Publication failure (snapshot byte budget) leaves no unreachable child.
     {
         let mut client = Client::start(&[
             "--root",
             directory.path().to_str().unwrap(),
             "--backends",
             "html",
-            "--max-targets",
-            "1",
+            "--max-snapshot-bytes",
+            "7000",
         ]);
         client.initialize();
         let opened = client.tool("rxd_open", json!({"path":input,"backend":"html"}));
@@ -964,10 +1020,10 @@ fn mcp_html_extract_failure_paths_do_not_leak_children() {
             directory.path().to_str().unwrap(),
             "--backends",
             "html",
-            "--max-response-bytes",
-            "16384",
-            "--max-targets",
-            "2",
+            "--max-inflight-bytes",
+            "65536",
+            "--max-snapshot-bytes",
+            "14000",
         ]);
         client.initialize();
         let opened = client.tool("rxd_open", json!({"path":input,"backend":"html"}));
@@ -976,7 +1032,7 @@ fn mcp_html_extract_failure_paths_do_not_leak_children() {
             .as_str()
             .unwrap()
             .to_owned();
-        let long_id = "x".repeat(15000);
+        let long_id = "x".repeat(4500);
         client.send(json!({"jsonrpc":"2.0","id":long_id,"method":"tools/call","params":{"name":"html_extract","arguments":{"input":{"target_id":parent},"at":at}}}));
         let response = client.receive();
         assert_eq!(response["id"], json!(long_id));
@@ -985,7 +1041,7 @@ fn mcp_html_extract_failure_paths_do_not_leak_children() {
             response["result"]["structuredContent"]["error"]["code"],
             "RESOURCE_LIMIT"
         );
-        // A leaked child would occupy the second slot and make the second reopen fail.
+        // A leaked child would retain storage and make the second reopen fail.
         let closed = client.tool("rxd_close", json!({"target_id":parent}));
         assert_ne!(closed["isError"], true, "{closed}");
         let first = client.tool("rxd_open", json!({"path":input,"backend":"html"}));
@@ -1401,8 +1457,8 @@ fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {
         root.to_str().unwrap(),
         "--backends",
         "evm",
-        "--max-response-bytes",
-        "1024",
+        "--max-inflight-bytes",
+        "16384",
     ]);
     bounded.initialize();
     let rejected = bounded.tool(
@@ -1617,8 +1673,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
     );
     assert_ne!(result["isError"], true, "{result}");
     assert_eq!(result["structuredContent"], expected);
-    let embed = option_env!("RXD_ILSPY_EMBED_RS")
-        .expect("bundled ILSpy tests require the producer-generated embed.rs");
+    let embed = env!("RXD_ILSPY_EMBED_RS");
     let manifest_path = std::path::Path::new(embed)
         .parent()
         .unwrap()

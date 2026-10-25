@@ -2,6 +2,7 @@
 mod framing;
 mod install;
 mod native_memory;
+mod resources;
 mod service;
 pub(crate) mod targets;
 pub(crate) mod worker;
@@ -21,7 +22,11 @@ Launch as a stdio MCP server; stdout is JSON-RPC, not CLI query output.
 Clients discover tools/list before tools/call. CLI flags use kebab-case; MCP fields use snake_case.
 Ordinary tools take input: {path: ...} or input: {target_id: ...}, not a bare path string.
 For repeated queries: rxd_open -> use returned target_id -> rxd_close.
-Schemas/descriptions include query examples; copy result at/context_at for navigation.")]
+Schemas/descriptions include query examples; copy result at/context_at for navigation.
+Analysis budgets scale with input exactly as in CLI queries; no per-query limits object.
+Targets remain valid until rxd_close or shutdown; no target TTL or count quota.
+Service byte envelopes include metadata and protocol copies, not hard process RSS.
+Raise the listed storage/deadline/RSS settings for larger workloads.")]
     Serve(Options),
     /// Register this executable as a user-level native MCP stdio server.
     Install(install::Options),
@@ -41,9 +46,9 @@ pub struct Options {
     /// Maximum incoming JSON-RPC frame bytes, including its newline.
     #[arg(long, default_value = "1048576", value_parser = crate::cli::positive)]
     pub max_frame_bytes: usize,
-    /// Maximum complete response frame bytes, including compatibility text.
-    #[arg(long, default_value = "33554432", value_parser = crate::cli::positive)]
-    pub max_response_bytes: usize,
+    /// Shared byte envelope for all in-flight requests, worker IPC and responses.
+    #[arg(long, default_value = "1073741824", value_parser = crate::cli::positive)]
+    pub max_inflight_bytes: usize,
     /// Maximum requests retained by the protocol process.
     #[arg(long, default_value = "16", value_parser = crate::cli::positive)]
     pub max_active_requests: usize,
@@ -56,29 +61,15 @@ pub struct Options {
     /// Per-call deadline in milliseconds, including capture and worker execution.
     #[arg(long, default_value = "30000", value_parser = crate::cli::positive)]
     pub deadline_ms: usize,
-    /// Maximum worker request or result IPC bytes.
-    #[arg(long, default_value = "67108864", value_parser = crate::cli::positive)]
-    pub max_worker_bytes: usize,
-    /// Maximum sampled RSS of each linked Kuna worker (1 through 268435456 bytes).
-    #[arg(long, default_value = "268435456", value_parser = crate::cli::positive)]
+    /// Sampled RSS limit per linked Kuna worker; adjustable for large targets.
+    #[arg(long, default_value = "1073741824", value_parser = crate::cli::positive)]
     pub max_native_worker_bytes: usize,
-    #[arg(long, default_value = "64", value_parser = crate::cli::positive)]
-    pub max_targets: usize,
-    #[arg(long, default_value = "128", value_parser = crate::cli::positive)]
-    pub max_live_captures: usize,
+    /// Shared snapshot storage, including metadata and empty-file/handle overhead.
     #[arg(long, default_value = "1073741824", value_parser = crate::cli::positive)]
     pub max_snapshot_bytes: usize,
-    #[arg(long, default_value = "268435456", value_parser = crate::cli::positive)]
-    pub max_capture_bytes: usize,
-    #[arg(long, default_value = "10000", value_parser = crate::cli::positive)]
-    pub max_snapshot_files: usize,
-    #[arg(long, default_value = "100000", value_parser = crate::cli::positive)]
-    pub max_snapshot_entries: usize,
-    /// Maximum directory capture depth (1 through 256).
-    #[arg(long, default_value = "64", value_parser = crate::cli::positive)]
+    /// Format/traversal guard, not a file-count quota (maximum 256).
+    #[arg(long, default_value = "256", value_parser = crate::cli::positive)]
     pub max_snapshot_depth: usize,
-    #[arg(long, default_value = "600000", value_parser = crate::cli::positive)]
-    pub target_ttl_ms: usize,
 }
 
 pub fn execute(command: Command) -> Result<()> {
@@ -93,18 +84,17 @@ pub fn execute(command: Command) -> Result<()> {
         .map_err(Error::from)?;
     let result = runtime.block_on(async move {
         let shutdown = tokio_util::sync::CancellationToken::new();
+        let responses =
+            resources::Responses::new(options.max_inflight_bytes, options.max_active_requests);
         let transport = framing::StdioTransport::new(
             options.max_frame_bytes,
-            options.max_response_bytes,
+            responses.clone(),
             options.max_active_requests,
             shutdown.clone(),
         );
-        let handler = service::AnalysisService::new(&options, shutdown.clone())?;
+        let handler = service::AnalysisService::new(&options, shutdown.clone(), responses)?;
         let admission = handler.admission.clone();
         let slots = handler.worker_slots;
-        let reaper = handler.spawn_reaper(std::time::Duration::from_millis(
-            options.target_ttl_ms.clamp(1, 1000) as u64,
-        ));
         let result = match handler.serve(transport).await {
             Ok(running) => running
                 .waiting()
@@ -119,7 +109,6 @@ pub fn execute(command: Command) -> Result<()> {
             Err(error) => Err(Error::new("MCP_ERROR", error.to_string())),
         };
         shutdown.cancel();
-        let _ = reaper.await;
         let _drain = admission.acquire_many(slots as u32).await;
         result
     });
