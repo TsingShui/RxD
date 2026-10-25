@@ -18,10 +18,6 @@ struct Coverage {
     resolved_edges: usize,
     unknown_jumps: usize,
     invalid_jumps: usize,
-    analysis_problems: usize,
-    scanned_contexts: usize,
-    scanned_blocks: usize,
-    external_call_sites: usize,
 }
 
 impl Coverage {
@@ -94,26 +90,9 @@ impl<'a> References<'a> {
         let mut witnessed = vec![false; navigation.blocks.len()];
         for (function_index, function) in functions.functions.iter().enumerate() {
             work(perf, 1 + function.unknown_successors.len(), limits.work)?;
-            // Other problems are counted in the concrete context that produced them.
-            references.coverage.analysis_problems += function
-                .unknown_successors
-                .iter()
-                .filter(|p| p.kind == "entry")
-                .count();
             for (context_index, context) in function.contexts.iter().enumerate() {
                 work(perf, 1 + context.problems.len(), limits.work)?;
                 witnessed[context.block_index] = true;
-                references.coverage.scanned_contexts += 1;
-                references.coverage.analysis_problems += context
-                    .problems
-                    .iter()
-                    .filter(|p| {
-                        !matches!(
-                            p.reason,
-                            "dynamic_jump_destination" | "invalid_jump_destination"
-                        )
-                    })
-                    .count();
                 for edge in &context.edges {
                     references.consider(
                         Hit {
@@ -134,18 +113,8 @@ impl<'a> References<'a> {
             if *seen {
                 continue;
             }
-            references.coverage.scanned_blocks += 1;
-            let (edges, problems, incoming_stack_words) =
+            let (edges, _, incoming_stack_words) =
                 block_local_edges(navigation, index, limits, perf)?;
-            references.coverage.analysis_problems += problems
-                .iter()
-                .filter(|p| {
-                    !matches!(
-                        p.reason,
-                        "dynamic_jump_destination" | "invalid_jump_destination"
-                    )
-                })
-                .count();
             for edge in edges {
                 references.consider(
                     Hit {
@@ -160,13 +129,14 @@ impl<'a> References<'a> {
                 )?;
             }
         }
-        // Physical decoded opcode sites, not executed or resolved external ABI calls.
-        for instruction in &navigation.instructions {
-            work(perf, 1, limits.work)?;
-            if matches!(instruction.opcode, 0xf1 | 0xf2 | 0xf4 | 0xfa) {
-                references.coverage.external_call_sites += 1;
-            }
-        }
+        // Preserve the original per-instruction work charge, including the first
+        // rejected unit, without scanning opcodes for discarded coverage counts.
+        let remaining = limits.work.saturating_sub(perf.counters.work.unwrap_or(0));
+        let charge = navigation
+            .instructions
+            .len()
+            .min(remaining.saturating_add(1));
+        work(perf, charge, limits.work)?;
         perf.counters.records = Some(references.hits.len());
         perf.counters.matches = Some(references.hits.len());
         perf.counters.semantic_references = Some(

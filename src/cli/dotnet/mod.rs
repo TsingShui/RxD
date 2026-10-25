@@ -302,7 +302,7 @@ fn execute_inner(
                 out
             },
         );
-        append(&mut output, &value)?;
+        output.json_line(&value)?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
         let at = selector.resolve()?;
         let root = perf.measure("prepare", || input.prepare_class(&at))?;
@@ -391,11 +391,11 @@ fn execute_inner(
             },
             payload,
         );
-        append(&mut output, &value)?;
+        output.json_line(&value)?;
     } else {
         match &command {
             Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
-                list(&mut input, &command, options, &mut output, &mut records)?;
+                list(&mut input, &command, &mut output, &mut records)?;
             }
             Command::Strings { filter, case, .. } => {
                 let uses = perf.measure("strings", || {
@@ -412,7 +412,7 @@ fn execute_inner(
                             .binary_search_by_key(&token, |method| method.token)
                             .expect("checked string owner")]
                     });
-                    record(&mut output, &mut records, options, &{
+                    record(&mut output, &mut records, &{
                         // The `#US` token is the literal's identity, so it is the row's
                         // `at`: that is what `--at` takes back, and what the
                         // reference rows point at.
@@ -444,7 +444,7 @@ fn execute_inner(
                             reference.target.as_deref(),
                             None,
                         )?;
-                        record(&mut output, &mut records, options, &value)?;
+                        record(&mut output, &mut records, &value)?;
                     }
                 } else {
                     // A string-route row names the text it loads, so the literal inventory is
@@ -470,7 +470,7 @@ fn execute_inner(
                             .and_then(|map| map.get(&(site.target_token & 0x00ff_ffff)));
                         let value =
                             reference_record(&input, &site, None, literal.map(String::as_str))?;
-                        record(&mut output, &mut records, options, &value)?;
+                        record(&mut output, &mut records, &value)?;
                     }
                 }
             }
@@ -500,9 +500,7 @@ fn fetch_record(
     detail: Map<String, Value>,
 ) -> Value {
     let mut value = envelope::record(record, meta, detail);
-    value["backend"] = json!("dotnet");
-    value["command"] = json!(command);
-    value["schema_version"] = json!(envelope::SCHEMA_VERSION);
+    envelope::attach_protocol(&mut value, "dotnet", command);
     value
 }
 
@@ -534,16 +532,10 @@ fn reference_record(
 fn record(
     output: &mut rxd_core::output::Output,
     records: &mut usize,
-    _options: &Options,
     value: &Value,
 ) -> anyhow::Result<()> {
-    append(output, value)?;
-    *records += 1;
-    Ok(())
-}
-
-fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
     output.json_line(value)?;
+    *records += 1;
     Ok(())
 }
 
@@ -879,7 +871,6 @@ enum Listing {
 fn list(
     input: &mut Input,
     command: &Command,
-    options: &Options,
     output: &mut rxd_core::output::Output,
     records: &mut usize,
 ) -> anyhow::Result<()> {
@@ -928,52 +919,47 @@ fn list(
             .as_ref()
             .is_none_or(|selected| selected.contains(&token))
     };
-    let mut resolve_fields = Vec::new();
-    if listing == Listing::Fields {
-        for (index, field) in input.fields.iter().enumerate() {
-            if owner_selected(field.declaring_type_token)
-                && name.is_none_or(|wanted| wanted == &field.name)
-                && matches(&field.name)
-            {
-                resolve_fields.push(index);
+    let selected: Vec<usize> = match listing {
+        Listing::Fields => input
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| {
+                owner_selected(field.declaring_type_token)
+                    && name.is_none_or(|wanted| wanted == &field.name)
+                    && matches(&field.name)
+            })
+            .map(|(index, _)| index)
+            .collect(),
+        Listing::Methods => input
+            .methods
+            .iter()
+            .enumerate()
+            .filter(|(_, method)| {
+                owner_selected(method.declaring_type_token)
+                    && name.is_none_or(|wanted| wanted == &method.name)
+                    && matches(&method.name)
+            })
+            .map(|(index, _)| index)
+            .collect(),
+        Listing::Classes => Vec::new(),
+    };
+    let mut selected_by_type: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    // Resolve only selected members, in original table order. Retain their indices
+    // for output instead of grouping and filtering the entire table a second time.
+    for index in selected {
+        let owner = match listing {
+            Listing::Fields => {
+                input.resolve_field(index)?;
+                input.fields[index].declaring_type_token
             }
-        }
-        for index in resolve_fields {
-            input.resolve_field(index)?;
-        }
-    }
-    let mut resolve_methods = Vec::new();
-    if listing == Listing::Methods {
-        for (index, item) in input.methods.iter().enumerate() {
-            if owner_selected(item.declaring_type_token)
-                && name.is_none_or(|wanted| wanted == &item.name)
-                && matches(&item.name)
-            {
-                resolve_methods.push(index);
+            Listing::Methods => {
+                input.resolve_method(index)?;
+                input.methods[index].declaring_type_token
             }
-        }
-        for index in resolve_methods {
-            input.resolve_method(index)?;
-        }
-    }
-    let input: &Input = &*input;
-    let mut fields_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
-    let mut methods_by_type: BTreeMap<u32, Vec<_>> = BTreeMap::new();
-    if listing == Listing::Fields {
-        for field in &input.fields {
-            fields_by_type
-                .entry(field.declaring_type_token)
-                .or_default()
-                .push(field);
-        }
-    }
-    if listing == Listing::Methods {
-        for item in &input.methods {
-            methods_by_type
-                .entry(item.declaring_type_token)
-                .or_default()
-                .push(item);
-        }
+            Listing::Classes => unreachable!("class listings have no selected members"),
+        };
+        selected_by_type.entry(owner).or_default().push(index);
     }
     for ty in &input.types {
         if class
@@ -982,28 +968,19 @@ fn list(
         {
             continue;
         }
-        match listing {
-            Listing::Classes => {
-                if matches(&ty.full_name) {
-                    record(output, records, options, &type_record(input, ty)?)?;
-                }
+        if listing == Listing::Classes {
+            if matches(&ty.full_name) {
+                record(output, records, &type_record(input, ty)?)?;
             }
-            Listing::Fields => {
-                for field in fields_by_type.get(&ty.token).into_iter().flatten() {
-                    if name.is_some_and(|wanted| wanted != &field.name) || !matches(&field.name) {
-                        continue;
-                    }
-                    record(output, records, options, &field_record(input, field)?)?;
-                }
-            }
-            Listing::Methods => {
-                for item in methods_by_type.get(&ty.token).into_iter().flatten() {
-                    if name.is_some_and(|wanted| wanted != &item.name) || !matches(&item.name) {
-                        continue;
-                    }
-                    record(output, records, options, &method_record(input, item)?)?;
-                }
-            }
+            continue;
+        }
+        for &index in selected_by_type.get(&ty.token).into_iter().flatten() {
+            let value = match listing {
+                Listing::Fields => field_record(input, &input.fields[index])?,
+                Listing::Methods => method_record(input, &input.methods[index])?,
+                Listing::Classes => unreachable!("handled above"),
+            };
+            record(output, records, &value)?;
         }
     }
     Ok(())

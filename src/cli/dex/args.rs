@@ -125,37 +125,6 @@ pub struct ClassesArgs {
 
 #[derive(Debug, Args)]
 #[command(group(
-    clap::ArgGroup::new("index")
-        .required(true)
-        .multiple(false)
-        .args(["method_index", "field_index"])
-))]
-pub struct MemberByIndexArgs {
-    /// One or more code inputs - an APK, or bare DEX files - tried in this order.
-    #[arg(long = "apk", required = true, num_args = 1.., value_name = "FILE")]
-    pub apk: Vec<PathBuf>,
-    /// Declaring class: `Lcom/foo/Bar;` or `com.foo.Bar`.
-    #[arg(long)]
-    pub descriptor: String,
-    /// The index a runtime reports for a method: the `method_ids` index.
-    #[arg(long)]
-    pub method_index: Option<u32>,
-    /// The index a runtime reports for a field: instance fields first, then statics
-    /// (`ifields_` then `sfields_` order). Not the `field_ids` index - the row prints
-    /// that one too, so the two can be told apart.
-    #[arg(long)]
-    pub field_index: Option<u32>,
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
-    pub threads: usize,
-    /// Emit the analysis perf record as JSONL on stderr.
-    #[arg(long)]
-    pub perf: bool,
-}
-
-#[derive(Debug, Args)]
-#[command(group(
     clap::ArgGroup::new("selection")
         .required(true)
         .multiple(false)

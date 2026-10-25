@@ -106,17 +106,12 @@ fn arg_spec(arg: &Arg) -> ArgSpec {
     }
 }
 
-/// `hide_input` is true for a tool's own command (where positional 1 is the analyzed
-/// path) and false for a reference-kind subcommand, whose positional is a selector.
-fn args(command: &Command, hide_input: bool) -> Vec<ArgSpec> {
-    let first = hide_input
-        .then(|| {
-            command
-                .get_positionals()
-                .next()
-                .map(|arg| arg.get_id().clone())
-        })
-        .flatten();
+/// The first positional is the analyzed path; captured inputs replace it.
+fn args(command: &Command) -> Vec<ArgSpec> {
+    let first = command
+        .get_positionals()
+        .next()
+        .map(|arg| arg.get_id().clone());
     command
         .get_arguments()
         .filter(|arg| {
@@ -142,7 +137,7 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
             .map(|about| about.to_string())
             .or_else(|| command.get_long_about().map(|about| about.to_string()))
             .unwrap_or_default(),
-        args: args(command, true),
+        args: args(command),
         multi_input,
     }
 }

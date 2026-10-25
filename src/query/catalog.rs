@@ -46,19 +46,15 @@ fn input_schema(spec: &reflect::ToolSpec) -> Value {
     schema
 }
 
-fn specs() -> Vec<reflect::ToolSpec> {
-    reflect::tools()
-}
-
 fn spec(name: &str) -> Result<reflect::ToolSpec, QueryError> {
-    specs()
+    reflect::tools()
         .into_iter()
         .find(|spec| spec.name == name)
         .ok_or_else(|| QueryError::new("INVALID_QUERY", format!("unknown analysis tool: {name}")))
 }
 
 pub fn catalog() -> Vec<ToolDefinition> {
-    let result: Vec<ToolDefinition> = specs()
+    let result: Vec<ToolDefinition> = reflect::tools()
         .into_iter()
         .map(|spec| ToolDefinition {
             name: spec.name.clone(),

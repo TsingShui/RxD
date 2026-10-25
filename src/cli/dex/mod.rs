@@ -42,14 +42,10 @@ fn archive_policy(value: Option<&str>, default: usize) -> apk::ArchivePolicy {
 }
 pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> rxd_core::Result<i32> {
     let budget = policy.for_file(command.input())?;
-    restore_default_sigpipe();
+    super::restore_default_sigpipe();
     let (perf_on, name) = (command.perf(), command.name());
-    let result = match run_command(
-        command,
-        archive_policy_from_env(budget.entry_bytes),
-        Instant::now(),
-    ) {
-        Ok(code) => Ok(code),
+    let result = match run_command(command, archive_policy_from_env(budget.entry_bytes)) {
+        Ok(()) => Ok(0),
         // A consumer that closed the pipe is a normal Unix idiom, not a failure.
         Err(error) if is_broken_pipe(&error) => Ok(0),
         Err(error) => Err(super::classify(error)),
@@ -63,7 +59,9 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> rxd_c
 pub(crate) fn execute_query(command: Command, max_entry_bytes: usize) -> rxd_core::Result<i32> {
     let mut policy = apk::ArchivePolicy::default();
     policy.max_inflated_entry = policy.max_inflated_entry.min(max_entry_bytes);
-    run_command(command, policy, Instant::now()).map_err(super::classify)
+    run_command(command, policy)
+        .map(|()| 0)
+        .map_err(super::classify)
 }
 
 /// Whether an error is only a consumer that closed the pipe.
@@ -74,24 +72,6 @@ fn is_broken_pipe(error: &anyhow::Error) -> bool {
             .is_some_and(|io| io.kind() == std::io::ErrorKind::BrokenPipe)
     })
 }
-
-/// Restore the default `SIGPIPE` disposition so that piping into `head`, `grep`,
-/// or a closed consumer terminates quietly, the way standard Unix filters do.
-///
-/// Rust ignores `SIGPIPE` at startup, which turns an early-closed pipe into a
-/// `BrokenPipe` write error and then a panic; with `panic = "abort"` that aborts
-/// the process and prints a panic message for a completely normal shell idiom.
-#[cfg(unix)]
-fn restore_default_sigpipe() {
-    // SAFETY: setting the disposition of SIGPIPE to SIG_DFL is
-    // async-signal-safe and only affects this process.
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
-}
-
-#[cfg(not(unix))]
-fn restore_default_sigpipe() {}
 
 /// Emit the shared perf record under `--perf`.
 ///
@@ -126,15 +106,8 @@ fn emit_perf(perf_on: bool, command: &'static str) {
 }
 
 /// Runs the parsed command.
-fn run_command(
-    command: Command,
-    archive_policy: apk::ArchivePolicy,
-    _started: Instant,
-) -> Result<i32> {
+fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<()> {
     rxd_dex::profile::enable(command.perf());
-    // Only a member lookup has a verdict of its own (one hit, none, several); every
-    // other command either produced its payload or failed.
-    let status = 0;
     match command {
         Command::Xref(args) => {
             let target = args.target()?;
@@ -211,11 +184,10 @@ fn run_command(
             let listed = started.elapsed();
             // Keep the existing parallel, ordered chunk rendering for large class indexes.
             const RENDER_CHUNK: usize = 8192;
-            let pieces: Vec<(String, usize)> = classes
+            let pieces: Vec<String> = classes
                 .par_chunks(RENDER_CHUNK)
                 .map(|chunk| -> Result<_> {
                     let mut payload = String::with_capacity(chunk.len() * 256);
-                    let mut records = 0;
                     // One reused buffer for the dotted name: the row itself carries only
                     // the descriptor, so the dotted form is computed for `--filter` alone.
                     let mut name = String::with_capacity(96);
@@ -248,15 +220,11 @@ fn run_command(
                                 push_record_at(&mut payload, "class", Some(&entry.descriptor), &[])?
                             }
                         }
-                        records += 1;
                     }
-                    Ok((payload, records))
+                    Ok(payload)
                 })
                 .collect::<Result<_>>()?;
-            let payload_len = emit_rows(
-                pieces.into_iter().map(|(payload, _)| payload),
-                args.output.as_deref(),
-            )?;
+            let payload_len = emit_rows(pieces.into_iter(), args.output.as_deref())?;
             if args.perf {
                 // The window now covers rendering and writing, not rendering alone.
                 rxd_dex::diag::diagnose(format_args!(
@@ -337,7 +305,7 @@ fn run_command(
                 }),
             )?;
             emit(&payload, args.output.as_deref())?;
-            return Ok(status);
+            return Ok(());
         }
         Command::Fields(args) => {
             let selector = apk::MethodSelector {
@@ -498,40 +466,38 @@ fn run_command(
         Command::Getclass(args) => {
             let at = args.selector.resolve()?;
             let class_name = query::format_class_name(&at)?;
-            if status == 0 {
-                let hit = apk::decompile_class_with_policy(
-                    &args.apk_path,
-                    archive_policy,
-                    &class_name,
-                    args.threads,
-                    args.perf,
-                )?;
-                let Some((dex_name, source)) = hit else {
-                    bail!(rxd_core::Error::failure(
-                        rxd_core::Failure::NotFound,
-                        format!("no class {class_name} in this input"),
-                    ));
-                };
-                if args.perf {
-                    rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));
-                    rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
-                }
-                let payload = fetch_record(
-                    "get-class",
-                    "class_body",
-                    &class_name,
-                    serde_json::json!({
-                        "representation": "java",
-                        "decompiled": true,
-                        "complete": true,
-                        "code": source,
-                    }),
-                )?;
-                emit(&payload, args.output.as_deref())?;
+            let hit = apk::decompile_class_with_policy(
+                &args.apk_path,
+                archive_policy,
+                &class_name,
+                args.threads,
+                args.perf,
+            )?;
+            let Some((dex_name, source)) = hit else {
+                bail!(rxd_core::Error::failure(
+                    rxd_core::Failure::NotFound,
+                    format!("no class {class_name} in this input"),
+                ));
+            };
+            if args.perf {
+                rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));
+                rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
             }
+            let payload = fetch_record(
+                "get-class",
+                "class_body",
+                &class_name,
+                serde_json::json!({
+                    "representation": "java",
+                    "decompiled": true,
+                    "complete": true,
+                    "code": source,
+                }),
+            )?;
+            emit(&payload, args.output.as_deref())?;
         }
     }
-    Ok(status)
+    Ok(())
 }
 
 /// One FETCH result: the source is a field of a record, never the whole answer, so a

@@ -719,36 +719,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                     .clone(),
                 ),
             )?;
-            if listing == Listing::Classes {
-                continue;
-            }
-            for (index, method) in class.methods.iter().enumerate() {
-                if method_filter.as_ref().is_some_and(|pattern| {
-                    !rxd_core::filter::Contains::new(pattern, case_sensitive).matches(&method.name)
-                }) {
-                    continue;
-                }
-                append(
-                    &mut output,
-                    &record(
-                        "method",
-                        RecordMeta {
-                            at: Some(&Input::method_at(selected, index)),
-                            ..RecordMeta::default()
-                        },
-                        json!({
-                            // `at` already carries `name(proto)ret`, and `has_code` is one
-                            // `get-method` away, so a member row prints only what the
-                            // coordinate cannot: the erased generic signature and `throws`.
-                            "signature":method.signature,
-                            "exceptions":method.exceptions,
-                        })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                    ),
-                )?;
-            }
         }
     }
     super::write_output(&output, options.output.as_deref())?;

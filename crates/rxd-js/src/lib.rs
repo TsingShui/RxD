@@ -725,14 +725,10 @@ pub fn run_source(
                 // the same start cannot be confused for the anchor.
                 RefsTarget::Coordinate(at) => {
                     let byte = occurrence_start(&source, at.as_str())?;
-                    let result =
-                        refs::run(&parsed.program, &source, &collector, byte, limits, perf)?;
-                    result.references
+                    refs::run(&parsed.program, &source, &collector, byte, limits, perf)?
                 }
                 RefsTarget::Byte(byte) => {
-                    let result =
-                        refs::run(&parsed.program, &source, &collector, *byte, limits, perf)?;
-                    result.references
+                    refs::run(&parsed.program, &source, &collector, *byte, limits, perf)?
                 }
                 // A name search has no single selected occurrence: every row names its own
                 // target, exactly like the one-target-per-row shape of the other backends.
@@ -741,7 +737,7 @@ pub fn run_source(
                     case_sensitive,
                 } => {
                     let needle = rxd_core::filter::Contains::new(pattern, *case_sensitive);
-                    let result = refs::run_filter(
+                    refs::run_filter(
                         &parsed.program,
                         &source,
                         &collector,
@@ -749,8 +745,7 @@ pub fn run_source(
                         *case_sensitive,
                         limits,
                         perf,
-                    )?;
-                    result.references
+                    )?
                 }
             };
             let records = references.len();

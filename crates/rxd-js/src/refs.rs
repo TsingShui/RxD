@@ -2,31 +2,19 @@
 
 use oxc_ast::{AstKind, ast::Program};
 use oxc_semantic::{NodeId, Semantic, SymbolId};
-use oxc_span::{GetSpan, Span};
+use oxc_span::GetSpan;
 use rxd_core::{Error, Limits, Result, Source, filter::Contains, perf::Perf};
 use serde::Serialize;
 
 use crate::{
     fragment,
     lexical::{self, Location, Locations},
-    strings::JsString,
     structure::Collector,
 };
 
-#[derive(Serialize)]
-pub struct Selected {
-    name: JsString,
-    role: &'static str,
-    #[serde(flatten)]
-    location: Location,
-    context_at: Option<String>,
-    type_reference: Option<bool>,
-    value_reference: Option<bool>,
-}
-
 pub struct Reference {
     location: Location,
-    /// The binding these references belong to, as the coordinate `get --at` accepts.
+    /// The binding these references belong to, as the coordinate `slice --at` accepts.
     target: String,
     read: bool,
     write: bool,
@@ -69,21 +57,16 @@ impl Reference {
     }
 }
 
-pub struct References {
-    pub references: Vec<Reference>,
-}
-
-/// The reference rows of one resolved symbol, and where its declaration is.
+/// The reference rows of one resolved symbol.
 fn symbol_references(
     semantic: &Semantic<'_>,
     symbol: SymbolId,
     source: &Source,
     locations: &Locations<'_, '_>,
     typed: bool,
-) -> Result<(Location, Vec<Reference>)> {
+) -> Vec<Reference> {
     let scoping = semantic.scoping();
-    let declaration = locations.get(scoping.symbol_span(symbol));
-    let target = declaration.entity_id.clone();
+    let target = locations.get(scoping.symbol_span(symbol)).entity_id;
     let mut references: Vec<_> = semantic
         .symbol_references(symbol)
         .map(|reference| Reference {
@@ -98,12 +81,12 @@ fn symbol_references(
         })
         .collect();
     references.sort_by_key(|reference| (reference.location.start, reference.location.end));
-    Ok((declaration, references))
+    references
 }
 
 /// Every reference to a binding whose name matches a filter.
 ///
-/// `-f PATTERN --kind symbol` is the content-search face of `xref`: one row per
+/// `-m PATTERN --kind symbol` is the content-search face of `xref`: one row per
 /// (target, site), each row naming its target, in position order across every match.
 pub fn run_filter(
     program: &Program<'_>,
@@ -113,22 +96,20 @@ pub fn run_filter(
     case_sensitive: bool,
     limits: Limits,
     perf: &mut Perf,
-) -> Result<FilterReferences> {
+) -> Result<Vec<Reference>> {
     let semantic = lexical::build(program, limits, perf)?;
     perf.measure("query", || {
         let typed = program.source_type.is_typescript();
-        let locations = Locations::new(collector);
         if lexical::is_dynamic(&semantic) {
-            return Ok(FilterReferences {
-                references: Vec::new(),
-            });
+            return Ok(Vec::new());
         }
+        let locations = Locations::new(collector);
         let mut references = Vec::new();
         for symbol in semantic.scoping().symbol_ids() {
             if !lexical::name(&semantic, symbol).contains_filter(pattern.text(), case_sensitive) {
                 continue;
             }
-            let (_, mut rows) = symbol_references(&semantic, symbol, source, &locations, typed)?;
+            let mut rows = symbol_references(&semantic, symbol, source, &locations, typed);
             references.append(&mut rows);
         }
         references.sort_by_key(|reference| {
@@ -138,13 +119,8 @@ pub fn run_filter(
                 reference.target.clone(),
             )
         });
-        Ok(FilterReferences { references })
+        Ok(references)
     })
-}
-
-/// The result of a name-filtered xref: no single selected occurrence.
-pub struct FilterReferences {
-    pub references: Vec<Reference>,
 }
 
 /// The fragment id path of the node that owns one occurrence, for a row's `context_at`.
@@ -163,7 +139,7 @@ pub fn run(
     byte: u64,
     limits: Limits,
     perf: &mut Perf,
-) -> Result<References> {
+) -> Result<Vec<Reference>> {
     if byte >= source.text.len() as u64 {
         return Err(Error::new(
             "INVALID_QUERY",
@@ -174,11 +150,13 @@ pub fn run(
     perf.measure("query", || {
         let scoping = semantic.scoping();
         let typed = program.source_type.is_typescript();
-        let ctx = |node_id| context_at(&semantic, node_id, source);
-        let selected = semantic
+        // Validate that the selected byte belongs to a binding or reference before
+        // applying file-wide dynamic-scope conservatism. An unresolved reference is
+        // still a valid occurrence, so retain the nested option.
+        let symbol = semantic
             .nodes()
-            .iter_enumerated()
-            .find_map(|(node_id, node)| {
+            .iter()
+            .find_map(|node| {
                 let span = if let AstKind::TSEnumMember(member) = node.kind() {
                     member.id.span()
                 } else {
@@ -187,29 +165,11 @@ pub fn run(
                 if !(u64::from(span.start) <= byte && byte < u64::from(span.end)) {
                     return None;
                 }
-                if let Some((symbol, span)) = lexical::binding(node, &semantic) {
-                    return Some((
-                        lexical::name(&semantic, symbol),
-                        "declaration",
-                        span,
-                        Some(symbol),
-                        node_id,
-                        None,
-                    ));
+                if let Some((symbol, _)) = lexical::binding(node, &semantic) {
+                    return Some(Some(symbol));
                 }
                 if let AstKind::IdentifierReference(id) = node.kind() {
-                    let reference = scoping.get_reference(id.reference_id.get()?);
-                    return Some((
-                        JsString::from(id.name.as_str()),
-                        rxd_core::envelope::REFERENCE,
-                        span,
-                        reference.symbol_id(),
-                        node_id,
-                        Some((
-                            reference.is_type() || reference.flags().is_value_as_type(),
-                            reference.is_value(),
-                        )),
-                    ));
+                    return Some(scoping.get_reference(id.reference_id.get()?).symbol_id());
                 }
                 None
             })
@@ -219,36 +179,14 @@ pub fn run(
                     "byte offset must select a binding identifier or identifier reference",
                 )
             })?;
-        let (name, role, span, symbol, node_id, reference_kind) = selected;
-        let locations = Locations::new(collector);
-        let location = |span: Span| locations.get(span);
-        let selected = Selected {
-            name,
-            role,
-            location: location(span),
-            context_at: ctx(node_id),
-            type_reference: if typed {
-                reference_kind.map(|kind| kind.0)
-            } else {
-                None
-            },
-            value_reference: if typed {
-                reference_kind.map(|kind| kind.1)
-            } else {
-                None
-            },
-        };
         // File-wide conservatism: with/eval can invalidate lexical reference claims.
-        let dynamic = lexical::is_dynamic(&semantic);
-        if dynamic || symbol.is_none() {
-            let _ = (dynamic, selected);
-            return Ok(References {
-                references: Vec::new(),
-            });
+        if lexical::is_dynamic(&semantic) || symbol.is_none() {
+            return Ok(Vec::new());
         }
         let symbol = symbol.expect("resolved symbol");
-        let (_, references) = symbol_references(&semantic, symbol, source, &locations, typed)?;
-        let _ = selected;
-        Ok(References { references })
+        let locations = Locations::new(collector);
+        Ok(symbol_references(
+            &semantic, symbol, source, &locations, typed,
+        ))
     })
 }
