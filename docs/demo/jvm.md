@@ -45,7 +45,7 @@ target/release/rxd jar strings tests/fixtures/jvm/flow-deflated.jar --class fixt
 ```
 
 Search cross-class references (string/type/method/field; method/field may use `--class`
-owner substring):
+to select one exact owner):
 
 ```sh
 target/release/rxd jar xref tests/corpus/jvm/gson-2.11.0.jar -m toJson --kind method

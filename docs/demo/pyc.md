@@ -69,7 +69,7 @@ file spans; when there are no new contiguous occurrence bytes they are null.
 
 ```sh
 target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name same | \
-  python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; assert rows[-1]["complete"]; print([r["at"] for r in rows if r["record"]=="code"])'
+  python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; print([r["at"] for r in rows if r["record"]=="code"])'
 ```
 
 `codes` does not scan bytecode or recover source; `instruction_validation: not_scanned`.
@@ -82,8 +82,6 @@ values and all JSONL bytes count toward output. Errors do not replace existing `
 ```sh
 target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc --json --perf
 # stderr resource_limits: input_bytes/output_bytes/work/ast_depth
-target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc
-# exit 2; unknown argument; stdout empty
 ```
 
 Work covers actual recovery, repeated nested calls, scans, AST checks/copies and source
@@ -114,7 +112,7 @@ real reference token. Definition/payload pairs always locate original bytes.
 
 ```sh
 target/debug/rxd pyc strings tests/corpus/pyc/3.12.14/graph.timestamp.pyc -f shared-container-marker | \
-  python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; assert rows[-1]["complete"] and rows[-1]["records"]==5; print([(r["at"],r["context_at"],r["detail"]["constant_path"]) for r in rows if r["record"]=="string"])'
+  python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; strings=[r for r in rows if r["record"]=="string"]; assert len(strings)==5; print([(r["at"],r["context_at"],r["detail"]["constant_path"]) for r in strings])'
 ```
 
 Text filtering is a substring (folded unless `--case sensitive`); bytes uses the query's UTF-8 bytes
@@ -147,8 +145,8 @@ target/debug/rxd pyc xref tests/corpus/pyc/3.12.14/graph.timestamp.pyc \
   --at 'const:<code-index>:<path>'
 ```
 
-Use exactly one of `--at` or `-f`. `--kind name --at NAME` is exact
-original-payload equality. `--kind name -f TEXT` is substring matching, folded unless
+Use exactly one of `--at` or `-m/--match`. `--kind name --at NAME` is exact
+original-payload equality. `--kind name -m TEXT` is substring matching, folded unless
 `--case sensitive`; each hit preserves its actual `detail.target_name`. It searches
 referenced names, not enclosing code names or opcodes. No normalization or lossy
 replacement is used. Constant coordinates infer their kind from the printed `const:` path.

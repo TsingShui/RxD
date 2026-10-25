@@ -49,24 +49,21 @@ The second writes `target/skills/rxd/SKILL.md`; see the
 [installation guide](../../README.md#-installation) for user Agent directories.
 
 `-o` writes the same bytes while still emitting stdout; the `--perf` record goes to
-stderr. Multi-input index commands may repeat `--apk` or supply multiple files. Method
-indices, field_ids and field slots use the actual input's indices. Exit 3 means no index
+stderr. Method indices, field_ids and field slots use the actual input's indices.
 
 ```sh
 RASC_MAX_INFLATED_ENTRY=1048576 target/release/rxd dex manifest /path/to/app.apk
 ```
 
-The old rasc MCP transport is not imported; the shared stdio entry is in the
-[MCP examples](mcp.md).
+The shared stdio entry is in the [MCP examples](mcp.md).
 
 ## Consuming schema v2
 
 JSONL even for zero results; success requires exit 0 (zero rows is an empty stdout).
 A FETCH answers with one JSON record (`class_body` / `method_body`) whose
-`detail.code` is the Java source. Navigation fields are always present but null; FETCH
-coordinates are never constructed
-from indices. Route from `classes` rows (their `at` is `Lx/y;`) or from a `methods` row's
-`context_at`/`at` into `get-class`/`get-method`:
+`detail.code` is the Java source. Copy a class or method row's `at` into
+`get-class`/`get-method`, or follow an xref row's `context_at` to its caller.
+Coordinates are file-scoped; do not construct them from table indices.
 
 ```sh
 target/release/rxd dex xref /path/to/app.apk -m Authorization --kind string > target/dex-xref.jsonl
@@ -75,8 +72,10 @@ target/release/rxd dex get-class /path/to/app.apk --at 'Lcom/example/Main;' > ta
 jq -r '.detail.code' target/Main.json > target/Main.java
 ```
 
-`strings.detail.value/index` use the global DEX string table; `detail.class` is always
-`schema_version=2`; read layout from `detail.instance_fields` etc. Exits 3/4 emit no
+`strings.detail.value/index` use the global DEX string table and do not identify
+an owning class. Read field layout from `get-class` detail fields such as
+`instance_fields`. Success is exit 0; a missing coordinate or invalid query exits 2,
+while input, analysis and write failures exit 1.
 
 ## MCP
 

@@ -34,7 +34,7 @@ with `js entities`. JSON data blocks and import maps are not JS scripts. Network
 acquisition remains an explicit, policy-checked Agent + curl step.
 
 The backend performs **structural location**: literals, identifier names, call sites and
-static member names map to content-bound AST structures, lexical relationships and
+static member names map to file-scoped AST coordinates, lexical relationships and
 original source ranges. Obfuscated files are analyzed by their existing structure and
 extracted verbatim. Literal escape decoding is parsing. `--resolve-static` only evaluates
 closed AST constant expressions; it does not execute user functions, parse string arrays
@@ -173,17 +173,16 @@ independently.
 
 `--byte` must be inside a declaration identifier or identifier reference. Whitespace,
 strings, comments, keywords, static property keys and `foo` in `obj.foo` return
-`NOT_FOUND`; `key` in `obj[key]` is a lexical reference. Header detail reports
-`resolution: resolved|unresolved|dynamic`, the selected name/range, and the canonical
-declaration. Reference detail has `read`, `write`, `member_write`, `type_reference` and
+`NOT_FOUND`; `key` in `obj[key]` is a lexical reference. Reference detail has
+`read`, `write`, `member_write`, `type_reference` and
 `value_reference`. `parent_at` routes to `slice`; the declaration and initializer are not
-reference records. `dynamic` means the file contains `with`/direct `eval` and is
-conservatively unscanned.
+reference records. Files containing `with`/direct `eval` are conservatively
+unscanned; zero reference rows do not prove runtime absence.
 
 ## 6. symbols
 
 ```sh
-"$RXD" js symbols "$FILE"
+"$RXD" js symbols "$FILE" -o "$DEMO/symbols.jsonl"
 "$RXD" js symbols "$FILE" --within "$REQUEST_ID"
 "$RXD" js symbols "$FILE" -f api
 ```
@@ -203,8 +202,8 @@ SYMBOL_ID=$(jq -r 'select(.record == "symbol" and .detail.name == "api") | .at' 
 
 The raw output is only the canonical declaration, not later redeclarations/assignments.
 `--json` exposes the symbol, declaration kind/range/initializer and source; it never
-claims runtime values or data-flow completeness. The symbol record's `start` can be passed
-to `xref --at`.
+claims runtime values or data-flow completeness. Pass the symbol record's `at`
+to `xref --at`, or its `start` to `xref --byte`.
 
 ### Extract a local fragment
 

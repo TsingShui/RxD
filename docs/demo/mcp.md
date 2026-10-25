@@ -44,7 +44,7 @@ async function call(name, args) {
 const opened = await call("rxd_open", {path: "/workspace/app.js", backend: "js"});
 try {
   const input = {target_id: opened.target_id};
-  const hits = await call("js_find", {input, string: "/api/login"});
+  const hits = await call("js_find", {input, filter: "/api/login"});
   // A stream is `{records: [...]}`; `at` identifies a row and `context_at` names
   // the structure that reported it.
   const sources = await Promise.all(hits.records.map(hit =>
@@ -69,8 +69,9 @@ const body = await call("jar_get_method", {
 });
 ```
 
-For repeated calls use an open JAR target to avoid repeating input capture. Each returned
-method ID still binds to its actual class bytes, rather than the container handle.
+For repeated calls use an open JAR target to avoid repeating input capture.
+Returned method coordinates remain file-scoped; use them only with that target
+or unchanged input bytes.
 
 ASAR child targets compose without caller-managed paths:
 
@@ -103,4 +104,4 @@ python3 scripts/mcp-smoke.py --binary target/release/rxd --expect-native
 ```
 
 Correctness/CI configuration is not a latency result;
-measure frozen release binaries with [MCP runner](../../benches/README.md#mcp-release-measurements).
+measure frozen release binaries with [MCP runner](../../benches/README.md#mcp).

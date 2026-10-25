@@ -196,32 +196,16 @@ informational unless a concrete regression is being investigated.
 
 ## Query Surface
 
-Every listing command takes `-f/--filter`: a substring over the value the row is named by
-(class, method or field name, or the literal). Matching folds case by default and
-`--case sensitive` turns folding off; that one flag governs every filter, so the rule never
-depends on which command is running. The folding itself is `rxd_core::filter`, shared by the
-CLI and the libraries. Backend-specific
-exact selectors sit next to it and narrow the same listing (`--class`, `--type`,
-`--method`), and `--at` is the only way to select a row that already exists. Two
-spellings for the same question are a defect, not a preference.
+Keep listing filters consistent through `rxd_core::filter`: case-folded substring
+matching by default, with `--case sensitive` for exact case. Use the printed `at`
+coordinate to select a unit and `context_at` to follow a reference to its caller.
+Coordinates are file-scoped; re-list when the input changes.
 
-`xref` takes the same two faces as every other query, never a per-kind subcommand. `--at`
-names one identity, exactly as a row prints it (`Lx/y;`, `Lx/y;->name(proto)`,
-`Lx/y;->name:type`, `symbol:6:9`, `func:42`, `const:0:3`, …), and the coordinate says its own
-kind, so `--kind` is only needed to read `--at` as a literal. `-f/--filter` searches content
-(case-sensitive substring), which cannot say what kind it looks for, so it requires `--kind`.
-A coordinate that no table carries is `NOT_FOUND`, never an empty result; a `--kind` that
-contradicts the coordinate is an argument error naming both kinds, never an empty result.
-`xref`'s `query` echo contains only the fields the call used: `at` or `match` (never
-both), plus `kind` and the applicable `case`/`class`/`within`/`version`. A nullable outer
-key (`at`, `parent_at`, `context_at`, `start`, `end`, `source_id`) is `null` or absent,
-and consumers treat the two alike. A coordinate names a position in the input
-being queried; it carries no content identity, so re-run the listing for a different
-input instead of reusing a coordinate across inputs.
-
-Original instructions versus reconstructed source is one flag, `--raw`, on every
-backend that can emit both; `--bytecode`, `--il` and future spellings are not separate
-flags.
+`xref` is one command, not per-kind subcommands. Preserve argument errors for
+contradictory kinds and distinguish a missing coordinate from zero search hits.
+Exact options and output fields belong to the implementation, CLI help and tests.
+Absent and null navigation values are equivalent. `--raw` selects original
+instructions on backends that also offer reconstruction.
 
 ## Coding Style & Naming Conventions
 
@@ -290,7 +274,7 @@ remain useful for testing original structure queries and byte-exact extraction.
 
 Treat analyzed files as untrusted data. Never execute input code or instantiate
 input modules. Parse and extract from one fixed source buffer, validate
-content-bound IDs, and enforce explicit resource budgets.
+coordinates and byte ranges against that input, and enforce explicit resource budgets.
 
 Ordinary CLI resource admission is input-scaled: work, metadata and bounded
 serialization grow with admitted input instead of fixed total quotas. Preserve format/address validation, recursion/cycle/expansion guards

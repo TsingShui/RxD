@@ -22,7 +22,7 @@ modules are never instantiated.
 Every listing takes `-f/--filter` (folded unless `--case sensitive`); `get-function`
 and `xref` take `--at func:N`. `-o` writes the stream atomically and `--perf` reports
 stages and resource use. Rows carry coordinates, not hashes, so the module identity is
-not repeated on every row; a directory stream opens each file with its own scope record.
+not repeated on every row. Input is one binary core module, not a directory.
 
 Decompilation is per requested function, never a whole-module pass: listings do
 not enter the decompiler. `get-function` emits C-like code with a line-to-byte

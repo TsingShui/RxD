@@ -11,7 +11,7 @@ drives CI scripts.
 - **Plan and tooling:** compare explicit Git endpoints (PR merge-base, push before SHA),
   including old paths for renames/deletions. Documentation/project skills need no Rust
   job. Upstream/CI tooling changes run their offline CLI contracts.
-- **Quick checks:** independent Rust engine package tests, affected backend package and
+- **Quick checks:** affected backend package tests and
   feature-scoped debug/release CLI, or default all-backend checks for shared/unknown
   paths, including real stdio MCP checks without bundles. RadGuard selects both DEX and
   JVM. JS/ASAR currently use shared gates because their CLI tests are unnamespaced. Quick
@@ -21,8 +21,7 @@ drives CI scripts.
   build/dependency/packaging/workflow changes, optional MCP/Kuna integration, every
   version tag, manual runs and the weekly compatibility run. Backend-only and
   maintenance-only PRs do not build all four distributions. Forced full runs also
-  validate the default feature profile; the independent, unshipped Rust engine package
-  suite is selected by its own changed paths, not unrelated releases.
+  validate the default feature profile.
 
 Unknown changed paths widen to shared checks, never silently skip validation. Missing
 comparison history fails or forces full acceptance; a failed test/job is not a successful

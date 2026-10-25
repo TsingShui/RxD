@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RxD — 一个二进制，完成大部分静态分析</title>
-<meta name="description" content="RxD 是面向 Agent 的开源分析 CLI，覆盖原生、托管、容器与字节码格式。一个二进制、内容绑定 ID、确定性记录。">
+<meta name="description" content="RxD 是面向 Agent 的开源分析 CLI，覆盖原生、托管、容器与字节码格式。一个二进制、输入内坐标、确定性记录。">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/zh/">
 <link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/">
@@ -60,12 +60,12 @@
       </div>
       <figure class="console" aria-label="RxD 命令示例">
         <pre><code><span class="prompt">$</span> rxd dex strings app.apk --filter Authorization
-<span class="prompt">$</span> rxd dex xref app.apk -f Authorization --kind string
-<span class="prompt">$</span> rxd dex get-class app.apk 'Lcom/example/Main;'
+<span class="prompt">$</span> rxd dex xref app.apk -m Authorization --kind string
+<span class="prompt">$</span> rxd dex get-class app.apk --at 'Lcom/example/Main;'
 <span class="prompt">$</span> rxd js find bundle.js -f '/api/login'
 <span class="prompt">$</span> rxd js slice bundle.js --at '&lt;at&gt;'
 <span class="prompt">$</span> rxd dotnet get-method app.dll --at '&lt;at&gt;' --raw
-<span class="prompt">$</span> rxd wasm get-function module.wasm '&lt;id&gt;'
+<span class="prompt">$</span> rxd wasm get-function module.wasm --at '&lt;at&gt;'
 <span class="prompt">$</span> rxd pyc codes module.pyc</code></pre>
       </figure>
     </div>

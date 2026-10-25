@@ -50,10 +50,8 @@ Keep these distinctions explicit:
   Do not substitute the same-named C++ project. Report a provenance blocker.
 - **JADX → Rust JVM frontend**: changes matter only if their semantics apply to
   rxd's actual opcode/stack/constant-pool implementation, not all Java/UI changes.
-- **ILSpy**: production NativeAOT 11.1.0.9782. Both Rust replacement routes
-  were withdrawn and the crate removed; they are historical, not a work plan.
-  Do not revive the Rust port/lowered pipeline or its old issue tree. Evaluate
-  applicable fixes in the actual production engine.
+- **ILSpy**: production NativeAOT 11.1.0.9782. Evaluate applicable fixes in the
+  actual production engine.
 
 ## 3. Inspect only flagged deltas, then map to rxd
 

@@ -15,13 +15,13 @@ instantiate a module. Choose the input format explicitly, then locate → associ
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `get --at` |
+| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
 | Electron ASAR | `rxd asar` | `entries` / extract a selected file with `extract --at`, then use its code backend |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
-| Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref --at` or `-m … --kind function|block|literal` / `get-function`/`get-block --at` |
+| Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref --at` or `-m … --kind KIND` (function, block or literal) / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
@@ -92,8 +92,8 @@ row from `entities` or a match's `parent_at`; a fragment coordinate is not valid
 for `symbols --within`. A symbol row's `at` anchors `xref`; its `start` byte is the
 `--byte` spelling when the anchor is a raw position. `xref` resolves lexical bindings
 within one file,
-not properties or cross-file calls; `unresolved`/`dynamic` resolution remains
-explicit. For directory find,
+not properties or cross-file calls; unresolved names and dynamic `with`/`eval`
+produce no reference rows. For directory find,
 route each hit through the enclosing `file` record's `detail.path` into single-file commands.
 
 The identifier/call/member queries are syntax-first locators. `identifiers`
@@ -105,8 +105,8 @@ reports static member/property keys and JSX attribute names, plus computed keys
 whose key is a string literal or a constant expression the bounded evaluator can
 prove (`member_kind: computed_key` with `key_resolution: literal|static`); a
 dynamic `obj[expr]` key never matches. `entities --kind` takes one kind or a
-comma-separated list, `--name` filters exactly, and `-f` is a substring by default
-substring over the name/label; `functions`, `classes` and `methods` are the same
+comma-separated list, `--name` filters exactly, and `-f` is a substring over the
+name/label; `functions`, `classes` and `methods` are the same
 rows restricted to one kind group. `find
 --resolve-static` additionally matches bounded AST constant evaluation; those
 hits are `literal_kind: static_expression` with `detail.raw` and
@@ -152,14 +152,13 @@ rxd jar get-class library.jar --at "$CLASS_AT"
 ```
 
 Every `get-class`/`get-method` answers with one JSON record (`class_body` /
-`method_body`) whose `detail.code` is the source; `--raw` keeps the record and
-switches `detail.representation` to the original instructions. DEX records carry no
-per-row `source_id`: route `xref` rows with their
+`method_body`) whose `detail.code` is the source. JVM method FETCH supports
+`--raw` for original instructions; DEX FETCH emits Java and has no `--raw` flag.
+DEX records carry no per-row `source_id`: route `xref` rows with their
 `context_at` (the caller) and `detail.entry` (which DEX); reuse the unchanged
 archive. DEX strings have global table
 indices and no owning class. A duplicate class is an ambiguity, not a reason to
 choose the first definition. DEX 041 may identify logical DEX members separately.
-field_ids, while method indices are method_ids.
 DEX `-o` also prints the same bytes to stdout; other backends have their own file
 output contracts. In JVM `xref` rows put the caller in `context_at` (usable as
 `--at`) and the reference site's `byte_offset`/`mnemonic` in `detail`; method
@@ -253,7 +252,7 @@ rxd evm get-block runtime.hex --at "$BLOCK_AT" --encoding hex
 
 Encoding is required (`raw` bytes or ASCII `hex`), never guessed. Search kinds
 `text`, `bytes`, `number` have different matching semantics. `blocks` lists
-content-bound basic blocks, `interface` lists content-bound functions with their
+file-scoped basic-block coordinates, `interface` lists function candidates with their
 EVMole ABI fields. Follow `xref` rows' `context_at`: a function coordinate goes to
 `get-function`, a block coordinate to `get-block`; null contexts are not fetchable. Selectors, function boundaries, storage and text/data
 are inferred candidates. PUSH literal and contextual CODECOPY evidence do not

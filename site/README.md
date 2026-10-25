@@ -5,10 +5,10 @@ Static, dependency-free pages served by GitHub Pages at
 
 ## Structure
 
-- `index.html` — RxD overview: hero mark, quick start, why, provenance and MCP.
-- `examples.html` — standalone query examples for APK, JavaScript, .NET and more.
-- `arxd.html` — standalone Android host page for Arxd.
-- `roadmap.html` — development status, next work and permanent non-goals.
+- `index.html` — RxD overview and backend provenance.
+- `examples.html` — ShowCase placeholder; CLI examples live in `docs/demo/`.
+- `arxd.html` — notice that Arxd is maintained separately.
+- `roadmap.html` — development status and future work.
 - `changelog.html` — dated public/site milestones and unreleased work.
 - `zh/` — Chinese counterparts of all five pages.
 - `assets/style.css` — design tokens, layout, shared subpage styles, responsive rules.

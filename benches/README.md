@@ -95,11 +95,9 @@ type-check result. `symbols` checks independently selected declarations/names;
 `symbols --within` uses actual extracted structure IDs and checks JSONL completeness,
 order, identity uniqueness and repeat consistency, not a general symbol oracle.
 
-Input/record/output/depth budget overflow keeps a failure record and returns non-zero;
-limits are never silently raised. `--max-input-bytes`, `--max-entities`,
-`--max-records`, `--max-output-bytes`, `--max-ast-depth` and `--max-semantic-nodes`
-(default 1,000,000, passed to refs/symbols/get; get only indexes symbol paths) are
-reported. Each call has a 120-second timeout (`--timeout`).
+Resource failure retains diagnostics and returns non-zero. Ordinary CLI resource
+allowances scale with input; the CLI has no `--max-*` quota flags. Each benchmark
+call has a 120-second timeout (`--timeout`).
 
 `slice_symbol/slice_symbol_json/slice_symbol_parent` use independent Acorn declarations from
 `definitions-expectations.json`: raw symbol, declarator, kind and initializer ranges must
@@ -210,27 +208,12 @@ structured_contexts/edges and structuring_work; other backends/commands/raw use 
 decompile fills counters.work/ast_depth and resource_limits; other backends null.
 Instrumentation is off by default and reads no clock per node/record.
 
-## Removed per-backend runners
+## Available runners
 
-`asar.py`, `html.py`, `jvm.py`, `pyc.py`, `pyc_versions.py`, `pyc_closure.py`,
-`evm.py`, `dex.py`, `dotnet.py`, `dotnet_ilspy.py`, `dotnet_class.py`,
-`dotnet_closure.py`, `dotnet_coverage.py`, `dotnet_refs.py` and `dotnet_strings.py`
-were written against a CLI generation this repository no longer has: they invoke
-`list`, `outline`, `refs`, `js get`, positional fetch arguments, `--id`, `--contains`,
-`--token`, `--il` and `--bytecode`, and read rows through `id`. None of them could run,
-so they were deleted instead of being kept as measurement evidence that does not
-reproduce.
-
-The measurement contract above is unchanged and still applies to every backend: fresh
-processes, complete stdout/stderr, real output writes, raw samples with median and
-nearest-rank P95, the >150 ms share, input/output sizes and hashes, hardware and cache
-conditions, and validation after timing. A backend that needs a runner gets one written
-against the current command surface (`entries`/`classes`/`codes`, `--at`,
-`-f`/`--case`, `--name`) rather than a resurrected copy of the removed generation.
-
-`benches/dotnet_strings_oracle.py` and `benches/pyc_oracle.py` are not runners: they
-derive independent `#US`/PEReader and PYC instruction expectations from inputs, and the
-surviving runners use them for validation.
+`cli.py` benchmarks JavaScript, `mcp.py` benchmarks the typed service and CLI, and
+`skill.py` benchmarks skill installation. There are no per-backend standalone runners.
+`dotnet_strings_oracle.py` and `pyc_oracle.py` derive independent expectations;
+they are validation helpers, not benchmark runners.
 
 ## MCP
 

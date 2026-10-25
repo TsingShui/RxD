@@ -107,7 +107,6 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 ```sh
 "$RXD" asar entries "$ASAR" | head
 "$RXD" asar extract "$ASAR" --at main.cjs -o "$DEMO/profile-main.cjs" --perf
-# The ASAR runner was removed; see benches/README.md "Removed per-backend runners".
 ```
 
 Header/index allowances grow with the archive, without fixed CLI input/header/

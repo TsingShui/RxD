@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Arxd — Ask what an APK does</title>
-<meta name="description" content="Drop in an APK and ask what it does. Arxd traces references, recovers code and runs RxD analysis directly on Android.">
+<title>Arxd — maintained separately</title>
+<meta name="description" content="Arxd is maintained separately. The apps/arxd directory in RxD is an archived snapshot.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/arxd.html">
 <link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/arxd.html">
@@ -38,88 +38,13 @@
   </div>
 </header>
 
-<main id="main">
-  <section class="hero" id="top">
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
-        <p class="kicker">ARXD / ANDROID AGENT</p>
-        <h1>Drop in an APK.<br>Ask what it does<span class="punct">.</span></h1>
-        <p class="lede">Arxd traces references, recovers code and runs the next tool, directly on Android.</p>
-        <div class="actions arxd-actions">
-          <a class="btn btn-primary" href="https://github.com/TsingShui/RxD/releases/latest">Download APK <span aria-hidden="true">↗</span></a>
-          <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD">View source <span aria-hidden="true">↗</span></a>
-        </div>
-        <ul class="hero-meta">
-          <li>Android ARM64</li>
-          <li>Apache-2.0</li>
-        </ul>
-      </div>
-      <figure class="hero-mark" aria-label="Arxd mark">
-        <img src="assets/arxd-light-1024.png" alt="" width="420" height="420">
-      </figure>
-    </div>
-  </section>
-
-  <section class="section arxd-investigation">
-    <div class="wrap">
-      <div class="investigation-intro">
-        <div>
-          <p class="kicker">ONE QUESTION / THE WHOLE INVESTIGATION</p>
-          <h2>“Where is this APK signing the login request?”</h2>
-        </div>
-        <p>Arxd can move from a broad question to the exact code and keep the evidence that got it there.</p>
-      </div>
-      <ol class="investigation-flow" aria-label="Example APK investigation">
-        <li><span>01 / OPEN</span><strong>Read the target</strong><p>Manifest, classes and strings establish where to look.</p></li>
-        <li><span>02 / TRACE</span><strong>Follow references</strong><p>Callers, fields and types narrow the path.</p></li>
-        <li><span>03 / RECOVER</span><strong>Get the code</strong><p>Retrieve the relevant class or method as Java.</p></li>
-        <li><span>04 / CONTINUE</span><strong>Run the next tool</strong><p>Inspect another file or test a finding with a script.</p></li>
-        <li><span>05 / KEEP</span><strong>Save the evidence</strong><p>Reports, files and tool results remain in the workspace.</p></li>
-      </ol>
-    </div>
-  </section>
-
-  <section class="section arxd-difference">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="kicker">WHY ARXD</p>
-        <h2>Not a mobile chat shell.</h2>
-      </div>
-      <div class="arxd-pillars">
-        <article>
-          <span>01</span>
-          <h3>The Agent can act.</h3>
-          <p>It can edit files, run managed processes and use repeatable workflows instead of only explaining what you should do next.</p>
-          <div class="feature-tags"><span>Files</span><span>Shell</span><span>Python</span><span>Node</span><span>Skills</span><span>MCP</span></div>
-        </article>
-        <article>
-          <span>02</span>
-          <h3>RxD understands the target.</h3>
-          <p>The real ARM64 analysis engine runs on the device, with focused search, reference and source-recovery queries across formats.</p>
-          <div class="feature-tags"><span>APK/DEX</span><span>JVM</span><span>JavaScript</span><span>.NET</span><span>WASM</span><span>PYC</span><span>EVM</span></div>
-        </article>
-        <article>
-          <span>03</span>
-          <h3>The work stays with you.</h3>
-          <p>Choose an on-device GGUF LLM or your own hosted endpoint. The workspace is durable, tool activity is visible and running work can be stopped.</p>
-          <div class="feature-tags"><span>On-device</span><span>Hosted</span><span>History</span><span>Recovery</span></div>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="arxd-source">
-    <div class="wrap arxd-source-inner">
-      <div>
-        <p class="kicker">OPEN SOURCE / NO MYSTERY BACKEND</p>
-        <h2>One APK. The whole stack in view.</h2>
-        <p>Read the host, inspect the engine and build it yourself. Arxd and RxD are Apache-2.0 licensed.</p>
-      </div>
-      <div class="actions">
-        <a class="btn btn-primary" href="https://github.com/TsingShui/RxD">View on GitHub <span aria-hidden="true">↗</span></a>
-        <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD/blob/main/apps/arxd/README.md">Build guide <span aria-hidden="true">↗</span></a>
-      </div>
-    </div>
+<main id="main" class="wrap">
+  <section class="page-hero" id="top">
+    <p class="kicker">ARXD / ANDROID HOST</p>
+    <h1>Arxd</h1>
+    <p class="lede">Arxd is maintained in the separate private repository <code>TsingShui/Arxd</code>. The <code>apps/arxd/</code> directory here is an archived snapshot, not a current build or download guide.</p>
+    <p>Current Arxd releases and capabilities are not published from this repository.</p>
+    <p><a class="btn btn-ghost" href="./">RxD <span aria-hidden="true">→</span></a></p>
   </section>
 </main>
 

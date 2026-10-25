@@ -85,7 +85,7 @@ archive, never invokes .NET. First C# FETCH verifies and extracts the runtime
 atomically into `<cache-base>/rxd-ilspy/<bundle-sha256>/`; subsequent calls verify
 the native library before loading it. Cache policy is shared with Kuna in
 `rxd-core::bundle`: `RXD_CACHE_DIR`, XDG cache, or platform user-cache defaults.
-Queries without reconstruction and explicit `--il` do not create an ILSpy cache.
+Queries without reconstruction and explicit `--raw` do not create an ILSpy cache.
 A corrupt cache fails with a diagnostic; remove that version directory to rebuild it.
 
 `libloading` retains the library for process lifetime. The optional
@@ -114,8 +114,6 @@ MCP but not desktop ILSpy; explicit unbundled builds
 (`--no-default-features --features all-backends`) return original IL/EH when C# is
 unavailable. Explicit invalid external libraries retain that fallback; an
 embedded-runtime integrity failure is an error.
-Latency acceptance below is macOS-specific; CI correctness tests do
-not claim Linux/Windows latency acceptance.
 
 ## Marshalling and resolution
 
@@ -155,7 +153,7 @@ excluding sibling and inherited definitions. Its successful payload uses
 and existing method ABI are unchanged. A method-capable older library without
 this symbol still renders methods; class FETCH returns `class_abi_unavailable`
 and complete original data. Rust qualifies every class point with its actual
-content-bound method ID and validates that method's original instruction boundary.
+file-scoped method coordinate and validates that method's original instruction boundary.
 C# may express generated original members as syntax sugar, while the complete
 raw metadata/IL inventory remains available in the same record. No-body members
 remain declarations. Failed reconstruction produces no partial C# or fabricated
@@ -170,7 +168,7 @@ Generated methods' independent IL offsets are excluded. In particular ILSpy
 labels recovered async/iterator functions with the kickoff token but retains
 MoveNext sequence points; those foreign-domain entries are excluded entirely.
 State-machine recovery can therefore return `mapping:[]` with valid C#.
-Unavailable sequence points and whole-module calls can also yield empty mapping.
+Unavailable sequence points can also yield empty mapping.
 
 Native backstops are 64 MiB input and 32 MiB encoded JSON output (including
 escaping/mapping). Code text and JSON growth are bounded; these are not an
@@ -179,9 +177,8 @@ as atomic `RESOURCE_LIMIT` errors, with no successful reconstruction fallback.
 Nested scope traversal is bounded to depth 64. The existing isolated worker
 introduces no wall deadline; process termination reports failure. Every returned
 allocation is freed exactly once, including malformed and oversized responses.
-Rust must apply its cumulative class query budgets
-before entry and retain worker isolation. The assembly endpoint is available,
-not the ordinary method query or a latency acceptance workload.
+Rust applies its cumulative class query budgets before entry and retains worker
+isolation. The bridge exposes method and class reconstruction only.
 
 Framework metadata is optional build-independent data, not a runtime:
 `RXD_REFDIR` overrides the installed metadata with a path-separated list of **trusted core-framework directories**
@@ -205,56 +202,10 @@ have `code:null` and empty mapping.
 `tests/dotnet/sugar.rs` is the real CLI recovery seam. Feature-enabled tests
 assert C# success and lexical evidence of async/await, yield, captured lambda
 and local function, LINQ query syntax, initializers, using, lock, null propagation
-and interpolation. They are cfg-excluded from explicitly unbundled tests, not from the full default profile. The
-independent byte-exact raw IL/EH checks and genuine failed-method fallback tests
-remain in both configurations. No C# formatting snapshot is an oracle.
+and interpolation. These tests require `csharp-decompiler`; the default source
+build does not enable that feature. Independent byte-exact raw IL/EH checks and
+genuine failed-method fallback tests remain in both configurations. No C# formatting snapshot is an oracle.
 
-After the separate native build and feature-enabled release build above:
-
-```sh
-python3 benches/dotnet.py --samples 20 --cpu-model 'Apple M3 Pro' --memory-gb 36
-# Alternate entry point to the same shipped-engine acceptance workloads:
-python3 benches/dotnet_ilspy.py --samples 20 --cpu-model 'Apple M3 Pro' --memory-gb 36
-python3 benches/dotnet_coverage.py --methods 48 --cpu-model 'Apple M3 Pro' --memory-gb 36
-```
-
-Prepare the pinned runtime assemblies as described in
-[`tests/corpus/dotnet/README.md`](../../tests/corpus/dotnet/README.md).
-Reports and atomic output workloads stay under ignored `target/benchmarks/`.
-The latency runner builds Rust with `csharp-decompiler` unless `--binary` is
-supplied; it never builds .NET or launches an external managed runner. Override
-`--native-library` to select a trusted produced dylib; its path, size and SHA-256
-are recorded and applied to every CLI invocation. `RXD_REFDIR` is also recorded.
-It preserves all per-workload samples and stops on unexpected recovery failure
-or a >150 ms latency sample instead of accepting a fallback as latency evidence.
-WindowsBase's non-framework Accessibility dependency is an explicit expected
-single-module conservative-degrade correctness workload, excluded from C#
-latency acceptance; full IL/EH equality is still checked. System.Linq and
-System.Text.Json use hash-pinned .NET 10.0.12 osx-arm64 runtime artifacts from
-`--framework` (default `~/.dotnet10/shared/Microsoft.NETCore.App/10.0.12`). The coverage survey
-retains every failure and source mapping; it is not a latency run.
-
-Explicit unaffected JS, ASAR and JVM latency workloads use authorized pinned
-inputs (ASAR is a synthetic wrapper). DEX functional non-regression is covered
-by CLI E2E; DEX latency is not measured here because there is no authorized
-representative input. These are separate per-workload numbers, never pooled
-with .NET to hide slow queries.
-
-Report original IL/EH equality checks, independent fixtures, every selected
-method's C# output, reference diagnostics/errors, input sizes/hashes,
-library hash, and per-workload fresh-process latency samples, median, P95 and
->150 ms proportion. Latency is end-to-end wall time of a fresh CLI process
-including dlopen and NativeAOT runtime initialization. File cache is warm,
-without CPU isolation. Rendering succeeds independently of whether C# is
-complete, recompilable or semantically equivalent; unresolved-type diagnostics
-remain visible. Both selected successes and failures are retained. Synthetic
-fixtures and pinned upstream test artifacts are not broad independent production
-acceptance.
-
-A selected whole-class measurement keeps each workload's raw >150 ms proportion and
-records its applicable bound. The runner that used to do this was removed with the rest
-of the per-backend runners (`benches/README.md`). Whole-
-class/whole-function decompilation exceptions follow the two grounds in
-[AGENTS.md](../../AGENTS.md#performance-requirements); each exception must record
-its input hash, selected target, release measurements and numeric bound. Ordinary
-queries and raw IL retain 150 ms.
+For benchmark commands and measurement conditions, see
+[CLI benchmarks](../README.md). Keep release query measurements separate from
+functional E2E; ordinary queries and raw IL retain the 150 ms target.

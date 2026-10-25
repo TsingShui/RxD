@@ -82,10 +82,10 @@ These queries use the input-scaled CLI policy, with no budget overrides:
 dll=tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll
 $rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader -f ReadAsInt32
 $rxd dotnet methods "$dll" --class Newtonsoft.Json.JsonReader --name ReadAsInt32 -o target/newtonsoft-method.jsonl
-method_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/newtonsoft-method.jsonl")]; print(rows[1]["at"])')
+method_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/newtonsoft-method.jsonl")]; print(next(r["at"] for r in rows if r["record"]=="method"))')
 $rxd dotnet get-method "$dll" --at "$method_at" --raw
 $rxd dotnet classes "$dll" --class Newtonsoft.Json.JsonConverter -o target/newtonsoft-class.jsonl
-type_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/newtonsoft-class.jsonl")]; print(rows[1]["at"])')
+type_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/newtonsoft-class.jsonl")]; print(next(r["at"] for r in rows if r["record"]=="class"))')
 $rxd dotnet get-class "$dll" --at "$type_at" --raw
 $rxd dotnet xref "$dll" --at "$type_at"
 ```
@@ -152,7 +152,7 @@ another assembly is not detected; re-run the listing for the input being fetched
 ```sh
 closure=tests/fixtures/dotnet/closure/Closure.dll
 $rxd dotnet classes "$closure" --class 'Rxd.Closure.Root`1' -o target/closure-classes.jsonl
-type_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/closure-classes.jsonl")]; print(rows[1]["at"])')
+type_at=$(python3 -c 'import json; rows=[json.loads(line) for line in open("target/closure-classes.jsonl")]; print(next(r["at"] for r in rows if r["record"]=="class"))')
 $rxd dotnet get-class "$closure" --at "$type_at" --raw
 $rxd dotnet get-class "$closure" --at "$type_at" --raw -o target/closure-il.json --perf
 $rxd dotnet get-class "$closure" --at "$type_at"
@@ -181,7 +181,7 @@ $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll --at 0x06000006
 $rxd dotnet xref tests/fixtures/dotnet/Fixture.dll -m hello --kind string
 ```
 
-`-f ... --kind string` matches every heap entry that *contains* the pattern, and every
+`-m ... --kind string` matches every heap entry that *contains* the pattern, and every
 original `ldstr` site of those entries.
 Each reference row names the target it resolved to:
 

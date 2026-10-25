@@ -129,18 +129,4 @@ changing them. Prefer cheaper equivalent fixture construction and immutable
 fixture reuse, with independent mutable test state. Avoid broad mocking,
 unbounded parallelism and timing assertions in ordinary tests.
 
-For upstream discovery, seven unchanged CLI scenarios previously spent most of
-their time making developer-style fixture commits: a local warm run took 37.60 s,
-with 33.27 s in 16 `git commit` invocations versus 1.90 s in 22 checker processes.
-Fixture history now uses `write-tree` / `commit-tree` / `update-ref`; the subject
-still uses actual Git repositories, tags, index gitlinks, clone and CLI processes.
-This does not alter developer hooks or repository security policy. On Apple M3
-Pro / 36 GiB, macOS arm64, Python 3.9.6, one baseline suite at `16a57ce` took
-37.60 s; three sequential fresh-Python runs after the change took 3.99 / 3.97 /
-3.91 s (warm filesystem cache, no CPU isolation). The single before sample is a
-measurement limitation, not a universal speedup guarantee. Raw command timings
-and samples are under ignored `target/testing/`. Keep measurements there, not
-timing assertions or build artifacts in source. These fixture measurements are
-not product latency acceptance.
-
 CI tiers and required-check migration are documented in [CI](../demo/ci.md).
