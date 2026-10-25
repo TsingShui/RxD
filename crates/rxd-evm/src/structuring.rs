@@ -1,6 +1,4 @@
-//! Bounded acyclic and simple natural-loop structuring over lowered EVM values and contextual edges.
-//! No opcode semantics or source-level calls are inferred here. Postdominators
-//! are a linear-size tree; work, plan growth and pending tasks are charged.
+//! Structure acyclic/simple natural-loop contextual graphs using linear postdominators.
 use std::collections::BTreeMap;
 
 use rxd_core::{Error, Result};
@@ -45,9 +43,8 @@ impl EdgeLocation {
     }
 }
 
-/// Linear rendering plan. A Block emits its ordered statements and only an
-/// explicit terminal; Transfer performs a simultaneous assignment to the target
-/// parameters. If/Else/EndIf retain the original nonzero/zero JUMPI polarity.
+/// Linear rendering steps; transfers assign parameters simultaneously.
+/// Branches preserve nonzero/zero JUMPI polarity.
 #[derive(Clone, Copy, Debug)]
 pub enum StructuredStep {
     Block(usize),
@@ -238,11 +235,8 @@ fn intersect(
     Ok(a)
 }
 
-/// Structure only the already selected contextual graph. Natural loops require
-/// one SCC entry, dominated header backedges, an acyclic iteration after cutting
-/// those backedges, and one ordinary continuation. Distinct terminal exits stay
-/// inside the loop. Nested/irreducible flow retains the entire contextual graph.
-/// No recursive walk, dense dominance matrix, opcode semantics or text parsing.
+/// Natural loops require one entry, dominated backedges and acyclic iterations.
+/// Nested/irreducible cases retain the contextual graph instead of guessing structure.
 pub fn structure_acyclic(
     graph: &ReconstructedGraph,
     limits: Limits,

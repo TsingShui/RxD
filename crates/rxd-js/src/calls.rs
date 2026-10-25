@@ -1,7 +1,4 @@
-//! Call-site and static member-name occurrence search.
-//!
-//! Like `identifiers`, this is a syntax-first locator. It reports where a callee or
-//! property name appears, never what a call returns or which property is accessed at runtime.
+//! Syntax-only call/member occurrence search, not runtime resolution.
 
 use oxc_ast::{
     AstKind,

@@ -103,8 +103,7 @@ pub fn resolve_id(analysis: &mut Analysis, id: &str) -> Result<SelectedConstant>
     };
     Ok(SelectedConstant { owner, path, kind })
 }
-/// Visit every owner/slot/immutable path, including every shared-container occurrence.
-/// Marshal's reader already rejects cycles and enforces a fixed nesting cap.
+/// Visit every constant path and shared occurrence; marshal guards reject cycles.
 pub fn enumerate(analysis: &mut Analysis, query: &Query<'_>) -> Result<Vec<Literal>> {
     let mut literals = Vec::new();
     for owner in 0..analysis.codes.len() {
@@ -230,7 +229,7 @@ fn visit(
     Ok(())
 }
 
-/// Each examined byte comparison is charged before accessing bytes; no unbounded search.
+/// Charge byte comparisons before reading input ranges.
 fn contains(analysis: &mut Analysis, span: Span, needle: &[u8]) -> Result<bool> {
     if needle.is_empty() {
         return Ok(true);

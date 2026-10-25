@@ -1,17 +1,4 @@
-//! `rxd skill install`: installs the bundled rxd skill for coding agents.
-//!
-//! The skill is a single `SKILL.md` in the Agent Skills layout
-//! (`<skills-dir>/<name>/SKILL.md`), embedded in the binary so a release build can set up an
-//! agent without a checkout. Installing is a plain file write rather than a call into the
-//! agents' own tooling, and each target is the user-level directory that agent documents:
-//!
-//! | Agent | User-level skills directory |
-//! |---|---|
-//! | pi | `~/.pi/agent/skills` |
-//! | Codex | `$CODEX_HOME/skills`, else `~/.codex/skills` |
-//! | Claude Code | `~/.claude/skills` |
-//! | cross-agent | `~/.agents/skills` |
-//!
+//! Install the embedded Agent Skill into user-level agent directories.
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
@@ -23,14 +10,10 @@ use std::path::{Path, PathBuf};
 /// The frontmatter `name` and directory name of the installed skill.
 pub const SKILL_NAME: &str = "rxd";
 
-/// The skill text, written verbatim.
-///
-/// Kept as a plain file under `src/skills/rxd/` so it is reviewed as documentation, not
-/// escaped inside a Rust string. `--print` emits exactly these bytes, which is what makes
-/// that flag useful for agents this command does not know about.
+/// Embedded bytes shared by install and --print.
 pub const SKILL_MD: &str = include_str!("../skills/rxd/SKILL.md");
 
-/// An agent whose skill directory `rxd skill install` knows how to write.
+/// Supported Agent Skill destinations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Agent {
     Pi,
@@ -41,10 +24,9 @@ pub enum Agent {
 }
 
 impl Agent {
-    /// Every agent, in the order `all` installs them.
     pub const ALL: [Agent; 4] = [Agent::Pi, Agent::Codex, Agent::Claude, Agent::Agents];
 
-    /// Parses the `AGENT` arguments. `all` expands, duplicates collapse.
+    /// Expand all and deduplicate selected agents.
     fn parse(names: &[String]) -> Result<Vec<Agent>> {
         let mut selected: Vec<Agent> = Vec::new();
         for name in names {
@@ -65,10 +47,6 @@ impl Agent {
         Ok(selected)
     }
 
-    /// The user-level skills directory this agent scans.
-    ///
-    /// `codex_home` is passed in instead of read from the environment here, so the paths
-    /// stay testable without touching process-wide state.
     fn skills_dir(self, home: &Path, codex_home: &Path) -> PathBuf {
         match self {
             Agent::Pi => home.join(".pi/agent/skills"),
@@ -78,10 +56,7 @@ impl Agent {
         }
     }
 
-    /// Whether this agent looks like it is in use on this machine.
-    ///
-    /// Only each agent's own directory is consulted, so a machine using none of them ends up
-    /// with the cross-agent location instead of a fresh dotdir per unused tool.
+    /// Detect existing agent directories; otherwise use the cross-agent location.
     fn detected(self, home: &Path, codex_home: &Path) -> bool {
         match self {
             Agent::Pi => home.join(".pi").is_dir(),
@@ -92,8 +67,7 @@ impl Agent {
     }
 }
 
-/// `rxd skill install` without `AGENT` installs for every agent that looks installed; when none
-/// does, the cross-agent location is the only sensible place left.
+/// Install for detected agents, otherwise the cross-agent directory.
 fn default_agents(home: &Path, codex_home: &Path) -> Vec<Agent> {
     let installed: Vec<Agent> = [Agent::Pi, Agent::Codex, Agent::Claude]
         .into_iter()
@@ -111,12 +85,7 @@ fn skill_path(skills_dir: &Path) -> PathBuf {
     skills_dir.join(SKILL_NAME).join("SKILL.md")
 }
 
-/// Resolves the `SKILL.md` paths to write from the command line.
-///
-/// An empty `agents` means auto-detection. `--dir`, when given, is the whole destination - a
-/// skills directory such as `.claude/skills`, not the skill directory itself - and cannot be
-/// combined with an explicit `AGENT`, because silently ignoring one of the two would hide a
-/// typo in the other.
+/// Resolve install destinations; --dir is a skills root and excludes explicit agents.
 pub fn targets(agents: &[String], dir: Option<&Path>) -> Result<Vec<PathBuf>> {
     if let Some(dir) = dir {
         if !agents.is_empty() {
@@ -137,12 +106,9 @@ pub fn targets(agents: &[String], dir: Option<&Path>) -> Result<Vec<PathBuf>> {
         .collect())
 }
 
-/// What installing at one path did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// The skill was not there before.
     Installed,
-    /// An existing skill was replaced.
     Updated,
     /// The file already had exactly this content.
     Unchanged,
@@ -159,10 +125,6 @@ impl Outcome {
     }
 }
 
-/// Writes the bundled skill to `path`, creating the skill directory.
-///
-/// Re-running this command is the normal way to update the skill, so an identical file is
-/// left untouched and reported as such instead of being rewritten.
 pub fn install(path: &Path) -> Result<Outcome> {
     let outcome = match fs::read(path) {
         Ok(current) if current == SKILL_MD.as_bytes() => return Ok(Outcome::Unchanged),
@@ -176,7 +138,6 @@ pub fn install(path: &Path) -> Result<Outcome> {
     Ok(outcome)
 }
 
-/// The home directory, as the agents themselves resolve it.
 fn home_dir() -> Result<PathBuf> {
     env::var_os("HOME")
         .or_else(|| env::var_os("USERPROFILE"))

@@ -131,9 +131,7 @@ fn decompile_limits(budget: Budget) -> Limits {
     }
 }
 
-/// Resolve filesystem aliases before any PYC command can replace its input.
-/// Missing paths keep their ordinary input/write error handling. For a new
-/// destination, resolve the parent so symlinked directories and `..` agree.
+/// Resolve input/output aliases before writing, including the parent of new destinations.
 fn validate_output(input: &Path, output: Option<&Path>) -> Result<()> {
     let Some(output) = output else {
         return Ok(());

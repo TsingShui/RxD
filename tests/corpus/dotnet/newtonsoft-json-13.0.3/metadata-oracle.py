@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect the pinned PE/CLI table header without loading the managed assembly.
-
-Independent of rxd/dotscope. Decode only enough ECMA-335 layout to count rows and
-locate Field/MethodDef signature-index cells for an offline malformed-input test.
-Original IL/EH expectations remain in ../class-expectations.json (PEReader oracle).
-"""
+"""Inspect raw PE/CLI tables independently to locate malformed-input probes; IL/EH uses PEReader facts."""
 import hashlib
 import json
 import pathlib

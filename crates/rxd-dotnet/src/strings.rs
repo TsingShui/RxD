@@ -49,8 +49,7 @@ pub(crate) fn uses(
             .or_default()
             .push(site.il_offset);
     }
-    // A folded needle is the same comparison in UTF-16, so the fold happens once here
-    // instead of per literal.
+    // Fold the UTF-16 needle once per query.
     let needle = contains
         .map(|text| {
             let text = if case_sensitive {
@@ -116,11 +115,7 @@ pub(crate) fn uses(
     Ok(StringUses { literals, groups })
 }
 
-/// References to the literals `pattern` names.
-///
-/// `exact` is the coordinate face (`--at '<literal>' --kind string`): one literal, matched
-/// byte for byte. Otherwise the pattern is a case-sensitive substring, which is the search
-/// face on every backend, so a pattern inside a longer literal still finds its load sites.
+/// Match decoded literals exactly for anchors or by case-controlled substring.
 pub(crate) fn references(
     input: &mut Input,
     pattern: &str,

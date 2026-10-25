@@ -1,16 +1,9 @@
-//! Case-folded matching for every filter, in one place.
-//!
-//! Every backend's `-f/--filter` answers the same question — "does this label contain the
-//! pattern?" — so the folding rule lives here rather than once per crate. The default is
-//! case-**insensitive**: a filter narrows a list the caller is already looking at, and a
-//! missed capital costs a round trip. `--case sensitive` switches to exact matching, which
-//! is what a query over identities needs.
+//! Shared case-folded matching; sensitive mode compares exact case.
 
-/// A needle matched against labels.
 #[derive(Clone, Debug)]
 pub struct Contains {
     needle: String,
-    /// The lowered needle; `None` when matching is case-sensitive.
+    /// None means case-sensitive matching.
     folded: Option<String>,
 }
 
@@ -22,13 +15,11 @@ impl Contains {
         }
     }
 
-    /// The needle as the caller spelled it, for header echoes.
     pub fn text(&self) -> &str {
         &self.needle
     }
 
-    /// The folded needle when it is pure ASCII, for callers that can compare raw bytes
-    /// without decoding them first (`strings` over a 523 MiB archive).
+    /// Folded ASCII needle for byte-level matching, otherwise None.
     pub fn ascii_needle(&self) -> Option<&str> {
         self.folded.as_deref().filter(|needle| needle.is_ascii())
     }
@@ -41,7 +32,6 @@ impl Contains {
     }
 }
 
-/// Whether two labels are the same, under the same rule.
 pub fn equals(left: &str, right: &str, case_sensitive: bool) -> bool {
     if case_sensitive {
         left == right

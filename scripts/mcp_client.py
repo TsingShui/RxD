@@ -1,7 +1,4 @@
-"""Small real stdio JSON-RPC client used by relocated smoke and measurements.
-
-No SDK dependency; reads each complete response (including compatibility text).
-"""
+"""Standard-library MCP stdio driver; read complete responses including compatibility text."""
 import json
 from pathlib import Path
 import queue

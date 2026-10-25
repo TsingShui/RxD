@@ -1,13 +1,10 @@
-//! Shared output envelope constructors. Backends define each record's determinate detail schema.
+//! Shared record envelopes; backends own detail schemas.
 
 use serde_json::{Map, Value, json};
 
-/// Version of the shared envelope, independent of the legacy output version.
 pub const SCHEMA_VERSION: u32 = 2;
 
-/// Navigation and byte offsets; absent values serialize as null, never omitted keys.
-///
-/// `at` values are file-scoped backend coordinates, emitted verbatim for `--at`.
+/// File-scoped navigation coordinates; absent values serialize as null.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RecordMeta<'a> {
     pub at: Option<&'a str>,
@@ -18,15 +15,8 @@ pub struct RecordMeta<'a> {
     pub end: Option<usize>,
 }
 
-/// Build a stream data record or a single-object result, preserving detail verbatim.
-/// The row kind every backend's `xref` emits.
-///
-/// One name for one shape: the cross-reference skeleton (`context_at` + `detail.target` +
-/// the backend's evidence) is shared, so its spelling is not repeated per backend. Backend
-/// specific kinds (`class`, `table`, `entity`, …) stay with their backend.
 pub const REFERENCE: &str = "reference";
 
-/// A cross-reference row.
 pub fn reference(meta: RecordMeta<'_>, detail: Map<String, Value>) -> Value {
     record(REFERENCE, meta, detail)
 }
@@ -48,10 +38,7 @@ pub fn record(record: &str, meta: RecordMeta<'_>, detail: Map<String, Value>) ->
     value
 }
 
-/// Attach protocol identity to a single-object result that carries no stream header.
-///
-/// A single-record FETCH receipt has no header line, so `backend`, `command` and
-/// `schema_version` live at the top level next to the record fields.
+/// Attach backend, command and schema version to a headerless FETCH receipt.
 pub fn attach_protocol(value: &mut Value, backend: &str, command: &str) {
     value["backend"] = Value::from(backend);
     value["command"] = Value::from(command);

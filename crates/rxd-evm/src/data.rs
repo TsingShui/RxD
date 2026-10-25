@@ -199,7 +199,6 @@ impl DataInventory {
             .collect()
     }
 
-    /// The copy-only coordinate a row prints and `--at` accepts.
     fn coordinate(&self, navigation: &Navigation, literal: &DataLiteral) -> String {
         format!(
             "{}:literal:data:{}:{}:{}",

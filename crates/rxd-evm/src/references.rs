@@ -37,7 +37,6 @@ pub(crate) fn analysis(
             "unknown_copy_evidence":detail.data.as_ref().map(|d|&d.unknown_copy_evidence)}))))
 }
 
-/// A filter narrows a reference listing to rows whose caller coordinate matches.
 pub(crate) fn keeps(record: &Value, needle: Option<&rxd_core::filter::Contains>) -> bool {
     needle.is_none_or(|needle| {
         record["context_at"]

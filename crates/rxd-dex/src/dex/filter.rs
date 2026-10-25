@@ -1,23 +1,6 @@
-//! Byte-level pre-filter over the query's target indices.
-//!
-//! Every reference instruction stores its target index as a little-endian operand
-//! at `pc + 2`, so a method whose code does not contain those bytes cannot
-//! reference it. One `memchr` pass over a method body is much cheaper than
-//! decoding its instructions, and operand bytes are far more selective than the
-//! opcode bytes: for a small target set almost every method is skipped.
-//!
-//! A method that does get decoded asks [`Targets::contains`] about every reference
-//! instruction's index, which on a wide query (`field INSTANCE` matches thousands of
-//! ids per DEX) is millions of questions per query. That lookup is therefore a bitmap
-//! indexed by the index itself rather than a search: one 8 KiB table covers every
-//! 16-bit operand, i.e. every reference instruction except `const-string/jumbo`.
+//! Prefilter reference operands by target-index bytes, then check bitmap membership.
 
-/// Target indices together with a fast membership test and a byte-level pre-filter.
-///
-/// Every reference instruction encodes its index as a little-endian operand at
-/// `pc + 2`, so a method whose code does not contain the target's bytes cannot
-/// reference it. Decoding a method's instructions costs far more than one
-/// `memchr` pass over its code, and most methods reference nothing at all.
+/// Reference indices occupy little-endian operands at pc + 2.
 pub(super) struct Targets {
     /// One bit per index below [`Self::BITMAP_INDICES`], indexed by the index itself.
     bits: Vec<u64>,
@@ -34,9 +17,7 @@ impl Targets {
     /// costs more than the instruction decode it would skip.
     const MAX_FILTER_TARGETS: usize = 4;
 
-    /// The bitmap covers every 16-bit operand, which is every reference instruction
-    /// except `const-string/jumbo` (0x1b, a 32-bit string index - and only a string
-    /// query can reach it).
+    /// All reference operands are 16-bit except const-string/jumbo.
     const BITMAP_INDICES: usize = 1 << 16;
 
     /// Whether the filter would let `code` through; `true` when filtering is off.
@@ -47,16 +28,10 @@ impl Targets {
         }
     }
 
-    /// Whether `index` is one of the query's targets.
-    ///
-    /// This is the hot path of a wide query: two loads and a couple of ALU ops, with
-    /// the 8 KiB bitmap resident in L1 for the whole DEX.
     #[inline]
     pub(super) fn contains(&self, index: u32) -> bool {
         let index = index as usize;
         if index < Self::BITMAP_INDICES {
-            // The caller only ever passes an index that came out of the DEX, and the
-            // bitmap was sized for every index below BITMAP_INDICES.
             self.bits[index >> 6] >> (index & 63) & 1 != 0
         } else {
             self.wide.binary_search(&(index as u32)).is_ok()
@@ -64,9 +39,7 @@ impl Targets {
     }
 
     pub(super) fn new(indices: impl IntoIterator<Item = u32>) -> Self {
-        // Ascending order is not assumed: the callers build these from the id tables in
-        // index order today, but sorting here keeps that from being a silent
-        // requirement of the bitmap or the byte filter.
+        // Sort here; caller index order is not an invariant.
         let mut sorted: Vec<u32> = indices.into_iter().collect();
         sorted.sort_unstable();
         sorted.dedup();
@@ -112,7 +85,6 @@ impl TargetBytes {
         Self { pairs, quads }
     }
 
-    /// Whether `code` contains any target index as an operand.
     fn matches(&self, code: &[u8]) -> bool {
         self.pairs.iter().any(|pair| contains_pair(code, *pair))
             || self
@@ -153,9 +125,6 @@ mod tests {
         assert!(!contains_pair(b"\x1a", [0x1a, 0x05]));
     }
 
-    /// The bitmap is the scan's membership test, so it has to agree with the target
-    /// list exactly - including at both ends of a bitmap word and above the range the
-    /// bitmap covers (the `const-string/jumbo` case).
     #[test]
     fn bitmap_membership_matches_the_target_list() {
         let targets = Targets::new([0u32, 1, 63, 64, 65, 1000, 65535, 65536, 70000]);

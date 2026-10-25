@@ -1,8 +1,4 @@
-//! CLI entry point: argument parsing, dispatch, output.
-//!
-//! stdout carries a command's payload and nothing else: every diagnostic,
-//! including the `--perf` record, goes to stderr, so redirecting a result can never
-//! capture debug lines. An `-o` file receives exactly the bytes stdout received.
+//! DEX CLI dispatch and payload output; diagnostics stay on stderr.
 
 mod args;
 mod output;
@@ -17,10 +13,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::Instant;
 
-/// Reads the optional per-entry inflation ceiling from the environment.
-///
-/// `0` and unparseable values preserve the built-in default, matching the existing CLI
-/// contract. The returned policy is immutable and passed explicitly to archive operations.
+/// Read optional inflation override; zero/invalid values preserve the supplied policy.
 fn archive_policy_from_env(default: Option<usize>) -> apk::ArchivePolicy {
     archive_policy(
         std::env::var("RASC_MAX_INFLATED_ENTRY").ok().as_deref(),
@@ -63,10 +56,7 @@ fn is_broken_pipe(error: &anyhow::Error) -> bool {
     })
 }
 
-/// Emit the shared perf record under `--perf`.
-///
-/// A DEX archive has no content hash to report (hashing 523 MiB would cost more than the
-/// query), so `source_id` stays null and the archive counts ride in `extra`.
+/// Emit shared perf JSONL; archive-wide source identity is absent.
 fn emit_perf(perf_on: bool, command: &'static str) {
     if !perf_on {
         return;
@@ -111,14 +101,9 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 args.perf,
             )?;
             let scanned = scan_started.elapsed();
-            // The comparator is the string order, so an unstable sort produces exactly the
-            // bytes a stable one would: equal lines are identical lines, and there is
-            // nothing else to tie-break. Sorting a wide query's ~90k lines in parallel is
-            // what keeps it off the main thread.
+            // Unstable sort is deterministic because equal hits render identical rows.
             let sorted = scan_started.elapsed();
-            // Assembling the payload line by line: a pre-sized buffer measured no faster
-            // than letting the String grow (macOS's allocator re-extends the large block in
-            // place), so the length pass is not worth it.
+
             let mut payload = String::new();
             for hit in &hits {
                 push_reference(&mut payload, &hit.dex_name, &hit.member, &hit.matched)?;
@@ -154,7 +139,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 args.perf,
             )?;
             let listed = started.elapsed();
-            // Keep the existing parallel, ordered chunk rendering for large class indexes.
+
             const RENDER_CHUNK: usize = 8192;
             let pieces: Vec<String> = classes
                 .par_chunks(RENDER_CHUNK)
@@ -403,8 +388,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                     let path = target.to_str().ok_or_else(|| {
                         anyhow::anyhow!("INVALID_QUERY: output path must be UTF-8")
                     })?;
-                    // The receipt names the exact bytes written, so it reports their full
-                    // SHA-256 rather than the sampled stream identity in `source_id`.
+                    // Extraction receipts use full SHA-256, not sampled stream identity.
                     let sha256 = format!("{:x}", Sha256::digest(bytes));
                     append_json(
                         &mut payload,
@@ -482,30 +466,20 @@ fn fetch_record(
     record.insert("backend".into(), serde_json::json!("dex"));
     record.insert("command".into(), serde_json::json!(command));
     record.insert("schema_version".into(), serde_json::json!(2));
-    // A DEX archive carries no content hash, so the record names no input identity.
-    // Putting the carrier's size here would make the same DEX print two different records
-    // depending on whether it sits in a bare file or an APK.
+    // Carrier size would change identical DEX records across bare/APK inputs.
     record.insert("detail".into(), detail);
     let mut line = serde_json::to_string(&serde_json::Value::Object(record))?;
     line.push('\n');
     Ok(line)
 }
 
-/// A DEX data record. No DEX unit has a copy-only coordinate, so the envelope's six
-/// nullable navigation keys would be `null` on every row; they are omitted instead of
-/// repeated, and the header carries the stream-wide facts once.
-/// One detail value written without a `serde_json::Value`.
 enum Field<'a> {
     Text(&'a str),
     #[cfg(test)]
     Number(u64),
 }
 
-/// Append a JSON string literal, escaping exactly what JSON requires.
-/// Append a reference row: the caller's coordinate plus the matched target.
-///
-/// An offset and a mnemonic were considered and dropped: nothing that consumes a hit
-/// acts on the instruction itself, only on which method references what.
+/// Append one caller/target reference row.
 fn push_reference(payload: &mut String, entry: &str, caller: &str, matched: &str) -> Result<()> {
     payload.push_str("{\"record\":\"");
     payload.push_str(rxd_core::envelope::REFERENCE);
@@ -556,12 +530,7 @@ fn push_json_string(out: &mut String, value: &str) {
     out.push('"');
 }
 
-/// Append one `{record, detail}` row straight into the payload. A large archive renders
-/// hundreds of thousands of rows, so building a `Value` per row only to serialize it is
-/// pure allocation; this writes the same bytes in place.
-/// One string row, written with its constant keys inline. A string listing is
-/// hundreds of thousands of rows, so re-escaping the same five keys per row is pure
-/// overhead; this keeps the bytes identical to [`push_record`].
+/// Append one string row with constant keys and no temporary Value.
 fn push_string_row(payload: &mut String, entry: &str, index: u64, value: &str) -> Result<()> {
     payload.push_str("{\"record\":\"string\",\"detail\":{\"entry\":");
     push_json_string(payload, entry);
@@ -583,10 +552,6 @@ fn push_record(payload: &mut String, kind: &str, fields: &[(&str, Field<'_>)]) -
     push_record_at(payload, kind, None, fields)
 }
 
-/// Append one row whose identity is its `at` coordinate.
-///
-/// `at` is what `--at` takes back, so a record that names a selectable object carries it
-/// there instead of repeating it inside `detail`.
 fn push_record_at(
     payload: &mut String,
     kind: &str,
@@ -620,10 +585,7 @@ fn push_record_at(
     Ok(())
 }
 
-/// A safe destination path for an archive entry written under a directory.
-///
-/// Entry names are attacker-controlled, so only ordinary relative components are
-/// accepted: no absolute paths, `..`, root/prefix components, or Windows separators.
+/// Accept only safe relative extraction paths; reject traversal and foreign separators.
 fn extract_relative(name: &str) -> Result<std::path::PathBuf> {
     use std::path::Component;
     if name.is_empty() || name.contains('\\') {

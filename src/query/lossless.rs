@@ -1,6 +1,4 @@
-//! Lossless bridge for JSON strings containing isolated UTF-16 surrogate units.
-//! serde_json::Value stores Unicode scalar strings, so such literals use a typed
-//! `{utf16_units: [...]}` representation while ordinary strings stay unchanged.
+//! Preserve isolated surrogate units as typed utf16_units; ordinary strings stay unchanged.
 use serde_json::{Value, value::RawValue};
 use std::collections::BTreeMap;
 

@@ -51,9 +51,7 @@ function walk(node,cb) {
     if(node.nodeType)cb(node);
     for(const v of Object.values(node)) if(Array.isArray(v))v.forEach(n=>walk(n,cb));else if(v&&typeof v==='object')walk(v,cb);
 }
-// Restricted independent CFG oracle: only adjacent PUSH destinations are
-// resolved. Indirect jumps stay unknown; this does not recover subroutine
-// returns or assert arbitrary runtime reachability/semantic equivalence.
+// Oracle resolves only adjacent PUSH destinations; indirect jumps/returns stay unknown.
 function staticRegions(instructions,dispatch,maps) {
     const code=instructions.slice(0,maps.length);
     const starts=new Set([0]);

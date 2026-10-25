@@ -66,8 +66,7 @@ impl JsString {
     pub fn equals_str(&self, other: &str) -> bool {
         self.0.iter().copied().eq(other.encode_utf16())
     }
-    /// Substring test over the exact UTF-16 units, so a filter never needs a lossy UTF-8
-    /// round trip through the decoded value. Folded unless `case_sensitive`.
+    /// Match UTF-16 units without lossy conversion; optionally fold case.
     pub fn contains_filter(&self, needle: &str, case_sensitive: bool) -> bool {
         if let Some(text) = self.to_utf8() {
             return rxd_core::filter::Contains::new(needle, case_sensitive).matches(&text);
@@ -80,8 +79,7 @@ impl JsString {
         self.contains_prepared(needle.as_slice(), case_sensitive)
     }
 
-    /// The same filter over a needle that is already UTF-16, so a per-literal check never
-    /// re-encodes the pattern.
+    /// Match an already encoded UTF-16 needle.
     pub fn contains_prepared(&self, needle: &[u16], case_sensitive: bool) -> bool {
         if needle.is_empty() {
             return true;

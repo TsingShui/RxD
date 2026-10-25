@@ -534,9 +534,7 @@ fn pyc_final_versions_preserve_literal_occurrences_and_complete_search_refs_fetc
                     literal["at"],
                     format!("const:{}:{path_string}", d["code_index"])
                 );
-                // Every timestamp occurrence exercises XREF, including aliases,
-                // containing tuples and an unreferenced singleton frozenset. Other
-                // modes replay a nonzero workflow with their own returned IDs.
+                // Timestamp mode checks every occurrence; other modes replay one returned-ID workflow.
                 if mode != "timestamp.pyc" && d["value"] != "closure-marker" {
                     continue;
                 }
@@ -1138,7 +1136,6 @@ fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
             );
         }
 
-        // A rejected selector leaves an existing output file untouched.
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("keep.json");
         fs::write(&dest, b"keep").unwrap();

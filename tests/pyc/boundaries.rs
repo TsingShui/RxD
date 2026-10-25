@@ -462,7 +462,7 @@ fn pyc_decompile_work_budget_is_exact_shared_and_reported() {
     let perf = perf_value(&perf);
     assert!(perf["counters"]["work"].as_u64().unwrap() < work);
     assert!(perf["stages_ns"]["generate"].as_u64().unwrap() > 0);
-    // A rejected input never replaces an existing output file.
+
     let dest = dir.path().join("keep.py");
     fs::write(&dest, b"keep").unwrap();
     let (_bad_dir, bad) = fixture(b"not a pyc", "bad.pyc");

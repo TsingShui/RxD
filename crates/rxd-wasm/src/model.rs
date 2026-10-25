@@ -1,9 +1,6 @@
 use serde::Serialize;
 
-/// WASM's view of the shared budget table.
-///
-/// The numbers live in exactly one place, `rxd_core::Budget`; this type only
-/// names the subset one module analysis spends.
+/// WASM projection of shared resource quotas.
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub input_bytes: usize,
@@ -29,7 +26,6 @@ impl From<rxd_core::Budget> for Limits {
     }
 }
 
-/// A function signature from the type section.
 #[derive(Clone, Debug, Serialize)]
 pub struct FuncType {
     pub type_index: u32,
@@ -120,7 +116,6 @@ pub struct ElementSegment {
     pub count: usize,
 }
 
-/// A decoded string from a data segment or the name section.
 #[derive(Clone, Debug, Serialize)]
 pub struct StringRecord {
     pub origin: &'static str,
@@ -136,7 +131,6 @@ pub struct StringRecord {
     pub bytes: Option<Vec<u8>>,
 }
 
-/// An explicit function reference discovered in a defined function body.
 #[derive(Clone, Debug, Serialize)]
 pub struct Reference {
     pub id: String,
@@ -149,13 +143,12 @@ pub struct Reference {
     pub target_index: u32,
 }
 
-/// One instruction in the conservative single-function instruction view.
 #[derive(Clone, Debug, Serialize)]
 pub struct Instruction {
     /// Byte offset within the function code body.
     pub offset: usize,
     pub opcode: String,
-    /// Decoded immediate operand(s); `Operand::None` when the opcode has none.
+
     pub operand: Operand,
 }
 
@@ -188,7 +181,6 @@ pub struct MemArg {
     pub memory: u32,
 }
 
-/// A single-function instruction-view record.
 #[derive(Clone, Debug, Serialize)]
 pub struct FunctionView {
     pub representation: &'static str,

@@ -1,10 +1,4 @@
-//! Input-scaled CLI bounds, separate from explicit caller/service quotas.
-//!
-//! The constant allowances preserve existing small-input behavior. They are not total
-//! CLI ceilings: encoded input contributes metadata/index storage allowances.
-//! Ordinary CLI has no work, instruction, entry-byte or output-byte quota;
-//! allocation can still fail.
-//! Amplification/recursion guards still fail explicitly; this is not an unlimited mode.
+//! Input-scaled metadata/index admission; explicit caller quotas remain independent.
 use std::path::Path;
 
 use crate::{Budget, Error, Failure, Result};
@@ -36,12 +30,8 @@ impl BudgetPolicy {
 }
 
 impl Budget {
-    /// Bound metadata/index storage relative to admitted input. Work, instructions,
-    /// individual entry bytes and serialization have no quota (`None`), never a
-    /// numeric unlimited sentinel. All derived arithmetic is checked.
-    ///
-    /// These are safety envelopes, not proofs of semantic completeness or RSS ceilings.
-    /// Formats with compressed/shared structures keep their local expansion guards too.
+    /// Scale metadata/index storage with input; other CLI quotas are unset.
+    /// These accounting envelopes are not RSS limits.
     pub fn for_input_bytes(bytes: usize) -> Result<Self> {
         let base = Self::default();
         let grow = |allowance: usize, factor: usize| {

@@ -1,9 +1,4 @@
-//! Static member-name and property-key occurrence search.
-//!
-//! Syntax-first locator: it reports where a property name appears in the source, never which
-//! property is accessed at runtime. `obj.foo` matches `foo`; `obj["foo"]` and the bounded
-//! constant form `obj["f" + "oo"]` also match `foo` as a computed key; `obj[expr]` with a
-//! dynamic key does not (that is a lexical reference, reachable through `identifiers`).
+//! Locate static property names and proven constant keys, not dynamic accesses.
 
 use oxc_ast::{
     AstKind,
@@ -141,11 +136,7 @@ fn static_key_name(
     }
 }
 
-/// Resolve a computed access key to a name.
-///
-/// Only a string literal or a bounded constant expression the evaluator can prove is
-/// accepted. A binding lookup would require scope resolution, which this query never does,
-/// so `obj[key]` stays out of scope and `obj[0]` is an index rather than a property name.
+/// Accept string literals/proven constant keys; never resolve bindings or numeric indices.
 pub(crate) fn computed_key(expression: &Expression<'_>) -> Option<(JsString, Span, &'static str)> {
     if let Expression::StringLiteral(literal) = expression.get_inner_expression() {
         return Some((

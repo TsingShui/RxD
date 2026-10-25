@@ -1,10 +1,5 @@
-//! Structured, language-neutral C-like decompilation of a single function.
-//!
-//! This is rxd's own stack-reconstruction and control-flow mapping, built on
-//! WASM's native structured control flow. It is NOT a source-language recovery
-//! and NOT deobfuscation. Any uncovered opcode, non-structured situation, or
-//! stack underflow fully degrades to the instruction view: the caller falls
-//! back and never emits partial or guessed code.
+//! Reconstruct C-like expressions/control flow from structured WASM.
+//! Unsupported situations fully fall back to original instructions.
 
 use anyhow::Result;
 use wasmparser::{BinaryReader, BlockType, FunctionBody, Operator};
@@ -12,7 +7,6 @@ use wasmparser::{BinaryReader, BlockType, FunctionBody, Operator};
 use crate::model::FunctionView;
 use crate::module::{Module, valtype_display};
 
-/// Outcome of a decompilation attempt.
 pub enum Attempt {
     /// Reconstructed C-like code with a line -> code-body-offset mapping.
     Decompiled {
@@ -23,7 +17,7 @@ pub enum Attempt {
     Degraded { reason: String },
 }
 
-/// Try to decompile one defined function. Pure analysis over a bounded body.
+/// Decompile one defined function or return a fallback reason.
 pub fn decompile(module: &Module, position: usize) -> Result<Attempt> {
     let function = module.function_at(position);
     let (range, bytes) = module.body_slice(position);
@@ -195,14 +189,12 @@ impl<'a> Decompiler<'a> {
         Ok(())
     }
 
-    /// A value-preserving cast rendered as `(ty)expr`.
     fn cast(&mut self, ty: &str) -> std::result::Result<(), String> {
         let a = self.pop()?;
         self.push(format!("({ty}){}", Self::wrap(&a, P_ATOM)), P_ATOM);
         Ok(())
     }
 
-    /// A binary operation rendered as a function call, e.g. `rotr(a, b)`.
     fn binfn(&mut self, f: &str) -> std::result::Result<(), String> {
         let b = self.pop()?;
         let a = self.pop()?;
@@ -226,12 +218,7 @@ impl<'a> Decompiler<'a> {
         Ok(())
     }
 
-    /// Render a memory access as array indexing, scaling the static byte offset
-    /// by the element size when it divides evenly (mirrors wasm-decompile:
-    /// `a[12]:int` -> `a[3]:int`). Also folds a scaled dynamic index
-    /// `(base + (i << k))[off]:T` -> `base[i]:T` (or `base[i + n]:T` when a
-    /// non-zero aligned static offset `n*size` remains) when `2^k` is the
-    /// element size. Non-aligned offsets keep the raw byte index.
+    /// Scale aligned byte offsets/dynamic shifts into element indices; retain unaligned bytes.
     fn mem_access(base: &str, ty: &str, offset: u64) -> String {
         let size = type_byte_size(ty);
         if size > 1
@@ -459,9 +446,7 @@ impl<'a> Decompiler<'a> {
             // ---- drop / select ----
             Operator::Drop => {
                 let v = self.pop()?;
-                // Preserve dropped values that can have observable effects: calls
-                // (side effects) and memory loads (can trap). Mirrors
-                // wasm-decompile emitting dropped expressions as statements.
+                // Preserve dropped calls/loads: they can have effects or trap.
                 if v.text.contains('(') || v.text.contains('[') {
                     self.emit(format!("{};", v.text), at);
                 }
@@ -780,7 +765,6 @@ fn indent(line: Line) -> Line {
     }
 }
 
-/// Byte size of a C-like memory-access element type, for index scaling.
 fn type_byte_size(ty: &str) -> u64 {
     match ty {
         "byte" | "ubyte" => 1,
@@ -791,11 +775,7 @@ fn type_byte_size(ty: &str) -> u64 {
     }
 }
 
-/// Detect a scaled dynamic index at the tail of an address expression:
-/// `BASE + (IDX << k)` or bare `(IDX << k)`, where `2^k == size`. Returns
-/// `(BASE_or_0, IDX)` on success. Operates on the already-rendered expression,
-/// so it strips one layer of wrapping parens and matches the trailing shift
-/// term only; anything it cannot prove is left untouched.
+/// Recognize trailing BASE + (IDX << k) only when 2^k matches element size.
 fn split_scaled_index(base: &str, size: u64) -> Option<(String, String)> {
     let want_shift = size.trailing_zeros() as u64; // 4 -> 2, 8 -> 3
     if 1u64 << want_shift != size {
@@ -878,7 +858,6 @@ fn find_matching_open(expr: &str) -> Option<usize> {
     None
 }
 
-/// Map a wasm value-type name to the C-like scalar used in output.
 fn ctype(ty: &str) -> &'static str {
     match ty {
         "i32" => "int",
@@ -889,7 +868,6 @@ fn ctype(ty: &str) -> &'static str {
     }
 }
 
-/// Render the full function (signature + body) for a successful attempt.
 pub fn render(module: &Module, position: usize, code: &str) -> String {
     let function = module.function_at(position);
     let name = function
@@ -924,7 +902,6 @@ pub fn render(module: &Module, position: usize, code: &str) -> String {
     out
 }
 
-/// Build the final decompiled `FunctionView` or signal degradation.
 pub fn view(module: &Module, position: usize) -> Result<std::result::Result<FunctionView, String>> {
     match decompile(module, position)? {
         Attempt::Decompiled { code, mapping } => {

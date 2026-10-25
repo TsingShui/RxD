@@ -152,9 +152,7 @@ pub fn materialize(
             .write(true)
             .create_new(true)
             .open(&destination)?;
-        // Verify the exact bytes successfully written, without opening every
-        // newly created resource a second time. The private directory is only
-        // published after all sizes and hashes pass.
+        // Verify bytes while writing; publish only after every size and hash passes.
         let mut digest = Sha256::new();
         let mut copied = 0u64;
         let mut buffer = [0u8; 65536];
@@ -197,9 +195,7 @@ pub fn materialize(
     }
     fs::write(temporary.path().join(".complete"), &manifest.bundle_sha256)?;
     match fs::rename(temporary.path(), &cache) {
-        // We verified every file in this private directory before publication.
-        // Reopening its library adds no validation; a concurrent winner must
-        // still pass the cached-library check below.
+        // Private bytes are verified; a concurrent cached winner still needs validation.
         Ok(()) => {}
         Err(error) if cache.exists() => validate_cache(&cache, manifest)
             .map_err(|validation| format!("cache publication race ({error}): {validation}"))?,

@@ -234,7 +234,7 @@ fn pyc_get_code_budgets_are_exact_cumulative_and_fail_atomically_with_perf() {
             .unwrap();
         assert_eq!(error.code, "RESOURCE_LIMIT", "{field}");
     }
-    // A failed selection never replaces an existing output file.
+
     fs::write(&out, b"keep").unwrap();
     failure(
         fetch(&path, "code:99999", &["-o", out.to_str().unwrap()]),

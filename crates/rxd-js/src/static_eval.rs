@@ -461,9 +461,8 @@ fn is_string_call_callee(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
     }
     matches!(c.callee.get_inner_expression(), Expression::StaticMemberExpression(m) if matches!(m.property.name.as_str(), "toUpperCase" | "toLowerCase" | "charAt" | "slice" | "substring" | "substr"))
 }
-/// Disable helper assumptions for syntactically visible shadowing/dynamic scope,
-/// or String/global-object uses other than the supported direct constructor helpers.
-/// This is conservative, not a proof that external code leaves prototypes untouched.
+/// Disable intrinsic assumptions under visible shadowing/dynamic scope.
+/// This does not prove external code preserves prototypes.
 pub(crate) fn intrinsics_allowed(program: &oxc_ast::ast::Program<'_>, max_depth: usize) -> bool {
     use oxc_ast::AstKind;
     use oxc_ast_visit::Visit;

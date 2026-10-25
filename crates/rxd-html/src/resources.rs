@@ -69,7 +69,6 @@ fn javascript_type(value: &str) -> bool {
     .any(|mime| value.eq_ignore_ascii_case(mime))
 }
 
-/// HTML script type classification only; this does not prepare or execute a script.
 fn script_type(attrs: &[Attr]) -> &'static str {
     let explicit = attr(attrs, "type");
     let language;

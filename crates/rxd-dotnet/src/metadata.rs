@@ -13,9 +13,6 @@ use dotscope::metadata::tables::{
 
 use crate::{CallSignature, Field, Input, Method, StringRecord, TypeInfo, input::Work};
 
-/// One shared empty payload for unresolved signature fields. 41k methods times
-/// three empty allocations is measurable on a large assembly; the values are
-/// replaced wholesale on resolve, never mutated in place.
 fn empty_signature() -> std::sync::Arc<String> {
     static EMPTY: std::sync::OnceLock<std::sync::Arc<String>> = std::sync::OnceLock::new();
     EMPTY
@@ -314,10 +311,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
             unreadable!("type_members", Some(ty.token.value()), error);
         }
     }
-    // Signatures, MemberRef/MethodSpec grammar and property/event associations are
-    // resolved on demand (`Input::resolve_*`), so an unrelated corrupt row cannot
-    // turn a local query into a whole-file failure. Table/heap/token structure was
-    // already validated before this point.
+    // Resolve signatures/relationships lazily; unrelated corrupt rows cannot fail local queries.
     let mut result_fields = Vec::new();
     for (idx, row) in fields.iter().enumerate() {
         let processed = (|| -> Result<Field> {
@@ -407,9 +401,7 @@ pub(crate) fn load(input: &mut Input) -> Result<()> {
     Ok(())
 }
 
-// Bound the fixed retained rows/indices before allocating them. Two row slots
-// cover Vec growth; full identity strings and conservative tree-node storage are
-// included separately. Variable signature/name payloads are bounded by Work.
+// Reserve row/index storage before allocation, including Vec growth and identity strings.
 fn reserve_metadata(input: &Input, work: &mut Work) -> Result<()> {
     let id_bytes = input.source_id.len() + 32;
     let word = std::mem::size_of::<usize>();
@@ -798,8 +790,7 @@ impl MethodSig {
     }
 }
 
-/// Build only the call projection requested by the caller. Full metadata loading
-/// already checked all referenced signatures and MethodSpec argument bounds.
+/// Resolve only the requested call signature and validate its operands.
 pub(crate) fn call_signature(input: &Input, token: u32, work: &mut Work) -> Result<CallSignature> {
     work.charge(1)?;
     input.check_token(token, &[6, 10, 43])?;

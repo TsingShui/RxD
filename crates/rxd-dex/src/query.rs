@@ -1,12 +1,7 @@
-//! The search query model shared by the CLI and the scanners.
-//!
-//! `cli` builds these values from command-line arguments; `apk` and `dex` consume
-//! them. Keeping the model in its own module means the analysis layers never have
-//! to depend on the argument-parsing layer.
+//! Shared selectors for CLI dispatch and DEX scanners.
 
 use anyhow::{Result, bail};
 
-/// What an `xref` invocation looks for.
 #[derive(Clone, Debug)]
 pub enum Query {
     String(Pattern),
@@ -15,19 +10,12 @@ pub enum Query {
     Field(MemberQuery),
 }
 
-/// One selector face.
-///
-/// The two faces answer different questions, so they are spelled differently on the command
-/// line. `-f/--filter` is a content search: a case-sensitive substring, where any entry whose
-/// table holds a match may answer and zero rows is a true answer. `--at` is a coordinate that
-/// a row already printed: it names one identity, matched exactly, and an identity that no
-/// entry carries is an error rather than an empty result.
+/// Substring search or exact anchor; unresolved anchors are errors, not zero hits.
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub text: String,
     pub exact: bool,
-    /// `false` (the default) folds case: a filter narrows a list, and a missed capital
-    /// costs a round trip. `--case sensitive` is what turns folding off.
+    /// False folds substring case; coordinates remain exact.
     pub case_sensitive: bool,
 }
 
@@ -51,32 +39,22 @@ impl Pattern {
     }
 }
 
-/// A member query: at least one of a member name, a declaring class, or the descriptor an
-/// exact coordinate carries.
+/// Member selector by name, owner or exact descriptor.
 #[derive(Clone, Debug)]
 pub struct MemberQuery {
     pub name: Option<Pattern>,
-    /// A case-sensitive substring of the descriptor, in `pkg/Name` form, where dots are
-    /// separators.
+    /// Owner selector in pkg/Name form; dots normalize to separators.
     pub class: Option<Pattern>,
-    /// The prototype of a method coordinate (`(I)V`) or the type of a field coordinate
-    /// (`Ljava/lang/String;`). Only an exact anchor sets it: a name plus its prototype is
-    /// what names one method exactly.
+    /// Exact method prototype or field type; distinguishes overloaded coordinates.
     pub descriptor: Option<String>,
 }
 
-/// Normalizes a class name to the `Lpkg/Name;` descriptor form that `findrefs`
-/// and `getclass` compare against the DEX tables.
-///
-/// Accepts dotted Java names, descriptors with or without their `L`/`;`
-/// delimiters, and rejects the empty name.
+/// Normalize dotted/descriptive class names to Lpkg/Name;; reject empty names.
 pub fn format_class_name(name: &str) -> Result<String> {
     if name.is_empty() {
         bail!("Class name cannot be empty");
     }
-    // A name that already looks like a descriptor is used as written, but only when
-    // its slashes are there too: `Lcom.foo.Main;` still needs its dots normalised.
-    // This mirrors the reference implementation exactly.
+    // Only slash-qualified descriptors bypass dot normalization.
     if name.starts_with('L') && name.ends_with(';') && name.contains('/') {
         return Ok(name.to_owned());
     }
@@ -90,19 +68,12 @@ pub fn format_class_name(name: &str) -> Result<String> {
     Ok(name)
 }
 
-/// Normalizes a fuzzy class pattern by treating dots as package separators.
-///
-/// The reference implementation only replaces dots when the pattern has no slashes,
-/// but that rule exists for its regex matcher, where a dot is a wildcard and
-/// `com.example/Main` therefore matches `com/example/Main` by accident. rasc matches
-/// literally, so leaving such a pattern alone would match nothing; replacing the dots
-/// gives the same rows the reference reports for those inputs.
+/// Treat dots as literal package separators, including mixed dotted/slash patterns.
 pub fn fuzzy_class_pattern(pattern: &str) -> String {
     pattern.replace('.', "/")
 }
 
 impl Query {
-    /// The kind this query reports, as the CLI spells it.
     pub fn kind(&self) -> &'static str {
         match self {
             Query::String(_) => "string",
@@ -112,11 +83,7 @@ impl Query {
         }
     }
 
-    /// Whether this query came from an `--at` coordinate rather than a content search.
-    ///
-    /// Only an anchor promises that its identity exists: a content search that matches
-    /// nothing answers with an empty result set, while an anchor that resolves nowhere is a
-    /// `NOT_FOUND` error naming what was looked for.
+    /// Anchors require identity existence; substring searches permit zero hits.
     pub fn is_anchor(&self) -> bool {
         match self {
             Query::String(pattern) | Query::Type(pattern) => pattern.exact,
@@ -124,7 +91,6 @@ impl Query {
         }
     }
 
-    /// The error text for an anchor that no entry resolved, naming what was looked for.
     pub fn anchor_not_found(&self) -> String {
         match self {
             Query::String(pattern) => {
@@ -151,13 +117,7 @@ impl Query {
         }
     }
 
-    /// Whether a class constraint makes the member table small enough that a per-entry
-    /// prefix pre-check pays for its read.
-    ///
-    /// This is a cost heuristic, not a correctness rule: `prefix_has_targets` resolves the
-    /// same query against the entry's tables, so its answer is exactly "would this entry
-    /// produce a row". A name-only query matches most entries of a real APK, where the
-    /// prefix read is pure overhead, so it is skipped.
+    /// Class constraints make prefix prechecks worthwhile; this is only a cost heuristic.
     pub fn bounded_by_class(&self) -> bool {
         match self {
             Query::Method(query) | Query::Field(query) => query.class.is_some(),
@@ -170,8 +130,6 @@ impl Query {
 mod tests {
     use super::*;
 
-    /// Every case here was read off the reference implementation's
-    /// `_format_class_name` / `_normalize_class_query`.
     #[test]
     fn normalizes_class_names_like_the_reference() {
         for (input, expected) in [

@@ -474,7 +474,7 @@ fn evm_block_navigation_reports_effective_limits_and_publishes_atomically() {
             failure(run(command, &path, "hex", &unknown), 2, budget[0]);
         }
     }
-    // Failures keep the previous output file intact.
+
     fs::write(&destination, "preserved").unwrap();
     failure(
         run(
@@ -733,7 +733,7 @@ fn evm_function_fetch_reports_effective_limits_and_keeps_previous_output() {
         failure(run("get-function", &path, "hex", &query), 2, budget[0]);
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
-    // A failing selector keeps the previous output and still reports why.
+
     fs::write(&destination, "preserved").unwrap();
     let failed = run(
         "get-function",
@@ -1790,7 +1790,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
         );
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
-    // A stale selector keeps the previous file and reports the failure code.
+
     fs::write(&destination, "preserved").unwrap();
     let failed = run(
         "xref",
@@ -2611,9 +2611,7 @@ fn evm_data_utf8_overlaps_charge_matches_without_consuming_record_budget() {
 
 #[test]
 fn evm_data_shared_helper_copy_witnesses_keep_each_callers_actual_source() {
-    // Both selectors call helper PC60. Its stack is [return_pc, source]; it copies
-    // four source bytes to memory zero and returns using the caller's own address.
-    // Source80 is AAAA, source85 is BBBB: block ownership alone cannot associate them.
+    // Shared helper PC60 must preserve caller-specific return PC and copy source.
     for second_source in [80, 85] {
         let mut bytes: Vec<u8> = SHARED_HELPER
             .as_bytes()

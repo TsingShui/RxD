@@ -28,7 +28,6 @@ impl Reference {
     pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
         struct Detail<'a> {
-            /// The shared skeleton every xref row carries: what this row refers to.
             target: &'a str,
             read: bool,
             write: bool,
@@ -57,7 +56,6 @@ impl Reference {
     }
 }
 
-/// The reference rows of one resolved symbol.
 fn symbol_references(
     semantic: &Semantic<'_>,
     symbol: SymbolId,
@@ -84,10 +82,7 @@ fn symbol_references(
     references
 }
 
-/// Every reference to a binding whose name matches a filter.
-///
-/// `-m PATTERN --kind symbol` is the content-search face of `xref`: one row per
-/// (target, site), each row naming its target, in position order across every match.
+/// Emit one target/site row per matched binding, in source-position order.
 pub fn run_filter(
     program: &Program<'_>,
     source: &Source,
@@ -150,9 +145,7 @@ pub fn run(
     perf.measure("query", || {
         let scoping = semantic.scoping();
         let typed = program.source_type.is_typescript();
-        // Validate that the selected byte belongs to a binding or reference before
-        // applying file-wide dynamic-scope conservatism. An unresolved reference is
-        // still a valid occurrence, so retain the nested option.
+        // Validate the occurrence before dynamic-scope checks; unresolved names remain valid sites.
         let symbol = semantic
             .nodes()
             .iter()

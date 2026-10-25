@@ -23,7 +23,6 @@ pub struct Input {
     pub entries: Vec<InputEntry>,
 }
 
-/// One archive entry, in the same shape dex reports for an APK.
 #[derive(Debug, Clone)]
 pub struct InputEntry {
     pub name: String,
@@ -99,9 +98,7 @@ impl Input {
         Ok((source_id, file_bytes, entries))
     }
 
-    /// Parse only the class the coordinate names. Returns `None` when the archive
-    /// shape needs the full reader (multi-release layouts, duplicate candidates,
-    /// renamed entries, raw class files); the caller then falls back.
+    /// Parse one coordinate-selected class; None requests full-reader fallback.
     pub fn read_class_scoped(
         path: &Path,
         limits: Limits,
@@ -396,9 +393,7 @@ impl Input {
         })
     }
 
-    /// A method's coordinate: `Lclass;->name(proto)`, the same member identity DEX
-    /// prints. It names the method exactly (the prototype separates overloads) and can
-    /// be passed straight back to `--at`, with no content hash to assemble.
+    /// Method coordinate: Lclass;->name(proto), including return type.
     pub fn method_at(class: &InputClass, index: usize) -> String {
         let method = &class.class.methods[index];
         format!(
@@ -450,8 +445,7 @@ impl Input {
                 format!("no class {name} in this input"),
             )
         })?;
-        // Duplicate definitions are already rejected at read time, so a second
-        // hit would be a logic error rather than ambiguous input.
+        // Duplicate definitions were rejected during input parsing.
         ensure!(
             hits.next().is_none(),
             "INVALID_QUERY: class {name} is defined more than once"
@@ -460,8 +454,7 @@ impl Input {
     }
 }
 
-/// Normalize a user class name (internal, dotted, or `Lpkg/Type;` descriptor)
-/// to the internal slashed form stored on `ClassFile::name`.
+/// Normalize dotted/descriptive class names to internal slash form.
 pub fn normalize_class_name(name: &str) -> String {
     name.strip_prefix('L')
         .and_then(|rest| rest.strip_suffix(';'))

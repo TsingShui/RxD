@@ -502,9 +502,7 @@ fn cli_query(
     command.output().unwrap()
 }
 
-/// Mirror `query::reply`: a single JSON object is returned unchanged, a JSONL stream
-/// becomes `records`, and any other output (XML manifest, Java/C# source) arrives as
-/// `text`.
+/// Compare MCP projection: JSON object, JSONL records, or source text.
 fn cli_projection(name: &str, raw: &[u8]) -> Value {
     // Independent fixture-specific surrogate oracle: the CLI string has the
     // literal UTF-16 x,D800 units; preserve every other byte/record unchanged.

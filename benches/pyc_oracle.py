@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""PYC oracle helpers for other runners: name-hit classification and FETCH checks.
-
-The PYC measurement runner that used to own these was removed (see
-`benches/README.md`); the helpers stay because the MCP runner still validates PYC
-navigation against the same pinned oracle. They read saved expectations and never
-execute analyzed input.
-"""
+"""Validate PYC navigation against pinned name-hit and FETCH expectations."""
 OPERATIONS = {
     'LOAD_NAME': 'name_read', 'STORE_NAME': 'name_write', 'DELETE_NAME': 'name_delete',
     'LOAD_GLOBAL': 'global_read', 'STORE_GLOBAL': 'global_write', 'DELETE_GLOBAL': 'global_delete',

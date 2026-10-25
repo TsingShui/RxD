@@ -16,18 +16,7 @@ pub fn decode(data: &[u8]) -> Result<String> {
     render(&document)
 }
 
-/// Checks the chunk skeleton before handing the bytes to `axmldecoder`.
-///
-/// The decoder unwraps its reads and asserts on a few structural details, and the
-/// release profile builds with `panic = "abort"`, so a truncated or crafted
-/// manifest would abort the process instead of reporting an error. Everything
-/// checked here is something the decoder would otherwise panic on: chunk sizes
-/// that leave the buffer, a string pool whose declared size cannot hold its own
-/// offsets, and a string pool with styles (the decoder asserts `style_count == 0`).
-///
-/// Residual risk: a document with a consistent skeleton but inconsistent contents
-/// (a string offset pointing outside the pool, a string longer than 32767
-/// characters) is still rejected by the decoder's own unwraps rather than here.
+/// Validate decoder-sensitive chunk sizes, pools and offsets before parsing.
 fn validate_chunks(data: &[u8]) -> Result<()> {
     const DOCUMENT: u16 = 0x0003;
     const STRING_POOL: u16 = 0x0001;
@@ -40,9 +29,7 @@ fn validate_chunks(data: &[u8]) -> Result<()> {
     }
     let end = document.size;
 
-    // The decoder reads exactly these two chunks unconditionally before it starts
-    // on the node list, so they are the ones worth checking up front; node chunks
-    // are read by bounded counts and already fail as parse errors.
+    // The decoder reads string-pool and resource-map chunks unconditionally.
     let pool_start = usize::from(document.header_size);
     let pool = chunk_header(&data[..end], pool_start).context("read string pool chunk")?;
     if pool.typ != STRING_POOL {
@@ -82,9 +69,7 @@ fn validate_chunks(data: &[u8]) -> Result<()> {
             )
             .context("truncated string pool offsets")?;
         let mut cursor = strings_base + u32::from_le_bytes(entry.try_into().unwrap()) as usize;
-        // A UTF-8 entry stores the UTF-16 length and then the byte length, either of
-        // which may use the extended form; a UTF-16 entry stores its length as one or
-        // two units. Both were rejected here before rasc patched its decoder.
+        // UTF-8 stores UTF-16 and byte lengths; both accept extended forms.
         let length = if utf8 {
             let _utf16_len = pool_length_8(data, &mut cursor)?;
             pool_length_8(data, &mut cursor)?
@@ -105,9 +90,7 @@ fn validate_chunks(data: &[u8]) -> Result<()> {
     if map.typ != RESOURCE_MAP {
         bail!("binary XML has no resource map after its string pool");
     }
-    // The decoder derives its entry count as `(size - header_size) / 4` in u32,
-    // so a chunk declaring a size below its header size wraps to ~1e9 entries.
-    // Nothing else validates this chunk.
+    // Validate size >= header_size before the decoder subtracts unsigned sizes.
     if map.header_size != 8 || map.size < 8 || (map.size - 8) % 4 != 0 {
         bail!(
             "binary XML resource map chunk is malformed: header_size={}, size={}",
@@ -121,8 +104,7 @@ fn validate_chunks(data: &[u8]) -> Result<()> {
     }
     Ok(())
 }
-/// One string length from a UTF-8 pool: one byte, or two when the high bit of the
-/// first is set.
+/// Decode UTF-8 pool lengths, including high-bit extended forms.
 fn pool_length_8(data: &[u8], cursor: &mut usize) -> Result<usize> {
     let first = *data.get(*cursor).context("truncated string length")?;
     *cursor += 1;
@@ -134,8 +116,7 @@ fn pool_length_8(data: &[u8], cursor: &mut usize) -> Result<usize> {
     Ok((usize::from(first & 0x7f) << 8) | usize::from(second))
 }
 
-/// One string length from a UTF-16 pool: one unit, or two when the high bit of the
-/// first is set (the value is then in UTF-16 units, which the caller scales).
+/// Decode UTF-16-unit lengths, including high-bit extended forms.
 fn pool_length_16(data: &[u8], cursor: &mut usize) -> Result<usize> {
     let first = u16::from_le_bytes(
         data.get(*cursor..*cursor + 2)
@@ -157,7 +138,6 @@ fn pool_length_16(data: &[u8], cursor: &mut usize) -> Result<usize> {
     Ok(((usize::from(first & 0x7fff)) << 16) | usize::from(second))
 }
 
-/// One binary-XML chunk header: type, header size and total size.
 struct ChunkHeader {
     typ: u16,
     header_size: u16,
@@ -249,14 +229,7 @@ fn escape_xml(value: &str, attribute: bool, output: &mut String) {
 mod tests {
     use super::*;
 
-    /// Builds a minimal binary AndroidManifest.xml: a root element with a
-    /// namespaced attribute and a value that needs escaping, a nested element and
-    /// a CDATA child whose text contains `]]>`.
-    ///
-    /// Layout follows the binary XML chunks `axmldecoder` reads: a chunk header is
-    /// `type, headerSize, size`, a UTF-8 string pool stores `[utf16 len][utf8 len]
-    /// bytes 0` per string, and every XML node extends the 8-byte chunk header with
-    /// a line number and a comment index.
+    /// Minimal AXML with namespace, escaped attribute and CDATA terminator content.
     fn binary_manifest() -> Vec<u8> {
         binary_manifest_with_cdata("a ]]> b")
     }
@@ -303,7 +276,6 @@ mod tests {
             out.extend_from_slice(&value.to_le_bytes());
         }
 
-        /// One typed value: `size, res0, type, data`.
         fn push_value(out: &mut Vec<u8>, value_type: u8, data: u32) {
             push_u16(out, 8);
             out.push(0);
@@ -349,9 +321,7 @@ mod tests {
         let mut offsets = Vec::new();
         for string in &strings {
             offsets.push(data.len() as u32);
-            // AOSP writes a length as one byte, or as two when the high bit of the
-            // first marks the extended form; both the UTF-16 and the byte length
-            // use whichever form they need.
+            // AOSP lengths use one byte or two when the high bit is set.
             for length in [string.chars().count(), string.len()] {
                 if length >= 0x80 {
                     data.push(0x80 | (length >> 8) as u8);
@@ -488,8 +458,7 @@ mod tests {
 
     #[test]
     fn rejects_a_document_whose_first_node_is_cdata() {
-        // A CDATA node outside any element used to reach an unwrap inside the
-        // vendored decoder; the patch turns it into a parse error.
+        // CDATA outside an element must return a parse error.
         let mut data = binary_manifest();
         let pool = 8;
         let pool_size = u32::from_le_bytes(data[pool + 4..pool + 8].try_into().unwrap()) as usize;
@@ -552,7 +521,6 @@ mod tests {
         );
     }
 
-    /// First offset of `needle` in `haystack`.
     fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         haystack
             .windows(needle.len())
@@ -561,10 +529,7 @@ mod tests {
 
     #[test]
     fn renders_unknown_typed_values_like_the_reference() {
-        // AXML defines types beyond the ones Androguard names (0x07 dynamic
-        // reference, 0x08 dynamic attribute, 0x13-0x1b, >= 0x20). The reference
-        // prints its `<0x.., type 0x..>` fallback rather than refusing the whole
-        // document, so an unknown type byte must decode.
+        // Unknown AXML value types retain the reference reader's raw fallback.
         let mut data = binary_manifest();
         // `android:icon` is a reference value: size 8, res0 0, type 0x01, data 0x7F0D0001.
         let icon = [0x08, 0x00, 0x00, 0x01, 0x01, 0x00, 0x0D, 0x7F];
@@ -584,9 +549,7 @@ mod tests {
 
     #[test]
     fn reserved_types_keep_the_unknown_value_fallback() {
-        // 0x13-0x1B are reserved in AOSP. Androguard's integer branch spans
-        // 0x10-0x1F, so it prints them as decimals; claiming to know a reserved
-        // type is worse than showing the raw value, so they stay on the fallback.
+        // Reserved 0x13–0x1B values stay raw rather than claiming an integer meaning.
         let mut data = binary_manifest();
         // `android:debuggable` is a boolean value: size 8, res0 0, type 0x12, data 1.
         let debuggable = [0x08, 0x00, 0x00, 0x12, 0x01, 0x00, 0x00, 0x00];
@@ -606,9 +569,7 @@ mod tests {
 
     #[test]
     fn complex_values_use_exact_powers_of_two() {
-        // Fraction with mantissa 16384 and radix 1 is exactly 0.5, so 50.000000%.
-        // Androguard rounds its radix multiples to seven digits and prints
-        // 50.000003%; the exact value is kept deliberately.
+        // Keep exact 50% instead of the reference reader's rounded 50.000003%.
         let mut data = binary_manifest();
         // `android:textSize` is a dimension: size 8, res0 0, type 0x05, data 0x1001.
         let text_size = [0x08, 0x00, 0x00, 0x05, 0x01, 0x10, 0x00, 0x00];
@@ -629,9 +590,6 @@ mod tests {
 
     #[test]
     fn rejects_a_resource_map_chunk_smaller_than_its_header() {
-        // The decoder computes its entry count as `(size - header_size) / 4` in
-        // u32, so a size below the header size wraps to ~1e9 entries. Nothing
-        // else in the pipeline validates this chunk.
         let mut data = binary_manifest();
         let map = find_chunk(&data, 0x0180).expect("fixture has a resource map");
         data[map + 2..map + 4].copy_from_slice(&8u16.to_le_bytes());
@@ -643,7 +601,6 @@ mod tests {
         );
     }
 
-    /// Offset of the first chunk of `typ`, walking the fixture's chunk list.
     fn find_chunk(data: &[u8], typ: u16) -> Option<usize> {
         let mut offset = 8;
         while offset + 8 <= data.len() {

@@ -24,8 +24,7 @@ impl Default for Limits {
     }
 }
 
-/// One metadata row that could not be turned into an indexed entry. The query keeps
-/// answering from the rows it could read; `complete` is false while any exist.
+/// Unusable metadata row; incomplete queries report these skipped entries.
 #[derive(Clone, Debug, Serialize)]
 pub struct Unreadable {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -191,7 +190,7 @@ pub struct Decompilation {
     pub representation: String,
     pub decompiled: bool,
     pub reason: Option<String>,
-    /// Reconstruction diagnostics the engine reported while still producing code.
+
     pub warnings: Vec<String>,
     pub code: Option<String>,
     pub mapping: Vec<SourceMap>,
@@ -209,7 +208,7 @@ pub struct ClassDecompilation {
     pub representation: String,
     pub decompiled: bool,
     pub reason: Option<String>,
-    /// Reconstruction diagnostics the engine reported while still producing code.
+
     pub warnings: Vec<String>,
     pub code: Option<String>,
     pub mapping: Vec<ClassSourceMap>,

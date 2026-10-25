@@ -1,8 +1,5 @@
-//! Native selected-context expression reconstruction. No input is executed.
-//!
-//! Values form a bounded arena. Every computed/read value is materialized at its
-//! original PC; DUP shares an ID, never an expanded expression string. Edges pass
-//! bottom-to-top stack arguments simultaneously to block parameters.
+//! Materialize values at original PCs; DUP shares IDs without expanding expressions.
+//! Edges pass bottom-to-top stack arguments simultaneously.
 use std::collections::BTreeSet;
 
 use alloy_primitives::U256;
@@ -84,8 +81,7 @@ pub struct ReconstructedBlock {
     pub terminator: Terminator,
 }
 
-/// EVM-only IR seam for later branch/loop structuring. Context IDs and original
-/// block indices retain the selected navigation graph's identities.
+/// EVM contextual IR with original block/context identities.
 #[derive(Debug)]
 pub struct ReconstructedGraph {
     pub entry: StackEdge,
@@ -769,9 +765,7 @@ fn render(builder: &mut Builder<'_>, graph: &ReconstructedGraph) -> BuildResult<
     Ok(text.bytes)
 }
 
-/// Native lowering outcome, reusable by EVM branch/loop structurers without
-/// reparsing pseudocode or re-running navigation. Unsupported graphs retain no
-/// partial IR. Counts describe the actual attempted selected work.
+/// Selected-context lowering; unsupported graphs retain counts but no partial IR.
 pub struct LoweringOutcome {
     pub graph: Option<ReconstructedGraph>,
     pub reason: Option<&'static str>,

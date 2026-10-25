@@ -366,12 +366,7 @@ impl Cli {
         }
     }
 }
-/// Turn one backend failure into one coded error.
-///
-/// This is the only place that decides a code it was not handed: an error that already
-/// carries one keeps it, a device failure is `IO_ERROR`, and anything else is what a
-/// parser produces when the bytes do not make sense - `INVALID_INPUT`. Backends that know
-/// better say so with `rxd_core::Error::failure`, so no code is ever guessed from prose.
+/// Preserve typed diagnostic codes; classify IO separately and default parse errors to input.
 pub(crate) fn classify(error: anyhow::Error) -> rxd_core::Error {
     use rxd_core::{Error, Failure};
     match error.downcast::<Error>() {
@@ -381,9 +376,6 @@ pub(crate) fn classify(error: anyhow::Error) -> rxd_core::Error {
             Err(error) => {
                 let message = format!("{error:#}");
                 match rxd_core::leading_code(&message) {
-                    // A backend that spells its code into a context is still reporting a
-                    // class, and this is the one place that reads it. Repeated prefixes
-                    // collapse, so the printed diagnostic carries the code once.
                     (Some(kind), rest) => Error::coded(kind.code(), rest),
                     (None, _) => Error::failure(Failure::Input, message),
                 }
@@ -392,9 +384,7 @@ pub(crate) fn classify(error: anyhow::Error) -> rxd_core::Error {
     }
 }
 
-/// Restore the default `SIGPIPE` disposition so a closed consumer (`| head`,
-/// `| grep -m1`) ends this process quietly instead of turning a normal Unix idiom
-/// into `IO_ERROR: Broken pipe`.
+/// Restore SIGPIPE so closed pipeline consumers exit quietly.
 #[cfg(unix)]
 pub fn restore_default_sigpipe() {
     // SAFETY: setting a signal disposition to SIG_DFL is async-signal-safe and
@@ -436,15 +426,7 @@ pub fn execute(cli: Cli) -> Result<i32> {
         Backend::Pyc { command } => pyc::execute(command, policy).map(|()| 0),
     }
 }
-/// Default worker count for a parallel scan phase.
-///
-/// One worker per logical CPU. Each phase here holds one parsed unit resident per worker
-/// (one inflated DEX entry, or one parsed JavaScript input with its AST), so this value
-/// decides both how fast the phase runs and how much memory it holds at once. Measured on a
-/// 6P+6E machine: DEX `findrefs type View` over a 359 MiB archive scans in 955 / 152 / 129
-/// ms at 1 / 8 / 12 threads, with 16 threads slower again (145 ms); JavaScript directory
-/// scans follow the same curve over whole files. A hardcoded count cannot know any of that;
-/// the machine can.
+/// One analysis worker per available logical CPU.
 #[cfg(any(feature = "backend-js", feature = "backend-dex"))]
 pub(crate) fn default_threads() -> usize {
     std::thread::available_parallelism().map_or(8, std::num::NonZero::get)

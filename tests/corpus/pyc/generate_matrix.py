@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Compile-only cross-version opcode diagnosis with exact final CPython runtimes.
-
-Only trusted preparation tools run; analyzed functions/classes are never called.
-"""
+"""Compile cross-version probes with exact final CPython runtimes; never call analyzed code."""
 import argparse
 import hashlib
 import importlib.util

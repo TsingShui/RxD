@@ -1,8 +1,4 @@
-//! JVM descriptor types and decoded constant-pool strings.
-//!
-//! These are the front end's own types: the operand stack and the local slots
-//! hold [`Type`], and the descriptor it renders is the same string the IR carries,
-//! so a type travels into the backend without translation.
+//! JVM verification types, descriptors and lossless constant-pool strings.
 
 use std::borrow::Cow;
 
@@ -76,12 +72,7 @@ impl Primitive {
     }
 }
 
-/// A value's verification type.
-///
-/// `Unknown` carries the primitives the value could still be: empty means "a
-/// reference of unknown class" (the join of incomparable references), non-empty
-/// means the join of those primitives, e.g. `Unknown([Boolean, Byte])` right after
-/// `baload`.
+/// Unknown retains possible primitives; an empty set means unknown reference type.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     Void,
@@ -148,15 +139,10 @@ impl Type {
         descriptor.parse().unwrap_or(Self::Unknown(Vec::new()))
     }
 
-    /// The Java source name of this type, e.g. `String` or `int[]`.
-    ///
-    /// This is the renderer's own conversion, so a parameter type and a type the
-    /// renderer derives from a descriptor are spelled the same way.
     pub fn java_name(&self) -> String {
         radguard::backend::descriptor_to_java(&self.descriptor())
     }
 
-    /// The descriptor this type renders as.
     pub fn descriptor(&self) -> Cow<'_, str> {
         match self {
             Self::Void => Cow::Borrowed("V"),
@@ -188,7 +174,6 @@ impl Type {
     }
 }
 
-/// A parsed method descriptor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MethodDescriptor {
     pub parameters: Vec<Type>,
@@ -234,7 +219,6 @@ impl std::str::FromStr for Type {
     }
 }
 
-/// Parses one field descriptor.
 pub fn field_type(descriptor: &str) -> Result<Type> {
     let mut parser = Parser::new(descriptor)?;
     let ty = parser.parse_type()?;
@@ -341,11 +325,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// A decoded JVM string.
-///
-/// The constant pool stores UTF-16 code units, and a Java string may hold an
-/// unpaired surrogate that no `String` can represent, so the units are kept and
-/// rendered lossily on the way out.
+/// Preserve UTF-16 units, including unpaired surrogates; display is lossy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Utf16String {
     units: Vec<u16>,
@@ -362,7 +342,6 @@ impl Utf16String {
         &self.text
     }
 
-    /// The raw code units, for callers that must report a lossy decode.
     pub fn as_utf16(&self) -> &[u16] {
         &self.units
     }

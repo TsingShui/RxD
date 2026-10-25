@@ -111,9 +111,7 @@ actual=${actual%% *}
 expected=$(printf '%s' "$digest" | tr A-F a-f)
 [ "$actual" = "$expected" ] || fail 'SHA-256 mismatch'
 entry=rxd-$platform/rxd
-# Never unpack archive paths. Validate the sole selected member is a regular file,
-# then stream just its bytes to our own path; siblings, symlinks and traversal
-# names cannot create files, regardless of archive metadata or tar dialect.
+# Validate one regular archive member; stream only its bytes without extracting paths.
 tar -tzf "$work/$archive" "$entry" > "$work/names" || fail 'invalid archive or missing executable'
 printf '%s\n' "$entry" | cmp -s - "$work/names" || fail 'archive must contain exactly one expected executable'
 tar -tvzf "$work/$archive" "$entry" > "$work/types" || fail 'cannot inspect executable type'

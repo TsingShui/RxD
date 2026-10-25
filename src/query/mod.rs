@@ -1,8 +1,4 @@
-//! Reusable bounded query dispatch used by isolated MCP analysis workers.
-//!
-//! Backend adapters own analysis and deterministic record assembly. This layer
-//! accepts only catalogued typed arguments, routes immutable captured inputs, and
-//! lifts their internal serialized records into their declared structured shape.
+//! Dispatch typed queries against captured inputs and project backend output.
 mod catalog;
 #[cfg(feature = "bundled-kuna")]
 mod kuna;
@@ -201,9 +197,7 @@ pub fn execute(
     })
 }
 
-/// Backend extraction needs a destination identity for its receipt, but the shared query
-/// returns the bytes directly rather than writing a caller path. Fabricate a name that is
-/// distinct from the input so the receipt has a path to normalize and blank out later.
+/// Use a distinct synthetic output path solely to build/normalize extract receipts.
 #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
 fn synthetic_extraction_destination(input: &Path) -> PathBuf {
     let mut destination = input.with_file_name(".rxd-mcp-extracted");
@@ -213,8 +207,7 @@ fn synthetic_extraction_destination(input: &Path) -> PathBuf {
     destination
 }
 
-/// Normalize an extract receipt for typed projection: the projection carries bytes instead
-/// of a caller path, so blank the synthetic destination and restore captured original paths.
+/// Blank synthetic extract destinations and restore captured original paths.
 #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
 fn project_extract_receipt(
     receipt: &[u8],
@@ -310,8 +303,7 @@ fn extract_asar(
     })
 }
 
-/// Shape a captured stdout stream: JSONL streams become `{records:[...]}`, a
-/// single-object result keeps its own envelope, and source text arrives as `text`.
+/// Project JSONL into records, JSON into objects and source into text.
 fn reply(bytes: &[u8]) -> Result<Value, QueryError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|error| QueryError::new("INTERNAL_ERROR", error.to_string()))?;

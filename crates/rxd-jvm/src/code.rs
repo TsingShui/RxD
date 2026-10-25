@@ -1,6 +1,4 @@
-//! JVM instructions -> the backend IR. Stack positions are virtual registers;
-//! method arguments occupy the tail of the register file, which is where the
-//! renderer expects parameters.
+//! Lift JVM stack bytecode into IR; parameters occupy the register-file tail.
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
@@ -255,16 +253,9 @@ pub fn decode_method(class: &ClassFile, method: &Method, limits: Limits) -> Resu
     );
     let registers = u32::from(code.max_stack) + 6 + u32::from(code.max_locals) + words;
     let first_input = registers - words;
-    // A handler is entered with the exception on the stack, and the same stack
-    // slot can hold anything elsewhere in the method, so the exception gets a
-    // register of its own: the catch clause renders its type, and clobbering a
-    // shared slot would retype an unrelated value.
+    // Exception handlers use a separate register so ordinary stack reuse cannot retype catches.
     let exception_register = registers;
-    // Stack registers are keyed by `(depth, type)` rather than depth alone, so a
-    // slot that holds an `int` at one point and an object at another gets two
-    // registers and two declarations. Values of the same type at the same depth
-    // still share a register, which is what keeps a value defined before a join
-    // readable after it.
+    // Share stack registers by depth/type family; incompatible families use separate slots.
     let mut stack_registers: BTreeMap<(u32, &'static str), u32> = BTreeMap::new();
     let mut next_stack_register = exception_register + 1;
     let local = |slot: u32| {
@@ -279,9 +270,7 @@ pub fn decode_method(class: &ClassFile, method: &Method, limits: Limits) -> Resu
         .enumerate()
         .map(|(i, op)| (op.byte_offset, i))
         .collect();
-    // The register file is declared up front: the receiver and parameters occupy
-    // the tail (declared parameters are what the header renders), everything else
-    // is a stack slot or a local.
+    // Receiver/parameters occupy the tail; remaining registers are locals/stack slots.
     let mut variables = VariableTable::default();
     let mut register = first_input;
     if method.access & 8 == 0 {
@@ -356,9 +345,7 @@ pub fn decode_method(class: &ClassFile, method: &Method, limits: Limits) -> Resu
             .iter()
             .find(|h| u32::from(h.target) == op.byte_offset)
         {
-            // A handler is entered with the exception on the stack; the backend
-            // wants it bound by an explicit `move-exception`, and the stack slot
-            // is register 0 because the seeded state has exactly one entry.
+            // Seed handler stacks with one exception and bind it through move-exception.
             let caught = handler
                 .catch_type
                 .as_deref()
@@ -416,9 +403,7 @@ pub fn decode_method(class: &ClassFile, method: &Method, limits: Limits) -> Resu
             )?;
         }
     }
-    // Source names from the LocalVariableTable, so the rendering keeps the
-    // identifiers the original source used. A slot reused by disjoint ranges
-    // keeps the last name, which is what a reader expects to see.
+    // Keep LocalVariableTable names; disjoint slot reuse takes the last name.
     for local_variable in &code.locals {
         let register = local(u32::from(local_variable.slot));
         let id = variables.register(register as u16);
@@ -437,13 +422,7 @@ pub fn decode_method(class: &ClassFile, method: &Method, limits: Limits) -> Resu
     Ok(LoweredMethod { variables, blocks })
 }
 
-/// Folds `new X` plus the `<init>` call that initializes it into one call.
-///
-/// The JVM creates an object with `new` and initializes it with a later
-/// `invokespecial <init>`, usually after `dup`. The backend renders a constructor
-/// call as an invoke whose base *is* the instance it builds, so the creation and
-/// the copies made before the call are consumed by it:
-/// `v = new X` + `w = v` + `v.<init>(args)` becomes `w = new X(args)`.
+/// Fold new/dup/<init> into one constructor call, consuming pre-init copies.
 fn fold_constructor_calls(bodies: &mut [Vec<Statement>]) {
     let mut creations = Vec::new();
     for (instruction, statements) in bodies.iter().enumerate() {
@@ -514,7 +493,6 @@ fn fold_constructor_calls(bodies: &mut [Vec<Statement>]) {
     }
 }
 
-/// What one instruction does to control flow, in JVM byte offsets.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Terminator {
     FallThrough,
@@ -531,12 +509,8 @@ enum Terminator {
     Throw,
 }
 
-/// Partitions the lowered instructions into blocks the backend can structure.
-///
-/// Leaders are branch targets, the instruction after a branch, handler and
-/// handler-range boundaries, and the entry. Blocks carry the statements of every
-/// instruction they cover, their edges, and the handler edges of the try ranges
-/// they fall in.
+/// Block leaders include branches, entry and exception-range boundaries.
+/// Attach normal edges and applicable handler edges.
 fn build_blocks(
     instructions: &[Instruction],
     bodies: &[Vec<Statement>],
@@ -768,14 +742,11 @@ struct Lift<'a> {
     /// The register family of each stack entry, shared by every instruction.
     stack_registers: &'a mut BTreeMap<(u32, &'static str), u32>,
     next_stack_register: &'a mut u32,
-    /// Set when this instruction starts a handler: its stack entry is the
-    /// exception, which lives in a register of its own rather than in the family
-    /// map, so its catch type survives and no stack value shares it.
+    /// Handler-only exception register; never share ordinary stack slots.
     exception_slot: Option<u32>,
 }
 
 impl Lift<'_> {
-    /// The variable a register carries, typed on first use.
     fn typed(&mut self, register: u32, ty: &Type) -> VariableId {
         let id = self.variables.register(register as u16);
         let variable = self.variables.get_mut(id).expect("registered variable");
@@ -787,9 +758,7 @@ impl Lift<'_> {
         id
     }
 
-    /// Sets a register's type even when it already has one, for positions where
-    /// the producer is authoritative - a handler's exception slot is typed by its
-    /// catch clause, not by whatever the same stack slot held earlier.
+    /// Override inferred types only where the producer is authoritative, e.g. catch clauses.
     fn retyped(&mut self, register: u32, ty: &Type) -> VariableId {
         let id = self.variables.register(register as u16);
         self.variables.get_mut(id).expect("registered variable").ty =
@@ -814,14 +783,7 @@ impl Lift<'_> {
         });
     }
 
-    /// The register a stack entry at `depth` with type `ty` lives in.
-    ///
-    /// The key is the type's *family*, not the exact type: the verifier merges
-    /// the small integer types and unrelated references, so a value defined as
-    /// `byte` on one path and `int` on another has to end up in one register or
-    /// a use after the join would read the wrong one. The register carries the
-    /// family's canonical type, so a declaration is always legal Java even when
-    /// the paths disagree (`int x = (byte value);`).
+    /// Share slots by verifier type family so values survive control-flow joins.
     fn stack_slot(&mut self, depth: u32, ty: &Type) -> VariableId {
         let family = stack_family(ty);
         let key = (depth, family);
@@ -1563,11 +1525,7 @@ impl Lift<'_> {
     }
 }
 
-/// Retypes an integer constant used where a boolean belongs.
-///
-/// The JVM stack only knows `int`: `iconst_1` stored into a `boolean` field is
-/// the same value, and the backend renders booleans from the constant's type, so
-/// the type has to come from the use site rather than from the push.
+/// Infer boolean constants from their use; JVM pushes them as int.
 fn coerce(value: Value, target: &Type) -> Value {
     match (value, target) {
         (
@@ -1585,9 +1543,7 @@ fn coerce(value: Value, target: &Type) -> Value {
     }
 }
 
-/// The register family of a stack value, and the descriptor a register of that
-/// family declares. Values in one family can occupy the same stack slot in
-/// different paths, which is what the JVM's own verification merges.
+/// Canonical register family shared across verifier-compatible stack values.
 fn stack_family(ty: &Type) -> &'static str {
     match ty {
         Type::Primitive(
@@ -1604,7 +1560,6 @@ fn stack_family(ty: &Type) -> &'static str {
     }
 }
 
-/// The descriptor the IR records for a type, which is static for primitives.
 fn static_descriptor(ty: &Type) -> &'static str {
     match ty {
         Type::Primitive(Primitive::Boolean) => "Z",
@@ -1620,8 +1575,6 @@ fn static_descriptor(ty: &Type) -> &'static str {
     }
 }
 
-/// A type's Java source name, as `instanceof` and casts render it.
-/// The Java type name a primitive conversion renders with, e.g. `(long) scale`.
 fn primitive_cast(ty: &Type) -> &'static str {
     match ty {
         Type::Primitive(primitive) => primitive.java_name(),

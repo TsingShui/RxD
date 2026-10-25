@@ -385,7 +385,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
             .and_then(|mut loaded| loaded.select_codes(None, None, None));
         assert_eq!(error.err().unwrap().code, "RESOURCE_LIMIT", "{field}");
     }
-    // A rejected selector leaves an existing output file untouched.
+
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("keep.jsonl");
     fs::write(&dest, b"keep").unwrap();

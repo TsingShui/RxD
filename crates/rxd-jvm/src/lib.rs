@@ -15,7 +15,6 @@ use radguard::backend::{
     render_class as render_class_spec, render_method as render_method_spec,
 };
 
-/// Rendered Java modifiers of a class.
 fn class_modifiers(access: u16, is_interface: bool) -> Vec<String> {
     let mut modifiers = Vec::new();
     for (flag, name) in [
@@ -31,7 +30,6 @@ fn class_modifiers(access: u16, is_interface: bool) -> Vec<String> {
     modifiers
 }
 
-/// Rendered Java modifiers of a method, in declaration order.
 fn method_modifiers(access: u16) -> Vec<String> {
     let mut modifiers = Vec::new();
     for (flag, name) in [
@@ -52,7 +50,6 @@ fn method_modifiers(access: u16) -> Vec<String> {
     modifiers
 }
 
-/// Rendered Java modifiers of a field, in declaration order.
 fn field_modifiers(access: u16) -> Vec<String> {
     let mut modifiers = Vec::new();
     for (flag, name) in [
@@ -71,12 +68,10 @@ fn field_modifiers(access: u16) -> Vec<String> {
     modifiers
 }
 
-/// The class descriptor of a parsed class.
 fn descriptor_of(class: &ClassFile) -> String {
     format!("L{};", class.name)
 }
 
-/// The simple name a constructor displays, without package or nesting marker.
 fn simple_name(class: &ClassFile) -> String {
     class
         .name
@@ -86,7 +81,6 @@ fn simple_name(class: &ClassFile) -> String {
         .to_owned()
 }
 
-/// The declared shape of one method.
 fn method_spec(method: &Method) -> anyhow::Result<MethodSpec> {
     let proto = classfile::method_type(&method.descriptor)?;
     Ok(MethodSpec {
@@ -103,11 +97,7 @@ fn method_spec(method: &Method) -> anyhow::Result<MethodSpec> {
     })
 }
 
-/// The body a method gets when its bytecode cannot be lowered.
-///
-/// This is the honest degradation the DEX `get-class` path documents: the method
-/// is present, says so, and throws when called, instead of rendering an empty
-/// body that would silently read as if it did nothing.
+/// Unsupported class members degrade to throwing stubs, never empty bodies.
 fn stub_body(message: &str) -> LoweredMethod {
     let exception = "Ljava/lang/UnsupportedOperationException;".to_owned();
     let value = Value::Invoke(Box::new(InvokeExpression {
@@ -141,11 +131,7 @@ fn stub_body(message: &str) -> LoweredMethod {
     }
 }
 
-/// Decodes one method body.
-///
-/// `get-method` asks for exactly one body, so a body that cannot be lowered is
-/// the answer: the diagnostic travels out (`UNSUPPORTED_BYTECODE`, a resource
-/// limit, a malformed body) and no guessed Java is produced.
+/// Decode one selected method; failure is reported instead of guessed Java.
 fn method_body(
     class: &ClassFile,
     method: &Method,
@@ -157,8 +143,7 @@ fn method_body(
     Ok(Some(decode_method(class, method, limits)?))
 }
 
-/// Decodes one method body for whole-class rendering, where an undecodable body
-/// degrades to a throwing stub instead of failing the class.
+/// Whole-class method lowering; unsupported bodies become throwing stubs.
 fn class_method_body(
     class: &ClassFile,
     method: &Method,
@@ -183,11 +168,7 @@ pub fn render_method(input: &Input, coordinate: &str, limits: Limits) -> anyhow:
     Ok(output.source)
 }
 
-/// Decompile a whole class to Java.
-///
-/// Every field and method is assembled into one class; a method whose bytecode
-/// cannot be lowered degrades to a throwing stub, and one without a Code
-/// attribute renders as a bodyless declaration.
+/// Render all class members; unsupported bodies become explicit throwing stubs.
 pub fn render_class(input: &Input, name: &str, limits: Limits) -> anyhow::Result<String> {
     let selected = input.class_by_name(name)?;
     let class = &selected.class;
@@ -233,11 +214,7 @@ pub fn render_class(input: &Input, name: &str, limits: Limits) -> anyhow::Result
     Ok(render_class_spec(spec).source)
 }
 
-/// A `findrefs` query: which kind of reference to search for.
-///
-/// `string`/`type` match by case-sensitive substring over the literal/type
-/// name. `method`/`field` match the member name exactly, optionally constrained
-/// to an owner class by case-sensitive substring (`class`).
+/// String/type pattern or exact method/field selector with optional owner.
 pub enum RefQuery<'a> {
     String(RefPattern<'a>),
     Type(RefPattern<'a>),
@@ -255,18 +232,12 @@ pub enum RefQuery<'a> {
     },
 }
 
-/// One selector face: a content substring, or an exact identity.
-///
-/// `-f/--filter` asks whether the value contains the needle; `--at` asks whether the value
-/// *is* the identity. Both are case-sensitive, and the difference is the whole answer: a
-/// search that matches nothing answers with an empty result, an anchor that resolves nowhere
-/// is an error.
+/// Substring search or exact identity; only unresolved anchors are errors.
 #[derive(Clone, Copy, Debug)]
 pub struct RefPattern<'a> {
     pub text: &'a str,
     pub exact: bool,
-    /// Whether the substring search folds case. A coordinate is matched exactly, so this
-    /// only governs the `-f` face; the CLI's `--case` decides it.
+    /// Case mode affects substring searches, never coordinate anchors.
     pub case_sensitive: bool,
 }
 
@@ -298,7 +269,6 @@ impl<'a> RefPattern<'a> {
 }
 
 impl RefQuery<'_> {
-    /// Whether this query came from an `--at` coordinate rather than a content search.
     pub fn is_anchor(&self) -> bool {
         match self {
             Self::String(pattern) | Self::Type(pattern) => pattern.exact,
@@ -308,7 +278,6 @@ impl RefQuery<'_> {
         }
     }
 
-    /// The error text for an anchor whose identity no class carries.
     pub fn anchor_not_found(&self) -> String {
         match self {
             Self::String(pattern) => format!("no string literal is exactly {:?}", pattern.text),
@@ -337,12 +306,10 @@ impl RefQuery<'_> {
     }
 }
 
-/// One `findrefs` hit, carrying the owning class and method so a reader can
-/// route to `get-method`/`get-class`.
+/// Reference site with caller class/method coordinates.
 #[derive(serde::Serialize)]
 pub struct RefHit {
-    /// Content-bound FETCH context for the referencing instruction.
-    /// `Lclass;->name(proto)`: the caller's coordinate, printable and selectable.
+    /// Caller method coordinate: Lclass;->name(proto).
     pub method_at: String,
     pub source_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -352,16 +319,11 @@ pub struct RefHit {
     pub method_descriptor: String,
     pub byte_offset: u32,
     pub mnemonic: &'static str,
-    /// Human-routable description of the referenced target.
+
     pub target: String,
 }
 
-/// Scan every selected class's method bodies for references matching `query`.
-///
-/// String literals are matched directly from each method's `ldc` operands; type
-/// and member references are matched from the resolved constant-pool entry of
-/// each referencing instruction. Hits are returned in (class, method, offset)
-/// source order.
+/// Scan resolved bytecode operands; return hits in class/method/offset order.
 pub fn find_refs(input: &Input, query: &RefQuery, limits: Limits) -> anyhow::Result<Vec<RefHit>> {
     let mut hits = Vec::new();
     let mut work = 0usize;
@@ -404,8 +366,7 @@ pub fn find_refs(input: &Input, query: &RefQuery, limits: Limits) -> anyhow::Res
     Ok(hits)
 }
 
-/// Match one instruction's constant-pool reference against the query, returning
-/// a routable target description on a hit.
+/// Match a resolved pool operand and return its target description.
 fn ref_target(class: &ClassFile, index: u16, query: &RefQuery) -> Option<String> {
     match query {
         RefQuery::String(pattern) => {
@@ -439,8 +400,6 @@ fn ref_target(class: &ClassFile, index: u16, query: &RefQuery) -> Option<String>
                 && wanted.is_none_or(|wanted| wanted == descriptor)
                 && owner_filter.is_none_or(|pattern| pattern.matches(&owner)) =>
             {
-                // `Lowner;->name(proto)` is what `get-method --at` takes, so a hit routes
-                // straight back into the decompiler.
                 Some(format!("L{owner};->{member}{descriptor}"))
             }
             _ => None,
@@ -466,13 +425,7 @@ fn ref_target(class: &ClassFile, index: u16, query: &RefQuery) -> Option<String>
     }
 }
 
-/// Whether the input carries the query's anchor at all.
-///
-/// A coordinate names one identity, and "no class carries it" is a different answer from "no
-/// instruction references it": the first is an error naming what was looked for, the second is
-/// a true empty result. An identity counts as carried when a class declares it or when some
-/// constant pool holds it, which is what lets an external member (a `StringBuilder.append`
-/// call) be anchored even though no class in the input declares it.
+/// Anchors may be declared members or pool references; no callers still means zero hits.
 pub fn resolves(input: &Input, query: &RefQuery) -> bool {
     if !query.is_anchor() {
         return true;

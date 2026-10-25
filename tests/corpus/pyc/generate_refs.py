@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Compile-only explicit-name opcode diagnosis using pinned CPython 3.12.14.
-
-The saved oracle comes from CPython dis/CodeType and the independent marshal
-scanner in generate.py. Never import, instantiate or execute the analyzed code.
-"""
+"""Compile name probes; derive expectations from pinned CPython dis and the independent marshal scanner."""
 import argparse
 import hashlib
 import importlib.util

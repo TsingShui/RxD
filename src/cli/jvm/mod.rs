@@ -193,10 +193,7 @@ impl Normalized {
     }
 }
 
-/// The backend query a resolved target asks for.
-///
-/// The owner class is compared against internal names, so a descriptor or dotted spelling is
-/// normalized the same way `get-class` already accepts it.
+/// Normalize owner spellings before building the backend reference selector.
 fn ref_query<'a>(target: &'a Target, names: &'a mut Normalized) -> rxd_jvm::RefQuery<'a> {
     use rxd_jvm::{RefPattern, RefQuery};
     match (&target.anchor, target.filter.as_deref()) {
@@ -420,8 +417,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
         let mut names = Normalized { owned: Vec::new() };
         let query = ref_query(&target, &mut names);
         let hits = rxd_jvm::find_refs(&input, &query, limits)?;
-        // A coordinate names one identity: if no class carries it, the answer is NOT_FOUND
-        // rather than an empty reference list.
+        // Missing anchors are NOT_FOUND, not empty reference lists.
         if query.is_anchor() && !rxd_jvm::resolves(&input, &query) {
             anyhow::bail!("{}", query.anchor_not_found());
         }
@@ -436,9 +432,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                     },
                     json!({
                         "target": hit.target,
-                        // The reference site itself: bytecode position and the instruction
-                        // that performs it. pyc keeps offset/opcode, dotnet keeps
-                        // il_offset/opcode, evm keeps instruction_offset, so jar keeps these.
+
                         "byte_offset": hit.byte_offset,
                         "mnemonic": hit.mnemonic,
                     })
@@ -706,9 +700,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                                 ..RecordMeta::default()
                             },
                             json!({
-                                // `at` already carries `name(proto)ret`, and `has_code`
-                                // is one `get-method` away, so a member row prints only
-                                // what the coordinate cannot: erased signature, `throws`.
+
                                 "signature":method.signature,
                                 "exceptions":method.exceptions,
                             })

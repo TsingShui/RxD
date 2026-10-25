@@ -200,10 +200,6 @@ fn expected() -> Value {
     serde_json::from_str(include_str!("../fixtures/dotnet/expected.json")).unwrap()
 }
 
-/// The per-object listings as one stream, the view `outline` used to print.
-///
-/// Tests assert on the members an assembly holds, not on which command produced a row,
-/// so this keeps them readable after the listing was split into three commands.
 fn outline(path: &Path, args: &[&str]) -> Vec<Value> {
     let mut head: Vec<&str> = Vec::new();
     let mut skip = false;
@@ -440,8 +436,7 @@ fn dotnet_budgets_are_internal_floors_not_cli_knobs() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    // Empty EH sections still cost work, which the internal budget accounts for: a valid
-    // chain of 5,000 sections is analysed instead of being rejected for its shape.
+    // Five thousand empty EH sections are valid and fully traversed.
     let directory = tempfile::tempdir().unwrap();
     let chained = directory.path().join("empty-eh-chain.dll");
     fs::write(&chained, empty_exception_sections(5_000)).unwrap();
@@ -489,9 +484,7 @@ fn dotnet_output_files_are_atomic_and_perf_is_separate_from_results() {
     assert!(diagnostics.contains("reconstruct"));
 }
 
-// Derive an original, valid PE fixture by relocating the existing finally body
-// after the file and extending the single mapped .text section. Metadata remains
-// unchanged except its MethodDef RVA; the original clause follows empty sections.
+// Relocate valid IL/EH by extending .text and updating its MethodDef RVA.
 fn empty_exception_sections(count: usize) -> Vec<u8> {
     let mut bytes = fs::read(input()).unwrap();
     let old_rva = expected()["methods"]["Finally"]["rva"].as_u64().unwrap() as u32;
@@ -529,9 +522,7 @@ fn empty_exception_sections(count: usize) -> Vec<u8> {
 fn dotnet_unrelated_invalid_parent_reference_stays_out_of_local_listings() {
     let bad =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/InvalidReference.dll");
-    // A name listing reads rows and names only. The corrupt custom-attribute parent
-    // reference is unrelated to that answer, so the query completes instead of failing
-    // the whole file.
+    // A name-only query must ignore unrelated custom-attribute corruption.
     let output = run("methods", &bad, &["--name", "Add"]);
     success(&output);
     let rows = jsonl(&output);

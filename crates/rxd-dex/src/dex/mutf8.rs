@@ -1,16 +1,6 @@
-//! MUTF-8 encoding for query text.
-//!
-//! DEX strings are MUTF-8: NUL is stored as `0xC0 0x80` and supplementary
-//! characters as a surrogate pair of three-byte sequences. A query has to be
-//! encoded the same way before it can be matched against the string table.
+//! MUTF-8 query encoding: NUL uses C0 80; supplementary characters use surrogate pairs.
 
-/// Appends a MUTF-8 string to `out` without building an intermediate `String` when the
-/// bytes are ASCII.
-///
-/// Real descriptors, member names and query values are ASCII, and MUTF-8 is byte-for-byte
-/// the same as UTF-8 there - only NUL (0xC0 0x80) and the surrogate-pair form for
-/// supplementary characters differ, and both are non-ASCII. So the common case is a copy,
-/// not a decode, and the non-ASCII case keeps the decoder's exact behaviour.
+/// Copy ASCII directly; otherwise retain exact MUTF-8 decoding.
 pub(super) fn push_decoded(out: &mut String, bytes: &[u8]) {
     if bytes.is_ascii() {
         // SAFETY: every byte was just checked to be < 0x80, so the slice is valid UTF-8.
@@ -20,7 +10,6 @@ pub(super) fn push_decoded(out: &mut String, bytes: &[u8]) {
     out.push_str(&decode_owned(bytes));
 }
 
-/// One MUTF-8 string as an owned `String`; see [`push_decoded`] for the ASCII shortcut.
 pub(super) fn decode_owned(bytes: &[u8]) -> String {
     if bytes.is_ascii() {
         let mut out = String::with_capacity(bytes.len());
@@ -51,21 +40,8 @@ pub(super) fn encode_mutf8(value: &str) -> Vec<u8> {
     out
 }
 
-/// Decodes one DEX MUTF-8 string (DEX spec §3.3.1).
-///
-/// Accepted: ASCII `0x01..=0x7F`; 2-byte leads `0xC0..=0xDF`, including the
-/// MUTF-8 NUL form `0xC0 0x80`; 3-byte leads `0xE0..=0xEF` for non-surrogate
-/// BMP code points; and the 6-byte CESU-8 surrogate pair for supplementary
-/// characters. A bare `0x00` ends the string and the remaining bytes are
-/// ignored (that byte is the DEX string terminator).
-///
-/// Rejected: overlong forms other than `0xC0 0x80`, lone or swapped or
-/// oversized surrogates, truncated sequences, and bad continuation bytes. `Err`
-/// carries the byte offset where the failing sequence starts.
-///
-/// This used to be `rasc_dex::mutf8::decode_mutf8`; it lives here now that the
-/// CLI no longer depends on that crate, with the same contract and rejection
-/// matrix.
+/// Decode strict MUTF-8 through the NUL terminator; errors carry byte offsets.
+/// Reject non-NUL overlong forms, invalid sequences and unpaired surrogates.
 pub(super) fn decode_mutf8(bytes: &[u8]) -> Result<String, usize> {
     let mut out = String::with_capacity(bytes.len());
     let mut i = 0;
@@ -118,7 +94,6 @@ pub(super) fn decode_mutf8(bytes: &[u8]) -> Result<String, usize> {
     Ok(out)
 }
 
-/// One `10xxxxxx` continuation byte, or `Err(start)`.
 fn continuation(bytes: &[u8], at: usize, start: usize) -> Result<u8, usize> {
     match bytes.get(at) {
         Some(&byte) if byte & 0xC0 == 0x80 => Ok(byte),
@@ -126,8 +101,7 @@ fn continuation(bytes: &[u8], at: usize, start: usize) -> Result<u8, usize> {
     }
 }
 
-/// The low half of a CESU-8 pair (`0xED 0xB0..=0xBF 10xxxxxx`) starting at `at`;
-/// returns the code unit and the offset after it. `start` is the pair's offset.
+/// Decode a CESU-8 low surrogate; errors report the pair's start.
 fn decode_low_surrogate(bytes: &[u8], at: usize, start: usize) -> Result<(u32, usize), usize> {
     if bytes.get(at) != Some(&0xED) {
         return Err(start);
@@ -185,8 +159,6 @@ mod tests {
         assert_eq!(decode_mutf8(&encode_mutf8("A😀\0Z")).unwrap(), "A😀\0Z");
     }
 
-    /// The surrogate-pair rejection matrix the decoder inherited from rasc-dex:
-    /// lone high, lone low, swapped, oversized, and the truncation shapes.
     #[test]
     fn malformed_surrogates_and_truncation_are_rejected() {
         // High surrogate U+D83D followed by a private-use 3-byte sequence.

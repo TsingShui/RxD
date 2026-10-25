@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare independent string expectations from ECMA-335 heap bytes and PEReader IL sites.
-
-This reads the analyzed PE as bytes only. The supplied metadata/site oracle must
-come from the trusted PEReader inspector, never from rxd output.
-"""
+"""Prepare string expectations from raw heaps and trusted PEReader IL sites; never use rxd output."""
 import argparse
 import collections
 import hashlib

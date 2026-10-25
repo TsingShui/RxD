@@ -1,7 +1,4 @@
-//! Exact lexical identifier occurrence search.
-//!
-//! This is a syntax-first query. It returns binding identifiers and identifier references
-//! without treating static member/property names as lexical identifiers.
+//! Lexical bindings/references only; property names are not identifiers.
 
 use oxc_ast::{AstKind, ast::Program};
 use oxc_ast_visit::Visit;

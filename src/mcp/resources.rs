@@ -37,7 +37,7 @@ impl ByteBudget {
     }
 }
 impl Reservation {
-    /// Roll back a published target if cancellation or marshalling prevents delivery.
+    /// Roll back targets whose response is not delivered.
     pub fn rollback(&mut self, cleanup: impl FnOnce() + Send + Sync + 'static) {
         self.rollback = Some(Box::new(cleanup));
     }
@@ -77,8 +77,7 @@ impl Drop for Reservation {
     }
 }
 
-/// Count before allocating compatibility text or protocol copies. The multiplier
-/// admits JSON tree/string metadata and temporary marshalling, including empty values.
+/// Preflight JSON payload, metadata and temporary protocol copies before allocation.
 pub fn json_envelope(value: &impl serde::Serialize, limit: usize) -> Result<usize> {
     struct Counter {
         bytes: usize,
@@ -115,8 +114,7 @@ pub fn json_envelope(value: &impl serde::Serialize, limit: usize) -> Result<usiz
         })
 }
 
-/// Transfer response reservations from a handler to its transport send future.
-/// Cancellation removes the pending entry, so a suppressed response cannot leak it.
+/// Transfer response storage to transport; cancellation releases suppressed replies.
 #[derive(Clone)]
 pub struct Responses {
     pub bytes: ByteBudget,

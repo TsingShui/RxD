@@ -21,8 +21,7 @@ pub struct Input {
     pub(crate) relationships_loaded: bool,
     /// Metadata rows skipped because their own contents were invalid.
     pub unreadable: Vec<crate::Unreadable>,
-    /// Metadata token to full type name, for the tokens a row can point at but not show:
-    /// a base type or an interface is a token, and a name is what a reader navigates by.
+    /// Full names for referenced base/interface/type tokens.
     pub(crate) type_names: BTreeMap<u32, Arc<String>>,
 }
 
@@ -62,11 +61,8 @@ impl Input {
             parsed_file.repairs().is_empty(),
             "INVALID_INPUT: automatic PE repair is unsupported"
         );
-        // PE/stream/table headers are parsed here; whole-module cross-table validation is
-        // not run for a query. Every row, heap entry and token this query actually reads
-        // is bounds/dialect checked at the point of use, so unrelated corruption cannot
-        // turn a local answer into a whole-file failure. `verify_module` keeps an explicit
-        // full-structure check for callers that want it.
+        // Validate queried rows/operands lazily; unrelated corruption stays out of scope.
+        // verify_module performs opt-in whole-module validation.
         let mut deferred = ValidationConfig::minimal();
         deferred.enable_cross_table_validation = true;
         deferred.enable_raw_validation = false;
@@ -119,7 +115,6 @@ impl Input {
             .context("INVALID_INPUT: metadata structure and references")
     }
 
-    /// Why this token's row is unusable, when index construction skipped it.
     pub fn unreadable_reason(&self, token: u32) -> Option<&str> {
         self.unreadable
             .iter()
@@ -139,9 +134,6 @@ impl Input {
         Ok(&self.types[index])
     }
 
-    /// Resolve a coordinate, or the token form this input already fixes:
-    /// `method:06000003`, `06000003` or `0x06000003`. A short form names a token in
-    /// the validated buffer, so content identity still comes from the parsed input.
     fn entity_token(&self, id: &str, kind: &str, table: u32) -> Result<u32> {
         let token = self.token_at(id)?;
         self.checked_token(token, kind, table)
@@ -164,9 +156,7 @@ impl Input {
         Ok(token)
     }
 
-    /// Parse the coordinate an Agent copies out of a record: the ECMA-335 metadata
-    /// token, eight hex digits with an optional `0x`. A kind prefix is refused with
-    /// the value to use instead, because the token's high byte already names the table.
+    /// Parse eight-digit metadata tokens with optional 0x; reject kind prefixes.
     fn token_at(&self, value: &str) -> Result<u32> {
         if let Some((kind, _)) = value.split_once(':') {
             bail!(
@@ -179,8 +169,7 @@ impl Input {
         )
     }
 
-    /// Whether a `MemberRef` token denotes a method or a field, read from its signature
-    /// blob only when a query actually needs the distinction.
+    /// Read MemberRef signature lazily to distinguish methods and fields.
     pub(crate) fn member_kind(&self, token: u32) -> Result<Option<bool>> {
         if token >> 24 != 10 {
             return Ok(None);
@@ -201,8 +190,7 @@ impl Input {
         Ok(Some(*first != 6))
     }
 
-    /// Resolve the class-scoped metadata first, then build the projection immutably
-    /// so callers can keep using the rest of this input while it is alive.
+    /// Resolve selected class metadata before constructing its immutable projection.
     pub fn prepare_class(&mut self, id: &str) -> Result<u32> {
         let token = self.type_by_id(id)?.token;
         crate::class::prepare(self, token)?;
@@ -257,7 +245,6 @@ impl Input {
         crate::il::body(self, &self.methods[index])
     }
 
-    /// Resolve one row's signature by its metadata token.
     pub fn resolve_method_token(&mut self, token: u32) -> Result<()> {
         let index = self
             .methods
@@ -274,8 +261,7 @@ impl Input {
         self.resolve_field(index)
     }
 
-    /// Signature handling is the same for every caller: seed a work scope with the
-    /// metadata already spent, parse one blob, and keep the consumed work visible.
+    /// Seed signature work with metadata already consumed.
     fn signature_work(&self) -> Result<Work> {
         let mut work = Work::new(self.limits.work, self.limits.metadata_bytes);
         work.charge(self.metadata_work)?;
@@ -512,14 +498,11 @@ impl Input {
         Ok(name)
     }
 
-    /// The full name a metadata token points at, when this assembly knows it.
     pub fn type_name(&self, token: u32) -> Option<&str> {
         self.type_names.get(&token).map(|name| name.as_str())
     }
 
-    /// A printable type for any token a row can name: a definition, a reference, or a
-    /// generic instantiation. A row prints the token as its identity and this as the name
-    /// a reader navigates by, so a TypeSpec must resolve too, not just fall through null.
+    /// Resolve names for definitions, references and generic TypeSpec tokens.
     pub fn type_display(&self, token: u32) -> Option<String> {
         if let Some(name) = self.type_name(token) {
             return Some(name.to_owned());
@@ -566,15 +549,12 @@ impl Input {
     }
 }
 
-/// Parse `06000003` or `0x06000003`; every CIL token is eight hex digits.
 fn hex_token(value: &str) -> Result<u32> {
     let body = value
         .strip_prefix("0x")
         .or_else(|| value.strip_prefix("0X"))
         .unwrap_or(value);
-    // ECMA-335 tokens are exactly eight hex digits (table byte + three-byte row).
-    // A dropped or extra digit can land on another row, so length is enforced
-    // instead of letting a mis-copied token resolve to a different member.
+    // Require eight hex digits; a dropped digit can select a different metadata row.
     ensure!(
         body.len() == 8 && body.bytes().all(|b| b.is_ascii_hexdigit()),
         "`{value}` is not an 8-hex metadata token (expected e.g. `0600000b` or `0x0600000b`)"
@@ -627,9 +607,7 @@ impl Work {
     }
 }
 
-// Decoded/retained working memory for one operation. The accounting is exact about
-// what this backend itself allocates; it is not an RSS bound for the parser or the
-// pinned native engine.
+// Account backend-retained bytes, not parser/native-engine RSS.
 pub(crate) struct WorkingSet {
     used: usize,
     limit: Option<usize>,

@@ -328,9 +328,8 @@ impl AnalysisService {
                 let _ = self.store.close(&info.target_id);
                 return Err(error);
             }
-            // MCP target identity is a whole-file SHA-256; an extract receipt's
-            // `source_id` is the sampled stream identity. Check the receipt against its
-            // own bytes instead of comparing the two different identity domains.
+            // Target IDs hash whole files; extract receipts use sampled stream identities.
+            // Validate each receipt against its own bytes.
             if artifact.source_id != expected_artifact_source_id {
                 let _ = self.store.close(&info.target_id);
                 return Err(QueryError::new(

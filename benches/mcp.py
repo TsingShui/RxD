@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Frozen-release CLI/stdin/stdout measurements; never execute analyzed inputs.
-
-Every sample, failure, timeout and complete wire result is retained. Timing excludes
-oracle validation, hashes and report persistence. This runner does not grant exceptions.
-"""
+"""Measure frozen CLI/MCP releases; retain complete samples and failures without granting latency exceptions."""
 import argparse
 import base64
 from collections import Counter

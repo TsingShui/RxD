@@ -41,8 +41,7 @@ pub enum Query {
     Metadata,
 }
 
-/// Abstract-interpreter states one path may hold. Bound on the analysis machine, not on
-/// the answer: it is the same number the previous entity budget gave this interpreter.
+/// Independent abstract-interpreter state bound.
 const STATES: usize = 100_000;
 
 #[derive(Clone, Copy)]
@@ -57,12 +56,7 @@ pub struct Limits {
 }
 
 impl Limits {
-    /// Project the one shared budget table onto the EVM ceilings.
-    ///
-    /// The abstract interpreter's context graph, retained stack cells and value arena keep
-    /// their own state-machine ceilings - they bound what one path may hold while it runs,
-    /// not how much a query may answer - and the archive/work numbers come from the shared
-    /// table. Limits are reported in the `--perf` sidecar and are never CLI knobs.
+    /// Project shared quotas; interpreter state/arena guards remain independent.
     pub fn from_budget(budget: rxd_core::Budget) -> Self {
         Self {
             input_bytes: budget.input_bytes,

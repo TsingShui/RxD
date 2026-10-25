@@ -1,15 +1,10 @@
-//! Reflect the clap surface into the typed query catalog.
-//!
-//! There is exactly one definition of an analysis command: the CLI. Walking the
-//! `clap` tree gives every tool's name, description, flags, types and enums, so a
-//! renamed or added flag cannot leave the MCP contract behind. Only two things are
-//! MCP-specific and therefore live here instead of in clap: captured inputs replace
-//! the path positional, and `--output` becomes an artifact channel.
+//! Reflect clap names, options and help into MCP schemas.
+//! Captured inputs and artifact output replace filesystem arguments.
 
 use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
 
-/// Backends exposed as typed tools. `skill`, `mcp` and `kuna` are not analysis tools.
+/// Built-in backends reflected from clap; Native tools use their own adapter.
 const BACKENDS: &[&str] = &[
     "js", "asar", "html", "dex", "jar", "dotnet", "evm", "wasm", "pyc",
 ];
@@ -18,8 +13,7 @@ const BACKENDS: &[&str] = &[
 /// supports batch output, which the one-artifact tool contract cannot express.
 const CLI_ONLY: &[&str] = &["dex_extract"];
 
-/// CLI flags that describe where a result goes or how a local process runs, not what
-/// to analyze. They never appear in a tool schema.
+/// Exclude output/process flags from analysis schemas.
 const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help"];
 
 /// Numeric flags keep `integer` in the schema; clap remains the authority on values.
@@ -35,7 +29,7 @@ pub(super) enum Kind {
 }
 
 pub(super) struct ArgSpec {
-    /// Property name a caller uses: the flag spelling, or the positional's id.
+    /// Use the long flag spelling or positional id as the property name.
     pub key: String,
     pub long: Option<String>,
     pub help: Option<String>,
@@ -56,12 +50,11 @@ pub(super) struct ToolSpec {
     pub required_groups: Vec<Vec<String>>,
     pub machine_json: bool,
     pub output_required: bool,
-    /// `--apk`-style commands take an ordered input list instead of one path.
+    /// Ordered input-list arguments.
     pub multi_input: bool,
 }
 
 impl ToolSpec {
-    /// Arguments a caller may set, excluding the captured-input plumbing.
     pub fn exposed(&self) -> impl Iterator<Item = &ArgSpec> {
         self.args.iter()
     }
@@ -143,7 +136,6 @@ fn arg_spec(arg: &Arg, command: &Command) -> ArgSpec {
     }
 }
 
-/// The first positional is the analyzed path; captured inputs replace it.
 fn args(command: &Command) -> Vec<ArgSpec> {
     let first = command
         .get_positionals()
@@ -221,7 +213,6 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
     }
 }
 
-/// Walk the CLI once and describe every analysis command as a tool.
 pub(super) fn tools() -> Vec<ToolSpec> {
     let mut root = <crate::cli::Cli as clap::CommandFactory>::command();
     root.build();
@@ -267,10 +258,6 @@ fn input_reference() -> Value {
         {"type":"object","properties":{"target_id":{"type":"string","minLength":1}},"required":["target_id"],"additionalProperties":false}]})
 }
 
-/// The tool's input schema: captured inputs and the reflected arguments.
-///
-/// A command's own flags describe the whole surface: `xref` takes `--at`/`--match`/`--kind`
-/// like every other command takes its options, so there is no per-kind selector to project.
 pub(super) fn input_schema(spec: &ToolSpec) -> Value {
     let mut properties = Map::new();
     let mut required = Vec::new();
@@ -326,8 +313,7 @@ fn value_text(value: &Value) -> String {
     }
 }
 
-/// Build the CLI argv for one tool call. `clap` parses and validates the result, so
-/// this only has to spell each argument the way the CLI declares it.
+/// Build CLI argv; clap validates types and combinations.
 pub(super) fn argv(
     spec: &ToolSpec,
     arguments: &Value,
@@ -354,8 +340,7 @@ pub(super) fn argv(
         argv.push(path.as_os_str().into());
     }
     if spec.output_required {
-        // Typed extraction returns an artifact rather than publishing a caller path.
-        // Supply a placeholder only to let the shared CLI parser validate arguments.
+        // Use a placeholder output only for shared extraction argument validation.
         argv.push("--output=.rxd-mcp-artifact".into());
     }
     // Selectors are data; any later positionals are appended after flags.

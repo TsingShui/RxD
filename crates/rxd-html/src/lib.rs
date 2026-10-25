@@ -39,9 +39,7 @@ impl ForwardingEmitter for StateSwitch<'_> {
     fn emit_current_tag(&mut self) -> Option<State> {
         let _ = self.emitter.emit_current_tag();
         let name = self.last_start.borrow_mut().take()?;
-        // html5gum 0.8.4's naive table spells `noframes` as `noframe`.
-        // WHATWG in-head parsing uses the plural spelling; retain the other naive states.
-        // Provenance: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
+        // Correct html5gum's noframe spelling to WHATWG noframes raw text.
         let state = match name.as_slice() {
             b"title" | b"textarea" => Some(State::RcData),
             b"script" => Some(State::ScriptData),
@@ -314,22 +312,19 @@ pub struct ListQuery {
     pub attr: Option<String>,
     pub within: Option<String>,
     pub depth: Option<usize>,
-    /// Substring over the element name or the text/comment content, folded unless
-    /// `case_sensitive`.
+    /// Substring over element names or text/comment content.
     pub contains: Option<String>,
-    /// Whether `contains` folds case; the CLI's `--case` decides it.
+    /// False folds filter case.
     pub case_sensitive: bool,
 }
 
-/// Prepared artifact bytes and the single success receipt. Nothing is written here; the
-/// caller commits the artifact and then streams the receipt to stdout.
+/// Prepared bytes/receipt; the caller owns publication.
 pub struct ExtractResponse {
     pub bytes: Vec<u8>,
     pub receipt: Vec<u8>,
 }
 
-/// One fixed source buffer for selector identity checks and subsequent extraction.
-/// This retains source bytes, not a persistent parser or browser state.
+/// Fixed source bytes shared by identity checks and extraction.
 pub struct Source {
     path: String,
     text: String,
@@ -364,7 +359,6 @@ fn attribute_name_valid(name: &str) -> bool {
         })
 }
 
-/// A record's identity is its self-describing `kind:start:end` coordinate.
 fn record_id(kind: &str, start: usize, end: usize) -> String {
     format!("{kind}:{start}:{end}")
 }
@@ -585,11 +579,8 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
     Ok(output.bytes)
 }
 
-/// Fetch the exact original container interval selected by a validated catalog ID.
-///
-/// `--content` is element-only and selects the element's content range; default selection
-/// covers the whole record range. All validation, byte selection, artifact identity and
-/// receipt serialization happen here, before the caller commits the artifact.
+/// Extract validated original intervals; --content selects element contents.
+/// Validate identity and receipt before the caller publishes bytes.
 pub fn extract(
     input: &Path,
     id: &str,

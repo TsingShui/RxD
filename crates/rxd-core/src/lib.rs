@@ -16,32 +16,28 @@ pub struct Error {
     pub message: String,
 }
 
-/// One failure class, chosen by whoever knows the reason.
-///
-/// A failure carries exactly one code as data. The set is closed: a new code is a
-/// contract change, not a message. Grouping is by what the caller can do about it, which
-/// is also what decides the exit status.
+/// Failure classes determine diagnostic codes and exit status.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Failure {
-    /// The query is malformed or its arguments contradict each other.
+    /// Malformed or contradictory query.
     Query,
-    /// The query is well formed and names no record.
+    /// Valid query with no selected record.
     NotFound,
-    /// A name matches more than one identity; the caller must use a coordinate.
+    /// Multiple identities match; select a coordinate.
     Ambiguous,
-    /// The input bytes are corrupt or are not this backend's format.
+    /// Corrupt bytes or wrong format.
     Input,
-    /// The input is well formed and uses something this build does not implement.
+    /// Valid but unsupported input feature.
     Unsupported,
-    /// A coordinate or stream came from a different input.
+    /// Selector/stream belongs to different input bytes.
     Mismatch,
-    /// A declared budget was reached; the message names it.
+    /// Explicit resource budget exhausted.
     Resource,
-    /// Understanding the input worked and recovering source from it did not.
+    /// Source reconstruction failed after input analysis.
     Decompile,
-    /// The filesystem, a pipe or another device failed.
+
     Io,
-    /// An invariant broke: a bug, or a worker that died.
+    /// Broken invariant or failed worker.
     Internal,
 }
 
@@ -74,8 +70,7 @@ impl Failure {
         }
     }
 
-    /// The exit status is a property of the class, not of each command: a query the caller
-    /// can fix exits 2, everything else exits 1.
+    /// Fixable query failures exit 2; all other failures exit 1.
     pub fn exit_code(self) -> u8 {
         match self {
             Failure::Query | Failure::NotFound | Failure::Ambiguous => 2,
@@ -96,9 +91,7 @@ impl Failure {
             "DECOMPILE_ERROR" => Failure::Decompile,
             "IO_ERROR" => Failure::Io,
             "INTERNAL_ERROR" => Failure::Internal,
-            // Retired codes stay readable, so output from an older release still
-            // classifies: an identifier is a coordinate now, and a format error is an
-            // input error.
+
             "INVALID_ID" | "SOURCE_MISMATCH_ID" => Failure::Query,
             "FORMAT_ERROR" => Failure::Input,
             _ => return None,
@@ -111,12 +104,10 @@ impl Error {
         Self::coded(kind.code(), message)
     }
 
-    /// The class of this error, when its code is one the contract knows.
     pub fn kind(&self) -> Option<Failure> {
         Failure::from_code(self.code)
     }
 
-    /// The process exit status this error must produce.
     pub fn exit_code(&self) -> u8 {
         self.kind().map_or(1, Failure::exit_code)
     }
@@ -130,24 +121,13 @@ impl Error {
         }
     }
 
-    /// Build an error whose message may already start with its own code.
-    ///
-    /// Backend errors often carry the code inside the message (for example
-    /// `anyhow::Context::context("INVALID_QUERY: source mismatch")`) and the CLI
-    /// re-applies the code it detected. Display always prints `code: message`, so
-    /// leading repetitions of this error's own `code:` are folded away here; the
-    /// printed diagnostic carries the code exactly once.
+    /// Build a coded error, removing repeated leading diagnostic codes.
     pub fn coded(code: &'static str, message: impl Into<String>) -> Self {
         Self::new(code, strip_codes(&message.into()))
     }
 }
 
-/// Remove leading `CODE: ` tokens from a message.
-///
-/// A backend error may already begin with its code, because `anyhow` contexts are
-/// strings; the boundary applies the class once, so the printed diagnostic never reads
-/// `INVALID_QUERY: INVALID_INPUT: ...`. Only a leading, known code is removed - a code
-/// word inside a sentence is data, not a prefix.
+/// Strip only known leading diagnostic codes, never embedded text.
 pub fn strip_codes(message: &str) -> String {
     let mut rest = message;
     while let Some((head, tail)) = rest.split_once(": ") {
@@ -159,7 +139,6 @@ pub fn strip_codes(message: &str) -> String {
     rest.to_owned()
 }
 
-/// When a message starts with a code, that code and the rest of the message.
 pub fn leading_code(message: &str) -> (Option<Failure>, &str) {
     if let Some((head, tail)) = message.split_once(": ")
         && let Some(kind) = Failure::from_code(head)
@@ -192,40 +171,36 @@ impl From<std::io::Error> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Explicit caller/service input quota. Ordinary CLI admission uses the actual input
-/// length and the format's span limit instead (see `Budget::for_input_bytes`).
+/// Default explicit input quota; CLI admission uses actual file length.
 pub const MAX_INPUT_BYTES: usize = 8 << 30;
 
-/// Default explicit library-caller entry quota; ordinary CLI/MCP leaves it unset.
+/// Default explicit entry quota; unset for CLI/MCP.
 pub const MAX_ENTRY_BYTES: usize = 256 << 20;
 
-/// Explicit caller/service archive-index quota and small-input allowance.
+/// Default archive-index allowance.
 pub const MAX_ARCHIVE_ENTRIES: usize = 1 << 20;
 
-/// Explicit caller/service metadata quota and small-input storage allowance.
+/// Default retained-metadata allowance.
 pub const MAX_METADATA_BYTES: usize = 128 << 20;
 
-/// Default explicit library-caller work quota; ordinary CLI/MCP leaves it unset.
+/// Default explicit work quota; unset for CLI/MCP.
 pub const MAX_WORK_UNITS: usize = 1_000_000;
 
-/// Explicit resource bounds projected into backend limits. `default()` preserves
-/// caller/service quotas; ordinary CLI queries use `for_input_bytes` instead.
+/// Explicit caller quotas; CLI metadata/index bounds use for_input_bytes.
 #[derive(Clone, Copy, Debug)]
 pub struct Budget {
-    /// One input file.
     pub input_bytes: usize,
-    /// Optional caller quota for one archive entry, not a format-width guard.
+    /// Optional per-entry quota, separate from format widths.
     pub entry_bytes: Option<usize>,
     /// Decoded metadata one analysis may hold.
     pub metadata_bytes: usize,
-    /// Explicit caller output quota, including envelope and newlines.
-    /// Ordinary CLI serialization has no byte quota (`None`).
+    /// Optional output quota; unset for CLI serialization.
     pub output_bytes: Option<usize>,
-    /// Physical archive entries.
+
     pub entries: usize,
-    /// Optional caller quota for instructions decoded in one method.
+    /// Optional per-method instruction quota.
     pub instructions: Option<usize>,
-    /// Optional caller quota; ordinary CLI/MCP analysis has no work quota.
+    /// Optional work quota; unset for CLI/MCP.
     pub work: Option<usize>,
     /// AST nesting one syntax tree may reach, checked after parsing.
     pub ast_depth: usize,
@@ -249,8 +224,7 @@ impl Default for Budget {
     }
 }
 
-/// Content spans are 32-bit on readers using this guard. Lazily read archive carriers
-/// are not themselves content spans. This is an address-width bound, not a size quota.
+/// 32-bit content-span bound; archive carriers are not content spans.
 pub const MAX_SPAN_BYTES: usize = u32::MAX as usize;
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -277,7 +251,6 @@ impl From<Budget> for Limits {
 }
 
 impl Default for Limits {
-    /// The budget table is the only place these numbers live.
     fn default() -> Self {
         Budget::default().into()
     }
@@ -373,10 +346,7 @@ impl Source {
         })
     }
 
-    /// The coordinate of a span: `<kind>:<start>:<end>`.
-    ///
-    /// The input identity is the stream header's `source_id`, so an id does not repeat it;
-    /// a coordinate is what a row prints and what `--at` takes back, unchanged.
+    /// File-scoped span coordinate: `<kind>:<start>:<end>`.
     pub fn entity_id(&self, kind: &str, start: u32, end: u32) -> String {
         format!("{kind}:{start}:{end}")
     }

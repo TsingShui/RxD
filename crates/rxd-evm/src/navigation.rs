@@ -28,14 +28,13 @@ pub struct BasicBlock {
     pub instruction_end: usize,
 }
 
-/// The two output options every EVM row listing shares.
 #[derive(Clone, Copy)]
 pub struct Listing<'a> {
     /// Emit the exact decoded bytecode as lowercase hex in the analysis record.
     pub include_bytecode: bool,
     /// Substring over the value the row is named by, folded unless `case_sensitive`.
     pub filter: Option<&'a str>,
-    /// Whether `filter` folds case; the CLI's `--case` decides it.
+    /// False folds filter case.
     pub case_sensitive: bool,
 }
 
@@ -167,7 +166,6 @@ impl Navigation {
         result
     }
 
-    /// The copy-only coordinate a row prints and `--at` accepts.
     pub fn block_coordinate(&self, block: &BasicBlock) -> String {
         format!(
             "{}:block:{}:{}",

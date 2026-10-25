@@ -1,17 +1,5 @@
-//! `getclass`'s Java emitter: RadGuard behind a DEX-entry seam.
-//!
-//! The seam is the DEX entry bytes, not rasc's own parse tree: the emitter parses
-//! the entry itself, so no second parse tree has to agree with the scanner's.
-//! `radguard::Decompiler::parse` borrows those bytes, which keeps the walk's
-//! "consume the entry inside the walk" property - a real entry is 7-12 MiB and
-//! copying it was pure added cost on every `getclass`.
-//!
-//! Two contracts the callers rely on:
-//!
-//! * a class the entry does not define is an `Err`, not an empty string, so
-//!   `map_class_hit` keeps walking the remaining DEX entries;
-//! * rendering is stateless per class, so one parsed entry renders many classes
-//!   with nothing to reset between requests - there is no emitter state to reuse.
+//! RadGuard consumes borrowed DEX-entry bytes.
+//! Missing classes are errors; class rendering has no reusable state.
 
 use anyhow::{Context, Result, bail};
 
@@ -48,8 +36,6 @@ pub fn render_method(
             .decompile_method(descriptor, name, prototype)
             .with_context(|| format!("could not decompile {descriptor}->{name}{prototype}"))
     })?;
-    // The signature already names the method and its prototype in Java spelling, so the
-    // DEX coordinate above it would be a second, derivable copy (and the class-member
-    // layout leaves the separator's blank line in front of a standalone rendering).
+
     Ok(rendered.map(|output| output.source.trim_start_matches('\n').to_owned()))
 }

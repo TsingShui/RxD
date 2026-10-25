@@ -40,9 +40,7 @@ fn assert_keys(row: &Value, keys: &[&str]) {
 }
 
 fn assert_record(row: &Value) {
-    // DEX units have no copy-only coordinate, so a data record is `record` + `detail`
-    // only; the stream header carries identity once instead of every row repeating it.
-    // `at` is present only on records that name a selectable object (class/method/field).
+    // DEX records omit unused navigation keys; selectable rows carry at.
     let keys = if !row["at"].is_null() {
         vec!["record", "detail", "at"]
     } else if !row["context_at"].is_null() {
@@ -159,8 +157,7 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
     }
 }
 
-/// `--at` names one identity; `-f` searches content. The two faces are different questions,
-/// and a coordinate that no table carries is a failure rather than an empty result set.
+/// Exact anchors require identity existence; substring searches permit zero hits.
 #[test]
 fn dex_xref_separates_coordinate_anchors_from_content_searches() {
     let dex = const_string_dex(3);
@@ -192,8 +189,7 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
         1,
         "no string literal is exactly \"NoSuchLiteral\"",
     );
-    // A coordinate's kind is not negotiable: it says what it is, so a contradicting
-    // `--kind` is an error rather than an empty answer.
+
     failure(
         query(
             "xref",

@@ -16,12 +16,7 @@ pub enum Command {
         after_long_help = "Examples:\n  rxd dex entries app.apk -f lib/arm64-v8a/\nOutput: entry JSONL with detail.name, compression and sizes. Copy detail.name into:\n  rxd dex extract app.apk --name '<entry.detail.name>' -o target/library.so\nDuplicate entry names remain visible."
     )]
     Entries(EntriesArgs),
-    /// Write original entry bytes to --output, preserving them exactly.
-    ///
-    /// `--name` writes one entry to a file; `--all` writes every entry matching
-    /// `--filter` (or every entry) under a destination directory. APK-native
-    /// libraries are ordinary entries, so this is also how a `.so` is extracted
-    /// before it is handed to a native analyzer.
+    /// Write original bytes to -o; --name selects a file, --all selects matching entries.
     #[command(
         after_long_help = "Examples:\n  rxd dex extract app.apk --name lib/arm64-v8a/libfoo.so -o target/libfoo.so\n  rxd dex extract app.apk --all -f lib/arm64-v8a/ -o target/native\nRequired: exactly one of --name/--all, plus -o FILE/DIR. Copy entries.detail.name.\nOutput: original bytes at destination, file receipt JSONL on stdout.\nUnsafe/duplicate destinations and attempts to overwrite input are rejected."
     )]
@@ -46,10 +41,7 @@ pub enum Command {
         after_long_help = "Examples:\n  rxd dex classes app.apk -f Main\n  rxd dex classes app.apk --class com.example.Main\nOutput: class JSONL; at is Lcom/example/Main;.\nNext: rxd dex get-class app.apk --at '<class.at>'.\n-f searches class names; --class selects one exact class."
     )]
     Classes(ClassesArgs),
-    /// Decompile one method as Java source.
-    ///
-    /// `--at` takes the coordinate a `methods` row prints (`Lx/y;->name(proto)`), so a
-    /// method found by `methods` or reported by `xref` renders without pulling its class.
+    /// Decompile one method as Java, selected by its methods.at coordinate.
     #[command(name = "get-method", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at; include parameters and return type, e.g. Lx/y;->run()V")), after_long_help = "Examples:\n  rxd dex methods app.apk -f run\n  rxd dex get-method app.apk --at 'Lx/y;->run()V'\nUse actual methods.at or reference.context_at, not a name, index or file hash.\nThe prototype includes return type after ): ()V, (I)I, (I)[Ljava/lang/String;.\nOutput: one method_body JSON record; detail.code is Java. No --raw flag.")]
     GetMethod(GetMethodArgs),
     /// List every field the archive's DEX files declare.
@@ -57,10 +49,7 @@ pub enum Command {
         after_long_help = "Examples:\n  rxd dex fields app.apk --class com.example.Main -f token\n  rxd dex xref app.apk --at '<field.at>'\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f is a substring.\nFor declarations/layout use get-class with the owner classes.at."
     )]
     Fields(FieldsArgs),
-    /// List every method the archive's DEX files define.
-    ///
-    /// A method is reported once per definition; `method_ids` entries that are only
-    /// referenced are not listed.
+    /// List defined methods, excluding reference-only method_ids entries.
     #[command(
         after_long_help = "Examples:\n  rxd dex methods app.apk --class com.example.Main -f run\n  rxd dex methods app.apk --name run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads; -f searches names, --class selects one owner.\nNext: rxd dex get-method app.apk --at '<method.at>', or xref --at for callers."
     )]
@@ -199,8 +188,7 @@ pub struct StringsArgs {
     /// At most this many strings, counted in the order they are printed.
     #[arg(long)]
     pub limit: Option<usize>,
-    /// Start at this match instead of the first, counted in the order they are printed: with
-    /// `--limit` this is the other half of a page.
+    /// Skip this many matches in output order; combine with --limit for pagination.
     #[arg(long)]
     pub offset: Option<usize>,
     /// Parallel analysis workers; must be positive. One admitted input is held per worker.
@@ -280,11 +268,7 @@ pub struct XrefArgs {
 }
 
 impl XrefArgs {
-    /// The backend query a resolved target asks for.
-    ///
-    /// A coordinate becomes an exact identity: the class is normalized to the descriptor
-    /// form the tables hold, and the descriptor selects one overload. A content search stays
-    /// a substring. The two never mix in one query.
+    /// Normalize exact anchors to descriptors; keep content searches as substrings.
     pub fn query(&self, target: &Target) -> Result<Query> {
         target_query(target)
     }

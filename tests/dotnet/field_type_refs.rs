@@ -258,9 +258,7 @@ fn dotnet_field_type_reference_queries_reject_recursive_types_and_malformed_fiel
         assert_eq!(output.status.code(), Some(1));
         assert!(output.stdout.is_empty());
         assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
-        // A cycle is reached through type resolution, so the type query stays local too.
-        // A malformed *field* signature is unrelated to the type answer: that query is
-        // no longer failed by it.
+        // Only reached corruption fails: malformed field signatures are irrelevant to type queries.
         let output = run("xref", &broken, &["--at", "0x02000003"]);
         if name == "cycle.dll" {
             assert_eq!(output.status.code(), Some(1));

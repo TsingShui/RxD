@@ -1,10 +1,4 @@
-"""The input identity rxd reports as `source_id`.
-
-`rxd_core::identity::input_id` hashes the buffer length plus its first and last
-16 KiB, because hashing every byte cost one pass over the input on every query.
-Report oracles and harnesses must derive `source_id` the same way; a whole-file
-SHA-256 is still what `tests/corpus/*/manifest.json` records as provenance.
-"""
+"""RxD source_id hashes length and first/last 16 KiB; provenance retains full SHA-256."""
 
 import hashlib
 

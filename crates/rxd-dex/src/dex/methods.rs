@@ -1,17 +1,5 @@
-//! Enumerate the members a DEX file defines.
-//!
-//! Methods and fields share one source, `class_data`: it declares the fields first and
-//! the methods after them, so both enumerations walk the same record with a different
-//! tail. Fields are first here because a `class_data_item` starts with them.
-//!
-//! A method is only *defined* through `class_data`: `method_ids` also lists methods the
-//! code merely references. So this walks `class_defs -> class_data -> encoded_method`
-//! and resolves each `method_idx` through the cached id tables.
-//!
-//! Two costs dominate a full listing and both are avoided here: nothing is materialized
-//! (rows are appended to the caller's buffer as they are decoded) and names/prototypes
-//! are decoded once per id index instead of once per method - a real APK defines 4.9M
-//! methods with only ~10^5 distinct names and prototypes.
+//! Enumerate definitions through class_defs/class_data, not referenced method_ids.
+//! Resolve cached names/prototypes while appending rows.
 
 use anyhow::{Context, Result};
 use rxd_core::filter::Contains;
@@ -136,17 +124,15 @@ struct MethodRenderer<'a> {
     selected: Option<Vec<bool>>,
 }
 
-/// Which methods to list.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Selector<'a> {
     /// A Dalvik descriptor (`Lx/y;`) or dotted name (`x.y`).
     pub class: Option<&'a str>,
     /// Substring over the member name, folded unless `case_sensitive`.
     pub name: Option<&'a str>,
-    /// One exact member name; the identity face `name` is the search face for.
+    /// Exact member name, distinct from substring matching.
     pub exact_name: Option<&'a str>,
-    /// Whether the name substring folds case. The CLI's `--case` decides this; the default
-    /// `false` is the CLI default.
+    /// False folds case; true matches exact case.
     pub case_sensitive: bool,
 }
 
@@ -289,7 +275,6 @@ impl<'a> MethodRenderer<'a> {
     }
 }
 
-/// Append a JSON string literal; the row keys are fixed, the descriptor is not.
 fn push_json_string<'a>(out: &mut String, parts: impl IntoIterator<Item = &'a str>) {
     out.push('"');
     for value in parts {
@@ -320,7 +305,6 @@ fn push_json_string<'a>(out: &mut String, parts: impl IntoIterator<Item = &'a st
     out.push('"');
 }
 
-/// Advance past one uleb128 without materializing its value.
 fn skip_uleb(data: &[u8], cursor: &mut usize) -> Result<()> {
     loop {
         let byte = *data.get(*cursor).context("uleb128 outside DEX")?;
@@ -331,10 +315,7 @@ fn skip_uleb(data: &[u8], cursor: &mut usize) -> Result<()> {
     }
 }
 
-/// Append one `{"record":"field","detail":{"descriptor":…}}` line per declared field.
-///
-/// A field is declared in `class_data`'s static and instance sections, before the
-/// methods; the type comes from `field_ids[field_idx]`. Returns the rows appended.
+/// Append declared static/instance field records; return the row count.
 pub(crate) fn render_fields(
     data: &[u8],
     selector: &Selector<'_>,

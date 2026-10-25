@@ -1,12 +1,5 @@
-//! Borrowed-buffer DEX reader and reference scanner.
-//!
-//! The scanner deliberately avoids a full DEX object model: it reads the tables it
-//! needs straight out of the inflated bytes, walks class data with checked bounds
-//! and decodes only instructions that can carry a reference. Two invariants keep
-//! that fast and correct - every reference instruction stores its index as a
-//! little-endian operand at `pc + 2` (which is what the target pre-filter relies
-//! on), and the opcode width/kind tables are mirrored by independently written
-//! transcriptions in the tests.
+//! Borrowed DEX tables and reference scanning with checked bounds.
+//! Target operands are little-endian indices at pc + 2.
 
 pub(crate) mod container;
 mod filter;
@@ -55,12 +48,7 @@ pub fn defines_class(data: &[u8], descriptor: &[u8]) -> Result<bool> {
     count(Counter::Bytes, data.len() as u64);
     let dex = measure(Stage::Header, || Dex::parse(data))?;
     count(Counter::Classes, dex.header.classes_size as u64);
-    // Resolve each class_def's own type id rather than looking up "the" type id
-    // for the descriptor: a DEX may repeat a descriptor across several type ids
-    // (the spec only requires them to be sorted, and crafted or merged files do
-    // repeat one), and `class_names` reads each class_def's own id. A
-    // first-match-only lookup would make `classes` list a class that `getclass`
-    // then cannot find.
+    // Resolve each class_def's type id; descriptors may repeat across type_ids.
     for index in 0..dex.header.classes_size {
         let offset = dex.header.classes_off + index * 32;
         let type_idx = dex.u32(offset)? as usize;
@@ -73,13 +61,7 @@ pub fn defines_class(data: &[u8], descriptor: &[u8]) -> Result<bool> {
     Ok(false)
 }
 
-/// Visits every string's raw MUTF-8 bytes, in index order, decoding nothing.
-///
-/// A search over the table does not need the values it rejects: decoding half a million
-/// strings to throw almost all of them away is most of what a filtered query costs, and
-/// an ASCII needle can be matched against ASCII-compatible bytes without decoding
-/// anything. The visitor returns `false` to stop, which is what lets a page stop once it
-/// holds what it asked for.
+/// Visit raw MUTF-8 strings in table order; false stops the scan.
 pub fn for_each_string(
     data: &[u8],
     mut visit: impl FnMut(usize, &[u8]) -> Result<bool>,
@@ -97,7 +79,6 @@ pub fn for_each_string(
     Ok(())
 }
 
-/// One string's bytes as the table means them, MUTF-8 and all.
 pub fn decode_string(bytes: &[u8]) -> String {
     mutf8::decode_owned(bytes)
 }
@@ -114,16 +95,14 @@ pub fn class_names(data: &[u8]) -> Result<Vec<ClassName>> {
         .collect())
 }
 
-/// One class name and where it inherits from: a `None` superclass is the root
-/// (`java/lang/Object`) or an absent one, which no row prints.
+/// Class descriptor and optional non-Object superclass.
 pub type ClassName = (String, Option<String>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ClassDefinition {
     pub(crate) class_def_idx: usize,
     pub(crate) descriptor: String,
-    /// The superclass descriptor, or `None` for the root (`java/lang/Object` or no
-    /// superclass). A default parent is not evidence, so it never reaches a row.
+    /// None for Object or absent superclass.
     pub(crate) super_descriptor: Option<String>,
 }
 
@@ -143,9 +122,7 @@ pub(crate) fn class_definitions(
     Ok(definitions)
 }
 
-/// Visit class definitions in physical table order without materializing the table.
-/// Returning `false` stops immediately, which lets protocol adapters enforce a
-/// complete-response budget while the result is being built.
+/// Visit physical class definitions without materializing them; false stops.
 pub(crate) fn for_each_class_definition(
     data: &[u8],
     mut visit: impl FnMut(ClassDefinition) -> Result<bool>,
@@ -165,11 +142,7 @@ pub(crate) fn for_each_class_definition(
     Ok(())
 }
 
-/// The superclass of one class definition, resolved through `type_ids`.
-///
-/// `superclass_idx` is a `type_ids` index like `class_idx`, so this costs one table read
-/// and one string decode the descriptor already amortizes. `java/lang/Object` and a
-/// missing superclass both answer `None`: the row omits a default instead of printing it.
+/// Resolve superclass through type_ids; omit Object and missing superclasses.
 fn super_descriptor(dex: &Dex<'_>, class_def: usize) -> Result<Option<String>> {
     const NO_INDEX: u32 = u32::MAX;
     let index = dex.u32(class_def + 8)?;
@@ -186,40 +159,20 @@ fn super_descriptor(dex: &Dex<'_>, class_def: usize) -> Result<Option<String>> {
     Ok((internal != "java/lang/Object").then(|| internal.to_owned()))
 }
 
-/// One scan hit: the referencing method's index and one target index it references.
-///
-/// The scan accumulates these in a flat vector rather than a `BTreeMap<u32,
-/// BTreeSet<u32>>`. The map was written once per hit - a tree lookup, an allocation per
-/// method with a hit, and a tree insert - and a wide query is hundreds of thousands of
-/// hits (170,923 for `field INSTANCE` on the 343 MiB corpus), so the accumulator cost
-/// more than the instruction decode it feeds. Sorting the pairs once at the end gives
-/// the same ordered, deduplicated view the map did (`(method_idx, index)` ascending).
+/// Caller/target pairs sorted and deduplicated after scanning.
 type Hit = (u32, u32);
 
-/// One reference hit: the calling method and the one target it references.
-///
-/// The scanner returns these as data; rendering them into output lines is the
-/// CLI's job, so the output format lives in exactly one place.
+/// One caller/target reference pair; CLI owns rendering.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceRow {
     /// Exact DEX method_ids identity of the referencing method.
     pub method_index: u32,
-    /// The referencing member as `Lcom/foo/Main;->name`: the defining class's descriptor,
-    /// `->`, and the method name.
-    ///
-    /// The renderer prints exactly this pair as one field (`{class}->{method}`), so building
-    /// it as one `String` saves an allocation per row - the class and the name are appended
-    /// as they are decoded, the same way `push_target_name` does for the matched targets.
+    /// Caller descriptor and method name: Lclass;->name.
     pub member: String,
-    /// The one referenced target, as its coordinate.
-    ///
-    /// One row is one (caller, target) pair rather than one caller with its targets joined,
-    /// so this field is always a single coordinate `--at` takes back - the same shape jar and
-    /// dotnet print for every reference row.
+    /// One exact referenced coordinate accepted by --at.
     pub matched: String,
 }
 
-/// The last rendered target name, so a repeated target is not decoded again.
 #[derive(Default)]
 struct TargetMemo {
     last: Option<(usize, String)>,
@@ -230,10 +183,7 @@ pub fn find_references(data: &[u8], query: &Query) -> Result<Vec<ReferenceRow>> 
     Ok(find_references_with_anchor(data, query)?.0)
 }
 
-/// Reference rows, plus whether this DEX carries the query's anchor at all.
-///
-/// A content search answers with rows or nothing; a coordinate anchor additionally promises
-/// that the identity exists, which only an empty resolution can disprove.
+/// Return references plus anchor existence; missing anchors are not zero hits.
 pub fn find_references_with_anchor(
     data: &[u8],
     query: &Query,
@@ -253,8 +203,6 @@ pub fn find_references_with_anchor(
     Ok((rows, true))
 }
 
-/// Visit reference rows in deterministic method-index order without retaining
-/// the complete result. Returning `false` stops before scanning later classes.
 #[derive(Debug)]
 pub(crate) struct ReferenceScratchLimit;
 
@@ -333,8 +281,7 @@ pub(crate) fn for_each_reference(
 fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<Vec<ReferenceRow>> {
     let mut rows: Vec<ReferenceRow> = Vec::with_capacity(hits.len());
     let mut memo = TargetMemo::default();
-    // One row per hit: the hits arrive sorted by caller, so a caller that references several
-    // matched targets repeats its member name - memoized here instead of re-decoded.
+    // Memoize caller names across their sorted target hits.
     let mut member_memo: Option<(u32, String)> = None;
     for &(method_idx, index) in hits {
         let mut matched = String::new();
@@ -356,17 +303,8 @@ fn render_reference_rows(dex: &Dex<'_>, kind: RefKind, hits: &[Hit]) -> Result<V
     Ok(rows)
 }
 
-/// Whether a *prefix* of a DEX can hold a reference for `query`, or `None` when the
-/// prefix cannot answer.
-///
-/// Targets are DEX-local indices resolved from the string table, so a DEX whose target
-/// set is empty cannot produce a row - and the set can be resolved from a prefix, which
-/// reaches past the string data long before the code section is inflated. That is what
-/// lets a class-constrained query skip an entry without inflating or scanning it.
-///
-/// `None` is the caller's signal to fall back to the full path: the prefix was too
-/// short for one of the strings the query touches (a crafted or unusual layout), or it
-/// is not a readable DEX at all. A wrong "no" would lose rows, so nothing here guesses.
+/// Resolve targets from a complete prefix.
+/// None requires full parsing; an empty target set safely skips the entry.
 pub fn prefix_has_targets(prefix: &[u8], query: &Query) -> Result<Option<bool>> {
     let Ok(dex) = Dex::parse(prefix) else {
         return Ok(None);
@@ -377,16 +315,11 @@ pub fn prefix_has_targets(prefix: &[u8], query: &Query) -> Result<Option<bool>> 
     }
 }
 
-/// One needle matched against table bytes, in either face.
-///
-/// The two faces are the whole difference between a content search and a coordinate anchor:
-/// `--filter` asks whether the needle occurs, `--at` asks whether the value *is* the needle.
-/// Both encode the needle to MUTF-8 once, outside the table walk.
+/// MUTF-8 substring selector or exact coordinate anchor.
 struct Selector<'a> {
     needle: &'a [u8],
     finder: Option<Finder<'a>>,
-    /// The lowered needle, when matching folds case; the byte path cannot fold MUTF-8, so
-    /// that mode decodes and compares strings instead.
+    /// Case folding requires decoded strings, not raw MUTF-8 bytes.
     folded: Option<String>,
 }
 
@@ -428,7 +361,6 @@ enum RefKind {
 }
 
 impl RefKind {
-    /// Bit used by the per-opcode kind mask.
     const fn bit(self) -> u8 {
         match self {
             RefKind::String => 1,
@@ -506,10 +438,7 @@ impl<'a> Dex<'a> {
         Ok(self.u32(self.header.types_off + index * 4)? as usize)
     }
 
-    /// `Lcom/foo/Main;->name(II)V` in one allocation; see [`ReferenceRow::member`].
-    ///
-    /// The prototype is part of the coordinate: without it an overloaded name cannot be
-    /// told apart, and the value could not be handed back to `--at`.
+    /// Include the prototype to distinguish overloaded method coordinates.
     fn member_name(&self, method_idx: usize) -> Result<String> {
         let method = self.method(method_idx)?;
         let class = self.string_bytes(self.type_string_idx(method.class_idx as usize)?)?;
@@ -527,8 +456,7 @@ impl<'a> Dex<'a> {
         self.string(self.type_string_idx(index)?)
     }
 
-    /// A member's descriptor without a table write: the prototype of a method or the type of
-    /// a field, from the u16 slot the two member kinds share.
+    /// Resolve the shared u16 prototype/type slot for methods/fields.
     fn member_descriptor(&self, base: usize, index: usize, methods: bool) -> Result<String> {
         let descriptor_idx = read_u16(self.data, base + index * 8 + 2)? as usize;
         if methods {
@@ -538,11 +466,7 @@ impl<'a> Dex<'a> {
         }
     }
 
-    /// A method prototype in DEX descriptor form, e.g. `(ILjava/lang/String;)V`.
-    ///
-    /// This is the only way to name *one* method exactly: a name plus its prototype is
-    /// unique within a class, which a name alone is not (`a(II)V` and `a()V` are
-    /// different methods), and obfuscated names carry no information at all.
+    /// DEX method prototype, including return type, e.g. (I)V.
     fn proto(&self, index: usize) -> Result<String> {
         if index >= self.header.protos_size {
             bail!("proto index out of range");
@@ -754,11 +678,7 @@ impl<'a> Dex<'a> {
         memo: &mut TargetMemo,
         out: &mut String,
     ) -> Result<()> {
-        // The descriptor is what makes the printed target a coordinate: `La/a;->LIZ()V`
-        // selects one overload, where `La/a;->LIZ` selects none. Decoding it per row would
-        // repeat the same work for every call site of the same target, so the last one is
-        // kept: a row's matched set is a short ascending run, and consecutive rows tend to
-        // name the same target.
+        // Memoize exact target descriptors across adjacent reference hits.
         if let Some((memoized, name)) = &memo.last
             && *memoized == index
         {
@@ -793,9 +713,7 @@ impl<'a> Dex<'a> {
                 } else {
                     self.field(index)?
                 };
-                // One allocation instead of three: the class and the member name are
-                // appended to the result as they are decoded (no intermediate `String`
-                // each), and a member query renders one of these per matched index.
+
                 let class = self.string_bytes(self.type_string_idx(member.class_idx as usize)?)?;
                 let name = self.string_bytes(member.name_idx as usize)?;
                 mutf8::push_decoded(out, class);
@@ -821,13 +739,7 @@ impl<'a> Dex<'a> {
         }
     }
 
-    /// Scans every class definition, optionally splitting the class list across
-    /// idle workers.
-    ///
-    /// A single large DEX otherwise owns one worker for the whole scan while the
-    /// rest of the pool waits, which shows up as tail latency once the smaller
-    /// entries are done. Hit sets are unioned, so the merged result does not
-    /// depend on how the split happened to be stolen.
+    /// Split large class scans across workers; union hits deterministically.
     fn scan_all_classes(&self, kind: RefKind, targets: &Targets) -> Result<Vec<Hit>> {
         // Small class lists are cheaper to scan on the current thread; larger lists are split
         // to shorten tail latency. Both paths are sorted and deduplicated below.
@@ -836,9 +748,7 @@ impl<'a> Dex<'a> {
         } else {
             self.scan_all_classes_parallel(kind, targets)?
         };
-        // A method can reach the same target from several instructions, and the classes
-        // are visited in index order rather than method order, so the sorted pairs are
-        // what turns the raw pushes into `(method, ascending match)` groups.
+        // Sort/dedup pairs to group targets by method index.
         hits.sort_unstable();
         hits.dedup();
         Ok(hits)
@@ -950,9 +860,7 @@ impl<'a> Dex<'a> {
         let mut pc = 0usize;
         while pc + 2 <= code.len() {
             let opcode = code[pc];
-            // One load gives both the width and the reference-kind mask: the loop is
-            // latency-bound, and the two tables used to be two dependent loads from
-            // different cache lines.
+
             let info = opcodes::OPCODE_INFO[opcode as usize];
             let units = (info & 0xff) as usize;
             let units = if units == 0 {
@@ -960,9 +868,7 @@ impl<'a> Dex<'a> {
             } else {
                 units
             };
-            // `instruction_units` never returns 0: the payload idents all decode to at
-            // least one unit, and an unsupported opcode is an error there. So this is
-            // the width bound alone - one compare per instruction instead of two.
+            // instruction_units is nonzero; only the end bound remains to check.
             if pc + units * 2 > code.len() {
                 bail!("invalid instruction width at code offset {}", start + pc);
             }
@@ -974,9 +880,7 @@ impl<'a> Dex<'a> {
                 } else {
                     read_u16(code, pc + 2)? as u32
                 };
-                // A method's instructions are walked in order, so all of its hits are
-                // adjacent: skipping a repeat of the previous pair drops the duplicates
-                // the accumulator used to absorb, before they reach the sort.
+                // Method hits are adjacent; discard duplicate pairs before sorting.
                 if targets.contains(index) && hits.last() != Some(&(method_idx, index)) {
                     if hits.len() == max_hits {
                         return Err(ReferenceScratchLimit.into());
@@ -1039,11 +943,7 @@ pub(crate) mod tests {
         }
     }
 
-    /// Builds a DEX 041 container holding one fixture per entry of `class_counts`.
-    ///
-    /// Each logical DEX gets a 0x78-byte header whose section offsets point into
-    /// the container, and every header records the container size and its own
-    /// offset, which is what `logical_dexes` validates.
+    /// Build DEX 041 members with container-relative sections and header offsets.
     pub(crate) fn dex041_container(class_counts: &[usize]) -> Vec<u8> {
         let mut out: Vec<u8> = Vec::new();
         let mut headers = Vec::new();
@@ -1056,20 +956,12 @@ pub(crate) mod tests {
         }
         let total = out.len() as u32;
         for header in headers {
-            // `container_size` is the whole container; each member keeps its own
-            // `file_size`, which is what enumerates the members (the reference
-            // implementation advances the same way).
+            // container_size covers all members; file_size advances to the next header.
             write_u32(&mut out, header + 0x70, total);
         }
         out
     }
 
-    /// Builds a DEX where every class has one direct method whose body is
-    /// `const-string v0, "Authorization"` followed by `return-void`.
-    ///
-    /// The class count is the knob that selects the sequential or the parallel
-    /// scan path, so the same fixture can be used to compare the two directly.
-    /// DEX header checksum, as rasc-dex validates it before parsing.
     fn adler32(bytes: &[u8]) -> u32 {
         let (mut a, mut b) = (1u32, 0u32);
         for byte in bytes {
@@ -1130,10 +1022,7 @@ pub(crate) mod tests {
             data.extend_from_slice(&0_u16.to_le_bytes()); // ins_size
             data.extend_from_slice(&0_u16.to_le_bytes()); // outs_size
             data.extend_from_slice(&0_u16.to_le_bytes()); // tries_size
-            data.extend_from_slice(&0_u32.to_le_bytes()); // debug_info_off
-            // Two loads of the same string in one method. A count of *uses* would say two
-            // and a count of *methods* says one, so a fixture with a single load per method
-            // cannot tell the two rules apart - and the census is supposed to report methods.
+            data.extend_from_slice(&0_u32.to_le_bytes()); // Two loads in one method distinguish instruction uses from referencing methods.
             data.extend_from_slice(&5_u32.to_le_bytes()); // insns_size in code units
             data.extend_from_slice(&0x001a_u16.to_le_bytes()); // const-string v0, #0
             data.extend_from_slice(&0_u16.to_le_bytes());
@@ -1201,21 +1090,13 @@ pub(crate) mod tests {
             write_u32(&mut out, class_def + 24, (*class_data_off as u32) + base);
         }
         out[data_off..].copy_from_slice(&data);
-        // The scanner ignores the checksum, but the decompiler validates it before
-        // parsing, so the fixture carries a correct Adler-32 over the payload
-        // (everything after the 12-byte checksum/signature prefix).
+        // The decompiler validates Adler-32 over bytes after the 12-byte prefix.
         let checksum = adler32(&out[12..]);
         write_u32(&mut out, 0x08, checksum);
         out
     }
 
-    /// Builds a DEX with one class whose static method makes an
-    /// `invoke-static/range` call with eight argument registers.
-    ///
-    /// The `/range` wire form names more registers than the five the vendored
-    /// decoder keeps inline (see rasc-dex's `PATCHES.md`, https://github.com/TsingShui/rasc-dex,
-    /// "5. `/range` register lists"), so this is the fixture for the
-    /// decompiler regression: the decompiled call must keep all eight.
+    /// Build an eight-register invoke-static/range to test complete argument decoding.
     #[allow(dead_code)]
     pub(crate) fn range_invoke_fixture() -> Vec<u8> {
         let header_size = 0x70usize;
@@ -1326,9 +1207,7 @@ pub(crate) mod tests {
         out
     }
 
-    /// Rows for `find_references` are grouped by ascending method index, which is
-    /// the order the hit map iterates in. Cross-DEX ordering/aggregation happens
-    /// later in the APK layer.
+    /// Reference rows use ascending method/target order; APK aggregation follows.
     fn expected_rows(class_count: usize) -> Vec<ReferenceRow> {
         (0..class_count)
             .map(|index| ReferenceRow {
@@ -1339,26 +1218,12 @@ pub(crate) mod tests {
             .collect()
     }
 
-    /// In-process timing for the scan core.
-    ///
-    /// The end-to-end harness pays ~2.7 ms of `fork/exec` plus ~1.1 ms of CLI start-up per
-    /// stage, which is what limits it to ~1% (SAMPLES=8) or ~0.5% (SAMPLES=24) resolution.
-    /// A change inside the scanner - a table, a membership test, an allocation in the row
-    /// path - is better judged here, where nothing but the code under test is in the loop.
-    ///
-    /// Run explicitly:
-    ///   cargo test --release -- --ignored --nocapture inproc
-    ///
-    /// Compare the printed us/call before and after a change; the fixture is fixed, so the
-    /// workload is constant and the only noise is the machine's.
+    /// Manual scanner timings: cargo test --release -- --ignored --nocapture inproc.
     #[test]
     #[ignore = "timing harness: run with --release --ignored --nocapture"]
     fn inproc_scan_timings() {
         let data = const_string_fixture(2000);
-        // One query per shape: a string match (every class's const-string), a type match
-        // (every class descriptor), and a member name match (a handful of methods). They
-        // exercise the same scanner through different resolve paths, which is where the
-        // per-query differences live.
+
         let queries = [
             (
                 "string",

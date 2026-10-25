@@ -26,11 +26,11 @@ pub struct Module {
 
     /// Number of imported functions; defined functions start at this index.
     imported_funcs: u32,
-    /// For each defined function (by position), the raw type index.
+    /// Type index per defined function position.
     defined_type_index: Vec<u32>,
-    /// For each defined function (by position), the code-body byte range in the file.
+    /// File byte range per defined function position.
     defined_body_range: Vec<Range<usize>>,
-    /// Raw bytes of each data segment, parallel to `data_segments`.
+    /// Raw segment bytes parallel to data_segments.
     data_bytes: Vec<Vec<u8>>,
 }
 
@@ -347,9 +347,7 @@ impl Module {
         format!("func:{func_index}")
     }
 
-    /// Signature (param count, result count) for any function index, imported
-    /// or defined, resolved through its declared type. Used to drive call
-    /// argument arity during reassembly.
+    /// Declared parameter/result counts for imported or defined function indices.
     pub fn func_arity(&self, func_index: u32) -> Option<(usize, usize)> {
         let type_index = if func_index < self.imported_funcs {
             self.imports
@@ -385,18 +383,7 @@ impl Module {
         self.limits
     }
 
-    /// Resolve the `--at` coordinate a `functions` row prints to a defined
-    /// function position.
-    ///
-    /// A row prints the copy-only `func:<index>`; the content identity lives in
-    /// the stream header, so a short coordinate is expanded against this
-    /// module's own hash here instead of making a caller reassemble it. A full
-    /// A coordinate is source-agnostic; identity lives in the stream header.
-    /// The function index a `func:N` coordinate names.
-    ///
-    /// The index space is what call operands carry; a body position is not, so a query that
-    /// scans call sites needs this and not the position. An imported function has no body but
-    /// does have callers, so only the index space bounds it.
+    /// Resolve func:N in the merged import/definition index space, not body position.
     pub fn function_index_at(&self, at: &str) -> Result<u32> {
         let func_index = self.coordinate_function(at)?;
         ensure!(
@@ -516,13 +503,10 @@ impl Module {
     }
 }
 
-/// A decoded local-variable declaration: `(count, value-type name)`.
 pub type LocalDecl = (u32, String);
 
-/// Decoded single-function body: local declarations and the operator list.
 pub type DecodedBody = (Vec<LocalDecl>, Vec<DecodedOp>);
 
-/// A decoded operator reduced to what the structural/refs layer needs.
 #[derive(Clone, Debug)]
 pub struct DecodedOp {
     pub code_offset: usize,

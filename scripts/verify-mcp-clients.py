@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Optional actual-client MCP acceptance. Never installs clients or calls a model.
-
-Requires explicit existing client executables. Evidence stays outside source; every
-client receives a fresh HOME, no inherited credentials and an unrelated launch cwd.
-An unavailable client fails this invocation; it is not a skipped-as-passed check.
-"""
+"""Verify explicit native clients in isolated HOME without models; unavailable clients fail."""
 import argparse
 import hashlib
 import json

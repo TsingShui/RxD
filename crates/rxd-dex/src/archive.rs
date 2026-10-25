@@ -1,9 +1,5 @@
-//! ZIP container codec: end-of-central-directory discovery, central-directory
-//! entries and per-entry inflation.
-//!
-//! Only what an APK reader needs: no ZIP64, no encryption, no data descriptors.
-//! Sizes come from the central directory, so a smeared local header cannot make a
-//! declared size disagree with the bytes that get inflated.
+//! APK ZIP discovery and inflation; ZIP64 and encryption are unsupported.
+//! Declared sizes must match inflated bytes.
 
 use crate::bytes::{read_u16, read_u32};
 use anyhow::{Context, Result, bail, ensure};
@@ -17,17 +13,11 @@ pub struct ZipEntry {
     pub compressed_size: usize,
     pub(crate) local_header_offset: usize,
     pub compression: u16,
-    /// The whole source is this entry's payload - there is no local header to skip.
-    ///
-    /// Every command addresses an archive, so an input that is not one (a bare DEX)
-    /// is presented as the single entry it would have been inside one. The walk, the
-    /// inflation limit and the error text are then the same code for both, which is
-    /// what keeps a DEX from being a second implementation of everything.
+    /// Bare DEX payload: no local ZIP header.
     pub(crate) bare: bool,
 }
 
 impl ZipEntry {
-    /// The one entry a non-archive file is: a stored payload that starts at zero.
     pub(crate) fn bare(name: &str, size: usize) -> Self {
         Self {
             name: name.to_owned(),
@@ -40,14 +30,10 @@ impl ZipEntry {
     }
 }
 
-/// Random access to an archive's bytes.
-///
-/// The native archive source hands out borrowed slices from its memory mapping, so a 342 MiB
-/// archive costs no equivalent heap allocation and the parser never copies it.
+/// Random access to borrowed archive bytes; no whole-archive copy.
 pub(crate) trait BytesSource {
-    /// Total length of the archive.
     fn source_len(&self) -> usize;
-    /// The bytes in `offset..offset + len`.
+
     fn range(&self, offset: usize, len: usize) -> Result<Cow<'_, [u8]>>;
 }
 
@@ -90,8 +76,7 @@ impl std::fmt::Display for DirectoryLimit {
 }
 impl std::error::Error for DirectoryLimit {}
 
-/// Session reads cap directory work before allocating names or entry records.
-/// The one-shot CLI retains its existing policy through `parse_zip_entries`.
+/// Session reads bound directory allocation; one-shot CLI keeps its own policy.
 pub(crate) fn parse_zip_entries_bounded<S: BytesSource + ?Sized>(
     source: &S,
     mut include: impl FnMut(&[u8]) -> bool,
@@ -164,14 +149,9 @@ pub(crate) fn parse_zip_entries_bounded<S: BytesSource + ?Sized>(
     Ok(entries)
 }
 
-/// Default explicit library-caller quota for one inflated entry. Ordinary CLI/MCP
-/// analysis leaves it unset. Exact declared sizes and fallible allocation remain.
+/// Default explicit entry quota; CLI/MCP leaves it unset.
 pub(crate) const DEFAULT_MAX_INFLATED_ENTRY: usize = rxd_core::MAX_ENTRY_BYTES;
 
-/// The message for an entry that needs more room than the ceiling allows.
-///
-/// The ceiling may be far below a mebibyte, and "0 MiB" is a number a reader cannot act on,
-/// so a ceiling that small is reported exactly.
 fn over_limit(entry: &ZipEntry, max_inflated: usize) -> anyhow::Error {
     let limit = if max_inflated < 1 << 20 {
         format!("{max_inflated} bytes")
@@ -181,15 +161,10 @@ fn over_limit(entry: &ZipEntry, max_inflated: usize) -> anyhow::Error {
     anyhow::anyhow!("{} inflates past the {limit} entry limit", entry.name)
 }
 
-/// The message for a deflate stream that cannot be decoded.
-///
-/// The error text is part of the CLI's behaviour, so it is generated here instead of being
-/// taken from the decoder backend.
 fn incomplete_stream(entry: &ZipEntry) -> anyhow::Error {
     anyhow::anyhow!("{} is not a complete deflate stream", entry.name)
 }
 
-/// The compressed bytes of `entry`, with the local header skipped.
 fn compressed_slice<'a, S: BytesSource + ?Sized>(
     source: &'a S,
     entry: &ZipEntry,
@@ -219,10 +194,7 @@ fn compressed_slice<'a, S: BytesSource + ?Sized>(
         .context("bad compressed range")
 }
 
-/// Reads the first `aim` bytes of `entry` (or all of it when it is shorter).
-///
-/// libdeflate cannot stream, so a margin accounts for its maximum shortfall when the
-/// requested prefix ends inside a match or stored block.
+/// Read up to aim bytes; libdeflate needs a margin for partial matches.
 pub(crate) fn inflate_prefix<S: BytesSource + ?Sized>(
     source: &S,
     entry: &ZipEntry,
@@ -261,10 +233,7 @@ pub(crate) fn inflate_prefix<S: BytesSource + ?Sized>(
     Ok(buffer)
 }
 
-/// Borrow a bare or ZIP-stored entry directly from its source mapping.
-///
-/// Session callers use this path so inputs that require no decompression do not
-/// consume inflate-cache space or incur a heap copy.
+/// Borrow uncompressed entry bytes directly from the source mapping.
 pub(crate) fn stored_entry<'a, S: BytesSource + ?Sized>(
     source: &'a S,
     entry: &ZipEntry,
@@ -350,8 +319,6 @@ pub(crate) fn inflate_entry<S: BytesSource + ?Sized>(
 pub(crate) mod tests {
     use super::*;
 
-    /// The fixtures inflate freely; the ceiling has its own test below, and passing it
-    /// explicitly is what keeps the limit out of process-global state in tests.
     fn inflate_entry<S: BytesSource + ?Sized>(source: &S, entry: &ZipEntry) -> Result<Vec<u8>> {
         super::inflate_entry(source, entry, usize::MAX)
     }
@@ -377,10 +344,6 @@ pub(crate) mod tests {
         data[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 
-    /// Raw deflate of `payload`, the way a ZIP writer stores a DEX entry.
-    ///
-    /// flate2 rather than libdeflater, so the tests need no target-specific deflate
-    /// backend; what they exercise is the inflate path above.
     fn deflate(payload: &[u8]) -> Vec<u8> {
         let mut compressor = flate2::Compress::new(flate2::Compression::default(), false);
         // Stored deflate blocks cost 5 bytes per 64 KiB plus the payload, so doubling
@@ -393,9 +356,7 @@ pub(crate) mod tests {
         out
     }
 
-    /// Builds a ZIP archive in memory. The third tuple field selects deflate
-    /// (8) over stored (0); CRC fields are left zero because the parser never
-    /// reads them.
+    /// Build stored/deflated test ZIPs; CRC is unused by the reader.
     pub(crate) fn build_zip(entries: &[(&str, &[u8], bool)]) -> Vec<u8> {
         let mut local = Vec::new();
         let mut central = Vec::new();
@@ -452,13 +413,11 @@ pub(crate) mod tests {
         data
     }
 
-    /// Offsets inside a central-directory entry, as read by the parser.
     const CENTRAL_COMPRESSED_SIZE: usize = 20;
     const CENTRAL_UNCOMPRESSED_SIZE: usize = 24;
     const CENTRAL_NAME_LENGTH: usize = 28;
     const CENTRAL_LOCAL_OFFSET: usize = 42;
 
-    /// Corrupts `field` of the first central-directory entry.
     fn patch_central_entry(zip: &mut [u8], field: usize, value: u32) {
         let start = zip
             .windows(4)
@@ -467,7 +426,6 @@ pub(crate) mod tests {
         write_u32(zip, start + field, value);
     }
 
-    /// Writes `data` to a uniquely named temporary file.
     pub(crate) fn temp_apk(tag: &str, data: &[u8]) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("rasc-{tag}-{}.apk", std::process::id()));
         std::fs::write(&path, data).unwrap();
@@ -495,8 +453,7 @@ pub(crate) mod tests {
 
     #[test]
     fn stored_entry_size_mismatch_is_rejected() {
-        // A stored entry whose compressed size disagrees with its declared
-        // uncompressed size used to pass unvalidated.
+        // Stored entry sizes must agree.
         let mut zip = build_zip(&[("classes.dex", b"payload", false)]);
         patch_central_entry(&mut zip, CENTRAL_COMPRESSED_SIZE, 3);
         let entry = &parse_zip_entries(&zip, |_| true).unwrap()[0];
@@ -531,9 +488,7 @@ pub(crate) mod tests {
 
     #[test]
     fn zip64_placeholder_uncompressed_size_is_rejected() {
-        // 0xFFFFFFF0 is what a ZIP64 archive writes when the real 64-bit size
-        // lives in the extra field. It must fail without reserving the declared
-        // size first.
+        // Reject unsupported oversized declarations before reserving their payload.
         let payload = vec![3u8; 4096];
         let mut zip = build_zip(&[("classes.dex", &payload, true)]);
         patch_central_entry(&mut zip, CENTRAL_UNCOMPRESSED_SIZE, 0xFFFFFFF0);
@@ -581,9 +536,7 @@ pub(crate) mod tests {
 
     #[test]
     fn zip64_end_of_central_directory_placeholders_are_rejected() {
-        // ZIP64 archives carry 0xFFFF/0xFFFFFFFF placeholders in the plain EOCD
-        // and put the real values in a ZIP64 record. APKs cannot be ZIP64, so
-        // those values must be reported rather than used to scan a 4 GiB range.
+        // ZIP64 EOCD placeholders must not drive a 4 GiB directory scan.
         let mut zip = build_zip(&[("classes.dex", b"payload", false)]);
         let eocd = zip
             .windows(4)
@@ -601,12 +554,7 @@ pub(crate) mod tests {
 
     #[test]
     fn concatenated_archives_use_the_last_end_of_central_directory() {
-        // Two archives appended to each other (a common polyglot trick): the EOCD
-        // is found by searching backwards, so the trailing record wins — the same
-        // one the reference implementation's `rfind` picks. Offsets inside a
-        // concatenated archive stay relative to its own start, so this only works
-        // when the prefix has the same layout; that is what the two identical
-        // halves below exercise.
+        // Backward EOCD search selects the trailing concatenated archive.
         let archive = build_zip(&[("classes.dex", b"payload", false)]);
         let mut both = archive.clone();
         both.extend_from_slice(&archive);
@@ -617,9 +565,7 @@ pub(crate) mod tests {
 
     #[test]
     fn data_descriptor_flag_uses_the_central_directory_sizes() {
-        // Local-header flag bit 3 means sizes and CRC live in a trailing data
-        // descriptor; the central directory still carries them, and that is what
-        // the parser reads.
+        // Data descriptors defer local sizes; central-directory sizes remain authoritative.
         let payload = b"streamed payload".to_vec();
         let mut zip = build_zip(&[("classes.dex", &payload, false)]);
         let local = zip

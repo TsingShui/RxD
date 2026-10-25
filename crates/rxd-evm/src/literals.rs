@@ -143,10 +143,7 @@ struct Literal {
     width: usize,
 }
 
-/// The copy-only value a literal row is named by.
-///
-/// Decoded text when the whole operand is one printable run, otherwise the lowercase hex
-/// of its bytes. A zero-width `PUSH0` operand has no bytes and therefore an empty value.
+/// Printable full operand text, otherwise hex; PUSH0 has an empty value.
 pub(crate) fn literal_value(bytes: &[u8]) -> String {
     let mut runs = crate::text::printable_text_runs(bytes);
     match (runs.next(), runs.next()) {
@@ -235,7 +232,6 @@ impl LiteralInventory {
             .collect()
     }
 
-    /// The copy-only coordinate a row prints and `--at` accepts.
     fn coordinate(&self, navigation: &Navigation, literal: &Literal) -> String {
         format!(
             "{}:literal:push:{}:{}",

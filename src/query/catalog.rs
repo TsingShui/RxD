@@ -1,9 +1,4 @@
-//! Typed query catalog: one entry per analysis command, reflected from the CLI.
-//!
-//! The CLI is the single source of truth. `reflect` walks `clap` for names,
-//! descriptions, flags, types and enums; this module only adds the MCP-specific
-//! envelope (captured inputs, artifact output, server resource ceilings) and the
-//! output schema.
+//! Reflect CLI commands into typed MCP tools, adding only capture/output envelopes.
 use super::{CapturedInput, QueryError, reflect, schema};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -20,8 +15,6 @@ pub struct ToolDefinition {
     pub capabilities: Vec<String>,
 }
 
-/// Classify a command by what it does, for tool annotations. The command names are the
-/// shared CLI vocabulary, so a listing grouped by backend still classifies the same way.
 fn capability(command: &str) -> &'static str {
     match command {
         "entities" | "functions" | "classes" | "methods" | "fields" | "entries" | "resources"
@@ -34,8 +27,7 @@ fn capability(command: &str) -> &'static str {
     }
 }
 
-/// Tools whose handler is MCP-specific rather than an argv projection keep a small
-/// synthetic overlay; every other tool is exactly its CLI command.
+/// Synthetic overlays are limited to MCP-specific extraction handlers.
 fn input_schema(spec: &reflect::ToolSpec) -> Value {
     let mut schema = reflect::input_schema(spec);
     if matches!(spec.name.as_str(), "asar_extract" | "html_extract") {
@@ -75,8 +67,7 @@ pub fn catalog() -> Vec<ToolDefinition> {
     result
 }
 
-/// Reject missing/wrong typed fields before input capture, then let the actual CLI
-/// parser validate combinations. Placeholder paths are never opened.
+/// Validate typed fields and clap combinations before capture; placeholders stay unopened.
 pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
     #[cfg(feature = "bundled-kuna")]
     if name.starts_with("kuna_") {
@@ -138,9 +129,7 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
     Ok(())
 }
 
-/// Apply the server's thread budget to a command that declares `--threads`. Every other
-/// ceiling lives in `rxd_core::Budget` and has no CLI flag, so nothing else is projected:
-/// a caller may ask for fewer threads, never for more, and no backend flag is invented.
+/// Inject the server thread cap only into commands declaring --threads.
 fn bound_threads(spec: &reflect::ToolSpec, threads: usize) -> Option<(&'static str, usize)> {
     spec.exposed()
         .any(|arg| arg.key == "threads")

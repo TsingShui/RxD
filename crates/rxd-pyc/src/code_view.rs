@@ -34,7 +34,7 @@ pub struct Prefix {
 pub struct Target {
     pub table: &'static str,
     pub index: usize,
-    /// Copy-only coordinate, the same form a row prints, so `--at` accepts it.
+
     pub id: String,
     pub value_id: String,
 }

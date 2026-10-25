@@ -1,6 +1,4 @@
-//! Adapt the pinned upstream CLI without editing its checkout.
-// Upstream unit tests require its own manifest/layout; rxd exercises this adapter
-// through the real CLI integration suite, including when Clippy checks all targets.
+//! Adapt the unmodified Kuna CLI; integration tests exercise the generated layout.
 #![cfg(not(test))]
 // The included command modules retain upstream's lint policy. The build script
 // and rxd's dispatch remain covered by the repository's normal Clippy checks.
@@ -59,7 +57,7 @@ fn capture(args: Vec<String>, limit: Option<usize>) -> (i32, CapturedOutput) {
     (code, result)
 }
 
-/// Preserve the ordinary CLI's existing one-shot native stdout capture.
+/// Capture ordinary native CLI stdout.
 pub fn run_captured(args: Vec<String>) -> (i32, Vec<u8>) {
     let (code, output) = capture(args, None);
     (code, output.bytes)
@@ -84,11 +82,10 @@ pub fn engine_version() -> &'static str {
     env!("KUNA_VERSION")
 }
 
-/// The pinned upstream commit, so tool descriptions cannot go stale.
 pub fn engine_revision() -> &'static str {
     env!("KUNA_REVISION")
 }
-/// Use the linked engine's metadata instead of a separate catalog helper.
+/// Return linked-engine option metadata.
 pub fn catalog_json() -> String {
     use kuna_decomp::kuna_phases::{kuna_num_settables, kuna_settable_by_index};
     let documented: std::collections::BTreeSet<_> = (0..kuna_num_settables())

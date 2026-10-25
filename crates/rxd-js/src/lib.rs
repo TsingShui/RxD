@@ -1,4 +1,4 @@
-//! JavaScript parsing and structure queries. Input is never executed.
+//! JavaScript parsing and structure queries.
 
 mod bindings;
 mod calls;
@@ -53,11 +53,7 @@ pub enum IdentifierRole {
     Reference,
 }
 
-/// How `xref` anchors on the name occurrence it resolves.
-///
-/// The two are not the same question. A coordinate is what a row prints and addresses the
-/// occurrence's start; a byte offset may land *inside* a multi-byte identifier, which is what
-/// a cursor position is. Both resolve to the same binding, so both stay.
+/// Coordinates anchor at occurrence start; byte selectors may lie inside a UTF-8 name.
 #[derive(Clone, Debug)]
 pub enum RefsTarget {
     Coordinate(String),
@@ -78,10 +74,9 @@ pub enum Query {
         depth: Option<usize>,
         kind: Option<String>,
         name: Option<String>,
-        /// Substring over the entity name or context label, folded unless
-        /// `contains_case_sensitive`.
+        /// Substring over entity name or context label.
         contains: Option<String>,
-        /// Whether `contains` folds case; the CLI's `--case` decides it.
+        /// False folds filter case.
         contains_case_sensitive: bool,
     },
     Find {
@@ -109,7 +104,6 @@ pub enum Query {
         byte: u64,
     },
     Refs {
-        /// Where the name occurrence is: the coordinate a row prints, or a raw byte offset.
         target: RefsTarget,
     },
     Symbols {
@@ -122,10 +116,7 @@ pub enum Query {
     },
 }
 
-/// Kind sets behind the grouped listing commands.
-///
-/// `entities` prints every kind, so these three views only partition the catalog; they
-/// never introduce a kind and never lose one from the full listing.
+/// Grouped listings partition existing entity kinds without introducing new kinds.
 pub const FUNCTION_KINDS: &[&str] = &[
     "function_declaration",
     "function_expression",
@@ -176,13 +167,7 @@ impl Query {
     }
 }
 
-/// The byte an occurrence coordinate starts at.
-///
-/// `xref` anchors on a *name occurrence*, so the accepted coordinates are the ones that
-/// print one: a `symbols` row's declaration (`symbol:6:9`) or an occurrence position
-/// (`identifier:26:31`). A structure coordinate names a node, not a name, and is rejected
-/// here rather than silently resolving to whatever identifier happens to start at the same
-/// byte.
+/// Accept only name-occurrence coordinates; structure coordinates are not bindings.
 fn occurrence_start(source: &Source, at: &str) -> Result<u64> {
     let _ = source;
     let parts: Vec<&str> = at.split(':').collect();
@@ -727,9 +712,6 @@ pub fn run_source(
         Query::Refs { target } => {
             perf.record("query", query_start);
             let references = match &target {
-                // A row's coordinate is `<kind>:<start>:<end>`; the name occurrence starts
-                // at `start`, and the kind stays in the coordinate so a nested node with
-                // the same start cannot be confused for the anchor.
                 RefsTarget::Coordinate(at) => {
                     let byte = occurrence_start(&source, at.as_str())?;
                     refs::run(&parsed.program, &source, &collector, byte, limits, perf)?

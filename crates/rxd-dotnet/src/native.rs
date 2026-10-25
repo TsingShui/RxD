@@ -62,8 +62,7 @@ fn external_library_path() -> Option<PathBuf> {
     Some(env!("RXD_DOTNET_NATIVE_LIBRARY").into())
 }
 
-/// Largest payload the pinned native ABI emits in one response. A property of the C
-/// interface, not a limit on how much a query may answer.
+/// Maximum response size of the pinned native ABI.
 const MAX_PAYLOAD_BYTES: usize = 32 * 1024 * 1024;
 
 impl Engine {
@@ -126,8 +125,7 @@ struct Payload {
     mapping: Vec<NativeSourceMap>,
 }
 
-/// Keep only the navigation entries the selected body can prove, reporting how many
-/// were dropped so the reconstruction is never discarded over a mapping detail.
+/// Keep proven mapping entries and count rejected ones without discarding source.
 fn retain_mapping<T>(mapping: Vec<T>, keep: impl Fn(&T) -> bool) -> (Vec<T>, usize) {
     let before = mapping.len();
     let kept: Vec<T> = mapping.into_iter().filter(|site| keep(site)).collect();

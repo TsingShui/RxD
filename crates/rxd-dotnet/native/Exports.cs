@@ -111,9 +111,7 @@ public static unsafe class Exports
             var mapping = new SortedSet<(int MethodToken, int Offset, int Line)>();
             foreach (var entry in decompiler.CreateSequencePoints(tree))
             {
-                // Generated state machines/closures have independent offset domains.
-                // ILSpy labels recovered async/iterator functions with the kickoff
-                // token, but their sequence points still belong to MoveNext's IL.
+                // State-machine sequence points belong to MoveNext, not its kickoff method.
                 if (entry.Key.MoveNextMethod != null || entry.Key.Method == null || entry.Key.Method.MetadataToken.Kind != HandleKind.MethodDefinition || !selectedMethods.Contains(MetadataTokens.GetToken(entry.Key.Method.MetadataToken)) || entry.Key.Method.ParentModule != typeSystem.MainModule)
                     continue;
                 foreach (var point in entry.Value)
@@ -240,9 +238,7 @@ internal sealed class BoundedPayloadStream : MemoryStream
     }
 }
 
-// The engine's reconstruction is always returned as produced, with every caveat it
-// recorded. Nothing here aborts a body: a missing expression/branch is a diagnostic like
-// any other, because discarding the surrounding reconstruction loses usable code.
+// Preserve reconstruction with all diagnostics instead of discarding usable code.
 internal sealed class CollectDiagnostics : IILTransform
 {
     private readonly List<string> messages = new();

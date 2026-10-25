@@ -1,5 +1,4 @@
-//! Native-only sampled RSS enforcement for an owned live analysis worker.
-//! Polling runs on the existing async supervisor, never an analysis thread.
+//! Sample RSS only for the owned Native worker on the async supervisor.
 use crate::query::QueryError;
 use std::time::Duration;
 use tokio::process::Child;

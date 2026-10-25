@@ -358,10 +358,7 @@ impl ClassFile {
         Ok(Utf16String::from_utf16(units.clone()))
     }
 
-    /// Enumerate every `CONSTANT_String` literal in constant-pool order.
-    /// Returns the pool index of the `String` entry and its decoded UTF-16
-    /// value. Only string literals are reported, never class names, member
-    /// names, descriptors or other Utf8 pool entries.
+    /// List CONSTANT_String entries in pool order, preserving UTF-16 units.
     pub fn string_constants(&self) -> Vec<(u16, Utf16String)> {
         let mut out = Vec::new();
         for (position, constant) in self.pool.iter().enumerate() {
@@ -375,18 +372,12 @@ impl ClassFile {
         out
     }
 
-    /// Every type and member reference in the constant pool, in pool order.
-    ///
-    /// This is the identity inventory a class carries: a member may be referenced without
-    /// being declared here (an external call), so a coordinate anchor is resolved against
-    /// the pool as well as the member tables.
+    /// Pool-order type/member references, including undeclared external members.
     pub fn reference_at_index_iter(&self) -> impl Iterator<Item = Reference> + '_ {
         (0..self.pool.len()).filter_map(|index| self.reference_at(index as u16))
     }
 
-    /// Resolve a constant-pool entry a code instruction references into a typed
-    /// cross-reference target, or `None` when the entry is not a type/member
-    /// reference. Used by `findrefs` to classify instruction operands.
+    /// Resolve a pool operand to a type/member reference, otherwise None.
     pub fn reference_at(&self, index: u16) -> Option<Reference> {
         match constant(&self.pool, index).ok()? {
             Constant::Class(_) => Some(Reference::Type {
@@ -411,19 +402,17 @@ impl ClassFile {
     }
 }
 
-/// A field vs method/interface-method constant-pool member reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemberKind {
     Field,
     Method,
 }
 
-/// A classified cross-reference target resolved from a code instruction.
 #[derive(Debug, Clone)]
 pub enum Reference {
     /// A `CONSTANT_Class` operand (`new`, `checkcast`, `instanceof`, arrays).
     Type { name: String },
-    /// A field or method member reference (`getfield`, `invokevirtual`, ...).
+
     Member {
         kind: MemberKind,
         owner: String,

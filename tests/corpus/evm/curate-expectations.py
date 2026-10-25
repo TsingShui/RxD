@@ -1,8 +1,4 @@
-"""Independent acceptance facts inspected against pinned solc ASM and source.
-
-Run after generate.mjs. This never calls rxd or executes an input program.
-Offsets are deliberately pinned facts, not values rediscovered from rxd output.
-"""
+"""Pin independent acceptance facts from solc source/ASM after generate.mjs, never rxd output."""
 import hashlib
 import json
 from pathlib import Path

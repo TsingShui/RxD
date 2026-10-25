@@ -115,8 +115,7 @@ fn dotnet_class_fetch_preserves_declarations_relationships_and_exact_nested_scop
             let ty = types.iter().find(|ty| ty["at"] == *token).unwrap();
             assert_eq!(ty["detail"]["full_name"], expected["name"]);
             assert_eq!(ty["detail"]["extends_token"], expected["extends_token"]);
-            // Named interfaces carry their original tokens beside the display list;
-            // the empty list keeps its compact existing representation.
+
             assert_eq!(
                 ty["detail"]
                     .get("interface_tokens")

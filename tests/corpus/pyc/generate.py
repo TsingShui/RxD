@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted preparation helper. Compile source and inspect code; never execute it.
-
-Run with each pinned CPython, -I. Writes only the requested preparation directory.
-No dependency on rxd, pycdc, or their generated metadata.
-"""
+"""Compile/inspect trusted source with pinned CPython -I; never call analyzed code."""
 import argparse
 import dis
 import hashlib
@@ -199,11 +195,7 @@ def inspect_code(code, index, indexes):
 
 
 def marshal_ranges(payload):
-    """Independent range scanner from pinned CPython Python/marshal.c layouts.
-
-    This diagnostic helper only consumes our trusted compiler-produced data;
-    it is not rxd code and is not a general untrusted-input parser.
-    """
+    """Scan trusted compiler-produced marshal layouts for oracle preparation."""
     position = 0
     references = []
     codes = []

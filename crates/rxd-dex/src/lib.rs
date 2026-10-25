@@ -1,4 +1,4 @@
-//! Native APK/DEX analysis migrated from rasc; never executes analyzed code.
+//! APK/DEX metadata, references and Java reconstruction.
 pub mod apk;
 mod archive;
 mod bytes;

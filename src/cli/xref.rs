@@ -1,18 +1,5 @@
-//! The shared `xref` target surface.
-//!
-//! Every backend that answers "who references this?" takes the same two faces, so the
-//! vocabulary and its error messages live here instead of once per backend:
-//!
-//! - `--at COORD` names one identity, exactly as a row prints it. The coordinate says what
-//!   kind it is (`Lx/y;` a type, `Lx/y;->m()V` a method), so `--kind` is only needed to read
-//!   `--at` as a literal, which is the one target that cannot describe itself.
-//! - `-m/--match PATTERN` searches content: folded unless `--case sensitive`, where an empty
-//!   answer is a true answer rather than a failure. A content search cannot say what kind it
-//!   looks for, so `--kind` is required here.
-//!
-//! A coordinate's kind is not negotiable. `--at 'La/a;->m()V' --kind field` is an error that
-//! names both kinds, never an empty result set: a silently empty answer reads exactly like a
-//! true one, which is the failure mode both faces exist to prevent.
+//! Shared exact-coordinate or literal-search anchors.
+//! Kind contradictions are errors; complete searches may return zero hits.
 
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 use super::filter::CaseMode;
@@ -199,9 +186,7 @@ impl TargetArgs {
             match rest.find('(') {
                 Some(open) => {
                     let (name, descriptor) = rest.split_at(open);
-                    // The prototype is what selects one overload: `m()V` and `m(I)V` are
-                    // different methods, so a coordinate without one would be ambiguous.
-                    // A prototype carries its return type after the `)`, never a bare `)`.
+                    // Method coordinates require a prototype and return type to select one overload.
                     if !descriptor.contains(')') {
                         bail!(
                             "{coordinate} is not 'Lclass;->name(proto)': the prototype has no \

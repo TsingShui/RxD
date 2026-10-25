@@ -1,8 +1,6 @@
 //! Printable bytecode text has the same delimiter semantics for PUSH and data candidates.
 
-/// Yield byte-relative printable UTF-8 runs without allocating range storage.
-/// Each UTF-8 prefix is validated once; iteration resumes inside that prefix
-/// after a yielded run. Invalid bytes and Unicode controls delimit runs.
+/// Yield printable UTF-8 byte ranges; invalid bytes and controls delimit runs.
 pub(crate) fn printable_text_runs(bytes: &[u8]) -> impl Iterator<Item = (usize, &str)> {
     let mut cursor = 0;
     let mut base = 0;

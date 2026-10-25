@@ -248,7 +248,7 @@ fn jvm_content_identity_rejects_stale_ids_and_failures_preserve_output_files() {
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("method.java");
     fs::write(&destination, "existing").unwrap();
-    // A failing query leaves an existing output file untouched.
+
     let output = run(
         &[
             "get-method",

@@ -1,11 +1,5 @@
-//! APK container layer: ZIP discovery, inflation, DEX 041 views and the
-//! scheduler that runs one command's work over every entry.
-//!
-//! Everything that reads the archive goes through [`map_dex_entries`], which owns
-//! the byte source, the worker pool, entry ordering and the `--debug` inflate
-//! timings. Results are flattened in central-directory order, so output is
-//! deterministic no matter which worker stole which entry. Nothing here shells out
-//! to Python, a JVM or an external decompiler.
+//! ZIP discovery, DEX views and parallel entry analysis.
+//! Results retain central-directory order.
 
 use crate::archive::{ZipEntry, inflate_entry};
 use crate::dex;
@@ -20,10 +14,6 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-/// The bytes of an APK.
-///
-/// The archive is memory-mapped so the OS keeps only touched pages resident; a 342 MiB
-/// archive therefore costs no equivalent heap allocation.
 enum Archive {
     Mapped(Mmap),
 }
@@ -73,35 +63,18 @@ impl crate::archive::BytesSource for Archive {
 #[derive(Clone, Debug)]
 pub struct ClassEntry {
     pub descriptor: String,
-    /// The superclass descriptor, or `None` when it is `java/lang/Object` or absent.
-    /// Only a class that departs from the root carries the bytes for it.
+    /// None for Object or absent superclass.
     pub super_descriptor: Option<String>,
-    /// The DEX entry the class was found in, shared by every class of that entry.
-    ///
-    /// A class index is hundreds of thousands of rows on a real APK and they all repeat
-    /// one of a few dozen names, so cloning the name per row (an allocation plus a copy
-    /// each) was pure overhead. `Arc<str>` compares by content like `String` does, so
-    /// the sort order and the rendered bytes are unchanged.
+    /// Shared entry name for all classes in one DEX.
     pub dex_name: std::sync::Arc<str>,
-    /// The first [`KEY_BYTES`] of `descriptor`, big-endian, so that ordering rows can
-    /// usually decide inside the row instead of chasing the descriptor's heap bytes.
+    /// Big-endian descriptor prefix for inline comparisons.
     key: u64,
 }
 
-/// How many descriptor bytes the inline sort key keeps.
-///
-/// Measured on a 567,192-class index: 8 bytes separate 73.7% of the rows from every
-/// other row, 16 bytes only 74.3%, so the longer key buys nothing for twice the bytes
-/// per row in the sort's move traffic. The rest of the comparisons fall through to the
-/// descriptor itself, which is what makes the key order-preserving rather than
-/// approximate.
+/// Eight-byte prefix key; equal keys fall back to full descriptor comparison.
 const KEY_BYTES: usize = 8;
 
-/// The sort key of a descriptor: its first bytes, zero-padded, big-endian.
-///
-/// Zero padding is order-preserving because a descriptor never contains a NUL byte: a
-/// row whose descriptor ends before the padding compares as smaller there, which is
-/// exactly how byte-slice comparison treats a prefix.
+/// Zero padding preserves prefix ordering because descriptors contain no NUL.
 fn descriptor_key(descriptor: &str) -> u64 {
     let bytes = descriptor.as_bytes();
     let take = bytes.len().min(KEY_BYTES);
@@ -170,22 +143,17 @@ impl ClassEntry {
     }
 }
 
-/// One entry's bytes, inflated on first use.
-///
-/// Inflating lazily is what lets a string-only command (the class index) read a
-/// prefix instead of the whole entry: the prefix path never touches [`Self::data`],
-/// so the code section - two thirds of a DEX - is never decompressed.
+/// Lazy entry inflation; prefix probes avoid reading the code section.
 struct InflatedDex<'a> {
     entry: &'a ZipEntry,
     source: &'a Archive,
     started: Instant,
-    /// Per-entry inflation ceiling for this command.
+
     max_inflated: Option<usize>,
     data: OnceCell<(Vec<u8>, Duration)>,
 }
 
 impl InflatedDex<'_> {
-    /// The whole entry, inflating it on first use.
     fn data(&self) -> Result<&[u8]> {
         if self.data.get().is_none() {
             let started = Instant::now();
@@ -197,36 +165,26 @@ impl InflatedDex<'_> {
         Ok(&self.data.get().expect("filled above").0)
     }
 
-    /// Time spent inflating, once it happened.
     fn inflate_elapsed(&self) -> Duration {
         self.data
             .get()
             .map_or(Duration::ZERO, |(_, elapsed)| *elapsed)
     }
 
-    /// The first `aim` bytes of the entry (or all of it when it is shorter); see
-    /// [`crate::archive::inflate_prefix`].
     fn read_prefix(&self, aim: usize) -> Result<Vec<u8>> {
         crate::archive::inflate_prefix(self.source, self.entry, self.max_inflated, aim)
     }
 }
 
-/// How [`map_dex_entries`] orders the entries it hands to the worker pool.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum EntryOrder {
-    /// Central-directory order.
     Natural,
-    /// Smallest entries first, so the cheapest ones answer first.
+
     SmallestFirst,
 }
 
-/// Opens `path`, inflates every `classes*.dex` entry in parallel and returns the
-/// flattened results of `map`, in central-directory order.
-///
-/// `order` picks the sequence entries are handed out in. `stop` lets a caller
-/// give up on entries that have not started yet: anything already in flight on a
-/// worker still runs to completion, so it shortens the work that follows an early
-/// hit rather than cancelling it.
+/// Map root DEX entries in parallel, returning central-directory order.
+/// Early stop skips unstarted entries, not in-flight work.
 fn map_dex_entries<T: Send>(
     path: &Path,
     policy: ArchivePolicy,
@@ -272,30 +230,17 @@ fn map_dex_entries<T: Send>(
     Ok(out)
 }
 
-/// Renders one hit the way `findrefs` prints it.
-///
-/// Rendering happens here rather than in the CLI because this is the parallel
-/// phase: a wide query produces hundreds of thousands of lines, and formatting
-/// them on the main thread costs more than the whole instruction scan.
-/// One reference hit, structured.
-///
-/// The order of the fields is also the rendered-line sort order: the separator and
-/// `matched=(` wrapper are constants, so sorting structured rows preserves CLI ordering.
+/// Field order preserves rendered reference-hit sort order.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReferenceHit {
     pub dex_name: String,
     pub member: String,
-    /// The text mode's `matched=(…)` contents, without the wrapper.
+
     pub matched: String,
 }
 
 impl ReferenceHit {
-    /// The line the text mode prints for this hit.
     pub fn render(&self) -> String {
-        // The same line `format!` with `join` produced, built once instead of three times:
-        // `join` allocated an intermediate string and `format!` the line, and a wide query
-        // is hundreds of thousands of rows (170,923 for `field INSTANCE` on the 343 MiB
-        // corpus). The row's shape is still written in exactly one place - here.
         let mut line = String::with_capacity(
             self.dex_name.len() + self.member.len() + self.matched.len() + 24,
         );
@@ -309,12 +254,7 @@ impl ReferenceHit {
     }
 }
 
-/// Rendered reference hits for `query`, aggregated in central-directory order.
-///
-/// The lines are unsorted: the caller sorts them, which is what keeps the printed
-/// order independent of how the work was stolen.
-/// Every reference hit, in central-directory order inside an entry and method order within
-/// an entry; the caller sorts, because the sort is what decides the printed order.
+/// Collect unsorted reference hits; the caller chooses final output order.
 #[cfg(test)]
 pub fn find_reference_hits(
     path: &Path,
@@ -334,11 +274,7 @@ pub fn find_reference_hits_with_policy(
 ) -> Result<Vec<ReferenceHit>> {
     // One probe decides the prefix policy for the archive, for the pre-check below.
     let prefix_policy: OnceLock<PrefixPolicy> = OnceLock::new();
-    // A query with a class constraint is the case where a per-entry pre-check pays: the
-    // class usually lives in one entry of dozens, so every other entry can be skipped
-    // after a prefix read instead of an inflate and a full scan. A name-only query matches
-    // almost every entry, where the same prefix read is pure overhead - so it is not
-    // pre-checked at all (see `Query::bounded_by_class`).
+    // Prefix prechecks pay only for class-constrained queries.
     let needs_targets = query.bounded_by_class();
     // An anchor names one identity; "no entry resolved it" is a different answer from "no
     // reference points at it", and only the entries themselves can tell them apart.
@@ -442,11 +378,7 @@ pub fn parse_method_coordinate(coordinate: &str) -> Result<(String, String, Stri
     Ok((class.to_owned(), name.to_owned(), prototype.to_owned()))
 }
 
-/// Render one method as Java source, from the entry that declares its class.
-///
-/// Uses the same first-hit walk as `get-class`: an entry that cannot define the class is
-/// rejected from its prefix without inflating the code section, and the walk stops as
-/// soon as one entry answers.
+/// Render the selected method from the first entry defining its class.
 pub fn decompile_method_with_policy(
     path: &Path,
     policy: ArchivePolicy,
@@ -474,14 +406,9 @@ pub fn decompile_method_with_policy(
     })
 }
 
-/// Which methods a `functions`-style listing reports.
 pub use crate::dex::methods::Selector as MethodSelector;
 
-/// Every method defined by the archive's DEX entries, rendered as record lines.
-///
-/// Entries are walked in central-directory order and each one renders its rows into its
-/// own buffer, so the joined payload keeps archive order without a global sort.
-/// Every field declared by the archive's DEX entries, rendered as record lines.
+/// List declared fields in central-directory order.
 pub fn list_fields_with_policy(
     path: &Path,
     policy: ArchivePolicy,
@@ -609,25 +536,13 @@ pub fn list_classes_with_policy(
     Ok(classes)
 }
 
-/// What one probe of an archive's DEX told us about the whole archive.
-///
-/// DEX files in one APK come from the same build tool, so their layout is
-/// homogeneous: measured on a 343 MiB APK every entry needs 26-65% of its bytes for
-/// a string-only command, on a 243 MiB APK every entry needs 90-95%. One probe
-/// therefore decides for all of them: once the string data is known to sit near the
-/// end, the remaining entries skip the prefix path instead of paying for a probe
-/// each. The reverse verdict (the string data is early) leaves every entry to make
-/// its own exact decision, because the fraction varies per entry.
+/// One late-string-layout probe disables subsequent prefix probes.
 #[derive(Clone, Copy)]
 struct PrefixPolicy {
     worth_it: bool,
 }
 
-/// Whether this entry defines `descriptor`, answered from a prefix when possible.
-///
-/// Mirrors [`dex::prefix::defines_class`]'s `None` contract: the caller then runs the
-/// full path for this entry. The prefix path never inflates the code section, which is
-/// where a lookup for a class that lives elsewhere was spending all its time.
+/// Probe a class from prefix bytes; `None` requires the full reader.
 fn prefix_defines_class(
     inflated: &InflatedDex<'_>,
     descriptor: &[u8],
@@ -639,21 +554,12 @@ fn prefix_defines_class(
     dex::prefix::defines_class(&prefix, descriptor)
 }
 
-/// A prefix of this entry that reaches past the last string data item, or `None` when
-/// the prefix path is not for it.
-///
-/// Three reads, each sized from what the previous one showed: the header says where the
-/// string_ids table ends, the table says where the last string data item starts, and the
-/// string data is the last thing before the code section. On the 343 MiB sample that
-/// last offset is 26-65% of an entry (median 31%), so a string-only read or a class
-/// lookup decodes roughly a third of what the full path would - and only the tables are
-/// decoded twice, which is why the second read stops at string_ids rather than walking
-/// on to class_defs.
+/// Probe header, string offsets, then string data.
+/// Return `None` when completeness cannot be established.
 fn prefix_probe(
     inflated: &InflatedDex<'_>,
     policy: &OnceLock<PrefixPolicy>,
 ) -> Result<Option<Vec<u8>>> {
-    /// Below this there is nothing to win (the entry is small anyway).
     const MIN_GAIN: usize = 256 * 1024;
     /// Bytes kept beyond the last string offset, for the string's own data.
     const SLACK: usize = 64 * 1024;
@@ -684,9 +590,7 @@ fn prefix_probe(
         return Ok(None);
     }
     let offsets = inflated.read_prefix(strings_end + SLACK)?;
-    // The table did not arrive complete (a crafted header, or an entry whose tables
-    // really do run to the end): the caller falls back to the full path, and the
-    // archive-wide policy stays undecided instead of being set from a broken entry.
+    // An incomplete table leaves archive-wide prefix policy undecided.
     let Some(needed) = dex::prefix::string_data_end(&offsets) else {
         return Ok(None);
     };
@@ -699,11 +603,7 @@ fn prefix_probe(
     Ok(Some(inflated.read_prefix(needed + SLACK)?))
 }
 
-/// The class index of a plain deflate DEX from a prefix of it.
-///
-/// `None` means "not applicable, or not provably complete": the caller then inflates
-/// the whole entry. `dex::prefix::class_names` answers only when the prefix holds all
-/// three tables and every descriptor it decodes, so a `Some` is exact, not a guess.
+/// Return classes only from a complete prefix; otherwise require full inflation.
 fn prefix_class_entries(
     inflated: &InflatedDex<'_>,
     policy: &OnceLock<PrefixPolicy>,
@@ -729,13 +629,7 @@ fn prefix_class_entries(
     ))
 }
 
-/// Locates `descriptor` and hands the entry that defines it to `map`, while the archive is
-/// still mapped.
-///
-/// The mapping ends with the walk, so a caller that wants to keep the bytes has to copy
-/// them - which is what the tests here do explicitly. The decompiler does not: it consumes
-/// them inside the walk, and on a real APK the entry is 7-12 MiB, so the copy plus its
-/// allocation used to be pure added cost on every `getclass`.
+/// Visit the defining entry while mapped; callers must copy retained bytes.
 fn map_class_hit<T: Send>(
     path: &Path,
     policy: ArchivePolicy,
@@ -806,8 +700,7 @@ fn map_class_hit<T: Send>(
     Ok(hits.into_iter().next())
 }
 
-/// Decompiles `descriptor` to Java-like source, returning the DEX entry it was
-/// found in and the source. `None` when no DEX defines the class.
+/// Render a class with its entry name; None if no DEX defines it.
 #[cfg(test)]
 pub fn decompile_class(
     path: &Path,
@@ -834,12 +727,7 @@ pub fn decompile_class_with_policy(
     })
 }
 
-/// Whether a string's raw MUTF-8 bytes contain an ASCII needle, ignoring case.
-///
-/// `None` means this pair cannot be answered from the bytes — the value is not ASCII, or
-/// the needle is not — and the caller decodes and folds instead. It is sound for the pair
-/// it does answer: MUTF-8 is ASCII-compatible, so no byte of a multi-byte sequence is an
-/// ASCII byte, and an ASCII needle can only ever match ASCII characters.
+/// Match ASCII directly in MUTF-8; non-ASCII pairs require decoding.
 fn raw_contains_ignore_case(raw: &[u8], needle_lower: &str) -> Option<bool> {
     if !needle_lower.is_ascii() || !raw.is_ascii() {
         return None;
@@ -859,24 +747,15 @@ fn raw_contains_ignore_case(raw: &[u8], needle_lower: &str) -> Option<bool> {
     }))
 }
 
-/// One string, and which DEX it came from.
 #[derive(Clone, Debug)]
 pub struct StringEntry {
     pub dex_name: std::sync::Arc<str>,
-    /// The index in that DEX's string table, which is the order the table stores.
+    /// DEX string-table index, preserving table order.
     pub index: usize,
     pub value: String,
 }
 
-/// Every string in every root DEX, in central-directory order and table order within
-/// an entry, or the ones `filter` matches.
-///
-/// Not sorted: a string table is indexed, the index is what a `findrefs` row resolves
-/// through, and the order the file declares is the only order that means anything.
-///
-/// `filter` is a substring of the value (folded unless `case_sensitive`), `limit` keeps the first that
-/// many matches in the order this function returns them, and `offset` starts that page
-/// later in the same order.
+/// List matching strings in entry/table order; offset and limit select a page.
 #[cfg(test)]
 pub fn list_strings(
     path: &Path,
@@ -912,21 +791,11 @@ pub fn list_strings_with_policy(
     }
     let take = limit.unwrap_or(usize::MAX);
     let skip = offset.unwrap_or(0);
-    // The walk may stop once it holds everything the page needs, which is the skipped matches
-    // plus the page itself. Stopping at `take` would truncate the offset away and hand a
-    // scrollback the first page again. The anchor for this replacement is line-exact on
-    // purpose: the two deeper sites are indented forms of the same text, so a substring
-    // replace catches three of them - which is how the first attempt at this aborted.
+
     let fill = skip.saturating_add(take);
-    // The early stop is only sound for a serial walk. Entries are walked in parallel on the
-    // native side and their results are ordered afterwards, so a shared counter decides *which*
-    // entries contributed before the ordering happens: with threads > 1, `--limit` returned a
-    // different page than with one thread. Collecting everything and letting the caller's sort
-    // plus the truncation below choose restores determinism across `--threads`.
+    // Only serial scans can stop early without changing which page wins.
     let stop_early = threads == 1;
-    // How many matches the walk has produced so far. It is shared because the native
-    // walk runs entries in parallel, and it only ever stops work early: the rows are
-    // truncated to `take` in print order either way.
+
     let found = std::sync::atomic::AtomicUsize::new(0);
     let started = Instant::now();
     let rows: Vec<StringEntry> = map_dex_entries(
@@ -937,10 +806,7 @@ pub fn list_strings_with_policy(
         None,
         |inflated| {
             let stop = std::sync::atomic::Ordering::Relaxed;
-            // A page that is already full has nothing to learn from the entries below it, and
-            // *inflating* one to find that out is the expensive half of the walk: this check
-            // has to come before `data()`, not inside the loop it feeds. It did not, and the
-            // skipped entries were still inflated - which is most of what a searched page cost.
+            // Check page completion before inflating the next entry.
             if stop_early && found.load(stop) >= fill {
                 return Ok(Vec::new());
             }
@@ -995,7 +861,6 @@ pub fn list_strings_with_policy(
     Ok(rows)
 }
 
-/// Which member table a lookup reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MemberKind {
     /// A runtime field index: `ifields_` first, then `sfields_`.
@@ -1004,11 +869,7 @@ pub enum MemberKind {
     Method,
 }
 
-/// Every entry the archive holds, in central-directory order.
-///
-/// No filtering and no de-duplication: this is a listing of what the file contains, so
-/// two entries with the same name appear twice, in the order the directory states them.
-/// A bare DEX is one entry, the same one every other command walks.
+/// List physical entries in central-directory order, including duplicate names.
 pub fn list_entries(path: &Path) -> Result<Vec<ZipEntry>> {
     let archive = Archive::open(path)?;
     if is_bare_dex(&archive) {
@@ -1021,12 +882,7 @@ pub fn list_entries(path: &Path) -> Result<Vec<ZipEntry>> {
     crate::archive::parse_zip_entries(&archive, |_| true)
 }
 
-/// Inflate the named entries in central-directory order and hand each original
-/// payload to `visit`.
-///
-/// A name is the selector here, so two entries carrying it are rejected instead of
-/// letting the last one silently overwrite the earlier extraction. Bare DEX inputs
-/// present the same single `classes.dex` entry every other command walks.
+/// Visit selected original payloads in archive order; reject duplicate names.
 pub fn extract_entries_with_policy(
     path: &Path,
     policy: ArchivePolicy,
@@ -1074,10 +930,7 @@ pub fn read_entry(path: &Path, wanted: &str) -> Result<Vec<u8>> {
 pub fn read_entry_with_policy(path: &Path, policy: ArchivePolicy, wanted: &str) -> Result<Vec<u8>> {
     use crate::profile::{Stage, measure};
     let archive = measure(Stage::Map, || Archive::open(path))?;
-    // CPython's `zipfile` resolves a name to the *last* central-directory record
-    // carrying it, and the reference implementation reads the manifest through
-    // it; matching that keeps a crafted archive with two AndroidManifest.xml
-    // entries resolving the same way in both tools.
+    // Match zipfile: the last AndroidManifest.xml record wins.
     let entry = crate::archive::parse_zip_entries(&archive, |name| name == wanted.as_bytes())?
         .into_iter()
         .last()
@@ -1085,11 +938,6 @@ pub fn read_entry_with_policy(path: &Path, policy: ArchivePolicy, wanted: &str) 
     inflate_entry(&archive, &entry, policy.max_inflated_entry)
 }
 
-/// Whether the source is a DEX file rather than an archive.
-///
-/// A DEX names itself in its first eight bytes (`dex\n039\0`). That magic is the whole
-/// test, and it is enough: a ZIP starts with `PK`, so no input can be both, and a file
-/// that merely begins with those bytes is reporting itself as a DEX.
 pub(crate) fn is_bare_dex<S: crate::archive::BytesSource + ?Sized>(source: &S) -> bool {
     let Ok(head) = source.range(0, 8) else {
         return false;
@@ -1100,15 +948,7 @@ pub(crate) fn is_bare_dex<S: crate::archive::BytesSource + ?Sized>(source: &S) -
         && head[7] == 0
 }
 
-/// Root DEX entries, `classes*.dex` preferred.
-///
-/// The reference implementation falls back to any root `*.dex` when an APK names
-/// its DEX files differently, and matching that keeps both tools reporting the
-/// same entries for the same archive.
-///
-/// A bare DEX is one entry. Every command addresses an archive, and rather than
-/// teach each of them a second input shape, the file is presented as the entry it
-/// would have been inside one - named `classes.dex`, matching the reference command.
+/// Prefer root classes*.dex, then any root *.dex; bare DEX is classes.dex.
 fn parse_dex_entries<S: crate::archive::BytesSource + ?Sized>(source: &S) -> Result<Vec<ZipEntry>> {
     if is_bare_dex(source) {
         return Ok(vec![ZipEntry::bare("classes.dex", source.source_len())]);
@@ -1125,13 +965,7 @@ fn parse_dex_entries<S: crate::archive::BytesSource + ?Sized>(source: &S) -> Res
     )?))
 }
 
-/// Keeps the first entry for each name.
-///
-/// A ZIP may hold two entries with the same name (crafted or repacked archives
-/// do). The reference implementation keeps the first `classes*.dex` it meets
-/// while scanning the central directory, so a class defined only in a duplicate
-/// entry stays invisible there; scanning both copies would instead report every
-/// row twice and pick up classes the reference never sees.
+/// Keep the first DEX entry per name, matching the reference reader.
 fn dedup_names(entries: Vec<crate::archive::ZipEntry>) -> Vec<crate::archive::ZipEntry> {
     let mut seen = std::collections::HashSet::new();
     entries
@@ -1145,7 +979,6 @@ mod tests {
     use crate::archive::tests::{build_zip, temp_apk};
     use crate::query::Pattern;
 
-    /// The rendered lines for a query, which is what the text mode prints.
     fn find_references(
         path: &Path,
         query: &Query,
@@ -1158,27 +991,6 @@ mod tests {
             .collect())
     }
 
-    /// The three statuses are distinct answers, not a bool.
-    /// A member table that annotates a different member than the index lookup resolves
-    /// would send a reader to the wrong code - exactly the failure it exists to prevent -
-    /// so every line is checked against the lookup face.
-    /// Real-data check for the member table, against the same class the index faces use.
-    ///
-    /// Gated like the other real-data checks. Run:
-    /// `RASC_REAL_APK=… cargo test --bin rasc -- --ignored real_apk_member_lines`.
-    /// A class name is not an identity. Two entries defining it must not produce a plan:
-    /// the plan decides which instance slots a collector dereferences.
-    /// Real-data round trip: every member the DEX walk finds must be reachable from the
-    /// runtime index the lookup takes, and the position must cross from instance fields
-    /// into statics exactly where the field blocks meet.
-    ///
-    /// Gated like the other real-data checks. Run:
-    /// `RASC_REAL_APK=… cargo test --bin rasc -- --ignored --nocapture real_apk_member_lookup`.
-    /// Real-data check: one class's plan against values taken from the same APK with
-    /// the DEX-metadata reader CheapTrick used before this moved here.
-    ///
-    /// Gated like the other real-data checks - an absent fixture must not read as a
-    /// pass. Run: `RASC_REAL_APK=… cargo test -- --ignored real_apk_fields_plan`.
     #[test]
     fn dex_entries_fall_back_to_any_root_dex_name() {
         let dex = dex::tests::const_string_fixture(1);
@@ -1241,7 +1053,6 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
-    /// Filtering must preserve the established case-insensitive results.
     #[test]
     fn the_filter_ignores_case_without_changing_the_answer() {
         for (haystack, needle, expected) in [
@@ -1264,7 +1075,6 @@ mod tests {
         }
     }
 
-    /// The byte-level pre-filter answers only what bytes can answer, and says so.
     #[test]
     fn the_raw_filter_defers_anything_it_cannot_answer() {
         // ASCII on both sides is a comparison.
@@ -1287,7 +1097,6 @@ mod tests {
         assert_eq!(raw_contains_ignore_case("漢字".as_bytes(), "漢"), None);
     }
 
-    /// A page is the first matches, in order, and the walk stops once it has them.
     #[test]
     fn a_filtered_page_is_the_first_matches_in_order() {
         let dex = dex::tests::const_string_fixture(4);
@@ -1320,9 +1129,6 @@ mod tests {
             );
         }
 
-        // An offset with a filter is the next page of the same search, which is the whole
-        // reason it exists: pagination asks for what follows the current page. An offset
-        // past the end is an empty page, not an error.
         for (needle, offset, limit) in [
             ("fixture", 1usize, 2usize),
             ("m", 2, 1),
@@ -1351,12 +1157,7 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
-    /// A full page stops before the entries below it, and does not even inflate them.
-    ///
-    /// The second entry's directory record overstates its size, so *inflating* it fails
-    /// with a size mismatch. That is what makes "was this entry read?" observable at all:
-    /// the limited run passing proves the walk stopped before it, and the unlimited run
-    /// failing proves the entry really was there to be read.
+    /// An overstated second entry proves a full page stops before inflation.
     #[test]
     fn a_full_page_never_reads_the_entries_below_it() {
         let dex = dex::tests::const_string_fixture(2);
@@ -1375,7 +1176,6 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
-    /// Adds one byte to the second central-directory entry's uncompressed size.
     fn overstate_second_entry_size(zip: &mut [u8]) {
         let mut seen = 0;
         for offset in 0..zip.len().saturating_sub(4) {
@@ -1392,7 +1192,6 @@ mod tests {
         panic!("the fixture's second central-directory entry was not found");
     }
 
-    /// A DEX that arrives without an archive around it is the entry it would have been.
     #[test]
     fn a_bare_dex_is_one_stored_entry() {
         let dex = dex::tests::const_string_fixture(2);
@@ -1408,7 +1207,6 @@ mod tests {
         );
     }
 
-    /// The magic is the whole test: a ZIP starts with `PK`, so nothing is both.
     #[test]
     fn a_zip_is_not_read_as_a_bare_dex() {
         let dex = dex::tests::const_string_fixture(1);
@@ -1421,7 +1219,6 @@ mod tests {
         assert!(!is_bare_dex(&b"dex\nXX9\0"[..]));
     }
 
-    /// Every command answers a bare DEX exactly as it answers the same DEX in an APK.
     #[test]
     fn bare_and_wrapped_dex_agree_on_every_command() {
         let dex = dex::tests::const_string_fixture(3);
@@ -1578,11 +1375,8 @@ mod tests {
 
     #[test]
     fn decompiles_a_class_from_every_logical_dex_of_a_041_container() {
-        // A DEX 041 container overlays each member's header at offset 0, so the
-        // Adler-32 a member stores no longer covers the bytes the decompiler
-        // sees. findrefs never validates it (our scanner does not); the
-        // decompiler does, so this test guards the second member too.
-        // Member one defines LFixture0;, member two LFixture0; and LFixture1;.
+        // DEX 041 header overlays require a recomputed view checksum.
+        // The second member exercises this too.
         let container = dex::tests::dex041_container(&[1, 2]);
         let zip = build_zip(&[("classes.dex", &container, true)]);
         let path = temp_apk("dex041-getclass", &zip);
@@ -1600,13 +1394,6 @@ mod tests {
 
     #[test]
     fn an_entry_that_is_not_a_dex_is_a_clean_error() {
-        // A packer can leave junk in a classes*.dex entry, and a corrupted magic
-        // looks the same. rasc reports that loudly instead of guessing: the
-        // reference's findrefs errors on such archives too (its class lookup
-        // skips them silently), and silently analysing "the rest" would hide the
-        // fact that part of the archive was not analysed at all. What this test
-        // pins is that the failure is a message with an exit code, not a panic and
-        // not an empty result.
         let good = dex::tests::const_string_fixture(1);
         let zip = build_zip(&[
             ("classes.dex", b"JUNKJUNKJUNK".as_slice(), false),
@@ -1630,16 +1417,11 @@ mod tests {
 
     #[test]
     fn find_class_finds_a_class_whose_type_id_is_a_later_duplicate() {
-        // A DEX may repeat a descriptor across several type ids. `list_classes`
-        // resolves each class_def's own type id, so `find_class` has to do the
-        // same: looking up "the" type id for the descriptor makes the two
-        // commands contradict each other on such a file.
+        // Repeated descriptors must resolve through each class_def's own type id.
         let mut dex = dex::tests::const_string_fixture(2);
         let header_size = crate::bytes::read_u32(&dex, 0x24).unwrap() as usize;
         let strings = crate::bytes::read_u32(&dex, 0x38).unwrap() as usize;
-        // type_ids[0] belongs to no class_def; pointing it at "LFixture0;"
-        // (string index 1) makes the descriptor's first match a different id than
-        // the one the class's class_def carries.
+        // The first matching type_id has no class_def; the later one does.
         crate::archive::tests::write_u32(&mut dex, header_size + strings * 4, 1);
         let zip = build_zip(&[("classes.dex", &dex, true)]);
         let path = temp_apk("duplicate-type-id", &zip);
@@ -1666,15 +1448,12 @@ mod tests {
 
     #[test]
     fn class_index_reads_041_containers_through_the_full_path() {
-        // The prefix reader refuses 041 containers (their members overlay headers),
-        // so this pins that the fallback still lists every logical member.
+        // DEX 041 prefixes require full-reader fallback for every member.
         let container = dex::tests::dex041_container(&[2, 1]);
         let zip = build_zip(&[("classes.dex", &container, true)]);
         let path = temp_apk("dex041-classes", &zip);
         let listed = list_classes(&path, 2, false).unwrap();
-        // Member one defines LFixture0; and LFixture1;, member two repeats LFixture0;.
-        // The index keeps one row per definition (no hidden dedup), so both members'
-        // names survive - the prefixed names prove the full path ran.
+
         let names: Vec<&str> = listed.iter().map(|entry| &*entry.dex_name).collect();
         assert_eq!(
             names,
@@ -1700,9 +1479,6 @@ mod tests {
 
     #[test]
     fn single_member_041_container_reports_the_plain_dex_name() {
-        // The reference implementation only renames container members when there
-        // is more than one, so a single-member container keeps the entry name in
-        // every row (the dex column is part of a row's identity).
         let container = dex::tests::dex041_container(&[1]);
         let zip = build_zip(&[("classes.dex", &container, true)]);
         let path = temp_apk("dex041-single", &zip);
@@ -1757,10 +1533,6 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
-    /// The inline key must not change the order: every pair has to compare the same way
-    /// with the key as the plain `(descriptor, dex_name)` tuple does - including
-    /// descriptors that are prefixes of each other, ones that share the first eight
-    /// bytes, and ones with multi-byte characters.
     #[test]
     fn the_inline_sort_key_orders_like_the_descriptor() {
         let samples = [
@@ -1822,16 +1594,8 @@ mod tests {
         );
     }
 
-    /// In-process timing for the container paths: the counterpart of the scanner test in
-    /// `dex`, for changes the end-to-end harness cannot resolve (its ~3.8 ms of `fork/exec`
-    /// and start-up per stage dominate a `manifest`-sized stage).
-    ///
-    /// Needs a real archive; skips when the environment does not name one:
-    ///
-    ///   RASC_BENCH_APK=/path/app.apk cargo test --release -- --ignored --nocapture inproc_paths
-    ///
-    /// Compare two builds **back to back in one session** - the same binary drifts 5-10%
-    /// between sessions, which is more than most changes here are worth.
+    /// Manual timing harness: RASC_BENCH_APK=<path> cargo test --release
+    /// -- --ignored --nocapture inproc_paths
     #[test]
     #[ignore = "timing harness: run with --release --ignored --nocapture and RASC_BENCH_APK"]
     fn inproc_paths() {
@@ -1842,9 +1606,6 @@ mod tests {
         let path = std::path::Path::new(&apk);
         const CALLS: u32 = 5;
 
-        // Warm each path once (page cache, allocator, the thread pool), then time the
-        // repeats. Each call includes what a command would pay once: opening the archive,
-        // walking its central directory and building a one-thread pool.
         let _ = read_entry(path, "AndroidManifest.xml").unwrap();
         let started = Instant::now();
         for _ in 0..CALLS {

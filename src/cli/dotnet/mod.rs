@@ -117,9 +117,7 @@ pub enum Command {
     Xref {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
-        /// Exact target: the metadata token of a member or type, such as `0x0a00001f`; it
-        /// also covers external members, generic instantiations and `#US` string tokens
-        /// (`0x70…`).
+        /// Exact metadata/#US token, including external members and generic instantiations.
         #[arg(long, value_name = "TOKEN", conflicts_with = "filter")]
         at: Option<String>,
         /// Substring of a decoded user-string literal; folded unless `--case sensitive`.
@@ -138,10 +136,7 @@ pub enum Command {
     },
 }
 
-/// Which kind of target a reference query names.
-///
-/// The kind is read off a token's table, so it is only needed where the token cannot say:
-/// a `--match` content search, and asserting a table that covers two kinds (`MemberRef`).
+/// Infer kind from token table; literals and ambiguous MemberRef need an assertion.
 type Kind = crate::cli::xref::Kind;
 
 #[derive(Args)]
@@ -443,9 +438,6 @@ fn execute_inner(
                             .expect("checked string owner")]
                     });
                     record(&mut output, &mut records, &{
-                        // The `#US` token is the literal's identity, so it is the row's
-                        // `at`: that is what `--at` takes back, and what the
-                        // reference rows point at.
                         let token = format!("0x{:08x}", 0x7000_0000u32 | literal.offset);
                         let context = method.map(|method| coordinate(method.token));
                         envelope::record(
@@ -477,10 +469,7 @@ fn execute_inner(
                         record(&mut output, &mut records, &value)?;
                     }
                 } else {
-                    // A string-route row names the text it loads, so the literal inventory is
-                    // built once instead of resolving a token per row. Both anchors print the
-                    // same target: a `#US` token and its text are two ways to name one literal,
-                    // and the row says which text it was.
+                    // Build literal inventory once; token and text anchors resolve to the same literal.
                     let literals = Some(literal_values(&input));
                     let sites = match xref_target.as_ref().expect("resolved here") {
                         Target::Literal {
@@ -586,13 +575,11 @@ fn unresolved_operands(instructions: &Value) -> Vec<String> {
         match operand.get("status").and_then(Value::as_str) {
             Some("resolved" | "external") => {}
             _ => {
-                // A user-string operand (0x70 table) has no member identity at all, so
-                // it is expected to be nameless rather than unresolved.
+                // User-string tokens have no member name.
                 if operand.get("value").and_then(Value::as_u64).unwrap_or(0) >> 24 == 0x70 {
                     continue;
                 }
-                // An unresolved operand has no owner or name; the token is the only
-                // thing an Agent can act on.
+                // Unresolved operands expose only their usable token.
                 let label = match (
                     operand.get("owner").and_then(Value::as_str),
                     operand.get("name").and_then(Value::as_str),
@@ -613,7 +600,7 @@ fn unresolved_operands(instructions: &Value) -> Vec<String> {
     names
 }
 
-/// Explain, in the record itself, why this body is IL instead of C#.
+/// Describe why reconstruction fell back to IL.
 fn describe_method_reason(
     reason: &str,
     instructions: usize,
@@ -741,10 +728,6 @@ fn annotate_operands(
     Ok(value)
 }
 
-/// Detail-level entity references use the same copy-only coordinate as the outer
-/// envelope; a caller never receives a hash it did not ask for. Nested inventories
-/// (class bodies, refs rows) carry the same keys, so the rewrite is recursive.
-/// The copy-only coordinate of a row: its ECMA-335 metadata token.
 fn coordinate(token: u32) -> String {
     format!("0x{token:08x}")
 }
@@ -766,9 +749,7 @@ fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<V
 fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value> {
     let mut fields = detail(serde_json::to_value(ty)?);
     fields.remove("id");
-    // A base type and an interface are tokens; a reader navigates by name. Both stay,
-    // because the token is the identity `get-class --at` takes back and a name is not
-    // unique across assemblies. An omitted default keeps the row at its old size.
+
     if let Some(token) = ty.extends_token
         && let Some(name) = input.type_display(token)
         && name != "System.Object"
@@ -866,11 +847,8 @@ fn relationship_record<T: serde::Serialize>(
     token: u32,
     relationship: &T,
 ) -> anyhow::Result<Value> {
-    // A property or event is not a fetchable unit: no command takes its 0x17/0x14 token,
-    // and a caller reaches the behaviour through the accessor methods. So the row prints
-    // no `at` - an `at` that no `--at` accepts would promise a round trip that fails - and
-    // keeps the token as evidence. The owner is `parent_at`; `context_at` stays null
-    // because it would repeat the same owner.
+    // Properties/events are reached through accessor methods, not FETCH coordinates.
+    // Keep their tokens as evidence and their owner as parent_at.
     let _ = token;
     Ok(envelope::record(
         kind,
@@ -930,9 +908,7 @@ fn list(
     let pattern = filter
         .as_deref()
         .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
-    // A filter answers "does this record's own name contain the needle?". The declaring
-    // type is a separate question that `--class` answers exactly, so a member is never
-    // reported for a match on its owner's name.
+
     let matches = |name: &str| pattern.as_ref().is_none_or(|pattern| pattern.matches(name));
     // Resolve signatures only for the rows this query can emit. Filtering by name and
     // declaring type never needs them, so unrelated corrupt members stay unread.
@@ -1023,9 +999,7 @@ fn detail(value: Value) -> Map<String, Value> {
     fields
 }
 
-/// A dotnet coordinate is the ECMA-335 metadata token itself: eight hex digits,
-/// optional `0x`. A kind prefix is refused with the value to use instead.
-/// The one target a .NET reference query names.
+/// One metadata-token or decoded-literal reference target.
 enum Target {
     /// A metadata or `#US` token: an identity, matched exactly.
     Token { token: u32 },
@@ -1037,11 +1011,7 @@ enum Target {
     },
 }
 
-/// Resolve the reference target from its two faces.
-///
-/// A token says its own kind through its table, so `--kind` is only an assertion here. That
-/// matters because a token is a per-module row number: `0x0600000b` is a different method in
-/// every assembly, so a coordinate only means something against the input it came from.
+/// Tokens identify file-local rows; --kind validates their table, not their spelling.
 fn dotnet_target(
     at: Option<&str>,
     filter: Option<&str>,
@@ -1067,9 +1037,7 @@ fn dotnet_target(
         });
     }
     let coordinate = at.expect("checked above").to_owned();
-    // `--kind string` reads `--at` as a literal, which is the one target that cannot
-    // describe itself. A token still wins when it parses as one: `0x0600000b --kind string`
-    // is a contradiction to report, not a search for the text `0x0600000b`.
+    // Parse tokens before literal fallback so a contradictory kind remains an error.
     if kind == Some(crate::cli::xref::Kind::String) {
         return match parse_token(&coordinate) {
             Ok(token) => {

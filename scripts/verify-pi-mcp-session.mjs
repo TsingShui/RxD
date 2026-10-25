@@ -72,9 +72,7 @@ try {
     const denied = await tools.mcp__rxd__js_find({input:{path:${JSON.stringify(outside)}},string:'native MCP'});
     text({names,found,denied});` : 'text({names});'}
   ` };
-  // Explicit authored-history replay, not model-issued use. Pi requires an
-  // assistant message for nested calls; satisfy that public history precondition
-  // without patching its guard, fabricating a provider stream or starting a turn.
+  // Replay authored tool-call history to satisfy Pi without invoking a model.
   const authored = { role: 'assistant',
     content: [{ type: 'toolCall', id: 'native-proof', name: 'codemode', arguments: args }],
     api: 'openai-responses', provider: 'authored-fixture', model: 'no-inference',

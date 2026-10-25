@@ -1,10 +1,4 @@
-//! String-only DEX prefix reader.
-//!
-//! A class index or a class lookup needs the header, the id tables that name
-//! classes, the class_def rows and the string data - measured at 31.7% of the bytes
-//! of a 343 MiB APK - and nothing after it. This module decodes exactly that much,
-//! sharing the full reader's decoding rules, and answers `None` whenever the prefix
-//! does not reach far enough so the caller falls back instead of trusting a guess.
+//! Read only complete DEX string/table prefixes; None requests full parsing.
 
 use super::read_uleb;
 use crate::bytes::read_u32;
@@ -83,15 +77,7 @@ pub(crate) fn class_names(prefix: &[u8]) -> Result<Option<Vec<super::ClassName>>
     Ok(Some(names))
 }
 
-/// The byte just past the string_ids table, from the header alone.
-///
-/// The table holds one 4-byte offset per string, so this is the smallest read that can
-/// answer where the string data ends: the id tables that follow it (type_ids,
-/// method_ids, class_defs) are needed to *decode* a string, but not to find the last
-/// one. Reading only this much first is what keeps the prefix path from inflating the
-/// larger tables twice.
-///
-/// `None` when the header is not readable or the table's extent overflows.
+/// Checked end of string_ids from the header; None for unreadable prefixes.
 pub(crate) fn string_ids_end(prefix: &[u8]) -> Option<usize> {
     if prefix.len() < HEADER_SIZE || prefix.get(..4) != Some(b"dex\n") {
         return None;
@@ -101,14 +87,7 @@ pub(crate) fn string_ids_end(prefix: &[u8]) -> Option<usize> {
     table_end(offset, size, STRING_ID_ITEM)
 }
 
-/// The byte just past the last string data item, or `None` when the string_ids table
-/// is not complete yet.
-///
-/// Every string_data_off in the table is an absolute offset, so the table alone says
-/// where the newest (and, in a DEX written by a regular tool, the last) string data
-/// item starts. That is the byte count a caller has to inflate before the descriptors
-/// of the classes, types and members it is after can be read - and it is far less than
-/// the whole entry, because the code section comes after the string data.
+/// Last string-data offset from complete string_ids; None if incomplete.
 pub(crate) fn string_data_end(prefix: &[u8]) -> Option<usize> {
     if prefix.len() < HEADER_SIZE || prefix.get(..4) != Some(b"dex\n") {
         return None;
@@ -188,8 +167,6 @@ pub(crate) fn defines_class(prefix: &[u8], descriptor: &[u8]) -> Result<Option<b
 mod tests {
     use super::*;
 
-    /// The fixture's layout: string_ids sits at the header, every section offset is
-    /// absolute, and the last string data item is near the end of the file.
     #[test]
     fn prefix_sizes_come_from_the_header_and_the_string_table() {
         let dex = crate::dex::tests::const_string_fixture(4);
@@ -209,9 +186,6 @@ mod tests {
         );
     }
 
-    /// A prefix that stops before the string_ids table is not trusted: the readers say
-    /// `None` (fall back) instead of guessing, which is what makes a short inflate
-    /// safe.
     #[test]
     fn a_short_prefix_is_never_trusted() {
         let dex = crate::dex::tests::const_string_fixture(4);

@@ -201,13 +201,7 @@ fn run_serial(
     Ok(())
 }
 
-/// One file per task, bounded by the worker count: each worker holds a single parsed input
-/// and its AST, so the pool size is what caps in-flight memory.
-///
-/// `collect` on an indexed parallel iterator restores the discovered path order, so the
-/// stream, its budgets and its error attribution stay byte-identical to a serial scan. Each
-/// file runs with the full budget and the aggregate is checked in order afterwards, which
-/// reports the same first offending path a serial scan would.
+/// Each task retains one input; indexed collection restores discovered path order.
 fn run_parallel(
     shared: &Shared<'_>,
     files: &[PathBuf],

@@ -12,9 +12,7 @@ test = false
 doctest = false
 
 [features]
-# The rxd adapter distributes specs through its own verified runtime bundle.
-# Declaring the upstream feature keeps included source cfg checks valid without
-# enabling the upstream build-time embedding path.
+# Specs use RxD's verified bundle; this feature only satisfies upstream cfg checks.
 embed-specs = []
 
 [dependencies]

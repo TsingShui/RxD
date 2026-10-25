@@ -1,8 +1,5 @@
-//! Bounded, contextual native stack evidence for selector-dispatched function candidates.
-//!
-//! Membership is reachable decoded blocks, not adjacent entry intervals or a union of
-//! producer CFG return targets. Contexts retain valid constant jump destinations in
-//! their original stack slots; ordinary changing values widen at joins.
+//! Contextual selector-dispatched reachability, not adjacent entry intervals.
+//! Keep constant jump destinations in stack slots; widen other values at joins.
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use alloy_primitives::U256;
@@ -130,10 +127,7 @@ pub struct FunctionNavigation {
     pub functions: Vec<FunctionCandidate>,
     /// Supported function indices for each native block, in stable function order.
     pub owners: Vec<Vec<usize>>,
-    /// EVMole's own selector-bearing analysis, keyed by the four-byte selector.
-    ///
-    /// Populated only when the caller asks for the interface listing; it is the same
-    /// single in-memory analysis that seeds `functions`, never a second pass.
+    /// Retain EVMole interface analysis only when requested; reuse the discovery pass.
     interface: Option<BTreeMap<String, Value>>,
     metadata: Option<Value>,
 }
@@ -790,11 +784,7 @@ pub(crate) fn block_local_edges(
 }
 
 impl FunctionNavigation {
-    /// Discover selector-dispatched candidates from one native analysis.
-    ///
-    /// `interface` additionally requests EVMole's argument, mutability and metadata
-    /// capabilities and keeps them for the `interface` listing; every other navigation
-    /// command asks only for selectors, so its cost is unchanged.
+    /// Discover selector candidates once; optionally retain native interface metadata.
     pub fn discover(
         navigation: &Navigation,
         interface: bool,
@@ -1102,7 +1092,6 @@ impl FunctionNavigation {
         Ok(witnesses)
     }
 
-    /// The copy-only coordinate a row prints and `--at` accepts.
     pub fn function_coordinate(
         &self,
         navigation: &Navigation,
@@ -1409,7 +1398,7 @@ impl FunctionNavigation {
         perf.record("query", query);
         let function = preparation?;
         perf.counters.records = Some(1);
-        // Distinguish full-input decoding from selected raw target in existing sidecar fields.
+
         perf.counters.semantic_nodes = Some(function.contexts.len());
         perf.counters.matches = Some(
             function

@@ -1,7 +1,4 @@
-//! Process-local immutable input snapshots and bounded target lifetimes.
-//!
-//! A target owns private copies, not an open descriptor to a caller's mutable file.
-//! Acquiring an Arc retains storage and its byte reservation after the handle is closed.
+//! Immutable private snapshots; acquired requests retain bytes after handle closure.
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
@@ -17,8 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
-/// Cooperative checks supplied by the transport-independent request scheduler.
-/// Guards are released before a completed capture becomes a durable target.
+/// Cooperative capture cancellation/deadline checks; cleared before publication.
 pub type CaptureCheck = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -226,9 +222,7 @@ impl TargetStore {
                 "snapshot byte budget and depth must be positive",
             ));
         }
-        // Capture traversal runs in the protocol process, whose blocking threads
-        // use a smaller stack than the isolated analysis worker. Never accept an
-        // operator limit that lets untrusted directories exhaust that stack.
+        // Traversal runs on smaller-stack server threads, so depth must stay bounded.
         if limits.max_depth > 256 {
             return Err(invalid_query(
                 "snapshot depth cannot exceed the safe server ceiling of 256",
@@ -1163,8 +1157,7 @@ fn safe_name(name: &str) -> Result<&str> {
     Ok(name)
 }
 
-/// Windows normalizes short absolute paths before CreateFile, even with
-/// create_new. Reject device/stream and aliased names before any private write.
+/// Reject Windows device, stream and normalized aliases before private writes.
 #[cfg(windows)]
 fn validate_snapshot_component(name: &std::ffi::OsStr) -> Result<()> {
     let name = name
@@ -1265,9 +1258,8 @@ fn open_beneath(root: &File, relative: &Path, directory: bool) -> Result<File> {
         os::unix::ffi::OsStrExt,
         path::Component,
     };
-    // dup/try_clone shares a directory stream offset with the configured root.
-    // Reopen its static "." relative to the held descriptor for a fresh cursor.
-    // SAFETY: root is live and the static C string is NUL terminated.
+    // Reopen root-relative "." for an independent directory cursor.
+    // SAFETY: root is live; the static path is NUL-terminated.
     let initial = unsafe {
         libc::openat(
             root.as_raw_fd(),

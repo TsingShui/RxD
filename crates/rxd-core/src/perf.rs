@@ -134,12 +134,7 @@ impl Perf {
         }
     }
 
-    /// Fold one shard's metrics into this one.
-    ///
-    /// Counters and stage timings add up, which is exactly what the serial multi-file
-    /// directory scan already produces by reusing one `Perf` across files, so parallel and
-    /// serial scans report identical sidecars. Peak RSS keeps the maximum instead of a sum,
-    /// because the workers share one process.
+    /// Sum shard counters/timings; retain maximum RSS for the shared process.
     pub fn merge(&mut self, other: &Self) {
         macro_rules! merge_counters {
             ($($field:ident),* $(,)?) => {
@@ -201,7 +196,6 @@ impl Perf {
         let _ = stderr.write_all(b"\n");
     }
 
-    /// Record a stage a backend already timed itself, without wrapping it in a closure.
     pub fn stage_ns(&mut self, stage: &'static str, nanos: u64) {
         if !self.enabled() {
             return;
@@ -209,7 +203,6 @@ impl Perf {
         *self.stages_ns.entry(stage).or_insert(0) += nanos;
     }
 
-    /// Record a backend-specific counter.
     pub fn extra(&mut self, name: &'static str, units: usize) {
         if !self.enabled() {
             return;

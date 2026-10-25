@@ -1,10 +1,5 @@
-//! DEX 041 logical containers.
-//!
-//! A 041 entry can hold several logical DEX files: each carries a 0x78-byte header
-//! whose section offsets are relative to the physical container start. The scanner
-//! expects a checked view whose header sits at offset zero, so each logical header
-//! is overlaid on a copy of the whole container and the complete address space is
-//! kept.
+//! DEX 041 section offsets are container-relative.
+//! Logical views overlay one header at offset zero while retaining the whole address space.
 
 use crate::bytes::read_u32;
 use anyhow::{Context, Result, bail};
@@ -55,15 +50,7 @@ pub(crate) struct LogicalDex<'a> {
     pub(crate) data: Cow<'a, [u8]>,
 }
 
-/// A copy of a DEX 041 view whose header looks like a standard 0x70 header.
-///
-/// `None` for anything that is not a 041 header, in which case the caller keeps
-/// using its own bytes. DEX 041 adds two header fields after the standard ones and
-/// its checksum covers the whole container, neither of which `rasc-dex`
-/// accepts (`invalid DEX header_size: 120`), so the decompiler is handed a view
-/// whose header size says 0x70 and whose Adler-32 matches the view again.
-/// Section offsets stay container-relative, which is exactly what the buffer
-/// produced by [`logical_dexes`] provides.
+/// Adapt a DEX 041 header/checksum for the decompiler; keep container-relative offsets.
 pub(crate) fn standard_header_view(data: &[u8]) -> Option<Vec<u8>> {
     if data.len() < HEADER_SIZE_041 || data.get(..8) != Some(b"dex\n041\0") {
         return None;
@@ -75,16 +62,13 @@ pub(crate) fn standard_header_view(data: &[u8]) -> Option<Vec<u8>> {
 
 fn normalize_standard_header(view: &mut [u8]) {
     view[0x24..0x28].copy_from_slice(&0x70u32.to_le_bytes());
-    // The member's own `file_size` stops at its header/section block, while its
-    // section offsets are container-relative and reach past that, so the view
-    // has to declare the whole container as its file.
+    // Sections can extend beyond the member size; the view spans the container.
     let file_size = view.len() as u32;
     view[0x20..0x24].copy_from_slice(&file_size.to_le_bytes());
     let checksum = adler32(&view[12..]);
     view[0x08..0x0C].copy_from_slice(&checksum.to_le_bytes());
 }
 
-/// DEX header checksum, the value `rasc-dex` validates before parsing.
 fn adler32(bytes: &[u8]) -> u32 {
     let (mut a, mut b) = (1u32, 0u32);
     for byte in bytes {
@@ -94,14 +78,7 @@ fn adler32(bytes: &[u8]) -> u32 {
     (b << 16) | a
 }
 
-/// Iterator over the logical DEXes of one entry, produced one member at a time.
-///
-/// Every container member needs its own copy of the container with its header
-/// overlaid at offset zero (DEX 041 section offsets are relative to the physical
-/// container), so materializing all of them costs `members × entry size` of
-/// resident memory: a 398 KiB entry with 3400 members measured **1.34 GiB** of
-/// RSS before this became lazy. Members are therefore produced on demand, and a
-/// caller that stops early (a `getclass` hit) never copies the rest.
+/// Yield logical DEX views lazily to avoid members × container-size memory.
 pub(crate) struct LogicalDexes<'a> {
     name: &'a str,
     data: &'a [u8],
@@ -139,11 +116,7 @@ impl<'a> Iterator for LogicalDexes<'a> {
     }
 }
 
-/// The logical DEXes in `data`: validated up front, yielded lazily.
-///
-/// A single-member 041 container — and any ordinary DEX — keeps the entry's own
-/// name and borrowed bytes, which is what the reference implementation does;
-/// only a container with several members renames them `name!classesN.dex`.
+/// Validate all members, then yield views lazily; only multi-member views are renamed.
 pub(crate) fn logical_dexes<'a>(name: &'a str, data: &'a [u8]) -> Result<LogicalDexes<'a>> {
     let plain = LogicalDexes {
         name,
@@ -199,9 +172,6 @@ mod tests {
     }
     #[test]
     fn single_member_041_container_keeps_the_plain_name_and_bytes() {
-        // One member means the container is that DEX with an extra-long header:
-        // the overlay would be a no-op and the reference yields it under the
-        // entry's own name, so nothing is copied.
         let container = crate::dex::tests::dex041_container(&[1]);
         let mut logical = logical_dexes("classes.dex", &container).unwrap();
         let member = logical.next().expect("one member");
@@ -212,10 +182,7 @@ mod tests {
 
     #[test]
     fn logical_members_are_produced_lazily() {
-        // A tiling container with 8000 members in a 600 KiB entry. Materializing
-        // the members (each one copies the whole container, which is what the
-        // first implementation did) would need ~4.8 GiB here; taking one member
-        // costs a single copy instead.
+        // Taking one of 8,000 members must allocate only one container copy.
         const MEMBERS: usize = 8000;
         let size = HEADER_SIZE_041 * MEMBERS;
         let mut data = vec![0; size];

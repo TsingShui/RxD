@@ -104,8 +104,7 @@ fn dotnet_string_inventory_retains_all_heap_identities_owners_and_lossless_units
     );
 }
 
-/// `--at` is an identity whose table names its kind; `-f` is a content search and can only
-/// look at literals, because a .NET member is a token rather than a name.
+/// Tokens name member identities; content matching searches decoded literals.
 #[test]
 fn dotnet_xref_takes_a_token_or_a_literal_search() {
     let path = string_input();
@@ -375,9 +374,7 @@ fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
     let oracle = string_expected();
     let entries = oracle["entries"].as_array().unwrap();
 
-    // A `ldstr` operand names the heap entry it loads: the token is a usable
-    // coordinate and the decoded literal travels with it, so reading IL does not
-    // require a second `strings` round trip.
+    // ldstr operands expose both their #US coordinate and decoded literal.
     for entry in entries {
         for site in entry["uses"].as_array().unwrap() {
             let token = entry["token"].as_u64().unwrap();
@@ -406,7 +403,6 @@ fn dotnet_user_string_tokens_are_navigable_from_operands_and_xref_headers() {
         }
     }
 
-    // The header names what a string reference query resolved to instead of `null`.
     for entry in entries {
         if entry["uses"].as_array().unwrap().is_empty() {
             continue;

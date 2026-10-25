@@ -503,8 +503,7 @@ fn refused(output: Output) {
     assert!(output.stdout.is_empty());
 }
 
-/// A coordinate is what a row prints: `<kind>:<start>:<end>`, with the input identity in
-/// the header rather than inside every id.
+/// Coordinates are file-scoped <kind>:<start>:<end> spans.
 fn js_full_id(_header: &Value, at: &str) -> String {
     at.to_owned()
 }
@@ -1986,8 +1985,7 @@ fn get_symbol_validates_identity_budgets_and_atomic_outputs_without_changing_str
     assert_eq!(reports.len(), 2);
     assert_eq!(reports[0]["counters"]["records"], 1);
     assert!(reports[0]["stages_ns"]["semantic"].as_u64().unwrap() > 0);
-    // The semantic index is still built on demand and still counted; its ceiling is not a
-    // CLI knob, so the test asserts the reported work instead of tuning it.
+    // Semantic indexing remains on demand; check reported work, not CLI quotas.
     assert!(reports[0]["counters"]["semantic_nodes"].as_u64().unwrap() > 0);
     let legacy = invoke(
         "slice",
@@ -2698,7 +2696,7 @@ fn recursive_budgets_and_late_errors_leave_output_untouched() {
         .stdout
         .len();
     let total_bytes = first_bytes + invoke("entities", &last, &[]).stdout.len();
-    // The byte ceiling is internal now, so the recursive stream is measured, not limited.
+
     assert!(total_bytes > first_bytes);
     let destination = dir.path().join("output.jsonl");
     fs::write(&destination, "keep me").unwrap();
@@ -4482,8 +4480,7 @@ fn asar_extract_then_js_queries_preserve_exact_navigation() {
         &archive,
         &["--at", "main.cjs", "-o", destination.to_str().unwrap()],
     ));
-    // The coordinate came from the previous content of this path; it names a span, so it
-    // still resolves.
+    // Span coordinates still resolve after a same-path content change.
     success(&invoke("slice", &destination, &["--at", &id]));
 }
 

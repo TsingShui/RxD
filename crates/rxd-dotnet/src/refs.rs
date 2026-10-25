@@ -80,9 +80,7 @@ pub(crate) struct Resolver<'a> {
     owners: BTreeMap<u32, Owner>,
     active: BTreeSet<u32>,
     named: BTreeMap<(ScopeIdentity, String, String), u32>,
-    // Candidate indices are only needed to resolve MemberRef/TypeRef identities. A
-    // MethodDef/FieldDef operand resolves directly, so building three whole-module
-    // indices before answering one FETCH record was wasted work.
+    // Only MemberRef/TypeRef resolution needs whole-module candidate indices.
     method_index: Option<MemberIndex>,
     field_index: Option<MemberIndex>,
     type_index: Option<TypeIndex>,
@@ -1089,7 +1087,6 @@ impl TargetResolver<'_> {
 }
 
 impl Input {
-    /// Open one semantic resolver for this input.
     pub fn target_resolver(&self) -> Result<TargetResolver<'_>> {
         Ok(TargetResolver {
             resolver: Resolver::new(self, 0)?,

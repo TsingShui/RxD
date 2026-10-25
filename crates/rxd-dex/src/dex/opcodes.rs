@@ -1,8 +1,4 @@
-//! Opcode encoding tables for the reference scan.
-//!
-//! Widths and reference kinds are two 256-entry tables generated from the range
-//! lists below. The tests keep independently written transcriptions of both lists,
-//! so editing a table cannot silently change how instructions decode.
+//! Reference opcode widths/kinds; tests independently transcribe the tables.
 
 use super::RefKind;
 use crate::bytes::{read_u16, read_u32};
@@ -62,7 +58,6 @@ const fn opcode_units(opcode: u8) -> u8 {
     }
 }
 
-/// Bitmask of `RefKind::bit` values whose references this opcode can carry.
 const fn opcode_kinds(opcode: u8) -> u8 {
     let mut mask = 0;
     if matches!(opcode, 0x1a | 0x1b) {
@@ -80,8 +75,6 @@ const fn opcode_kinds(opcode: u8) -> u8 {
     mask
 }
 
-/// Width and kind tables, so the instruction loop does two loads instead of two
-/// function calls per instruction.
 pub(super) const OPCODE_UNITS: [u8; 256] = {
     let mut table = [0u8; 256];
     let mut opcode = 0;
@@ -102,12 +95,7 @@ pub(super) const OPCODE_KINDS: [u8; 256] = {
     table
 };
 
-/// Width in the low byte and the kind mask in the high byte, so the instruction loop
-/// does one dependent load per instruction instead of two from different cache lines.
-///
-/// The loop is latency-bound (`code[pc]` -> table -> `pc`), so removing a load from
-/// that chain is worth more than the table being twice as large: 512 bytes still fit
-/// in four cache lines.
+/// Low byte: width; high byte: reference-kind mask.
 pub(super) const OPCODE_INFO: [u16; 256] = {
     let mut table = [0u16; 256];
     let mut opcode = 0;
@@ -146,7 +134,7 @@ pub(super) fn instruction_units(code: &[u8], pc: usize) -> Result<usize> {
 mod tests {
     use super::*;
 
-    /// Verbatim transcription of the width match that `OPCODE_UNITS` replaced.
+    /// Independent opcode-width transcription.
     fn instruction_units_reference(opcode: u8) -> Result<usize> {
         Ok(match opcode {
             0x01
@@ -266,7 +254,7 @@ mod tests {
         );
     }
 
-    /// Reference transcription of the filter the table replaced.
+    /// Independent opcode-kind transcription.
     fn opcode_matches_reference(kind: RefKind, opcode: u8) -> bool {
         match kind {
             RefKind::String => matches!(opcode, 0x1a | 0x1b),

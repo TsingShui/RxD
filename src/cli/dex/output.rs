@@ -10,12 +10,7 @@ fn payload_writer() -> impl Write {
     io::BufWriter::new(io::stdout().lock())
 }
 
-/// Writes a command's payload to stdout and, when `output` is set, to that file
-/// as well.
-///
-/// Diagnostics deliberately do not travel through here: they go to stderr, so a
-/// redirected payload can never pick up the `--perf` record, and the file always
-/// receives exactly the bytes stdout received.
+/// Write identical payload bytes to stdout and an optional file; diagnostics stay separate.
 pub(super) fn emit(payload: &str, output: Option<&Path>) -> Result<()> {
     if let Some(path) = output {
         fs::write(path, payload).with_context(|| format!("write {}", path.display()))?;
@@ -30,12 +25,7 @@ pub(super) fn emit(payload: &str, output: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
-/// Writes payload chunks to stdout and, when `output` is set, to that file as well.
-///
-/// Produces exactly the bytes [`emit`] would produce for the concatenation, but each
-/// chunk is released as it is written. A class index is a ~59 MiB payload, and holding
-/// the rendered chunks plus a joined copy of them peak-doubled the command's memory.
-/// Returns the number of bytes written.
+/// Emit chunks with the same bytes as emit, releasing each after writing.
 pub(super) fn emit_rows(
     chunks: impl Iterator<Item = String>,
     output: Option<&Path>,

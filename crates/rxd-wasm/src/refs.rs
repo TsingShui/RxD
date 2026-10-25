@@ -4,9 +4,7 @@ use std::collections::HashSet;
 use crate::model::Reference;
 use crate::module::{Module, OpSummary};
 
-/// Find every explicit instruction reference to the selected targets in one scan via
-/// `call`, `return_call`, or `ref.func`. `call_indirect` is never resolved to a
-/// concrete callee and is therefore not matched here.
+/// Scan explicit call/return_call/ref.func targets; never resolve call_indirect.
 pub fn refs(module: &Module, targets: &[u32]) -> Result<Vec<Reference>> {
     let limits = module.limits();
     ensure!(

@@ -214,6 +214,8 @@ Use `rustfmt`, four-space indentation, `snake_case` functions/modules, and
 `UpperCamelCase` types. Keep parsing within backend crates. Preserve original
 UTF-8 spans, deterministic ordering, and each backend's tested output contracts.
 Write diagnostics to stderr.
+Keep each comment block at most two lines, including doc comments. Delete redundant
+comments; retain concise contracts, non-obvious invariants and safety conditions.
 
 ## Testing Guidelines
 

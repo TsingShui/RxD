@@ -1,17 +1,5 @@
-//! Differential tests against WABT's official wasm-decompile test suite.
-//!
-//! WABT is the upstream reference tool rxd's decompiler is modeled on. Its
-//! `test/decompile/*.txt` cases are committed verbatim under
-//! `tests/corpus/wasm/` (Apache-2.0, provenance in `wasm-expectations.json`),
-//! compiled once to deterministic `.wasm` fixtures. These tests run rxd against
-//! those fixtures offline and compare with WABT's committed expected output.
-//!
-//! WABT is a differential oracle, never invoked at test time. Comparison is
-//! structural, not byte-for-byte: rxd deliberately scopes out some of
-//! wasm-decompile's readability passes (struct detection, offset-after-index
-//! folding, full multi-value stack flushing). What MUST hold is control-flow
-//! recovery equivalence; known representation divergences are asserted
-//! explicitly so a regression is visible rather than hidden.
+//! Offline differential checks against pinned WABT decompilation fixtures.
+//! Assert control-flow equivalence and explicit representation divergences.
 use super::*;
 
 use std::collections::BTreeMap;
@@ -112,9 +100,7 @@ fn wabt_precedence_matches_wasm_decompile_byte_for_byte() {
     let wasm = corpus_dir().join(case["wasm"].as_str().unwrap());
     let expected = get_expected(case, "precedence").unwrap();
     let rxd = rxd_decompile(&wasm, "precedence").expect("precedence must decompile");
-    // Compare function bodies byte-for-byte. The only header difference is the
-    // `export` marker, which rxd intentionally omits (export status is a
-    // separate `exports` fact, not part of the function's logic).
+    // Compare bodies exactly; export status is metadata, not a rendered header.
     let body = |s: &str| {
         let start = s.find('{').unwrap();
         let end = s.rfind('}').unwrap();
@@ -129,10 +115,7 @@ fn wabt_precedence_matches_wasm_decompile_byte_for_byte() {
 
 #[test]
 fn wabt_control_flow_recovery_matches_the_reference() {
-    // Across every compilable official case, control-flow structure recovered
-    // by rxd must match wasm-decompile wherever rxd produces decompiled output.
-    // Representation-only divergences (struct detection, stack flushing) do not
-    // change these counts.
+    // Compare recovered control flow, excluding known representation-only differences.
     let cases = expectations();
     let mut compared = 0;
     for case in cases["cases"].as_array().unwrap() {
@@ -164,10 +147,7 @@ fn wabt_control_flow_recovery_matches_the_reference() {
 
 #[test]
 fn wabt_block_parameter_signature_degrades_safely() {
-    // basic.txt's main function uses `block (param i32)` / block-as-expression,
-    // a multi-value stack situation rxd conservatively declines rather than
-    // guess. This is a documented divergence from wasm-decompile; it must
-    // degrade cleanly (never crash, never emit guessed code).
+    // Block parameters are unsupported here; require clean instruction fallback.
     let cases = expectations();
     let case = cases["cases"]
         .as_array()

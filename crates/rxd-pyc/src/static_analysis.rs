@@ -1,4 +1,4 @@
-//! Bounded static PYC metadata from the existing marshal parser. No AST or instruction scan.
+//! Static PYC metadata and marshal evidence; no instruction scan.
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::Path,
@@ -53,7 +53,7 @@ pub struct CodeEntry {
     pub parent: Option<usize>,
     pub incoming: Vec<Incoming>,
 }
-/// The fixed input and parser evidence are shared by static commands.
+
 pub struct Analysis {
     pub bytes: Vec<u8>,
     pub source_id: String,
@@ -78,9 +78,7 @@ impl Analysis {
         perf.source_id = Some(source_id.clone());
         let mut parse_counts = None;
         let parsed = perf.measure("parse", || -> Result<_> {
-            // Only independently verified final CPython formats. A magic identifies
-            // a format, not its producer's patch release; raw versions use this
-            // same exact allowlist rather than nearest-version selection.
+            // Accept verified final CPython magic values, never nearest-version guesses.
             const FINALS: &[(u8, u16)] = &[(8, 3413), (9, 3425), (10, 3439), (11, 3495), (12, 3531), (13, 3571)];
             let (version, base) = match version {
                 Some((3, minor)) => {

@@ -116,9 +116,7 @@ pub fn dex041_container(class_counts: &[usize]) -> Vec<u8> {
     }
     let total = out.len() as u32;
     for header in headers {
-        // `container_size` is the whole container; each member keeps its own
-        // `file_size`, which is what enumerates the members (the reference
-        // implementation advances the same way).
+        // container_size spans all members; file_size advances to the next header.
         write_u32(&mut out, header + 0x70, total);
     }
     out
@@ -173,10 +171,7 @@ fn const_string_fixture_with(class_count: usize, base: u32, header_size: usize) 
         data.extend_from_slice(&0_u16.to_le_bytes()); // ins_size
         data.extend_from_slice(&0_u16.to_le_bytes()); // outs_size
         data.extend_from_slice(&0_u16.to_le_bytes()); // tries_size
-        data.extend_from_slice(&0_u32.to_le_bytes()); // debug_info_off
-        // Two loads of the same string in one method. A count of *uses* would say two
-        // and a count of *methods* says one, so a fixture with a single load per method
-        // cannot tell the two rules apart - and the census is supposed to report methods.
+        data.extend_from_slice(&0_u32.to_le_bytes()); // Two loads in one method distinguish uses from referencing-method counts.
         data.extend_from_slice(&5_u32.to_le_bytes()); // insns_size in code units
         data.extend_from_slice(&0x001a_u16.to_le_bytes()); // const-string v0, #0
         data.extend_from_slice(&0_u16.to_le_bytes());
@@ -244,9 +239,7 @@ fn const_string_fixture_with(class_count: usize, base: u32, header_size: usize) 
         write_u32(&mut out, class_def + 24, (*class_data_off as u32) + base);
     }
     out[data_off..].copy_from_slice(&data);
-    // The scanner ignores the checksum, but the decompiler validates it before
-    // parsing, so the fixture carries a correct Adler-32 over the payload
-    // (everything after the 12-byte checksum/signature prefix).
+    // The decompiler requires the fixture's Adler-32 after the 12-byte prefix.
     let checksum = adler32(&out[12..]);
     write_u32(&mut out, 0x08, checksum);
     out
@@ -340,9 +333,7 @@ pub fn binary_manifest_with_cdata(cdata: &str) -> Vec<u8> {
     let mut offsets = Vec::new();
     for string in &strings {
         offsets.push(data.len() as u32);
-        // AOSP writes a length as one byte, or as two when the high bit of the
-        // first marks the extended form; both the UTF-16 and the byte length
-        // use whichever form they need.
+        // AOSP lengths use a high-bit extended form when one byte is insufficient.
         for length in [string.chars().count(), string.len()] {
             if length >= 0x80 {
                 data.push(0x80 | (length >> 8) as u8);

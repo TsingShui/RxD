@@ -126,9 +126,7 @@ fn dotnet_class_rows_route_fetch_and_type_xref() {
 
 #[test]
 fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
-    // The per-body and whole-class projections are bounded by the selected output
-    // envelope. `Input::read` ignores that dimension, so the guards can be exercised
-    // without a giant fixture: the accounting must refuse before allocating/serializing.
+    // Tight library output quotas test preflight failure without giant inputs.
     let fixture = input();
     let tight = rxd_dotnet::Limits {
         output_bytes: Some(1),
@@ -265,9 +263,7 @@ fn dotnet_lazy_signatures_keep_unrelated_corruption_local() {
     let destination = directory.path().join("keep.jsonl");
     fs::write(&destination, b"keep").unwrap();
 
-    // The invalid signature belongs to the last method, which this filtered listing
-    // never emits or resolves: the query still answers, completely, from the rows and
-    // names it did read.
+    // The corrupt last signature is outside the filtered listing's scope.
     let listed = run(
         "methods",
         &changed,

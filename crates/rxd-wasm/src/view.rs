@@ -4,13 +4,7 @@ use wasmparser::{BinaryReader, FunctionBody, Operator};
 use crate::model::{FunctionView, Instruction, LocalDeclView, MemArg, Operand};
 use crate::module::Module;
 
-/// Decode one defined function into the conservative instruction view.
-///
-/// Covered proposals (MVP + widely deployed): the instruction decodes fully.
-/// A reachable but uncovered opcode/proposal produces a degraded view with
-/// `reason = UNSUPPORTED_OPCODE: <mnemonic>` and `representation = wasm`,
-/// `decompiled = false`, preserving every instruction decoded so far plus the
-/// raw body bytes. Nothing is guessed.
+/// Decode original function instructions; unsupported opcodes retain raw body evidence.
 pub fn instruction_view(module: &Module, position: usize) -> Result<FunctionView> {
     let function = module.function_at(position).clone();
     let limits = module.limits();
@@ -78,7 +72,6 @@ pub fn instruction_view(module: &Module, position: usize) -> Result<FunctionView
     })
 }
 
-/// Public mnemonic lookup for other modules (e.g. the decompiler's degrade path).
 pub fn op_mnemonic(op: &Operator) -> &'static str {
     mnemonic(op)
 }
@@ -110,7 +103,6 @@ fn is_covered(op: &Operator) -> bool {
     wasmparser::for_each_operator!(classify)
 }
 
-/// Mnemonic derived from the `Operator` variant name, lower-cased with dots.
 fn mnemonic(op: &Operator) -> &'static str {
     macro_rules! name {
         ($( @$proposal:ident $opname:ident $({ $($arg:ident: $argty:ty),* })? => $visit:ident ($($ann:tt)*))*) => {
@@ -128,9 +120,7 @@ fn mnemonic(op: &Operator) -> &'static str {
     wasmparser::for_each_operator!(name)
 }
 
-/// `visit_i32_add` -> `i32.add`, `visit_local_get` -> `local.get`,
-/// `visit_br_if` -> `br_if`. The visitor names already encode the mnemonic;
-/// the first namespace segment is joined to the rest with `.`.
+/// Convert visitor names to mnemonics, e.g. visit_i32_add -> i32.add.
 fn stringify_mnemonic(visit: &'static str) -> &'static str {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
@@ -215,7 +205,6 @@ fn operand(op: &Operator) -> Operand {
     }
 }
 
-/// Linear-memory load/store operators carry a `MemArg`; extract it uniformly.
 fn memory_operand(op: &Operator) -> Option<Operand> {
     let memarg = match op {
         Operator::I32Load { memarg }

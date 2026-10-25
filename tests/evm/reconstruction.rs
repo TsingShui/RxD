@@ -612,9 +612,7 @@ fn evm_branch_fetch_structures_compiled_conditions_and_terminal_arms() {
 
 #[test]
 fn evm_branch_join_assigns_each_predecessor_value_before_reusing_it() {
-    // Authored source facts: entry32; calldata x<10 branches at43. True54
-    // leaves 17; false44 leaves34. Both jump to64; ADD67 produces 20/37,
-    // then the same computed value is stored in storage and memory.
+    // Both branch values reach ADD67 and feed the same storage/memory writes.
     let prefix = "5f3560e01c8063112233441460205700";
     let mut carrier = format!(
         "{prefix}{}5b50600435600a8110603657506022604056",
@@ -677,9 +675,7 @@ fn evm_branch_join_assigns_each_predecessor_value_before_reusing_it() {
 
 #[test]
 fn evm_branch_incompatible_join_heights_keep_explicit_complete_gotos() {
-    // Both paths reach original PC64, but true carries one word and false two.
-    // Preserve contextual paths and report that a single structured join is
-    // unsupported; never silently discard a predecessor's extra stack word.
+    // Unequal predecessor stacks must degrade rather than drop an extra word.
     let prefix = "5f3560e01c8063112233441460205700";
     let mut carrier = format!(
         "{prefix}{}5b50600435600a81106036575060226033604056",
@@ -722,9 +718,7 @@ fn evm_branch_incompatible_join_heights_keep_explicit_complete_gotos() {
 
 #[test]
 fn evm_nested_branch_join_keeps_state_reads_and_all_three_edge_values() {
-    // Read slot1 once at36, then branch at42; one arm writes slot1=51 and
-    // leaves136. The other writes slot1=34 and nests a branch leaving119/102.
-    // Join96 writes that selected value to slot0 and the old slot1 read to memory.
+    // Read slot1 before branching; preserve the selected write and old loaded value.
     let prefix = "5f3560e01c8063112233441460205700";
     let mut carrier = format!(
         "{prefix}{}5b506001546004356050576022600155602435603c576066606056",
@@ -921,9 +915,7 @@ fn evm_loop_fetch_structures_compiled_sum_with_simultaneous_carried_values() {
 
 #[test]
 fn evm_branch_structuring_covers_every_nested_guard_and_revert_arm() {
-    // 64 nested calldata guards all share one revert region. An explicit work
-    // bound covers graph analysis, duplicated mutually exclusive terminal arms,
-    // nesting and rendered output. No recursion or dense graph allocation.
+    // Sixty-four nested guards share one revert region; structuring must stay iterative.
     let prefix = "5f3560e01c8063112233441460205700";
     let mut carrier = format!(
         "{prefix}{}5b50{}00",

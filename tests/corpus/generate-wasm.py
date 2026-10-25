@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Generate committed WASM differential fixtures from WABT's official
-decompile test cases.
-
-For each tests/corpus/wasm/<case>.txt (verbatim WABT source, provenance-pinned),
-extract the WAT input and the expected wasm-decompile output, compile the WAT to
-a deterministic .wasm with `wat2wasm --debug-names`, and record per-function
-expected text in wasm-expectations.json. The test suite then runs rxd against the
-committed .wasm offline and compares against the committed wasm-decompile
-expectations — WABT is the differential oracle, never invoked at test time.
-
-Run from repo root:  python3 tests/corpus/generate-wasm.py <wat2wasm>
-"""
+"""Build pinned WABT fixtures and expected decompilation; run from root with <wat2wasm>."""
 import sys, os, re, json, hashlib, subprocess, tempfile
 
 WAT2WASM = sys.argv[1] if len(sys.argv) > 1 else "wat2wasm"

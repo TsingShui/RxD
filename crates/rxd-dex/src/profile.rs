@@ -1,14 +1,5 @@
-//! Stage profiling for `--debug`.
-//!
-//! One process runs one DEX command, so the profiler is a process-global that the CLI
-//! switches on before dispatch. Every call site is a `measure(stage, ..)` wrapper: when
-//! profiling is off it costs one relaxed load and no clock reads, which keeps the normal
-//! path free of instrumentation. Rayon workers update the same atomics, so a parallel
-//! scan aggregates into one report instead of one line per thread.
-//!
-//! The output is deliberately fixed-width and deterministic: one line for stage totals in
-//! declaration order, one for counters, one for wall time. Nothing is omitted when it is
-//! zero, so two reports are always comparable line by line.
+//! Process-local DEX stage/counter profiling shared by Rayon workers.
+//! Disabled profiling performs no clock reads.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,23 +11,23 @@ pub enum Stage {
     Map,
     /// Walking the central directory into DEX entries.
     ZipIndex,
-    /// Ordering the selected entries.
+
     Select,
-    /// Inflating one entry.
+
     Inflate,
     /// Parsing the DEX header and section table.
     Header,
-    /// Resolving class/member/string identities.
+
     Members,
-    /// Scanning code items for reference hits.
+
     Scan,
     /// Rendering hit rows.
     Render,
     /// Parsing a DEX for the Java emitter.
     Engine,
-    /// Emitting Java for one class.
+
     Emit,
-    /// Decoding AndroidManifest.xml.
+
     Manifest,
 }
 
@@ -65,19 +56,18 @@ impl Stage {
 
 #[derive(Clone, Copy)]
 pub enum Counter {
-    /// DEX entries the archive selected.
     Entries,
     /// Logical DEX files scanned (a 041 container holds several).
     DexFiles,
-    /// Class definitions visited.
+
     Classes,
     /// Code items (methods with a body) visited.
     CodeItems,
-    /// Reference hits found.
+
     Hits,
     /// DEX bytes made available to the parser.
     Bytes,
-    /// String-table entries visited.
+
     Strings,
 }
 
@@ -155,7 +145,6 @@ fn add_nanos(stage: Stage, elapsed: Duration) {
     profile().stages[stage.slot()].fetch_add(nanos, Ordering::Relaxed);
 }
 
-/// Count one kind of work unit.
 pub fn count(counter: Counter, units: u64) {
     if !enabled() {
         return;
@@ -163,13 +152,9 @@ pub fn count(counter: Counter, units: u64) {
     profile().counters[counter.slot()].fetch_add(units, Ordering::Relaxed);
 }
 
-/// One stage or counter total: its declared label and its accumulated value.
 type Totals = Vec<(&'static str, u64)>;
 
-/// The stage and counter totals this process has accumulated.
-///
-/// The CLI folds these into the shared perf record, so a DEX query reports the same JSONL
-/// sidecar as every other backend instead of its own text lines.
+/// Return accumulated stage/counter totals for the shared perf sidecar.
 pub fn values() -> (Totals, Totals) {
     if !enabled() {
         return (Vec::new(), Vec::new());
