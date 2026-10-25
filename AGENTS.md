@@ -56,7 +56,7 @@ The current layout is:
   parser expectations, and the WABT wasm-decompile differential suite;
   provenance and generation instructions are in `tests/corpus/README.md` and
   per-backend corpus READMEs.
-- `benches/`: end-to-end benchmarks (`cli.py` for JS, `mcp.py`, `skill.py`),
+- `benches/`: end-to-end benchmarks (`cli.py` for JS, `mcp.py`),
   the pinned ILSpy build in `benches/ilspy/`, and measurement/perf contracts in
   `benches/README.md`. The per-backend runners written for the earlier CLI
   generation were removed; a backend that needs one gets it written against the
@@ -141,7 +141,7 @@ measurable contracts, never whether output is pleasant for a person to read.
 The 150 ms acceptance gate applies only to decompilation/analysis backend
 operations, including navigation, search, reference, extraction and
 reconstruction queries. Non-backend commands have no 150 ms requirement:
-installation/update, `mcp install`, skill installation/printing,
+installation/update, `mcp install`, skill printing,
 configuration/preview, help/version, standalone MCP startup/discovery/target
 lifecycle, maintenance, and build/test/release orchestration are exempt.
 Classify the operation, not its namespace: a backend query invoked through MCP

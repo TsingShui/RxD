@@ -1,22 +1,12 @@
 # CLI benchmarks and performance instrumentation
 
 **Scope:** the 150 ms gate applies only to existing decompilation/analysis backend
-queries. Installation, configuration, `mcp install`, skill management, help/version,
+queries. Installation, configuration, `mcp install`, skill printing, help/version,
 standalone MCP discovery/lifecycle, maintenance and build/test/release orchestration are
 not gated, and code changes there do not require latency benchmarks or numeric
 exceptions. Runners and historical timings may remain as optional diagnostics; their
 `>150ms` counts are not acceptance failures. Functional, safety, completeness and
 resource-budget checks are never exempt. See `AGENTS.md` for the authoritative scope.
-
-The root Agent-skill installer is measured with
-`python3 benches/skill.py --binary /path/to/release/rxd --samples 20 --output target/benchmarks/skill`.
-The runner does not build; the caller supplies and freezes the release executable. It
-measures first install, replacement of synthetic old content, repeated identical
-content, print and `all` four-target install in isolated HOME/CODEX_HOME, including
-fresh processes, complete stdout/stderr and real file writes. Target setup is outside
-timing; OS caches are not cleared. Raw samples, median, nearest-rank P95, >150 ms share,
-skill bytes/hashes, executable/embedded-source identity, hardware and cache conditions
-are saved. Installer measurements do not imply analysis-backend acceptance.
 
 Benchmarks use Python 3.9+ standard library and start the real CLI. Input JavaScript is
 parsed, never executed; no unit tests or in-memory AST microbenchmarks are substitutes.
@@ -210,8 +200,8 @@ Instrumentation is off by default and reads no clock per node/record.
 
 ## Available runners
 
-`cli.py` benchmarks JavaScript, `mcp.py` benchmarks the typed service and CLI, and
-`skill.py` benchmarks skill installation. There are no per-backend standalone runners.
+`cli.py` benchmarks JavaScript and `mcp.py` benchmarks the typed service and CLI.
+There are no per-backend standalone runners.
 `dotnet_strings_oracle.py` and `pyc_oracle.py` derive independent expectations;
 they are validation helpers, not benchmark runners.
 

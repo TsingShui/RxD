@@ -292,10 +292,5 @@ PUSH values) is parsing. Existing structured reconstruction (DEX/JVM→Java, IL�
 WASM→C-like, PYC→Python, selected EVM pseudo-code) remains subject to its declared
 support and fallback contracts.
 
-Install/update with `rxd skill install -a pi`, `-a codex`, `-a claude-code`,
-`-a agents`, multiple agents or `-a all`. Without `-a`, detected Pi/Codex/Claude
-user directories are selected; otherwise use the cross-agent directory. Codex
-honors nonempty `CODEX_HOME`, else `~/.codex`. Use `--dir DIR` for a custom skills
-root or `--print` for exact text; neither combines with explicit agent targets,
-and print never installs files. Re-running reports installed/updated/unchanged;
-identical content is not rewritten.
+`rxd skill` prints this exact Markdown to stdout and writes no files; placing it
+in an Agent skill directory is the caller's job.

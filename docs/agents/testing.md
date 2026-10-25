@@ -5,7 +5,7 @@ being made. This policy replaces the former unconditional pre-commit workspace
 Clippy + all-backend debug/release rule. Correctness requirements are unchanged;
 the 150 ms query gate is scoped to decompilation/analysis backend operations, not
 test-suite wall time or every executable command. Installation/configuration,
-`mcp install`, skill management, help/version, standalone MCP discovery/lifecycle,
+`mcp install`, skill printing, help/version, standalone MCP discovery/lifecycle,
 maintenance and build/test/release orchestration have no 150 ms acceptance gate.
 Do not require their timing batches or numeric exceptions just to merge; optional
 measurements do not replace functional/safety E2E or explicit resource limits.

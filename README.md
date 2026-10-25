@@ -37,18 +37,17 @@ result routing. Copy returned `at`/`context_at` values rather than inventing IDs
 
 The shell installer supports pinned and latest-stable installation once a public
 release is available; see [Install and update](docs/demo/install.md). After installing
-the binary, install the shared Agent skill:
+the binary, print the shared Agent skill:
 
 ```sh
-rxd skill install -a pi
+rxd skill
 ```
 
-The Pi skill is written to `~/.pi/agent/skills/rxd/SKILL.md` with the name `rxd` and
-covers every current backend. The skill is embedded in the binary; installation does
-not need the network or a source checkout.
+The skill is emitted as the exact `SKILL.md` Markdown on stdout with the name `rxd`,
+covers every current backend and needs no network or source checkout. `rxd skill`
+writes no files or Agent configuration; place the output where an Agent discovers it.
 
-Register the native MCP server separately from skill installation, using only roots
-that may be analyzed:
+Register the native MCP server separately, using only roots that may be analyzed:
 
 ```sh
 rxd mcp install -a pi --root /absolute/path/to/inputs --preview
@@ -183,7 +182,7 @@ supports ARM64/x86_64; Windows x64 is supported.
 ```sh
 git submodule update --init third_party/kuna
 cargo build --release
-target/release/rxd skill install -a pi
+target/release/rxd skill
 # Reduced builds remain explicit:
 cargo build --release --no-default-features --features backend-js
 # Backends and MCP, without a native C# engine:
@@ -206,32 +205,17 @@ instructions in [`devtools/android-ilspy/`](devtools/android-ilspy/). The full
 maintenance and release flow is in
 [Build and verification](docs/demo/ci.md#build-and-verification-details).
 
-**Agent skills**: after installing the binary, use the root entry point to select
-targets or print the skill:
+**Agent skills**: print the embedded Agent skill to stdout; it writes no files and
+configures no Agent:
 
 ```sh
-rxd skill install -a pi codex claude-code
-rxd skill install -a agents
-rxd skill install -a all
-rxd skill install
-rxd skill install --dir /path/to/skills
-rxd skill install --print
+rxd skill
 ```
 
-`-a/--agent` accepts multiple Agents; names are case-insensitive, `claude` and
-`claude-code` are equivalent, and duplicate targets are installed once. Pi uses
-`~/.pi/agent/skills`, Codex uses `skills` under a non-empty `CODEX_HOME` (otherwise
-`~/.codex/skills`), Claude Code uses `~/.claude/skills`, and cross-Agent installation
-uses `~/.agents/skills`; `all` selects all four locations. Without a target,
-installation uses detected Pi, Codex and Claude user directories, falling back to
-the cross-Agent directory.
-
-`--dir` is the skill root and writes `DIR/rxd/SKILL.md`; it cannot be combined with
-`--agent`. `--print` only emits the embedded skill and cannot be combined with an
-installation target. Reinstalling reports installed, updated or unchanged; identical
-content is not rewritten. Diagnostics go to stderr. Use the same command to update
-the skill; see `rxd skill install --help`. Installation does not initialize analysis
-backends or release analysis runtime caches.
+Redirect or copy the output into the skills directory an Agent discovers; the skill
+name is `rxd` and it covers every current backend. The Markdown is embedded in the
+binary, needs no network or source checkout, and diagnostics stay on stderr. Register
+MCP separately with `rxd mcp install`.
 
 ## 🧩 Supported formats
 

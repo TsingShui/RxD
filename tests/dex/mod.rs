@@ -635,7 +635,7 @@ fn dex_inflate_budget_preserves_environment_defaults_and_error_bytes() {
 }
 
 #[test]
-fn dex_retires_skill_installation_and_root_help_exposes_the_shared_entry() {
+fn dex_retires_skill_and_root_help_exposes_the_print_entry() {
     let home = tempfile::tempdir().unwrap();
     for backend in ["dex", "apk"] {
         let rejected = Command::new(env!("CARGO_BIN_EXE_rxd"))
@@ -664,14 +664,12 @@ fn dex_retires_skill_installation_and_root_help_exposes_the_shared_entry() {
     success(&help);
     assert!(text(&help).contains("skill"));
     assert!(text(&help).contains("RxD skill"));
-    let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["skill", "install", "--help"])
+    let skill = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["skill", "--help"])
         .output()
         .unwrap();
-    success(&help);
-    for parameter in ["--agent", "--dir", "--print", "DIR/rxd/SKILL.md"] {
-        assert!(text(&help).contains(parameter), "{parameter}");
-    }
+    success(&skill);
+    assert!(text(&skill).contains("Usage: rxd skill"));
     assert_eq!(fs::read_dir(home.path()).unwrap().count(), 0);
 }
 

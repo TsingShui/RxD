@@ -105,11 +105,8 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Backend {
-    /// Install the embedded RxD skill for coding agents.
-    Skill {
-        #[command(subcommand)]
-        command: skill::Command,
-    },
+    /// Print the embedded RxD skill for coding agents.
+    Skill,
     #[cfg(feature = "mcp")]
     /// Register or serve typed analysis tools over local MCP stdio.
     Mcp {
@@ -263,7 +260,7 @@ Default FETCH attempts C-like reconstruction and falls back to original instruct
 impl Cli {
     pub fn bypasses_worker(&self) -> bool {
         match self.backend {
-            Backend::Skill { .. } => true,
+            Backend::Skill => true,
             #[cfg(feature = "backend-dex")]
             Backend::Dex { .. } => true,
             #[cfg(feature = "backend-kuna")]
@@ -287,7 +284,7 @@ impl Cli {
         match &self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => false,
-            Backend::Skill { .. } => false,
+            Backend::Skill => false,
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => false,
             #[cfg(feature = "backend-dotnet")]
@@ -314,7 +311,7 @@ impl Cli {
         match self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => "mcp",
-            Backend::Skill { .. } => "skill",
+            Backend::Skill => "skill",
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => "kuna",
             #[cfg(feature = "backend-dotnet")]
@@ -341,7 +338,7 @@ impl Cli {
         match &self.backend {
             #[cfg(feature = "mcp")]
             Backend::Mcp { .. } => "mcp",
-            Backend::Skill { .. } => "skill",
+            Backend::Skill => "skill",
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => "kuna",
             #[cfg(feature = "backend-dotnet")]
@@ -403,7 +400,7 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
     match cli.backend {
         #[cfg(feature = "mcp")]
         Backend::Mcp { command } => crate::mcp::execute(command).map(|()| 0),
-        Backend::Skill { command } => skill::execute(command).map(|()| 0),
+        Backend::Skill => skill::execute().map(|()| 0),
         #[cfg(feature = "backend-kuna")]
         Backend::Kuna { args } => Ok(kuna::run(args)),
         #[cfg(feature = "backend-dotnet")]

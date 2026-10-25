@@ -39,15 +39,14 @@ target/release/rxd dex extract /path/to/app.apk --all -f lib/arm64-v8a/ -o targe
 target/release/rxd dex classes /path/to/classes.dex --threads 2
 ```
 
-The shared Agent skill is installed with the root entry and embedded in the binary:
+The shared Agent skill is printed by the root entry and embedded in the binary:
 
 ```sh
-target/release/rxd skill install --print
-target/release/rxd skill install --dir target/skills
+target/release/rxd skill
 ```
 
-The second writes `target/skills/rxd/SKILL.md`; see the
-[installation guide](../../README.md#-installation) for user Agent directories.
+Redirect or copy the output into the Agent skill directory you use; see the
+[installation guide](../../README.md#-installation).
 
 `-o` writes the same bytes while still emitting stdout; the `--perf` record goes to
 stderr. Method indices, field_ids and field slots use the actual input's indices.

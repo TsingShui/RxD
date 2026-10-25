@@ -119,8 +119,8 @@ rxd mcp install --help
 ```
 
 Repeat `-a/--agent` for multiple clients. `claude` and `claude-code` alias `cc`;
-duplicates are removed in pi/cc/codex order. Unlike `skill install`, there is no
-`agents` MCP target or generic-directory fallback. Automatic detection means a
+duplicates are removed in pi/cc/codex order. There is no `agents` MCP target or
+generic-directory fallback. Automatic detection means a
 client executable on PATH **or** an existing resolved native config file/directory
 (Pi agent dir, CC `~/.claude` or its override, Codex home). An override value alone
 is not detection. Explicit selection can create the chosen user configuration.
@@ -294,15 +294,15 @@ schemas were also checked; live documentation alone is not a version guarantee.
 
 ### Skills and unsupported-client fallback
 
-Install/update the generic embedded skill separately, offline:
+`rxd skill` prints the embedded generic skill offline and writes nothing:
 
 ```sh
-rxd skill install -a pi claude-code codex
-rxd skill install --print
+rxd skill
 ```
 
-The skill covers all current backends; identical bytes are not rewritten. Skill
-targets/detection differ from MCP: see [README](../../README.md#-installation). The old
-`rxd dex skill` entry is removed. Unsupported clients can still use manual stdio
-registration with the exact absolute executable/base/roots: see the
-[MCP demo](mcp.md). Never put a shell command string in an argv field.
+The skill covers all current backends. Placing the Markdown where an Agent discovers
+it is the caller's job; `rxd skill` creates no directories or Agent configuration.
+See [README](../../README.md#-installation). The old `rxd dex skill` entry is removed.
+Unsupported clients can still use manual stdio registration with the exact absolute
+executable/base/roots: see the [MCP demo](mcp.md). Never put a shell command string in
+an argv field.
