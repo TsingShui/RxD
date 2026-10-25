@@ -1,7 +1,7 @@
 # JavaScript examples
 
-Ordinary CLI work, semantic indexing, retained name/value metadata and bounded
-output scale with admitted input. Directory scans derive limits per file; lexical
+Ordinary CLI work, semantic indexing and retained name/value metadata scale with
+admitted input. Serialized output has no byte quota. Directory scans derive limits per file; lexical
 and static-fold recursion/expansion guards remain.
 MCP service quotas remain independent and unchanged.
 

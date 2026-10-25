@@ -46,8 +46,10 @@ impl Options {
     ) -> Result<Analysis> {
         let loaded = Analysis::load(input, version, self.limits(), perf);
         // Analysis owns parser limits; complete serialization is a CLI constraint.
-        if let Some(limits) = &mut perf.resource_limits {
-            limits.insert("output_bytes", self.budget.output_bytes);
+        if let Some(output_bytes) = self.budget.output_bytes
+            && let Some(limits) = &mut perf.resource_limits
+        {
+            limits.insert("output_bytes", output_bytes);
         }
         loaded
     }

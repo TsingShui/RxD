@@ -103,7 +103,8 @@ No result creates new DEX/EVM entity IDs or guarantees decompiled semantic equiv
 
 Backend analysis uses the same finite, input-scaled budget policy as the CLI. There
 are no MCP-only work, instruction, record, file, entry, capture or target-count quotas
-and no per-query `limits` object. Structural depth, expansion and address checks remain.
+and no per-query `limits` object. Serialized output has no input-derived byte quota;
+MCP still enforces shared in-flight storage. Structural depth, expansion and address checks remain.
 
 `rxd mcp serve --help` lists the adjustable service protections: incoming frames,
 active requests, workers/threads, deadlines, shared snapshot storage (including

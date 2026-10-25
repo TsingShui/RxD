@@ -1,18 +1,18 @@
-//! Complete-result buffering with explicit amplification bounds and fallible growth.
+//! Complete-result buffering with optional caller quotas and fallible growth.
 use std::io::{self, Write};
 
 use crate::{Error, Failure, Result};
 
 pub struct Output {
     bytes: Vec<u8>,
-    limit: usize,
+    limit: Option<usize>,
 }
 
 impl Output {
-    pub fn new(limit: usize) -> Self {
+    pub fn new(limit: impl Into<Option<usize>>) -> Self {
         Self {
             bytes: Vec::new(),
-            limit,
+            limit: limit.into(),
         }
     }
 
@@ -45,7 +45,10 @@ impl std::ops::Deref for Output {
 
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+        if self
+            .limit
+            .is_some_and(|limit| bytes.len() > limit.saturating_sub(self.bytes.len()))
+        {
             return Err(io::Error::new(io::ErrorKind::OutOfMemory, "output bytes"));
         }
         self.bytes
@@ -69,6 +72,10 @@ mod tests {
         let mut output = Output::new(4);
         output.json_line(&value).unwrap();
         assert_eq!(&*output, b"\"x\"\n");
+        let mut no_quota = Output::new(None);
+        no_quota.json_line(&value).unwrap();
+        no_quota.json_line(&value).unwrap();
+        assert_eq!(&*no_quota, b"\"x\"\n\"x\"\n");
         for remaining in [0, 2, 3] {
             let mut output = Output::new(remaining);
             let error = output.json_line(&value).unwrap_err();

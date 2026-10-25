@@ -394,7 +394,6 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
             "entities": budget.work,
             "work": budget.work,
             "metadata_bytes": budget.metadata_bytes,
-            "output_bytes": budget.output_bytes,
             "marshal_objects": budget.work,
             "marshal_expanded_objects": budget.work,
             "marshal_copied_bytes": budget.metadata_bytes,

@@ -634,15 +634,15 @@ impl Work {
 // pinned native engine.
 pub(crate) struct WorkingSet {
     used: usize,
-    limit: usize,
+    limit: Option<usize>,
     what: &'static str,
 }
 
 impl WorkingSet {
-    pub(crate) fn new(limit: usize, what: &'static str) -> Self {
+    pub(crate) fn new(limit: impl Into<Option<usize>>, what: &'static str) -> Self {
         Self {
             used: 0,
-            limit,
+            limit: limit.into(),
             what,
         }
     }
@@ -654,7 +654,11 @@ impl WorkingSet {
             .used
             .checked_add(bytes)
             .with_context(|| format!("RESOURCE_LIMIT: {} size", self.what))?;
-        ensure!(next <= self.limit, "RESOURCE_LIMIT: {}", self.what);
+        ensure!(
+            self.limit.is_none_or(|limit| next <= limit),
+            "RESOURCE_LIMIT: {}",
+            self.what
+        );
         self.used = next;
         Ok(())
     }

@@ -72,7 +72,7 @@ pub fn expr_precedence(e: &Expr) -> u8 {
 
 struct Output {
     text: String,
-    limit: usize,
+    limit: Option<usize>,
     exceeded: bool,
 }
 
@@ -80,7 +80,10 @@ impl Output {
     fn reserve_write(&mut self, extra: usize) -> bool {
         crate::budget::charge(extra);
         let _budget_frame = crate::budget::enter();
-        if self.exceeded || extra > self.limit.saturating_sub(self.text.len()) {
+        if self.exceeded
+            || self.limit.is_some_and(|limit| extra > limit.saturating_sub(self.text.len()))
+            || self.text.try_reserve(extra).is_err()
+        {
             self.exceeded = true;
             false
         } else {
@@ -149,22 +152,22 @@ pub struct Printer {
 
 pub fn generate(body: &[Stmt], version: PythonVersion, clean: bool) -> String {
     let _budget_frame = crate::budget::enter();
-    generate_limited(body, version, clean, usize::MAX).expect("unbounded output")
+    generate_limited(body, version, clean, None).expect("source output allocation")
 }
 
-/// Reject output expansion before appending bytes beyond the requested budget.
+/// Preserve optional caller quotas and report allocation failure before appending.
 pub fn generate_limited(
     body: &[Stmt],
     version: PythonVersion,
     clean: bool,
-    limit: usize,
+    limit: impl Into<Option<usize>>,
 ) -> crate::Result<String> {
     let _budget_frame = crate::budget::enter();
     crate::budget::statements(body);
     let mut p = Printer {
         out: Output {
             text: String::new(),
-            limit,
+            limit: limit.into(),
             exceeded: false,
         },
         indent: 0,
@@ -181,7 +184,7 @@ pub fn generate_limited(
     }
     if p.out.exceeded {
         return Err(crate::PycError::ResourceLimit(
-            "output byte budget exceeded",
+            "source output allocation or explicit byte quota exceeded",
         ));
     }
     // py2 refuses non-ASCII source without a PEP 263 coding declaration
@@ -189,7 +192,7 @@ pub fn generate_limited(
         let prefix = "# -*- coding: utf-8 -*-\n";
         if !p.out.reserve_write(prefix.len()) {
             return Err(crate::PycError::ResourceLimit(
-                "output byte budget exceeded",
+                "source output allocation or explicit byte quota exceeded",
             ));
         }
         return Ok(crate::budget_format!("{prefix}{}", p.out.text));

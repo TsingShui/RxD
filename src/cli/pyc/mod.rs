@@ -329,7 +329,11 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
     } else {
         result.source.into_bytes()
     };
-    if bytes.len() > options.budget.output_bytes {
+    if options
+        .budget
+        .output_bytes
+        .is_some_and(|limit| bytes.len() > limit)
+    {
         return Err(Error::failure(
             rxd_core::Failure::Resource,
             "serialized PYC output bytes",

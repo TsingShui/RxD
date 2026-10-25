@@ -162,6 +162,7 @@ pub fn execute(
     arguments: &Value,
     input: &CapturedInput,
     budget: rxd_core::Budget,
+    inflight_bytes: usize,
 ) -> Result<QueryResult, QueryError> {
     let input_bytes = input.input_bytes.map_or_else(
         || {
@@ -197,7 +198,7 @@ pub fn execute(
                 "maxinstruction".into(),
                 instructions.to_string(),
             ];
-            let (status, bytes) = run(args, budget.output_bytes)?;
+            let (status, bytes) = run(args, inflight_bytes)?;
             let mut document: FunctionInventory = parse(&bytes, status)?;
             document.binary = logical.to_owned();
             restore_error(&mut document.error.0, path, logical);
@@ -242,7 +243,7 @@ pub fn execute(
             if address {
                 args.push("--addr".into());
             }
-            let (status, bytes) = run(args, budget.output_bytes)?;
+            let (status, bytes) = run(args, inflight_bytes)?;
             let mut document: Decompilation = parse(&bytes, status)?;
             document.binary = logical.to_owned();
             restore_error(&mut document.error.0, path, logical);

@@ -324,9 +324,14 @@ fn execute_inner(
         ("input_bytes", budget.input_bytes),
         ("work", budget.work),
         ("metadata_bytes", budget.metadata_bytes),
-        ("output_bytes", budget.output_bytes),
         ("instructions", budget.instructions),
     ]));
+    if let Some(output_bytes) = budget.output_bytes {
+        perf.resource_limits
+            .as_mut()
+            .unwrap()
+            .insert("output_bytes", output_bytes);
+    }
     let module = perf.measure("read_parse", || Module::read(path, limits))?;
     perf.source_id = Some(module.source_id.clone());
     perf.counters.input_bytes = Some(module.file_bytes);

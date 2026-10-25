@@ -107,9 +107,9 @@ fn decode_body(
     let mut forbidden_targets = BTreeSet::new();
     let mut prefixed = false;
     let mut user_strings = BTreeSet::new();
-    // The decoded body becomes this query's output, so its working set is bounded by
-    // the output envelope rather than by the retained-metadata allowance. The raw-byte
-    // hex view only exists when the caller asked for a FETCH record.
+    // The decoded body becomes this query's output. Only an explicit library caller
+    // quota bounds its working set; ordinary CLI has no output-byte quota. Checked
+    // footprint arithmetic remains. The raw-byte hex view exists only for FETCH.
     let mut footprint = WorkingSet::new(input.limits.output_bytes, "IL working set");
     if strings.is_none() {
         footprint.add(code_size * 2)?;

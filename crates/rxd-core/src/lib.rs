@@ -218,8 +218,9 @@ pub struct Budget {
     pub entry_bytes: usize,
     /// Decoded metadata one analysis may hold.
     pub metadata_bytes: usize,
-    /// Complete serialized result, including envelope and newlines.
-    pub output_bytes: usize,
+    /// Explicit caller output quota, including envelope and newlines.
+    /// Ordinary CLI serialization has no byte quota (`None`).
+    pub output_bytes: Option<usize>,
     /// Physical archive entries.
     pub entries: usize,
     /// Instructions one method may decode to.
@@ -238,7 +239,7 @@ impl Default for Budget {
             input_bytes: MAX_INPUT_BYTES,
             entry_bytes: MAX_ENTRY_BYTES,
             metadata_bytes: MAX_METADATA_BYTES,
-            output_bytes: MAX_METADATA_BYTES,
+            output_bytes: Some(MAX_METADATA_BYTES),
             entries: MAX_ARCHIVE_ENTRIES,
             instructions: 100_000,
             work: MAX_WORK_UNITS,
@@ -258,7 +259,7 @@ pub struct Limits {
     pub ast_depth: usize,
     pub semantic_nodes: usize,
     pub metadata_bytes: usize,
-    pub output_bytes: usize,
+    pub output_bytes: Option<usize>,
     pub work: usize,
 }
 

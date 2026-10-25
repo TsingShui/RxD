@@ -7,8 +7,8 @@ pub struct Limits {
     pub work: usize,
     pub instructions: usize,
     pub metadata_bytes: usize,
-    /// Complete serialized class/type projection, including nested member bodies.
-    pub output_bytes: usize,
+    /// Optional caller quota for complete class/type projection, including nested bodies.
+    pub output_bytes: Option<usize>,
 }
 
 impl Default for Limits {

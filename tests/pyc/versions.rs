@@ -1132,9 +1132,8 @@ fn pyc_final_versions_enforce_work_and_instruction_boundaries_atomically() {
                 Value::from(cli_budget.work),
                 "{version}/{cmd}"
             );
-            assert_eq!(
-                perf["resource_limits"]["output_bytes"],
-                Value::from(cli_budget.output_bytes),
+            assert!(
+                perf["resource_limits"].get("output_bytes").is_none(),
                 "{version}/{cmd}"
             );
         }

@@ -1,6 +1,71 @@
 //! Ordinary CLI scaling is distinct from explicit limits and MCP service admission.
 use super::*;
 
+#[test]
+fn cli_serialization_has_no_numeric_output_quota_and_keeps_atomic_file_parity() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = TempDir::new().unwrap();
+    let destination = directory.path().join("output.jsonl");
+    let cases: &[(&[&str], &str, &[&str])] = &[
+        #[cfg(feature = "backend-js")]
+        (&["js", "values"], "tests/fixtures/example.js", &[]),
+        #[cfg(feature = "backend-dotnet")]
+        (
+            &["dotnet", "get-method"],
+            "tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll",
+            &["--at", "0x060000ee", "--raw"],
+        ),
+        #[cfg(feature = "backend-wasm")]
+        (&["wasm", "functions"], "tests/corpus/wasm/basic.wasm", &[]),
+    ];
+    for (command, input, args) in cases {
+        let input = root.join(input);
+        let stdout = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(*command)
+            .arg(&input)
+            .args(*args)
+            .args(["--perf"])
+            .output()
+            .unwrap();
+        success(&stdout);
+        let reports: Vec<Value> = String::from_utf8(stdout.stderr)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let perf = reports
+            .iter()
+            .find(|row| row["scope"] == "analysis")
+            .unwrap();
+        assert!(perf["limits"]["output_bytes"].is_null(), "{command:?}");
+        assert!(
+            perf["resource_limits"]["output_bytes"].is_null(),
+            "{command:?}"
+        );
+        assert_eq!(
+            perf["counters"]["output_bytes"],
+            stdout.stdout.len(),
+            "{command:?}"
+        );
+        fs::write(&destination, b"previous output").unwrap();
+        let file = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(*command)
+            .arg(&input)
+            .args(*args)
+            .arg("-o")
+            .arg(&destination)
+            .output()
+            .unwrap();
+        success(&file);
+        assert!(file.stdout.is_empty(), "{command:?}");
+        assert_eq!(
+            fs::read(&destination).unwrap(),
+            stdout.stdout,
+            "{command:?}"
+        );
+    }
+}
+
 #[cfg(feature = "backend-dotnet")]
 #[test]
 fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
@@ -44,15 +109,13 @@ fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
         analysis["resource_limits"]["metadata_bytes"],
         budget.metadata_bytes
     );
-    assert_eq!(
-        analysis["resource_limits"]["output_bytes"],
-        budget.output_bytes
-    );
+    assert_eq!(budget.output_bytes, None);
+    assert!(analysis["resource_limits"].get("output_bytes").is_none());
 }
 
 #[cfg(feature = "backend-pyc")]
 #[test]
-fn input_scaled_pyc_output_policy_covers_static_and_source_json() {
+fn pyc_static_and_source_json_have_no_input_scaled_output_quota() {
     let input = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pyc/hello.3.12.pyc");
     let original = fs::read(&input).unwrap();
     let budget = rxd_core::Budget::for_input_bytes(original.len()).unwrap();
@@ -105,8 +168,9 @@ fn input_scaled_pyc_output_policy_covers_static_and_source_json() {
             .find(|row| row["scope"] == "analysis")
             .unwrap();
         assert_eq!(analysis["status"], "ok", "{command}");
-        assert_eq!(
-            analysis["resource_limits"]["output_bytes"], budget.output_bytes,
+        assert_eq!(budget.output_bytes, None);
+        assert!(
+            analysis["resource_limits"].get("output_bytes").is_none(),
             "{command}"
         );
         assert_eq!(

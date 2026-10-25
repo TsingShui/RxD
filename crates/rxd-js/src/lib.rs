@@ -224,6 +224,10 @@ impl Write for Output {
             self.limit_hit = true;
             return Err(io::Error::other("JS value output budget exceeded"));
         }
+        self.bytes.try_reserve(bytes.len()).map_err(|_| {
+            self.limit_hit = true;
+            io::Error::new(io::ErrorKind::OutOfMemory, "JS output allocation")
+        })?;
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -402,15 +406,18 @@ pub fn run_source(
     let query_start = perf.start_stage();
     let mut output = Output {
         bytes: Vec::new(),
-        limit: matches!(
+        limit: if matches!(
             query,
             Query::Values(_)
                 | Query::Identifiers { .. }
                 | Query::Calls { .. }
                 | Query::Members { .. }
                 | Query::Symbols { .. }
-        )
-        .then_some(limits.output_bytes),
+        ) {
+            limits.output_bytes
+        } else {
+            None
+        },
         limit_hit: false,
     };
     match query {

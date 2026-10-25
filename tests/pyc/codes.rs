@@ -348,7 +348,6 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
             "entities": budget.work,
             "work": budget.work,
             "metadata_bytes": budget.metadata_bytes,
-            "output_bytes": budget.output_bytes,
             "marshal_objects": budget.work,
             "marshal_expanded_objects": budget.work,
             "marshal_copied_bytes": budget.metadata_bytes,

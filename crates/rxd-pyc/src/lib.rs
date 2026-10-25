@@ -13,7 +13,7 @@ pub struct Limits {
     pub input_bytes: usize,
     pub work: usize,
     pub ast_depth: usize,
-    pub output_bytes: usize,
+    pub output_bytes: Option<usize>,
     pub marshal: pycdc::marshal::Limits,
 }
 
@@ -52,13 +52,18 @@ pub fn run(
         ("input_bytes", limits.input_bytes),
         ("work", limits.work),
         ("ast_depth", limits.ast_depth),
-        ("output_bytes", limits.output_bytes),
         ("marshal_depth", 128),
         ("marshal_objects", limits.marshal.objects),
         ("marshal_expanded_objects", limits.marshal.expanded_objects),
         ("marshal_copied_bytes", limits.marshal.copied_bytes),
         ("marshal_long_work", 16_777_216),
     ]));
+    if let Some(output_bytes) = limits.output_bytes {
+        perf.resource_limits
+            .as_mut()
+            .unwrap()
+            .insert("output_bytes", output_bytes);
+    }
     perf.counters.work = Some(0);
     perf.counters.ast_depth = Some(0);
     let bytes = perf.measure("read", || rxd_core::read_bytes(path, limits.input_bytes))?;

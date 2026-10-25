@@ -85,22 +85,24 @@ pub(crate) fn build<'a>(input: &'a Input, root_token: u32) -> Result<ClassBody<'
         .filter(|event| selected.contains(&event.declaring_type_token))
         .collect();
     work.charge(input.methods.len())?;
-    // The serialized class projection is output, so bound it with the output
-    // envelope. The CLI's complete-output writer remains the final authority.
+    // Count serialized class projection only for an explicit caller quota.
+    // Ordinary CLI has no output limit and avoids this duplicate serialization.
     let mut footprint = Counter {
         remaining: input.limits.output_bytes,
     };
-    for ty in &types {
-        serde_json::to_writer(&mut footprint, ty)?;
-    }
-    for field in &fields {
-        serde_json::to_writer(&mut footprint, field)?;
-    }
-    for property in &properties {
-        serde_json::to_writer(&mut footprint, property)?;
-    }
-    for event in &events {
-        serde_json::to_writer(&mut footprint, event)?;
+    if input.limits.output_bytes.is_some() {
+        for ty in &types {
+            serde_json::to_writer(&mut footprint, ty)?;
+        }
+        for field in &fields {
+            serde_json::to_writer(&mut footprint, field)?;
+        }
+        for property in &properties {
+            serde_json::to_writer(&mut footprint, property)?;
+        }
+        for event in &events {
+            serde_json::to_writer(&mut footprint, event)?;
+        }
     }
     let mut methods = Vec::new();
     for method in &input.methods {
@@ -108,13 +110,17 @@ pub(crate) fn build<'a>(input: &'a Input, root_token: u32) -> Result<ClassBody<'
         if !selected.contains(&method.declaring_type_token) {
             continue;
         }
-        serde_json::to_writer(&mut footprint, method)
-            .context("RESOURCE_LIMIT: class metadata output")?;
+        if input.limits.output_bytes.is_some() {
+            serde_json::to_writer(&mut footprint, method)
+                .context("RESOURCE_LIMIT: class metadata output")?;
+        }
         let body = if method.has_body {
             let body = crate::il::body_with_budget(input, method, input.limits.work - work.used())?;
             work.charge(body.work_used)?;
-            serde_json::to_writer(&mut footprint, &body)
-                .context("RESOURCE_LIMIT: aggregate class IL output")?;
+            if input.limits.output_bytes.is_some() {
+                serde_json::to_writer(&mut footprint, &body)
+                    .context("RESOURCE_LIMIT: aggregate class IL output")?;
+            }
             Some(body)
         } else {
             None
@@ -157,14 +163,16 @@ fn selected_types(input: &Input, root_token: u32, work: &mut Work) -> Result<BTr
 }
 
 struct Counter {
-    remaining: usize,
+    remaining: Option<usize>,
 }
 impl Write for Counter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.remaining {
-            return Err(io::Error::other("RESOURCE_LIMIT: class output bytes"));
+        if let Some(remaining) = self.remaining.as_mut() {
+            if bytes.len() > *remaining {
+                return Err(io::Error::other("RESOURCE_LIMIT: class output bytes"));
+            }
+            *remaining -= bytes.len();
         }
-        self.remaining -= bytes.len();
         Ok(bytes.len())
     }
     fn flush(&mut self) -> io::Result<()> {

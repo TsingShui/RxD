@@ -75,13 +75,14 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name s
 `codes` does not scan bytecode or recover source; `instruction_validation: not_scanned`.
 Body status is present/empty/unavailable. Static entry accepts only the six final magic
 formats listed below; other versions/implementations are rejected explicitly.
-Ordinary CLI input/work/metadata/output allowances grow with admitted input; no command
-exposes a `--max-*` flag. Perf stderr `resource_limits` echoes the projected
-values and all JSONL bytes count toward output. Errors do not replace existing `-o`.
+Ordinary CLI input/work/metadata allowances grow with admitted input; serialized
+output has no input-derived byte quota and no command exposes a `--max-*` flag.
+Perf stderr `resource_limits` echoes active quotas; `counters.output_bytes` reports
+actual writes. Errors do not replace existing `-o`.
 
 ```sh
 target/debug/rxd pyc decompile tests/fixtures/pyc/hello.3.12.pyc --json --perf
-# stderr resource_limits: input_bytes/output_bytes/work/ast_depth
+# stderr resource_limits: input_bytes/work/ast_depth; counters.output_bytes: actual size
 ```
 
 Work covers actual recovery, repeated nested calls, scans, AST checks/copies and source

@@ -131,7 +131,7 @@ fn dotnet_working_set_and_class_projection_bounds_are_real_resource_failures() {
     // without a giant fixture: the accounting must refuse before allocating/serializing.
     let fixture = input();
     let tight = rxd_dotnet::Limits {
-        output_bytes: 1,
+        output_bytes: Some(1),
         ..rxd_dotnet::Limits::default()
     };
     let mut parsed = rxd_dotnet::Input::read(&fixture, tight).unwrap();

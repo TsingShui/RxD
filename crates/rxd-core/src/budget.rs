@@ -1,7 +1,8 @@
 //! Input-scaled CLI bounds, separate from explicit caller/service quotas.
 //!
 //! The constant allowances preserve existing small-input behavior. They are not total
-//! CLI ceilings: encoded input contributes finite work, storage and output allowances.
+//! CLI ceilings: encoded input contributes finite work and storage allowances.
+//! Ordinary CLI serialization has no output-byte quota; allocation can still fail.
 //! Amplification/recursion guards still fail explicitly; this is not an unlimited mode.
 use std::path::Path;
 
@@ -35,7 +36,8 @@ impl BudgetPolicy {
 
 impl Budget {
     /// Bound amplification relative to admitted physical input, without a fixed total
-    /// work/metadata/output quota. All arithmetic is checked, never an unlimited sentinel.
+    /// work/metadata quota. Serialization has no byte quota, represented by `None`,
+    /// never an unlimited numeric sentinel. All derived arithmetic is checked.
     ///
     /// These are safety envelopes, not proofs of semantic completeness or RSS ceilings.
     /// Formats with compressed/shared structures keep their local expansion guards too.
@@ -55,7 +57,7 @@ impl Budget {
             // Expansion remains bounded even for dishonest compressed-size declarations.
             entry_bytes: grow(base.entry_bytes, 16)?.min(MAX_SPAN_BYTES),
             metadata_bytes: grow(base.metadata_bytes, 64)?,
-            output_bytes: grow(base.output_bytes, 256)?,
+            output_bytes: None,
             entries: grow(base.entries, 1)?,
             instructions: grow(base.instructions, 1)?,
             work: grow(base.work, 128)?,
@@ -76,7 +78,8 @@ mod tests {
         assert_eq!(scaled.input_bytes, 1024);
         assert!(scaled.work > fixed.work);
         assert!(scaled.metadata_bytes > fixed.metadata_bytes);
-        assert!(scaled.output_bytes > fixed.output_bytes);
+        assert_eq!(scaled.output_bytes, None);
+        assert!(fixed.output_bytes.is_some());
         assert_eq!(scaled.ast_depth, fixed.ast_depth);
         assert_eq!(
             Budget::for_input_bytes(usize::MAX).unwrap_err().kind(),

@@ -143,30 +143,28 @@ pub fn execute(
             "worker thread and shared byte budgets must be positive",
         ));
     }
+    #[cfg(any(
+        feature = "bundled-kuna",
+        feature = "backend-asar",
+        feature = "backend-html"
+    ))]
     let input = &inputs[0];
-    let mut budget = if std::fs::metadata(&input.path)
+    #[cfg(any(
+        feature = "bundled-kuna",
+        feature = "backend-asar",
+        feature = "backend-html"
+    ))]
+    let budget = if std::fs::metadata(&input.path)
         .map_err(Error::from)?
         .is_dir()
     {
-        let mut result = rxd_core::Budget::for_input_bytes(0)?;
-        for identity in &input.identities {
-            let file = rxd_core::Budget::for_input_bytes(identity.input_bytes)?;
-            result.output_bytes = result
-                .output_bytes
-                .checked_add(file.output_bytes)
-                .ok_or_else(|| {
-                    QueryError::new("RESOURCE_LIMIT", "directory output envelope overflow")
-                })?;
-        }
-        result
+        rxd_core::Budget::for_input_bytes(0)?
     } else {
         rxd_core::BudgetPolicy::InputScaled.for_file(&input.path)?
     };
-    // Analysis envelopes scale with input; the service only bounds total in-flight storage.
-    budget.output_bytes = budget.output_bytes.min(options.inflight_bytes);
     #[cfg(feature = "bundled-kuna")]
     if name.starts_with("kuna_") {
-        return kuna::execute(name, &arguments, &inputs[0], budget);
+        return kuna::execute(name, &arguments, &inputs[0], budget, options.inflight_bytes);
     }
     #[cfg(feature = "backend-asar")]
     if name == "asar_extract" {
@@ -188,7 +186,7 @@ pub fn execute(
         OUTPUT.with(|slot| {
             *slot.borrow_mut() = Some(Capture {
                 bytes: Vec::new(),
-                limit: budget.output_bytes,
+                limit: options.inflight_bytes,
             })
         });
         let _guard = CaptureGuard;
