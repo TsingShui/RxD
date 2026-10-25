@@ -7,7 +7,11 @@ use rxd_core::perf::Perf;
 use rxd_core::{Limits, Result};
 use rxd_js::{SourceMode, Syntax};
 
-pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+pub(super) fn execute(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
     let common = command.common();
     let input = common.input.clone();
     let destination = common.output.clone();
@@ -97,7 +101,9 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
         } else {
             rxd_js::run(&input, mode, syntax, query, limits, &mut perf)?
         };
-        perf.measure("write", || write_output(&bytes, destination.as_deref()))
+        perf.measure("write", || {
+            write_output(&bytes, destination.as_deref(), sink)
+        })
     })();
     finish(perf, emit_perf, result)
 }

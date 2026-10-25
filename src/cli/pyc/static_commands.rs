@@ -250,6 +250,7 @@ pub fn codes(
     query: CodeQuery,
     options: Options,
     perf: &mut Perf,
+    sink: &mut crate::cli::Output<'_>,
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
     let mut analysis = options.load(&input, version, perf)?;
@@ -282,6 +283,6 @@ pub fn codes(
     })?;
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {
-        crate::cli::write_output(&bytes, options.output.as_deref())
+        crate::cli::write_output(&bytes, options.output.as_deref(), sink)
     })
 }

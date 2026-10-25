@@ -41,7 +41,9 @@ fn main() -> ExitCode {
     let cli = cli::Cli::parse();
     let args_ns = ns(process_start.elapsed());
     if cli.bypasses_worker() {
-        return match cli::execute(cli) {
+        let mut stdout = io::stdout();
+        let mut output = cli::Output::new(&mut stdout, None);
+        return match cli::execute(cli, &mut output) {
             Ok(code) => ExitCode::from(code as u8),
             Err(error) => {
                 eprintln!("{error}");
@@ -83,7 +85,11 @@ fn main() -> ExitCode {
         std::thread::Builder::new()
             .name("analysis".into())
             .stack_size(32 * 1024 * 1024)
-            .spawn(move || cli::execute(cli))
+            .spawn(move || {
+                let mut stdout = io::stdout();
+                let mut output = cli::Output::new(&mut stdout, None);
+                cli::execute(cli, &mut output)
+            })
             .map_err(Error::from)
             .and_then(|worker| {
                 worker.join().unwrap_or_else(|_| {

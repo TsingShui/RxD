@@ -209,7 +209,11 @@ impl Command {
     }
 }
 
-pub fn execute(mut command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+pub fn execute(
+    mut command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
     let (input, budget) = match &mut command {
         Command::Decompile { input, options, .. } => (input, &mut options.budget),
         Command::Codes { input, options, .. } | Command::Strings { input, options, .. } => {
@@ -221,11 +225,11 @@ pub fn execute(mut command: Command, policy: rxd_core::BudgetPolicy) -> Result<(
     *budget = policy.for_file(input)?;
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "pyc", command.name());
-    let result = execute_inner(command, &mut perf);
+    let result = execute_inner(command, &mut perf, sink);
     super::finish(perf, emit_perf, result)
 }
 
-fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
+fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>) -> Result<()> {
     let command = match command {
         Command::Xref {
             input,
@@ -233,7 +237,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             within,
             version,
             options,
-        } => return refs::run(input, target, within, version, options, perf),
+        } => return refs::run(input, target, within, version, options, perf, sink),
         Command::Strings {
             input,
             version,
@@ -245,11 +249,14 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             return strings::run(
                 input,
                 version,
-                filter,
-                case.sensitive(),
-                filter_hex,
+                strings::Filter {
+                    text: filter,
+                    case_sensitive: case.sensitive(),
+                    hex: filter_hex,
+                },
                 options,
                 perf,
+                sink,
             );
         }
         Command::GetCode {
@@ -257,7 +264,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
             selector,
             version,
             options,
-        } => return fetch_commands::fetch(input, selector, version, options, perf),
+        } => return fetch_commands::fetch(input, selector, version, options, perf, sink),
         Command::Codes {
             input,
             version,
@@ -273,7 +280,7 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
                 name,
                 selector,
             };
-            return static_commands::codes(input, version, query, options, perf);
+            return static_commands::codes(input, version, query, options, perf, sink);
         }
         command => command,
     };
@@ -340,6 +347,6 @@ fn execute_inner(command: Command, perf: &mut Perf) -> Result<()> {
     perf.counters.output_bytes = Some(bytes.len());
     perf.counters.records = Some(1);
     perf.measure("write", || {
-        super::write_output(&bytes, options.output.as_deref())
+        super::write_output(&bytes, options.output.as_deref(), sink)
     })
 }

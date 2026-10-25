@@ -259,7 +259,11 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+pub fn execute(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
     let options = command.options();
     let mut perf = Perf::new(options.perf, "analysis", "evm", command.name());
     let budget = policy.for_file(&options.input)?;
@@ -429,7 +433,7 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
         };
         perf.counters.output_bytes = Some(bytes.len());
         perf.measure("write", || {
-            super::write_output(&bytes, options.output.as_deref())
+            super::write_output(&bytes, options.output.as_deref(), sink)
         })
     })();
     super::finish(perf, options.perf, result)

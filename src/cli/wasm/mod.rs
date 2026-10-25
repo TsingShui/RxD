@@ -304,10 +304,14 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+pub fn execute(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
     let emit_perf = command.perf();
     let mut perf = Perf::new(emit_perf, "analysis", "wasm", command.name());
-    let result = execute_inner(command, policy, &mut perf).map_err(super::classify);
+    let result = execute_inner(command, policy, &mut perf, sink).map_err(super::classify);
     super::finish(perf, emit_perf, result)
 }
 
@@ -315,6 +319,7 @@ fn execute_inner(
     command: Command,
     policy: rxd_core::BudgetPolicy,
     perf: &mut Perf,
+    sink: &mut super::Output<'_>,
 ) -> anyhow::Result<()> {
     let path = command.input();
     let options = command.options();
@@ -402,7 +407,7 @@ fn execute_inner(
         perf.counters.records = Some(1);
         perf.counters.output_bytes = Some(output.len());
         perf.measure("write", || {
-            super::write_output(&output, options.output.as_deref())
+            super::write_output(&output, options.output.as_deref(), sink)
         })?;
         return Ok(());
     }
@@ -595,7 +600,7 @@ fn execute_inner(
     perf.counters.records = Some(records);
     perf.counters.output_bytes = Some(output.len());
     perf.measure("write", || {
-        super::write_output(&output, options.output.as_deref())
+        super::write_output(&output, options.output.as_deref(), sink)
     })?;
     Ok(())
 }

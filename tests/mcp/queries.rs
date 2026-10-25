@@ -1193,6 +1193,70 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
     );
 }
 
+#[cfg(feature = "backend-dex")]
+#[test]
+fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("classes.dex");
+    std::fs::write(&input, dex_inputs::const_string_dex(9000)).unwrap();
+    let cli = cli_query(
+        "dex_classes",
+        &json!({"threads":2}),
+        input.to_str().unwrap(),
+        None,
+    );
+    assert!(
+        cli.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    let expected = cli_projection("dex_classes", &cli.stdout);
+    assert_eq!(expected["records"].as_array().unwrap().len(), 9000);
+    let mut client = Client::start(&[
+        "--root",
+        directory.path().to_str().unwrap(),
+        "--backends",
+        "dex",
+    ]);
+    client.initialize();
+    for threads in [1, 2] {
+        let result = client.tool(
+            "dex_classes",
+            json!({"input":{"path":input},"threads":threads}),
+        );
+        assert_ne!(result["isError"], true, "DEX chunked output failed");
+        assert_eq!(result["structuredContent"], expected);
+    }
+    let mut bounded = Client::start(&[
+        "--root",
+        directory.path().to_str().unwrap(),
+        "--backends",
+        "dex",
+        "--max-inflight-bytes",
+        "131072",
+    ]);
+    bounded.initialize();
+    let rejected = bounded.tool("dex_classes", json!({"input":{"path":input},"threads":2}));
+    assert_eq!(rejected["isError"], true, "{rejected}");
+    assert_eq!(
+        rejected["structuredContent"]["error"]["code"],
+        "RESOURCE_LIMIT"
+    );
+    assert!(rejected["structuredContent"].get("records").is_none());
+    let recovered = bounded.tool(
+        "dex_classes",
+        json!({"input":{"path":input},"class":"LFixture0;"}),
+    );
+    assert_ne!(recovered["isError"], true, "{recovered}");
+    assert_eq!(
+        recovered["structuredContent"]["records"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
 #[cfg(feature = "backend-jvm")]
 #[test]
 fn mcp_jvm_navigation_preserves_original_instruction_fetch() {

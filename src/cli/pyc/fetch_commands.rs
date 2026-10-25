@@ -46,6 +46,7 @@ pub fn fetch(
     version: Option<(u8, u8)>,
     options: FetchOptions,
     perf: &mut Perf,
+    sink: &mut crate::cli::Output<'_>,
 ) -> Result<()> {
     super::validate_output(&input, options.common.output.as_deref())?;
     let loaded = options.common.load(&input, version, perf);
@@ -100,6 +101,6 @@ pub fn fetch(
     })?;
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {
-        crate::cli::write_output(&bytes, options.common.output.as_deref())
+        crate::cli::write_output(&bytes, options.common.output.as_deref(), sink)
     })
 }

@@ -15,8 +15,9 @@ The current layout is:
 - `crates/rxd-kuna-cli/`: generated library adapter for the unchanged Kuna CLI.
   Use `scripts/format-workspace.py`; `cargo fmt --all` also traverses upstream
   path dependencies.
-- `src/query/`: shared typed query catalog, bounded result sink and backend
-  projections; `src/mcp/`: optional stdio protocol, immutable targets and
+- `src/query/`: CLI-reflected typed query catalog and backend projections;
+  `src/cli/output.rs`: explicit stdout/buffer output sink.
+  `src/mcp/`: optional stdio protocol, immutable targets and
   disposable analysis-worker scheduling.
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/js/`, `src/cli/asar/`,
   `src/cli/dex/`, `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`,

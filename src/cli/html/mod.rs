@@ -2,9 +2,13 @@ mod args;
 use super::{finish, write_output};
 pub(crate) use args::Command;
 use rxd_core::{Error, Limits, Result, perf::Perf};
-use std::io::{self, Write};
+use std::io::Write;
 
-pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+pub(super) fn execute(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
     let (common, name) = match &command {
         Command::Entries { common, .. }
         | Command::Resources { common, .. }
@@ -39,7 +43,9 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
                 limits,
                 &mut perf,
             )?;
-            perf.measure("write", || write_output(&bytes, common.output.as_deref()))
+            perf.measure("write", || {
+                write_output(&bytes, common.output.as_deref(), sink)
+            })
         }
         Command::Resources {
             common,
@@ -63,7 +69,9 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
                 limits,
                 &mut perf,
             )?;
-            perf.measure("write", || write_output(&bytes, common.output.as_deref()))
+            perf.measure("write", || {
+                write_output(&bytes, common.output.as_deref(), sink)
+            })
         }
         Command::Extract {
             common,
@@ -78,11 +86,8 @@ pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Resul
             let source = rxd_html::Source::read(&common.input, limits, &mut perf)?;
             let response = source.extract(&at, content, destination, &mut perf)?;
             perf.measure("write", || {
-                write_output(&response.bytes, Some(destination))?;
-                io::stdout()
-                    .lock()
-                    .write_all(&response.receipt)
-                    .map_err(Error::from)
+                write_output(&response.bytes, Some(destination), sink)?;
+                sink.write_all(&response.receipt).map_err(Error::from)
             })
         }
     })();

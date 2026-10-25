@@ -290,11 +290,15 @@ impl Command {
     }
 }
 
-pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
+pub fn execute(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
     let emit_perf = command.perf();
     let name = command.name();
     let mut perf = rxd_core::perf::Perf::new(emit_perf, "analysis", "jvm", name);
-    let result = perf.measure("query", || execute_inner(command, policy));
+    let result = perf.measure("query", || execute_inner(command, policy, sink));
     perf.finish(result.as_ref().err().map(|_| "IO_ERROR"));
     if emit_perf {
         perf.emit();
@@ -302,7 +306,11 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
     result.map_err(super::classify)
 }
 
-fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Result<()> {
+fn execute_inner(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> anyhow::Result<()> {
     if let Command::GetClass {
         input,
         selector,
@@ -346,7 +354,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
         body["source_id"] = json!(input.source_id);
         let mut output = Vec::new();
         append(&mut output, &body)?;
-        super::write_output(&output, options.output.as_deref())?;
+        super::write_output(&output, options.output.as_deref(), sink)?;
         return Ok(());
     }
     if let Command::Strings {
@@ -402,7 +410,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                 )?;
             }
         }
-        super::write_output(&output, options.output.as_deref())?;
+        super::write_output(&output, options.output.as_deref(), sink)?;
         return Ok(());
     }
     if let Command::Xref {
@@ -442,7 +450,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                 ),
             )?;
         }
-        super::write_output(&output, options.output.as_deref())?;
+        super::write_output(&output, options.output.as_deref(), sink)?;
         return Ok(());
     }
     if let Command::Entries {
@@ -485,7 +493,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                 ),
             )?;
         }
-        super::write_output(&output, options.output.as_deref())?;
+        super::write_output(&output, options.output.as_deref(), sink)?;
         return Ok(());
     }
     let (path, options, request, class_filter, exact_name, method_filter, case_sensitive, listing) =
@@ -740,7 +748,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
             )?;
         }
     }
-    super::write_output(&output, options.output.as_deref())?;
+    super::write_output(&output, options.output.as_deref(), sink)?;
     Ok(())
 }
 

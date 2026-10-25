@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 #[cfg(any(feature = "backend-asar", feature = "backend-html"))]
 use std::path::Path;
-use std::{cell::RefCell, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CapturedInput {
@@ -65,41 +65,6 @@ impl QueryError {
 impl From<Error> for QueryError {
     fn from(error: Error) -> Self {
         Self::new(error.code, error.message)
-    }
-}
-
-struct Capture {
-    bytes: Vec<u8>,
-    limit: usize,
-}
-thread_local! { static OUTPUT: RefCell<Option<Capture>> = const { RefCell::new(None) }; }
-
-#[cfg(feature = "backend-dex")]
-pub(crate) fn output_limit() -> Option<usize> {
-    OUTPUT.with(|slot| slot.borrow().as_ref().map(|capture| capture.limit))
-}
-/// Explicit backend output sink; this never reads or redirects process stdout.
-pub(crate) fn capture_write(bytes: &[u8]) -> Option<rxd_core::Result<()>> {
-    OUTPUT.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        let capture = slot.as_mut()?;
-        if bytes.len() > capture.limit.saturating_sub(capture.bytes.len()) {
-            return Some(Err(Error::new(
-                "RESOURCE_LIMIT",
-                "query output byte budget exceeded",
-            )));
-        }
-        capture.bytes.extend_from_slice(bytes);
-        Some(Ok(()))
-    })
-}
-
-struct CaptureGuard;
-impl Drop for CaptureGuard {
-    fn drop(&mut self) {
-        OUTPUT.with(|slot| {
-            slot.borrow_mut().take();
-        });
     }
 }
 
@@ -159,18 +124,12 @@ pub fn execute(
         .stack_size(32 * 1024 * 1024)
         .build()
         .map_err(|error| QueryError::new("RESOURCE_LIMIT", error.to_string()))?;
-    let (result, bytes) = pool.install(|| {
-        OUTPUT.with(|slot| {
-            *slot.borrow_mut() = Some(Capture {
-                bytes: Vec::new(),
-                limit: options.inflight_bytes,
-            })
-        });
-        let _guard = CaptureGuard;
-        let result = crate::cli::execute(cli);
-        let bytes = OUTPUT.with(|slot| slot.borrow_mut().take().unwrap().bytes);
-        (result, bytes)
+    let mut captured = rxd_core::output::Output::new(None);
+    let result = pool.install(|| {
+        let mut output = crate::cli::Output::new(&mut captured, Some(options.inflight_bytes));
+        crate::cli::execute(cli, &mut output)
     });
+    let bytes = captured.into_bytes();
     let status = result.map_err(QueryError::from)?;
     if status != 0 {
         return Err(QueryError::new(

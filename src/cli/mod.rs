@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+mod output;
+pub(crate) use output::Output;
 #[cfg(any(
     feature = "backend-js",
     feature = "backend-asar",
@@ -33,10 +35,7 @@ use rxd_core::perf::Perf;
     feature = "backend-pyc",
     feature = "backend-dex"
 ))]
-use std::{
-    io::{self, Write},
-    path::Path,
-};
+use std::{io::Write, path::Path};
 #[cfg(feature = "backend-asar")]
 mod asar;
 #[cfg(feature = "backend-dex")]
@@ -397,7 +396,8 @@ pub fn restore_default_sigpipe() {
 #[cfg(not(unix))]
 pub fn restore_default_sigpipe() {}
 
-pub fn execute(cli: Cli) -> Result<i32> {
+pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
+    let _ = &output;
     let policy = rxd_core::BudgetPolicy::InputScaled;
     let _ = policy;
     match cli.backend {
@@ -407,23 +407,23 @@ pub fn execute(cli: Cli) -> Result<i32> {
         #[cfg(feature = "backend-kuna")]
         Backend::Kuna { args } => Ok(kuna::run(args)),
         #[cfg(feature = "backend-dotnet")]
-        Backend::Dotnet { command } => dotnet::execute(command, policy).map(|()| 0),
+        Backend::Dotnet { command } => dotnet::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-js")]
-        Backend::Js { command } => js::execute(command, policy).map(|()| 0),
+        Backend::Js { command } => js::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-asar")]
-        Backend::Asar { command } => asar::execute(command, policy).map(|()| 0),
+        Backend::Asar { command } => asar::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-html")]
-        Backend::Html { command } => html::execute(command, policy).map(|()| 0),
+        Backend::Html { command } => html::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-dex")]
-        Backend::Dex { command } => dex::execute(command, policy),
+        Backend::Dex { command } => dex::execute(command, policy, output),
         #[cfg(feature = "backend-jvm")]
-        Backend::Jvm { command } => jvm::execute(command, policy).map(|()| 0),
+        Backend::Jvm { command } => jvm::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-wasm")]
-        Backend::Wasm { command } => wasm::execute(command, policy).map(|()| 0),
+        Backend::Wasm { command } => wasm::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-evm")]
-        Backend::Evm { command } => evm::execute(command, policy).map(|()| 0),
+        Backend::Evm { command } => evm::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-pyc")]
-        Backend::Pyc { command } => pyc::execute(command, policy).map(|()| 0),
+        Backend::Pyc { command } => pyc::execute(command, policy, output).map(|()| 0),
     }
 }
 /// One analysis worker per available logical CPU.
@@ -482,13 +482,7 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     feature = "backend-pyc",
     feature = "backend-dex"
 ))]
-fn write_output(bytes: &[u8], destination: Option<&Path>) -> Result<()> {
-    #[cfg(feature = "mcp")]
-    if destination.is_none()
-        && let Some(result) = crate::query::capture_write(bytes)
-    {
-        return result;
-    }
+fn write_output(bytes: &[u8], destination: Option<&Path>, output: &mut Output<'_>) -> Result<()> {
     if let Some(path) = destination {
         let directory = path
             .parent()
@@ -499,7 +493,7 @@ fn write_output(bytes: &[u8], destination: Option<&Path>) -> Result<()> {
         temporary.flush()?;
         temporary.persist(path).map_err(|e| Error::from(e.error))?;
     } else {
-        io::stdout().lock().write_all(bytes)?;
+        output.write_all(bytes)?;
     }
     Ok(())
 }

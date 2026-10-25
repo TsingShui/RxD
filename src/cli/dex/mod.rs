@@ -33,11 +33,15 @@ fn archive_policy(value: Option<&str>, default: Option<usize>) -> apk::ArchivePo
     }
     policy
 }
-pub(super) fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> rxd_core::Result<i32> {
+pub(super) fn execute(
+    command: Command,
+    policy: rxd_core::BudgetPolicy,
+    sink: &mut super::Output<'_>,
+) -> rxd_core::Result<i32> {
     let budget = policy.for_file(command.input())?;
     super::restore_default_sigpipe();
     let (perf_on, name) = (command.perf(), command.name());
-    let result = match run_command(command, archive_policy_from_env(budget.entry_bytes)) {
+    let result = match run_command(command, archive_policy_from_env(budget.entry_bytes), sink) {
         Ok(()) => Ok(0),
         // A consumer that closed the pipe is a normal Unix idiom, not a failure.
         Err(error) if is_broken_pipe(&error) => Ok(0),
@@ -86,7 +90,12 @@ fn emit_perf(perf_on: bool, command: &'static str) {
 }
 
 /// Runs the parsed command.
-fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<()> {
+fn run_command(
+    command: Command,
+    archive_policy: apk::ArchivePolicy,
+    sink: &mut super::Output<'_>,
+) -> Result<()> {
+    let limit = sink.remaining();
     rxd_dex::profile::enable(command.perf());
     match command {
         Command::Xref(args) => {
@@ -106,7 +115,13 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
 
             let mut payload = String::new();
             for hit in &hits {
-                push_reference(&mut payload, &hit.dex_name, &hit.member, &hit.matched)?;
+                push_reference(
+                    &mut payload,
+                    &hit.dex_name,
+                    &hit.member,
+                    &hit.matched,
+                    limit,
+                )?;
             }
             if args.perf {
                 rxd_dex::diag::diagnose(format_args!(
@@ -118,7 +133,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                     payload.len() / (1 << 20)
                 ));
             }
-            emit(&payload, args.output_path())?;
+            emit(&payload, args.output_path(), sink)?;
         }
         Command::Classes(args) => {
             let filter = args
@@ -172,16 +187,21 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                                 "class",
                                 Some(&entry.descriptor),
                                 &[("super", Field::Text(name))],
+                                limit,
                             )?,
-                            None => {
-                                push_record_at(&mut payload, "class", Some(&entry.descriptor), &[])?
-                            }
+                            None => push_record_at(
+                                &mut payload,
+                                "class",
+                                Some(&entry.descriptor),
+                                &[],
+                                limit,
+                            )?,
                         }
                     }
                     Ok(payload)
                 })
                 .collect::<Result<_>>()?;
-            let payload_len = emit_rows(pieces.into_iter(), args.output.as_deref())?;
+            let payload_len = emit_rows(pieces.into_iter(), args.output.as_deref(), sink)?;
             if args.perf {
                 // The window now covers rendering and writing, not rendering alone.
                 rxd_dex::diag::diagnose(format_args!(
@@ -224,6 +244,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                                     entry.dex_name.as_ref(),
                                     entry.index as u64,
                                     &entry.value,
+                                    limit,
                                 )?;
                             }
                             Ok::<String, anyhow::Error>(out)
@@ -234,7 +255,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                     }
                 }
             }
-            emit(&payload, args.output.as_deref())?;
+            emit(&payload, args.output.as_deref(), sink)?;
         }
         Command::GetMethod(args) => {
             let at = args.selector.resolve()?;
@@ -259,7 +280,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                     "code": source,
                 }),
             )?;
-            emit(&payload, args.output.as_deref())?;
+            emit(&payload, args.output.as_deref(), sink)?;
             return Ok(());
         }
         Command::Fields(args) => {
@@ -276,7 +297,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 args.threads,
                 args.perf,
             )?;
-            emit_rows(chunks.into_iter(), args.output.as_deref())?;
+            emit_rows(chunks.into_iter(), args.output.as_deref(), sink)?;
         }
         Command::Methods(args) => {
             let selector = apk::MethodSelector {
@@ -292,7 +313,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                 args.threads,
                 args.perf,
             )?;
-            emit_rows(chunks.into_iter(), args.output.as_deref())?;
+            emit_rows(chunks.into_iter(), args.output.as_deref(), sink)?;
         }
         Command::Entries(args) => {
             let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {
@@ -322,9 +343,10 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                             "uncompressed_size":entry.uncompressed_size,
                         }),
                     ),
+                    limit,
                 )?;
             }
-            emit(&payload, args.output.as_deref())?;
+            emit(&payload, args.output.as_deref(), sink)?;
         }
         Command::Extract(args) => {
             let destination = args
@@ -384,7 +406,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                     if same_file(&target, &args.apk_path) {
                         bail!("INVALID_QUERY: output must not replace the input");
                     }
-                    super::write_output(bytes, Some(&target))?;
+                    super::write_output(bytes, Some(&target), sink)?;
                     let path = target.to_str().ok_or_else(|| {
                         anyhow::anyhow!("INVALID_QUERY: output path must be UTF-8")
                     })?;
@@ -401,11 +423,12 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                                 "sha256":sha256,
                             }),
                         ),
+                        limit,
                     )?;
                     Ok(())
                 },
             )?;
-            emit(&payload, None)?;
+            emit(&payload, None, sink)?;
         }
         Command::Manifest(args) => {
             let data =
@@ -413,7 +436,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
             let xml = rxd_dex::profile::measure(rxd_dex::profile::Stage::Manifest, || {
                 manifest::decode(&data)
             })?;
-            emit(&xml, args.output.as_deref())?;
+            emit(&xml, args.output.as_deref(), sink)?;
         }
         Command::Getclass(args) => {
             let at = args.selector.resolve()?;
@@ -446,7 +469,7 @@ fn run_command(command: Command, archive_policy: apk::ArchivePolicy) -> Result<(
                     "code": source,
                 }),
             )?;
-            emit(&payload, args.output.as_deref())?;
+            emit(&payload, args.output.as_deref(), sink)?;
         }
     }
     Ok(())
@@ -480,7 +503,13 @@ enum Field<'a> {
 }
 
 /// Append one caller/target reference row.
-fn push_reference(payload: &mut String, entry: &str, caller: &str, matched: &str) -> Result<()> {
+fn push_reference(
+    payload: &mut String,
+    entry: &str,
+    caller: &str,
+    matched: &str,
+    limit: Option<usize>,
+) -> Result<()> {
     payload.push_str("{\"record\":\"");
     payload.push_str(rxd_core::envelope::REFERENCE);
     payload.push_str("\",\"context_at\":");
@@ -492,8 +521,7 @@ fn push_reference(payload: &mut String, entry: &str, caller: &str, matched: &str
     payload.push_str(",\"entry\":");
     push_json_string(payload, entry);
     payload.push_str("}}\n");
-    #[cfg(feature = "mcp")]
-    if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {
+    if limit.is_some_and(|limit| payload.len() > limit) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
     Ok(())
@@ -531,7 +559,13 @@ fn push_json_string(out: &mut String, value: &str) {
 }
 
 /// Append one string row with constant keys and no temporary Value.
-fn push_string_row(payload: &mut String, entry: &str, index: u64, value: &str) -> Result<()> {
+fn push_string_row(
+    payload: &mut String,
+    entry: &str,
+    index: u64,
+    value: &str,
+    limit: Option<usize>,
+) -> Result<()> {
     payload.push_str("{\"record\":\"string\",\"detail\":{\"entry\":");
     push_json_string(payload, entry);
     payload.push_str(",\"index\":");
@@ -540,8 +574,7 @@ fn push_string_row(payload: &mut String, entry: &str, index: u64, value: &str) -
     payload.push_str(",\"value\":");
     push_json_string(payload, value);
     payload.push_str("}}\n");
-    #[cfg(feature = "mcp")]
-    if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {
+    if limit.is_some_and(|limit| payload.len() > limit) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
     Ok(())
@@ -549,7 +582,7 @@ fn push_string_row(payload: &mut String, entry: &str, index: u64, value: &str) -
 
 #[cfg(test)]
 fn push_record(payload: &mut String, kind: &str, fields: &[(&str, Field<'_>)]) -> Result<()> {
-    push_record_at(payload, kind, None, fields)
+    push_record_at(payload, kind, None, fields, None)
 }
 
 fn push_record_at(
@@ -557,6 +590,7 @@ fn push_record_at(
     kind: &str,
     at: Option<&str>,
     fields: &[(&str, Field<'_>)],
+    limit: Option<usize>,
 ) -> Result<()> {
     payload.push_str("{\"record\":");
     push_json_string(payload, kind);
@@ -578,8 +612,7 @@ fn push_record_at(
         }
     }
     payload.push_str("}}\n");
-    #[cfg(feature = "mcp")]
-    if crate::query::output_limit().is_some_and(|limit| payload.len() > limit) {
+    if limit.is_some_and(|limit| payload.len() > limit) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
     Ok(())
@@ -627,10 +660,9 @@ fn data_record(kind: &str, detail: Value) -> Value {
     json!({"record": kind, "detail": detail})
 }
 
-fn append_json(payload: &mut String, value: &Value) -> Result<()> {
+fn append_json(payload: &mut String, value: &Value, limit: Option<usize>) -> Result<()> {
     let encoded = serde_json::to_string(value)?;
-    #[cfg(feature = "mcp")]
-    if crate::query::output_limit()
+    if limit
         .is_some_and(|limit| encoded.len().saturating_add(1) > limit.saturating_sub(payload.len()))
     {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");

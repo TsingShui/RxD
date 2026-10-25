@@ -35,6 +35,9 @@ Command `--help` includes minimal examples, parameter sources and result routing
 MCP descriptions inherit the same guidance; `tools/list` publishes required fields,
 exclusive selectors and enums. JSON output is automatic: omit `json`, `output` and
 `perf`. Invalid argument combinations fail with `INVALID_QUERY` before input capture.
+Ordinary tools build argv from the clap definition and execute the same CLI handlers.
+Results go to an explicit bounded buffer, not thread-local stdout capture; JSON
+projection and Native/extraction adapters retain their existing behavior.
 
 Use the exact schemas returned by `tools/list`. Tool names follow CLI namespaces (JVM uses
 `jar_*`); build/startup filters control availability. For codemode, the following glue assumes

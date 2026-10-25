@@ -106,15 +106,24 @@ pub(super) fn valid_hex(value: &str) -> std::result::Result<String, String> {
     }
     Ok(value.into())
 }
+pub struct Filter {
+    pub text: Option<String>,
+    pub case_sensitive: bool,
+    pub hex: Option<String>,
+}
 pub fn run(
     input: PathBuf,
     version: Option<(u8, u8)>,
-    filter: Option<String>,
-    case_sensitive: bool,
-    filter_hex: Option<String>,
+    filter: Filter,
     options: Options,
     perf: &mut Perf,
+    sink: &mut crate::cli::Output<'_>,
 ) -> Result<()> {
+    let Filter {
+        text: filter,
+        case_sensitive,
+        hex: filter_hex,
+    } = filter;
     super::validate_output(&input, options.output.as_deref())?;
     let mut analysis = options.load(&input, version, perf)?;
     let result = perf.measure("query", || -> Result<_> {
@@ -179,6 +188,6 @@ pub fn run(
     let bytes = serialized?;
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {
-        crate::cli::write_output(&bytes, options.output.as_deref())
+        crate::cli::write_output(&bytes, options.output.as_deref(), sink)
     })
 }
