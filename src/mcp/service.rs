@@ -1,5 +1,4 @@
 //! Tools and analysis scheduling are independent of the protocol transport.
-use super::resources::{Reservation, Responses, json_envelope};
 use super::{
     Options,
     targets::{
@@ -7,6 +6,10 @@ use super::{
         TargetStore,
     },
     worker::{self, WorkerPayload, WorkerRequest},
+};
+use super::{
+    requests::{Outbound, RequestLease, Responses},
+    resources::json_envelope,
 };
 use crate::query::{QueryError, QueryOptions};
 use base64::Engine as _;
@@ -158,7 +161,7 @@ impl AnalysisService {
         arguments: Value,
         cancellation: CancellationToken,
         _permit: OwnedSemaphorePermit,
-    ) -> std::result::Result<(Value, Reservation), QueryError> {
+    ) -> std::result::Result<(Value, Outbound), QueryError> {
         let start = Instant::now();
         if name == "rxd_open" {
             let args: OpenArgs = decode(arguments)?;
@@ -204,28 +207,19 @@ impl AnalysisService {
                     .map_err(QueryError::from)?;
             let capture = self.prepare(capture, mode, start, &cancellation).await?;
             self.check_live(start, &cancellation)?;
-            let info = self.store.publish(capture).map_err(QueryError::from)?;
-            let memory = json_envelope(&info, self.responses.bytes.limit())
-                .and_then(|size| self.responses.bytes.reserve(size));
-            let mut memory = match memory {
-                Ok(memory) => memory,
-                Err(error) => {
-                    let _ = self.store.close(&info.target_id);
-                    return Err(error.into());
-                }
-            };
-            let store = self.store.clone();
-            let target = info.target_id.clone();
-            memory.rollback(move || {
-                let _ = store.close(&target);
-            });
-            return match serde_json::to_value(&info) {
-                Ok(value) => Ok((value, memory)),
-                Err(error) => {
-                    let _ = self.store.close(&info.target_id);
-                    Err(QueryError::new("INVALID_INPUT", error.to_string()))
-                }
-            };
+            let target = self.store.publish(capture).map_err(QueryError::from)?;
+            let memory = json_envelope(&target.info, self.responses.bytes.limit())
+                .and_then(|size| self.responses.bytes.reserve(size))
+                .map_err(QueryError::from)?;
+            let value = serde_json::to_value(&target.info)
+                .map_err(|error| QueryError::new("INVALID_INPUT", error.to_string()))?;
+            return Ok((
+                value,
+                Outbound {
+                    memory,
+                    target: Some(target),
+                },
+            ));
         }
         crate::query::validate(&name, &arguments)?;
         let backend = name
@@ -264,7 +258,7 @@ impl AnalysisService {
             .iter()
             .map(|capture| capture.worker_input())
             .collect();
-        let (reply, mut memory) = worker::run(
+        let (reply, memory) = worker::run(
             WorkerRequest::Query {
                 name,
                 arguments: arguments.clone(),
@@ -285,9 +279,11 @@ impl AnalysisService {
             ));
         };
         self.check_live(start, &cancellation)?;
+        let mut outbound = Outbound::new(memory);
         if let Some(artifact) = result.artifact {
             if arguments["include_bytes"] == true {
-                memory
+                outbound
+                    .memory
                     .grow(artifact.bytes.len().checked_mul(16).ok_or_else(|| {
                         QueryError::new("RESOURCE_LIMIT", "artifact envelope overflow")
                     })?)
@@ -319,19 +315,9 @@ impl AnalysisService {
             .await
             .map_err(join_error)?
             .map_err(QueryError::from)?;
-            let store = self.store.clone();
-            let target = info.target_id.clone();
-            memory.rollback(move || {
-                let _ = store.close(&target);
-            });
-            if let Err(error) = self.check_live(start, &cancellation) {
-                let _ = self.store.close(&info.target_id);
-                return Err(error);
-            }
-            // Target IDs hash whole files; extract receipts use sampled stream identities.
-            // Validate each receipt against its own bytes.
+            outbound.target = Some(info);
+            self.check_live(start, &cancellation)?;
             if artifact.source_id != expected_artifact_source_id {
-                let _ = self.store.close(&info.target_id);
                 return Err(QueryError::new(
                     "WORKER_ERROR",
                     "extracted artifact identity mismatch",
@@ -345,11 +331,11 @@ impl AnalysisService {
                 })?
                 .insert(
                     "child_target".into(),
-                    serde_json::to_value(info)
+                    serde_json::to_value(&outbound.target.as_ref().unwrap().info)
                         .map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))?,
                 );
         }
-        Ok((result.structured, memory))
+        Ok((result.structured, outbound))
     }
 
     async fn prepare(
@@ -430,8 +416,8 @@ impl AnalysisService {
     }
     fn response(
         &self,
-        result: std::result::Result<(Value, Reservation), QueryError>,
-        id: &rmcp::model::RequestId,
+        result: std::result::Result<(Value, Outbound), QueryError>,
+        request: RequestLease,
     ) -> CallToolResult {
         #[derive(Serialize)]
         struct Envelope<'a> {
@@ -439,19 +425,37 @@ impl AnalysisService {
             id: &'a rmcp::model::RequestId,
             result: &'a CallToolResult,
         }
-        let key = serde_json::to_string(id).expect("request ID serialization");
-        self.responses.release_request(&key);
-        let prepared = result.and_then(|(value, mut memory)| {
-            memory
-                .resize(
-                    json_envelope(&value, self.responses.bytes.limit())
+        request.respond(|id| {
+            let prepared = result.and_then(|(value, mut outbound)| {
+                outbound
+                    .memory
+                    .resize(
+                        json_envelope(&value, self.responses.bytes.limit())
+                            .map_err(QueryError::from)?,
+                    )
+                    .map_err(QueryError::from)?;
+                let result = CallToolResult::structured(value);
+                outbound
+                    .memory
+                    .resize(
+                        json_envelope(
+                            &Envelope {
+                                jsonrpc: "2.0",
+                                id,
+                                result: &result,
+                            },
+                            self.responses.bytes.limit(),
+                        )
                         .map_err(QueryError::from)?,
-                )
-                .map_err(QueryError::from)?;
-            let result = CallToolResult::structured(value);
-            memory
-                .resize(
-                    json_envelope(
+                    )
+                    .map_err(QueryError::from)?;
+                Ok((result, outbound))
+            });
+            match prepared {
+                Ok((result, outbound)) => (result, Some(outbound)),
+                Err(error) => {
+                    let result = tool_error(error);
+                    let outbound = json_envelope(
                         &Envelope {
                             jsonrpc: "2.0",
                             id,
@@ -459,33 +463,13 @@ impl AnalysisService {
                         },
                         self.responses.bytes.limit(),
                     )
-                    .map_err(QueryError::from)?,
-                )
-                .map_err(QueryError::from)?;
-            Ok((result, memory))
-        });
-        match prepared {
-            Ok((result, memory)) => {
-                self.responses.retain(&key, memory);
-                result
-            }
-            Err(error) => {
-                let result = tool_error(error);
-                if let Ok(memory) = json_envelope(
-                    &Envelope {
-                        jsonrpc: "2.0",
-                        id,
-                        result: &result,
-                    },
-                    self.responses.bytes.limit(),
-                )
-                .and_then(|size| self.responses.bytes.reserve(size))
-                {
-                    self.responses.retain(&key, memory);
+                    .and_then(|size| self.responses.bytes.reserve(size))
+                    .ok()
+                    .map(Outbound::new);
+                    (result, outbound)
                 }
-                result
             }
-        }
+        })
     }
 }
 impl ServerHandler for AnalysisService {
@@ -522,7 +506,7 @@ impl ServerHandler for AnalysisService {
                 None,
             ));
         }
-        let id = context.id.clone();
+        let lease = self.responses.request(context.id.clone());
         let arguments = Value::Object(request.arguments.unwrap_or_default());
         if request.name == "rxd_close" {
             return Ok(self
@@ -537,9 +521,9 @@ impl ServerHandler for AnalysisService {
                             .bytes
                             .reserve(json_envelope(&value, self.responses.bytes.limit())?)
                             .map_err(QueryError::from)?;
-                        Ok((value, memory))
+                        Ok((value, Outbound::new(memory)))
                     }),
-                    &id,
+                    lease,
                 )
                 .into());
         }
@@ -552,7 +536,7 @@ impl ServerHandler for AnalysisService {
                             "RESOURCE_LIMIT",
                             "analysis worker admission budget exceeded",
                         )),
-                        &id,
+                        lease,
                     )
                     .into());
             }
@@ -562,7 +546,7 @@ impl ServerHandler for AnalysisService {
             .and_then(|bytes| self.responses.bytes.reserve(bytes));
         let request_memory = match request_memory {
             Ok(memory) => memory,
-            Err(error) => return Ok(self.response(Err(error.into()), &id).into()),
+            Err(error) => return Ok(self.response(Err(error.into()), lease).into()),
         };
         // The task owns its permit through capture cleanup and worker reaping even if a client disconnects.
         let result = tokio::spawn(async move {
@@ -574,7 +558,7 @@ impl ServerHandler for AnalysisService {
         .await
         .map_err(join_error)
         .and_then(|result| result);
-        Ok(self.response(result, &id).into())
+        Ok(self.response(result, lease).into())
     }
 }
 fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {

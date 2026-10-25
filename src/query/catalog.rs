@@ -3,7 +3,7 @@ use super::{CapturedInput, QueryError, reflect, schema};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf, sync::OnceLock};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolDefinition {
@@ -39,23 +39,52 @@ fn input_schema(spec: &reflect::ToolSpec) -> Value {
     schema
 }
 
-fn spec(name: &str) -> Result<reflect::ToolSpec, QueryError> {
-    reflect::tools()
-        .into_iter()
-        .find(|spec| spec.name == name)
+struct Entry {
+    spec: reflect::ToolSpec,
+    input_schema: Value,
+}
+struct Catalog {
+    entries: Vec<Entry>,
+    index: HashMap<String, usize>,
+}
+fn reflected() -> &'static Catalog {
+    static CATALOG: OnceLock<Catalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        let entries: Vec<_> = reflect::tools()
+            .into_iter()
+            .map(|spec| {
+                let input_schema = input_schema(&spec);
+                Entry { spec, input_schema }
+            })
+            .collect();
+        let index = entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.spec.name.clone(), i))
+            .collect();
+        Catalog { entries, index }
+    })
+}
+fn entry(name: &str) -> Result<&'static Entry, QueryError> {
+    let catalog = reflected();
+    catalog
+        .index
+        .get(name)
+        .map(|&i| &catalog.entries[i])
         .ok_or_else(|| QueryError::new("INVALID_QUERY", format!("unknown analysis tool: {name}")))
 }
 
 pub fn catalog() -> Vec<ToolDefinition> {
-    let result: Vec<ToolDefinition> = reflect::tools()
-        .into_iter()
-        .map(|spec| ToolDefinition {
-            name: spec.name.clone(),
-            backend: spec.backend.clone(),
-            description: spec.description.clone(),
-            input_schema: input_schema(&spec),
+    let result: Vec<ToolDefinition> = reflected()
+        .entries
+        .iter()
+        .map(|entry| ToolDefinition {
+            name: entry.spec.name.clone(),
+            backend: entry.spec.backend.clone(),
+            description: entry.spec.description.clone(),
+            input_schema: entry.input_schema.clone(),
             output_schema: schema::output(),
-            capabilities: vec![capability(&spec.command).into()],
+            capabilities: vec![capability(&entry.spec.command).into()],
         })
         .collect();
     #[cfg(feature = "bundled-kuna")]
@@ -73,15 +102,13 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
     if name.starts_with("kuna_") {
         return super::kuna::validate(name, arguments);
     }
-    let spec = spec(name)?;
+    let entry = entry(name)?;
+    let spec = &entry.spec;
     let object = arguments
         .as_object()
         .ok_or_else(|| QueryError::new("INVALID_QUERY", "tool arguments must be a JSON object"))?;
-    let allowed = input_schema(&spec);
-    let properties = allowed["properties"]
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let allowed = &entry.input_schema;
+    let properties = allowed["properties"].as_object().expect("tool properties");
     for key in object.keys() {
         if !properties.contains_key(key) {
             return Err(QueryError::new(
@@ -123,7 +150,7 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
         }
     }
     let paths = vec![PathBuf::from(".rxd-mcp-validation-input")];
-    let argv = reflect::argv(&spec, arguments, &paths)?;
+    let argv = reflect::argv(spec, arguments, &paths)?;
     crate::cli::Cli::try_parse_from(argv)
         .map_err(|error| QueryError::new("INVALID_QUERY", error.to_string()))?;
     Ok(())
@@ -142,10 +169,10 @@ pub(super) fn argv(
     inputs: &[CapturedInput],
     threads: usize,
 ) -> Result<Vec<std::ffi::OsString>, QueryError> {
-    let spec = spec(name)?;
+    let spec = &entry(name)?.spec;
     let paths: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
     let mut arguments = arguments.clone();
-    if let Some((key, ceiling)) = bound_threads(&spec, threads) {
+    if let Some((key, ceiling)) = bound_threads(spec, threads) {
         let requested = arguments
             .get(key)
             .and_then(Value::as_u64)
@@ -153,5 +180,5 @@ pub(super) fn argv(
         arguments[key] = serde_json::json!(requested.map_or(ceiling, |value| value.min(ceiling)));
     }
     // Machine-readable output is requested inside `reflect::argv`, before any `--`.
-    reflect::argv(&spec, &arguments, &paths)
+    reflect::argv(spec, &arguments, &paths)
 }

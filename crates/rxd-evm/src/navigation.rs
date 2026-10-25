@@ -6,7 +6,7 @@ use rxd_core::{
 };
 use serde::Serialize;
 use serde_json::{Map, Value, json};
-use std::{io::Write, path::Path};
+use std::path::Path;
 
 use crate::{Carrier, Encoding, Limits, Output, hex};
 
@@ -292,30 +292,21 @@ impl Navigation {
             "basic_block_end": "exclusive", "boundary_status": "producer_candidate", "discovery_complete": null,
             "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "undecoded_tail": self.undecoded_tail()}),
         )));
-        let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &analysis)?;
+        let mut output = Output::new(None);
+        output.json_line(&analysis)?;
         for block in selected {
-            write_record(&mut output, &self.block_record(block, false))?;
+            output.json_line(&self.block_record(block, false))?;
         }
-        Ok(output.bytes)
+        Ok(output.into_bytes())
     }
 
     pub fn block_json(&self, at: &str, perf: &mut Perf) -> Result<Vec<u8>> {
         let block = self.select_block(at)?;
         perf.counters.records = Some(1);
-        let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &self.block_record(block, true))?;
-        Ok(output.bytes)
+        let mut output = Output::new(None);
+        output.json_line(&self.block_record(block, true))?;
+        Ok(output.into_bytes())
     }
-}
-
-pub(crate) fn write_record(output: &mut Output, record: &Value) -> Result<()> {
-    if let Err(error) = serde_json::to_writer(&mut *output, record) {
-        return Err(Error::new("INVALID_INPUT", error.to_string()));
-    }
-    output
-        .write_all(b"\n")
-        .map_err(|_| Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded"))
 }
 
 /// EVM bytecode/metadata evidence is a normal first data record, not a wrapper.

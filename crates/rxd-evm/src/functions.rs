@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 
 use crate::{
     Limits, Navigation, Output, hex,
-    navigation::{object, work, write_record},
+    navigation::{object, work},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -1419,9 +1419,9 @@ impl FunctionNavigation {
             let mut record = self.function_record(navigation, function, Some(raw));
             record["detail"]["reconstruction"] = serde_json::to_value(reconstruction)
                 .map_err(|e| Error::new("INVALID_INPUT", e.to_string()))?;
-            let mut output = Output { bytes: Vec::new() };
-            write_record(&mut output, &record)?;
-            Ok(output.bytes)
+            let mut output = Output::new(None);
+            output.json_line(&record)?;
+            Ok(output.into_bytes())
         })();
         perf.record("serialize", serialization);
         result
@@ -1462,16 +1462,13 @@ impl FunctionNavigation {
                 "metadata": self.metadata}))));
         let stage = perf.start_stage();
         let result = (|| {
-            let mut output = Output { bytes: Vec::new() };
-            write_record(&mut output, &analysis)?;
+            let mut output = Output::new(None);
+            output.json_line(&analysis)?;
             for function in selected {
                 self.prepare_record(navigation, function, false, limits, perf)?;
-                write_record(
-                    &mut output,
-                    &self.function_record(navigation, function, None),
-                )?;
+                output.json_line(&self.function_record(navigation, function, None))?;
             }
-            Ok(output.bytes)
+            Ok(output.into_bytes())
         })();
         perf.record("serialize", stage);
         result

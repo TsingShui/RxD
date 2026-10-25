@@ -1,7 +1,7 @@
 //! Explicit decoded PUSH-immediate evidence and owner routes. No runtime string inference.
 use crate::{
     FunctionNavigation, Limits, Navigation, Output, hex,
-    navigation::{Listing, object, work, write_record},
+    navigation::{Listing, object, work},
     references::{self, AnalysisDetail},
 };
 use alloy_primitives::U256;
@@ -458,35 +458,32 @@ impl LiteralInventory {
         perf.counters.matches = Some(found.len() + data_found.len());
         let stage = perf.start_stage();
         let result = (|| {
-            let mut output = Output { bytes: Vec::new() };
+            let mut output = Output::new(None);
             let mut analysis = self.analysis(navigation, listing.include_bytecode);
             analysis["detail"].as_object_mut().unwrap().extend(object(
                 serde_json::to_value(data.coverage(navigation, functions))
                     .expect("fixed data coverage schema"),
             ));
-            write_record(&mut output, &analysis)?;
+            output.json_line(&analysis)?;
             for item in &found {
                 for owner in Self::routes(functions, item.literal) {
-                    write_record(
-                        &mut output,
-                        &self.record(
-                            navigation,
-                            functions,
-                            item.literal,
-                            owner,
-                            Some(SearchEvidence {
-                                query,
-                                candidates: &item.candidates,
-                                matches: &item.matches,
-                            }),
-                        ),
-                    )?;
+                    output.json_line(&self.record(
+                        navigation,
+                        functions,
+                        item.literal,
+                        owner,
+                        Some(SearchEvidence {
+                            query,
+                            candidates: &item.candidates,
+                            matches: &item.matches,
+                        }),
+                    ))?;
                 }
             }
             for record in data.search_records(navigation, functions, query, &data_found) {
-                write_record(&mut output, &record)?;
+                output.json_line(&record)?;
             }
-            Ok(output.bytes)
+            Ok(output.into_bytes())
         })();
         perf.record("serialize", stage);
         result
@@ -515,30 +512,26 @@ impl LiteralInventory {
             perf.counters.matches = Some(1);
             let stage = perf.start_stage();
             let result = (|| {
-                let mut output = Output { bytes: Vec::new() };
-                write_record(
-                    &mut output,
-                    &references::analysis(
-                        navigation,
-                        listing,
-                        AnalysisDetail {
-                            target_kind: "literal",
-                            target_decoded_offset: literal.start,
-                            target_semantics: "bytecode_data_candidate",
-                            coverage: "contextual_static_evidence",
-                            literal_scope: None,
-                            excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
-                            data: Some(data.coverage(navigation, functions)),
-                        },
-                    ),
-                )?;
+                let mut output = Output::new(None);
+                output.json_line(&references::analysis(
+                    navigation,
+                    listing,
+                    AnalysisDetail {
+                        target_kind: "literal",
+                        target_decoded_offset: literal.start,
+                        target_semantics: "bytecode_data_candidate",
+                        coverage: "contextual_static_evidence",
+                        literal_scope: None,
+                        excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
+                        data: Some(data.coverage(navigation, functions)),
+                    },
+                ))?;
                 for &route in &routes {
-                    write_record(
-                        &mut output,
+                    output.json_line(
                         &data.reference_record(navigation, functions, &literal, route),
                     )?;
                 }
-                Ok(output.bytes)
+                Ok(output.into_bytes())
             })();
             perf.record("serialize", stage);
             return result;
@@ -562,32 +555,29 @@ impl LiteralInventory {
         perf.counters.matches = Some(1);
         let stage = perf.start_stage();
         let result = (|| {
-            let mut output = Output { bytes: Vec::new() };
-            write_record(
-                &mut output,
-                &references::analysis(
-                    navigation,
-                    listing,
-                    AnalysisDetail {
-                        target_kind: "literal",
-                        target_decoded_offset: navigation.instructions[literal.instruction]
-                            .decoded_offset,
-                        target_semantics: "exact_literal_occurrence",
-                        coverage: "validated_block_push_immediates",
-                        data: None,
-                        literal_scope: Some("validated_block_push_immediates"),
-                        excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
-                    },
-                ),
-            )?;
+            let mut output = Output::new(None);
+            output.json_line(&references::analysis(
+                navigation,
+                listing,
+                AnalysisDetail {
+                    target_kind: "literal",
+                    target_decoded_offset: navigation.instructions[literal.instruction]
+                        .decoded_offset,
+                    target_semantics: "exact_literal_occurrence",
+                    coverage: "validated_block_push_immediates",
+                    data: None,
+                    literal_scope: Some("validated_block_push_immediates"),
+                    excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
+                },
+            ))?;
             for owner in routes {
                 let record = self.record(navigation, functions, literal, owner, None);
                 if !references::keeps(&record, needle.as_ref()) {
                     continue;
                 }
-                write_record(&mut output, &record)?;
+                output.json_line(&record)?;
             }
-            Ok(output.bytes)
+            Ok(output.into_bytes())
         })();
         perf.record("serialize", stage);
         result

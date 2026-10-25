@@ -128,24 +128,14 @@ impl TypeSignature {
 }
 
 pub(crate) fn method(input: &Input, bytes: &[u8], work: &mut Work) -> Result<MethodSignature> {
-    let mut parser = Parser {
-        input,
-        bytes,
-        pos: 0,
-        work,
-    };
+    let mut parser = Parser::new(input, bytes, work);
     let result = parser.method(0)?;
     parser.end()?;
     Ok(result)
 }
 
 pub(crate) fn field(input: &Input, bytes: &[u8], work: &mut Work) -> Result<TypeSignature> {
-    let mut parser = Parser {
-        input,
-        bytes,
-        pos: 0,
-        work,
-    };
+    let mut parser = Parser::new(input, bytes, work);
     ensure!(parser.byte()? == 6, "INVALID_INPUT: field signature tag");
     let result = parser.ty(0, false)?;
     parser.end()?;
@@ -153,12 +143,7 @@ pub(crate) fn field(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Type
 }
 
 pub(crate) fn ty(input: &Input, bytes: &[u8], work: &mut Work) -> Result<TypeSignature> {
-    let mut parser = Parser {
-        input,
-        bytes,
-        pos: 0,
-        work,
-    };
+    let mut parser = Parser::new(input, bytes, work);
     let result = parser.ty(0, false)?;
     parser.end()?;
     Ok(result)
@@ -169,12 +154,7 @@ pub(crate) fn arguments(
     bytes: &[u8],
     work: &mut Work,
 ) -> Result<Vec<TypeSignature>> {
-    let mut parser = Parser {
-        input,
-        bytes,
-        pos: 0,
-        work,
-    };
+    let mut parser = Parser::new(input, bytes, work);
     ensure!(
         parser.byte()? == 0x0a,
         "INVALID_INPUT: MethodSpec signature tag"
@@ -188,19 +168,168 @@ pub(crate) fn arguments(
     Ok(arguments)
 }
 
+pub(crate) fn locals(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Vec<TypeSignature>> {
+    let mut parser = Parser::new(input, bytes, work);
+    ensure!(parser.byte()? == 7, "INVALID_INPUT: locals signature tag");
+    let count = parser.count()?;
+    let result = (0..count)
+        .map(|_| parser.ty(0, false))
+        .collect::<Result<_>>()?;
+    parser.end()?;
+    Ok(result)
+}
+
+pub(crate) fn property(input: &Input, bytes: &[u8], work: &mut Work) -> Result<MethodSignature> {
+    let mut parser = Parser::new(input, bytes, work);
+    let flags = parser.byte()?;
+    ensure!(
+        flags & !0x20 == 8,
+        "INVALID_INPUT: property calling convention"
+    );
+    let count = parser.count()?;
+    let return_type = parser.ty(0, false)?;
+    let parameters = (0..count)
+        .map(|_| parser.ty(0, false))
+        .collect::<Result<_>>()?;
+    parser.end()?;
+    Ok(MethodSignature {
+        flags,
+        generic_arity: 0,
+        sentinel: None,
+        return_type,
+        parameters,
+    })
+}
+
+impl MethodSignature {
+    pub(crate) fn display(&self, work: &mut Work) -> Result<String> {
+        let parameters = display_types(&self.parameters, work)?;
+        let return_type = self.return_type.display(work)?;
+        let text = format!(
+            "flags=0x{:02x};generic={};sentinel={:?};{}({})",
+            self.flags,
+            self.generic_arity,
+            self.sentinel,
+            return_type,
+            parameters.join(",")
+        );
+        work.charge(text.len())?;
+        Ok(text)
+    }
+}
+
+pub(crate) fn display_types(types: &[TypeSignature], work: &mut Work) -> Result<Vec<String>> {
+    types.iter().map(|ty| ty.display(work)).collect()
+}
+
+impl TypeSignature {
+    pub(crate) fn display(&self, work: &mut Work) -> Result<String> {
+        let named = |element, token| {
+            format!(
+                "{}(0x{token:08x})",
+                if element == 0x11 {
+                    "valuetype"
+                } else {
+                    "class"
+                }
+            )
+        };
+        let text = match self {
+            Self::Primitive { element } => match element {
+                1 => "void",
+                2 => "bool",
+                3 => "char",
+                4 => "int8",
+                5 => "uint8",
+                6 => "int16",
+                7 => "uint16",
+                8 => "int32",
+                9 => "uint32",
+                10 => "int64",
+                11 => "uint64",
+                12 => "float32",
+                13 => "float64",
+                14 => "string",
+                0x16 => "typedref",
+                0x18 => "native int",
+                0x19 => "native uint",
+                0x1c => "object",
+                _ => unreachable!("parsed primitive"),
+            }
+            .to_owned(),
+            Self::Named { element, token } => named(*element, *token),
+            Self::Specification { element, value } => format!(
+                "{}({})",
+                if *element == 0x11 {
+                    "valuetype"
+                } else {
+                    "class"
+                },
+                value.display(work)?
+            ),
+            Self::TypeParameter { index } => format!("!{index}"),
+            Self::MethodParameter { index } => format!("!!{index}"),
+            Self::Pointer { value } => format!("{}*", value.display(work)?),
+            Self::ByRef { value } => format!("{}&", value.display(work)?),
+            Self::Vector { value } => format!("{}[]", value.display(work)?),
+            Self::Pinned { value } => format!("pinned {}", value.display(work)?),
+            Self::Array {
+                value,
+                rank,
+                sizes,
+                bounds,
+            } => format!(
+                "array({};rank={rank};sizes={sizes:?};bounds={bounds:?})",
+                value.display(work)?
+            ),
+            Self::Constructed {
+                element,
+                token,
+                arguments,
+                ..
+            } => format!(
+                "genericinst({}<{}>)",
+                named(*element, *token),
+                display_types(arguments, work)?.join(",")
+            ),
+            Self::Modified {
+                required,
+                token,
+                value,
+                ..
+            } => format!(
+                "{}(0x{token:08x}) {}",
+                if *required { "modreq" } else { "modopt" },
+                value.display(work)?
+            ),
+            Self::Function { signature } => format!("fnptr({})", signature.display(work)?),
+        };
+        work.charge(text.len())?;
+        Ok(text)
+    }
+}
+
 struct Parser<'a, 'w> {
     input: &'a Input,
     bytes: &'a [u8],
     pos: usize,
     work: &'w mut Work,
 }
-impl Parser<'_, '_> {
+impl<'a, 'w> Parser<'a, 'w> {
     fn end(&self) -> Result<()> {
         ensure!(
             self.pos == self.bytes.len(),
             "INVALID_INPUT: trailing signature bytes"
         );
         Ok(())
+    }
+    fn new(input: &'a Input, bytes: &'a [u8], work: &'w mut Work) -> Self {
+        Self {
+            input,
+            bytes,
+            pos: 0,
+            work,
+        }
     }
     fn byte(&mut self) -> Result<u8> {
         self.work.charge(1)?;

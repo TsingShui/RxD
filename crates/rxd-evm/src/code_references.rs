@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::{
     Edge, FunctionNavigation, Limits, Navigation, Output,
     functions::block_local_edges,
-    navigation::{Listing, object, work, write_record},
+    navigation::{Listing, object, work},
     references::{self, AnalysisDetail},
 };
 
@@ -225,16 +225,16 @@ impl<'a> References<'a> {
                 excluded_unindexed_pushes: None,
             },
         );
-        let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &analysis)?;
+        let mut output = Output::new(None);
+        output.json_line(&analysis)?;
         for hit in &self.hits {
             let record = self.record(navigation, functions, hit);
             if !references::keeps(&record, needle.as_ref()) {
                 continue;
             }
-            write_record(&mut output, &record)?;
+            output.json_line(&record)?;
         }
-        Ok(output.bytes)
+        Ok(output.into_bytes())
     }
 }
 

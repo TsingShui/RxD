@@ -337,32 +337,6 @@ async fn read_bounded(reader: impl AsyncRead + Unpin, limit: usize) -> Result<Ve
 }
 
 fn query_inputs(input: WorkerInput) -> Vec<CapturedInput> {
-    let identities: Vec<crate::query::SnapshotIdentity> = input
-        .files
-        .iter()
-        .filter_map(|file| {
-            let path = if file.dependency {
-                let mut unpacked = input.paths.first()?.as_os_str().to_owned();
-                unpacked.push(".unpacked");
-                std::path::PathBuf::from(unpacked).join(file.relative_path.as_ref()?)
-            } else if input.kind == super::targets::TargetKind::Directory {
-                input.paths.first()?.join(file.relative_path.as_ref()?)
-            } else {
-                input
-                    .paths
-                    .iter()
-                    .zip(&input.original_paths)
-                    .find(|(_, original)| **original == file.original_path)?
-                    .0
-                    .clone()
-            };
-            Some(crate::query::SnapshotIdentity {
-                path,
-                source_id: file.source_id.clone(),
-                input_bytes: usize::try_from(file.input_bytes).ok()?,
-            })
-        })
-        .collect();
     input
         .paths
         .iter()
@@ -375,9 +349,7 @@ fn query_inputs(input: WorkerInput) -> Vec<CapturedInput> {
             CapturedInput {
                 path: path.clone(),
                 original_path: original_path.clone(),
-                source_id: file.map(|file| file.source_id.clone()),
                 input_bytes: file.and_then(|file| usize::try_from(file.input_bytes).ok()),
-                identities: identities.clone(),
             }
         })
         .collect()

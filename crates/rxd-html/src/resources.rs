@@ -487,7 +487,7 @@ pub fn resources(
             }
             Ok((base, template, total, empty_inline, selected))
         })?;
-    let mut output = Output { bytes: Vec::new() };
+    let mut output = Output::new(None);
     perf.measure("serialize", || -> Result<()> {
         for entry in &selected {
             let candidate = &entry.candidate;
@@ -495,7 +495,7 @@ pub fn resources(
             let Detail::Element { tag, attrs, content_start, content_end, end_tag, .. } = &node.detail else { unreachable!() };
             let inline = candidate.attribute.is_none();
             let content = if inline && query.include_content { Some(catalog.slice(*content_start, *content_end)?) } else { None };
-            output.json(&envelope::record("resource", RecordMeta {
+            output.json_line(&envelope::record("resource", RecordMeta {
                 at: Some(&ids[candidate.node]),
                 parent_at: node.parent.map(|parent| ids[parent].as_str()),
                 context_at: Some(&ids[candidate.node]),
@@ -514,6 +514,6 @@ pub fn resources(
         Ok(())
     })?;
     perf.counters.records = Some(selected.len());
-    perf.counters.output_bytes = Some(output.bytes.len());
-    Ok(output.bytes)
+    perf.counters.output_bytes = Some(output.len());
+    Ok(output.into_bytes())
 }

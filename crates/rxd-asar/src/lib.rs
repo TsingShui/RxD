@@ -3,15 +3,10 @@
 mod archive;
 mod local;
 
-use std::{
-    fs,
-    io::{self, Write},
-    path::Path,
-};
+use std::{fs, path::Path};
 
 use rxd_core::envelope::{self, RecordMeta};
-use rxd_core::{Error, Limits, Origin, Result, perf::Perf};
-use serde::Serialize;
+use rxd_core::{Error, Limits, Origin, Result, output::Output, perf::Perf};
 use serde_json::json;
 
 use local::invalid;
@@ -48,35 +43,6 @@ enum Storage {
 struct Entry {
     size: u64,
     storage: Storage,
-}
-
-struct Output {
-    bytes: Vec<u8>,
-}
-impl Write for Output {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-impl Output {
-    fn json(&mut self, value: &impl Serialize) -> Result<()> {
-        serde_json::to_writer(&mut *self, value).map_err(|e| {
-            Error::new(
-                if e.is_io() {
-                    "RESOURCE_LIMIT"
-                } else {
-                    "INVALID_INPUT"
-                },
-                e.to_string(),
-            )
-        })?;
-        self.write_all(b"\n")
-            .map_err(|_| Error::new("RESOURCE_LIMIT", "output byte budget exceeded"))
-    }
 }
 
 fn storage(entry: &Entry) -> &'static str {
@@ -116,7 +82,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             case_sensitive,
         } => {
             perf.counters.records = Some(entries.len());
-            let mut result = Output { bytes: Vec::new() };
+            let mut result = Output::new(None);
             perf.measure("serialize", || -> Result<()> {
                 for (path, entry) in &entries {
                     if contains.as_ref().is_some_and(|needle| {
@@ -136,7 +102,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                     if let Storage::Link { target } = &entry.storage {
                         detail["link"] = json!(target);
                     }
-                    result.json(&envelope::record(
+                    result.json_line(&envelope::record(
                         "file",
                         RecordMeta {
                             at: Some(path),
@@ -147,8 +113,8 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                 }
                 Ok(())
             })?;
-            perf.counters.output_bytes = Some(result.bytes.len());
-            Ok(Response::List(result.bytes))
+            perf.counters.output_bytes = Some(result.len());
+            Ok(Response::List(result.into_bytes()))
         }
         Query::Extract { at: file } => {
             let destination =
@@ -182,7 +148,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             if perf.enabled() {
                 perf.source_id = Some(source_id.clone());
             }
-            let mut receipt = Output { bytes: Vec::new() };
+            let mut receipt = Output::new(None);
             perf.measure("serialize", || -> Result<()> {
                 let mut receipt_record = envelope::record(
                     "file",
@@ -203,13 +169,13 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
                     .clone(),
                 );
                 envelope::attach_protocol(&mut receipt_record, "asar", "extract");
-                receipt.json(&receipt_record)
+                receipt.json_line(&receipt_record)
             })?;
             perf.counters.records = Some(1);
-            perf.counters.output_bytes = Some(bytes.len() + receipt.bytes.len());
+            perf.counters.output_bytes = Some(bytes.len() + receipt.len());
             Ok(Response::Extract {
                 bytes,
-                receipt: receipt.bytes,
+                receipt: receipt.into_bytes(),
             })
         }
     }

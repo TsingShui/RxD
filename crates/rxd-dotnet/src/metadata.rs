@@ -611,26 +611,10 @@ pub(crate) fn load_relationships(input: &mut Input) -> Result<()> {
                 )
                 .context("INVALID_INPUT: property owner")?;
             let bytes = input.blob(row.signature)?;
-            let mut parser = Signature::new(input, bytes, &mut work);
-            let flags = parser.byte()?;
-            ensure!(
-                flags & !0x20 == 8,
-                "INVALID_INPUT: property calling convention"
-            );
-            let count = parser.uint()? as usize;
-            ensure!(
-                count <= bytes.len(),
-                "INVALID_INPUT: property parameter count"
-            );
-            parser
-                .work
-                .charge(count.saturating_mul(std::mem::size_of::<String>()))?;
-            let return_type = parser.ty(0, false)?;
-            let mut parameters = Vec::new();
-            for _ in 0..count {
-                parameters.push(parser.ty(0, false)?);
-            }
-            parser.end()?;
+            let parsed = crate::signature::property(input, bytes, &mut work)?;
+            let flags = parsed.flags;
+            let return_type = parsed.return_type.display(&mut work)?;
+            let parameters = crate::signature::display_types(&parsed.parameters, &mut work)?;
             let signature = format!(
                 "flags=0x{flags:02x};{return_type}({})",
                 parameters.join(",")
@@ -887,60 +871,31 @@ pub(crate) fn call_signature(input: &Input, token: u32, work: &mut Work) -> Resu
 }
 
 pub(crate) fn method_signature(input: &Input, bytes: &[u8], work: &mut Work) -> Result<MethodSig> {
-    let mut p = Signature::new(input, bytes, work);
-    let sig = p.method(0)?;
-    p.end()?;
-    Ok(sig)
+    let parsed = crate::signature::method(input, bytes, work)?;
+    let parameters = crate::signature::display_types(&parsed.parameters, work)?;
+    let return_type = parsed.return_type.display(work)?;
+    work.retain(2 * (std::mem::size_of::<String>() + 2 * std::mem::size_of::<usize>()))?;
+    Ok(MethodSig {
+        flags: parsed.flags,
+        has_this: parsed.flags & 0x20 != 0,
+        vararg: matches!(parsed.flags & 15, 5 | 11),
+        generic_count: parsed.generic_arity,
+        sentinel: parsed.sentinel,
+        parameters: Arc::new(parameters),
+        return_type: Arc::new(return_type),
+    })
 }
 pub(crate) fn field_signature(input: &Input, bytes: &[u8], work: &mut Work) -> Result<String> {
-    let mut p = Signature::new(input, bytes, work);
-    ensure!(p.byte()? == 6, "INVALID_INPUT: field signature tag");
-    let ty = p.ty(0, false)?;
-    p.end()?;
-    Ok(ty)
+    crate::signature::field(input, bytes, work)?.display(work)
 }
 pub(crate) fn type_signature(input: &Input, bytes: &[u8], work: &mut Work) -> Result<String> {
-    let mut p = Signature::new(input, bytes, work);
-    let ty = p.ty(0, false)?;
-    p.end()?;
-    Ok(ty)
+    crate::signature::ty(input, bytes, work)?.display(work)
 }
 pub(crate) fn locals(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Vec<String>> {
-    let mut p = Signature::new(input, bytes, work);
-    ensure!(p.byte()? == 7, "INVALID_INPUT: locals signature tag");
-    let count = p.uint()? as usize;
-    p.work.charge(
-        count
-            .checked_mul(std::mem::size_of::<String>())
-            .context("RESOURCE_LIMIT: signature collection bytes")?,
-    )?;
-    ensure!(count <= bytes.len(), "INVALID_INPUT: local count");
-    let mut result = Vec::new();
-    for _ in 0..count {
-        result.push(p.ty(0, false)?);
-    }
-    p.end()?;
-    Ok(result)
+    crate::signature::display_types(&crate::signature::locals(input, bytes, work)?, work)
 }
 fn generic_arguments(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Vec<String>> {
-    let mut p = Signature::new(input, bytes, work);
-    ensure!(p.byte()? == 0x0a, "INVALID_INPUT: MethodSpec signature tag");
-    let count = p.uint()? as usize;
-    p.work.charge(
-        count
-            .checked_mul(std::mem::size_of::<String>())
-            .context("RESOURCE_LIMIT: signature collection bytes")?,
-    )?;
-    ensure!(
-        count <= bytes.len(),
-        "INVALID_INPUT: generic argument count"
-    );
-    let mut args = Vec::new();
-    for _ in 0..count {
-        args.push(p.ty(0, false)?);
-    }
-    p.end()?;
-    Ok(args)
+    crate::signature::display_types(&crate::signature::arguments(input, bytes, work)?, work)
 }
 pub(crate) fn type_arguments(
     input: &Input,
@@ -961,23 +916,11 @@ pub(crate) fn type_arguments(
     if bytes.first() != Some(&0x15) {
         return Ok(None);
     }
-    let mut p = Signature::new(input, bytes, work);
-    p.byte()?;
-    ensure!(
-        matches!(p.byte()?, 0x11 | 0x12),
-        "INVALID_INPUT: generic owner kind"
-    );
-    p.type_token()?;
-    let count = p.uint()? as usize;
-    p.work
-        .charge(count.saturating_mul(std::mem::size_of::<String>()))?;
-    ensure!(count <= bytes.len(), "INVALID_INPUT: generic owner count");
-    let mut args = Vec::new();
-    for _ in 0..count {
-        args.push(p.ty(0, false)?);
-    }
-    p.end()?;
-    Ok(Some(args))
+    let parsed = crate::signature::ty(input, bytes, work)?;
+    let crate::signature::TypeSignature::Constructed { arguments, .. } = parsed else {
+        unreachable!("generic owner tag checked")
+    };
+    Ok(Some(crate::signature::display_types(&arguments, work)?))
 }
 
 fn validate_method_arguments(ty: &str, args: &[String], work: &mut Work) -> Result<()> {
@@ -1043,221 +986,6 @@ pub(crate) fn instantiate(
     work.charge(rest.len())?;
     out.push_str(rest);
     Ok(out)
-}
-
-struct Signature<'a, 'w> {
-    input: &'a Input,
-    bytes: &'a [u8],
-    pos: usize,
-    work: &'w mut Work,
-}
-impl<'a, 'w> Signature<'a, 'w> {
-    fn new(input: &'a Input, bytes: &'a [u8], work: &'w mut Work) -> Self {
-        Self {
-            input,
-            bytes,
-            pos: 0,
-            work,
-        }
-    }
-    fn byte(&mut self) -> Result<u8> {
-        self.work.charge(1)?;
-        let b = *self
-            .bytes
-            .get(self.pos)
-            .context("INVALID_INPUT: truncated signature")?;
-        self.pos += 1;
-        Ok(b)
-    }
-    fn uint(&mut self) -> Result<u32> {
-        compressed(self.bytes, &mut self.pos, self.work).map(|(v, _)| v)
-    }
-    fn sint(&mut self) -> Result<i32> {
-        let (value, width) = compressed(self.bytes, &mut self.pos, self.work)?;
-        let mut result = (value >> 1) as i32;
-        if value & 1 != 0 {
-            result |= match width {
-                1 => !0x3f,
-                2 => !0x1fff,
-                _ => !0x0fff_ffff,
-            };
-        }
-        Ok(result)
-    }
-    fn end(&self) -> Result<()> {
-        ensure!(
-            self.pos == self.bytes.len(),
-            "INVALID_INPUT: trailing signature bytes"
-        );
-        Ok(())
-    }
-    fn type_token(&mut self) -> Result<u32> {
-        let coded = self.uint()?;
-        let table = match coded & 3 {
-            0 => 2,
-            1 => 1,
-            2 => 27,
-            _ => bail!("INVALID_INPUT: signature type token tag"),
-        };
-        let token = (table << 24) | (coded >> 2);
-        self.input.check_token(token, &[1, 2, 27])?;
-        Ok(token)
-    }
-    fn method(&mut self, depth: usize) -> Result<MethodSig> {
-        ensure!(depth <= 64, "RESOURCE_LIMIT: signature nesting");
-        let flags = self.byte()?;
-        ensure!(
-            flags & 0x80 == 0
-                && matches!(flags & 15, 0..=5 | 9 | 11)
-                && (flags & 0x40 == 0 || flags & 0x20 != 0),
-            "INVALID_INPUT: calling convention flags 0x{flags:02x}"
-        );
-        let generic_count = if flags & 0x10 != 0 { self.uint()? } else { 0 };
-        let count = self.uint()? as usize;
-        self.work.charge(
-            count
-                .checked_mul(std::mem::size_of::<String>())
-                .context("RESOURCE_LIMIT: signature collection bytes")?,
-        )?;
-        ensure!(count <= self.bytes.len(), "INVALID_INPUT: parameter count");
-        let return_type = self.ty(depth + 1, true)?;
-        let mut parameters = Vec::new();
-        let mut sentinel = None;
-        for _ in 0..count {
-            if self.bytes.get(self.pos) == Some(&0x41) {
-                ensure!(
-                    matches!(flags & 15, 5 | 11) && sentinel.is_none(),
-                    "INVALID_INPUT: signature sentinel"
-                );
-                self.byte()?;
-                sentinel = Some(parameters.len());
-            }
-            parameters.push(self.ty(depth + 1, false)?);
-        }
-        // Shared immutable signature storage; the allocation is charged once.
-        self.work.charge(2)?;
-        self.work
-            .retain(2 * (std::mem::size_of::<String>() + 2 * std::mem::size_of::<usize>()))?;
-        Ok(MethodSig {
-            parameters: Arc::new(parameters),
-            return_type: Arc::new(return_type),
-            has_this: flags & 0x20 != 0,
-            vararg: matches!(flags & 15, 5 | 11),
-            generic_count,
-            sentinel,
-            flags,
-        })
-    }
-    fn ty(&mut self, depth: usize, allow_void: bool) -> Result<String> {
-        ensure!(depth <= 64, "RESOURCE_LIMIT: signature nesting");
-        let tag = self.byte()?;
-        let primitive = match tag {
-            1 if allow_void => Some("void"),
-            2 => Some("bool"),
-            3 => Some("char"),
-            4 => Some("int8"),
-            5 => Some("uint8"),
-            6 => Some("int16"),
-            7 => Some("uint16"),
-            8 => Some("int32"),
-            9 => Some("uint32"),
-            10 => Some("int64"),
-            11 => Some("uint64"),
-            12 => Some("float32"),
-            13 => Some("float64"),
-            14 => Some("string"),
-            0x16 => Some("typedref"),
-            0x18 => Some("native int"),
-            0x19 => Some("native uint"),
-            0x1c => Some("object"),
-            _ => None,
-        };
-        if let Some(t) = primitive {
-            self.work.charge(t.len())?;
-            return Ok(t.to_string());
-        }
-        let result = match tag {
-            0x0f => format!("{}*", self.ty(depth + 1, true)?),
-            0x10 => format!("{}&", self.ty(depth + 1, false)?),
-            0x11 | 0x12 => {
-                let token = self.type_token()?;
-                format!(
-                    "{}(0x{token:08x})",
-                    if tag == 0x11 { "valuetype" } else { "class" }
-                )
-            }
-            0x13 => format!("!{}", self.uint()?),
-            0x1e => format!("!!{}", self.uint()?),
-            0x1d => format!("{}[]", self.ty(depth + 1, false)?),
-            0x15 => {
-                let kind = self.byte()?;
-                ensure!(
-                    matches!(kind, 0x11 | 0x12),
-                    "INVALID_INPUT: generic type kind"
-                );
-                let token = self.type_token()?;
-                let count = self.uint()? as usize;
-                self.work.charge(
-                    count
-                        .checked_mul(std::mem::size_of::<String>())
-                        .context("RESOURCE_LIMIT: signature collection bytes")?,
-                )?;
-                ensure!(count <= self.bytes.len(), "INVALID_INPUT: generic count");
-                let mut args = Vec::new();
-                for _ in 0..count {
-                    args.push(self.ty(depth + 1, false)?);
-                }
-                format!(
-                    "genericinst({}(0x{token:08x})<{}>)",
-                    if kind == 0x11 { "valuetype" } else { "class" },
-                    args.join(",")
-                )
-            }
-            0x14 => {
-                let elem = self.ty(depth + 1, false)?;
-                let rank = self.uint()?;
-                let ns = self.uint()?;
-                ensure!(rank > 0 && ns <= rank, "INVALID_INPUT: array shape");
-                self.work.charge(
-                    (ns as usize)
-                        .checked_mul(std::mem::size_of::<u32>())
-                        .context("RESOURCE_LIMIT: array shape bytes")?,
-                )?;
-                let mut sizes = Vec::new();
-                for _ in 0..ns {
-                    sizes.push(self.uint()?);
-                }
-                let nb = self.uint()?;
-                ensure!(nb <= rank, "INVALID_INPUT: array lower bounds");
-                self.work.charge(
-                    (nb as usize)
-                        .checked_mul(std::mem::size_of::<i32>())
-                        .context("RESOURCE_LIMIT: array shape bytes")?,
-                )?;
-                let mut bounds = Vec::new();
-                for _ in 0..nb {
-                    bounds.push(self.sint()?);
-                }
-                format!("array({elem};rank={rank};sizes={sizes:?};bounds={bounds:?})")
-            }
-            0x1f | 0x20 => {
-                let token = self.type_token()?;
-                let inner = self.ty(depth + 1, allow_void)?;
-                format!(
-                    "{}(0x{token:08x}) {inner}",
-                    if tag == 0x1f { "modreq" } else { "modopt" }
-                )
-            }
-            0x45 => format!("pinned {}", self.ty(depth + 1, false)?),
-            0x1b => {
-                let sig = self.method(depth + 1)?;
-                format!("fnptr({})", sig.display())
-            }
-            _ => bail!("INVALID_INPUT: unsupported signature element 0x{tag:02x}"),
-        };
-        self.work.charge(result.len())?;
-        Ok(result)
-    }
 }
 
 pub(crate) fn compressed(bytes: &[u8], pos: &mut usize, work: &mut Work) -> Result<(u32, usize)> {

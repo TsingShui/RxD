@@ -2,16 +2,9 @@
 mod resources;
 
 pub use resources::{RESOURCE_KINDS, ResourcesQuery, resources};
+use rxd_core::output::Output;
 
-use std::{
-    cell::RefCell,
-    collections::HashSet,
-    convert::Infallible,
-    fs,
-    io::{self, Write},
-    path::Path,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashSet, convert::Infallible, fs, path::Path, rc::Rc};
 
 use html5gum::{
     Emitter, ForwardingEmitter, Span, State, Tokenizer,
@@ -275,35 +268,6 @@ impl Catalog<'_> {
     }
 }
 
-struct Output {
-    bytes: Vec<u8>,
-}
-impl Write for Output {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-impl Output {
-    fn json(&mut self, value: &impl Serialize) -> Result<()> {
-        serde_json::to_writer(&mut *self, value).map_err(|error| {
-            Error::new(
-                if error.is_io() {
-                    "RESOURCE_LIMIT"
-                } else {
-                    "INVALID_INPUT"
-                },
-                error.to_string(),
-            )
-        })?;
-        self.write_all(b"\n")
-            .map_err(|_| resource("output byte budget exceeded"))
-    }
-}
-
 /// Select from the full bounded lexical catalog without changing record identities.
 #[derive(Default)]
 pub struct ListQuery {
@@ -559,7 +523,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         });
         Ok(selected)
     })?;
-    let mut output = Output { bytes: Vec::new() };
+    let mut output = Output::new(None);
     perf.measure("serialize", || -> Result<()> {
         for &index in &order {
             let node = &catalog.nodes[index];
@@ -570,13 +534,13 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
                     json!({"tag":tag,"attrs":attrs,"self_closing":self_closing,"void":is_void,"depth":node.depth,"end_tag":end_tag,"content_start":content_start,"content_end":content_end}),
                 Detail::Value => json!({"value":catalog.slice(node.start, node.end)?,"depth":node.depth}),
             };
-            output.json(&envelope::record(node.kind, RecordMeta { at: Some(id), parent_at: parent.as_deref(), context_at: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end), ..RecordMeta::default() }, detail.as_object().unwrap().clone()))?;
+            output.json_line(&envelope::record(node.kind, RecordMeta { at: Some(id), parent_at: parent.as_deref(), context_at: if node.kind == "element" { Some(id) } else { parent.as_deref() }, start: Some(node.start), end: Some(node.end), ..RecordMeta::default() }, detail.as_object().unwrap().clone()))?;
         }
         Ok(())
     })?;
     perf.counters.records = Some(order.len());
-    perf.counters.output_bytes = Some(output.bytes.len());
-    Ok(output.bytes)
+    perf.counters.output_bytes = Some(output.len());
+    Ok(output.into_bytes())
 }
 
 /// Extract validated original intervals; --content selects element contents.
@@ -644,7 +608,7 @@ impl Source {
         if perf.enabled() {
             perf.source_id = Some(source_id.clone());
         }
-        let mut receipt = Output { bytes: Vec::new() };
+        let mut receipt = Output::new(None);
         perf.measure("serialize", || -> Result<()> {
             let mut receipt_record = envelope::record(
                 "file",
@@ -676,13 +640,13 @@ impl Source {
                 .clone(),
             );
             envelope::attach_protocol(&mut receipt_record, "html", "extract");
-            receipt.json(&receipt_record)
+            receipt.json_line(&receipt_record)
         })?;
         perf.counters.records = Some(1);
-        perf.counters.output_bytes = Some(bytes.len() + receipt.bytes.len());
+        perf.counters.output_bytes = Some(bytes.len() + receipt.len());
         Ok(ExtractResponse {
             bytes,
-            receipt: receipt.bytes,
+            receipt: receipt.into_bytes(),
         })
     }
 }

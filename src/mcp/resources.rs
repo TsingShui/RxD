@@ -2,7 +2,6 @@
 //! This accounts for retained payload/metadata envelopes, not process RSS.
 use rxd_core::{Error, Result};
 use std::{
-    collections::HashMap,
     io::Write,
     sync::{Arc, Mutex},
 };
@@ -17,7 +16,6 @@ struct State {
 pub struct Reservation {
     budget: ByteBudget,
     bytes: usize,
-    rollback: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 impl ByteBudget {
     pub fn new(limit: usize) -> Self {
@@ -30,20 +28,12 @@ impl ByteBudget {
         let mut reservation = Reservation {
             budget: self.clone(),
             bytes: 0,
-            rollback: None,
         };
         reservation.grow(bytes)?;
         Ok(reservation)
     }
 }
 impl Reservation {
-    /// Roll back targets whose response is not delivered.
-    pub fn rollback(&mut self, cleanup: impl FnOnce() + Send + Sync + 'static) {
-        self.rollback = Some(Box::new(cleanup));
-    }
-    pub fn delivered(&mut self) {
-        self.rollback = None;
-    }
     pub fn grow(&mut self, bytes: usize) -> Result<()> {
         let mut state = self.budget.0.lock().unwrap_or_else(|e| e.into_inner());
         if bytes > state.limit.saturating_sub(state.used) {
@@ -70,10 +60,6 @@ impl Drop for Reservation {
     fn drop(&mut self) {
         let mut state = self.budget.0.lock().unwrap_or_else(|e| e.into_inner());
         state.used -= self.bytes;
-        drop(state);
-        if let Some(cleanup) = self.rollback.take() {
-            cleanup();
-        }
     }
 }
 
@@ -112,54 +98,4 @@ pub fn json_envelope(value: &impl serde::Serialize, limit: usize) -> Result<usiz
                 "JSON metadata envelope exceeds in-flight budget",
             )
         })
-}
-
-/// Transfer response storage to transport; cancellation releases suppressed replies.
-#[derive(Clone)]
-pub struct Responses {
-    pub bytes: ByteBudget,
-    pending: Arc<Mutex<HashMap<String, Option<Reservation>>>>,
-    active: usize,
-}
-impl Responses {
-    pub fn new(limit: usize, active: usize) -> Self {
-        Self {
-            bytes: ByteBudget::new(limit),
-            pending: Arc::new(Mutex::new(HashMap::new())),
-            active,
-        }
-    }
-    pub fn admit(&self, id: String, memory: Reservation) -> bool {
-        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        if pending.len() >= self.active || pending.contains_key(&id) {
-            return false;
-        }
-        pending.insert(id, Some(memory));
-        true
-    }
-    pub fn release_request(&self, id: &str) {
-        if let Some(slot) = self
-            .pending
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_mut(id)
-        {
-            slot.take();
-        }
-    }
-    pub fn retain(&self, id: &str, memory: Reservation) -> bool {
-        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(slot) = pending.get_mut(id) else {
-            return false;
-        };
-        *slot = Some(memory);
-        true
-    }
-    pub fn take(&self, id: &str) -> Option<Reservation> {
-        self.pending
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(id)
-            .flatten()
-    }
 }

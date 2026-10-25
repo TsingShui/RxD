@@ -306,6 +306,13 @@ fn mcp_inflight_budget_counts_rpc_identity_and_rolls_back_unreachable_targets() 
             true
         );
     }
+    // Both ID types release admission correctly when reused after delivery.
+    for id in [json!(400), json!("400")] {
+        client.send(json!({"jsonrpc":"2.0","id":id,"method":"ping","params":{}}));
+        let response = client.receive();
+        assert_eq!(response["id"], id);
+        assert!(response["result"].is_object(), "{response}");
+    }
 }
 #[test]
 #[cfg(target_os = "linux")]

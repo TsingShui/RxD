@@ -24,18 +24,7 @@ pub struct CapturedInput {
     pub path: PathBuf,
     pub original_path: PathBuf,
     #[serde(default)]
-    pub source_id: Option<String>,
-    #[serde(default)]
     pub input_bytes: Option<usize>,
-    #[serde(default)]
-    pub identities: Vec<SnapshotIdentity>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SnapshotIdentity {
-    pub path: PathBuf,
-    pub source_id: String,
-    pub input_bytes: usize,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

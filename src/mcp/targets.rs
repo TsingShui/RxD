@@ -205,6 +205,24 @@ struct Registry {
     serial: u64,
 }
 
+pub struct PublishedTarget {
+    pub info: TargetInfo,
+    store: Arc<TargetStore>,
+    delivered: bool,
+}
+impl PublishedTarget {
+    pub fn delivered(&mut self) {
+        self.delivered = true;
+    }
+}
+impl Drop for PublishedTarget {
+    fn drop(&mut self) {
+        if !self.delivered {
+            let _ = self.store.close(&self.info.target_id);
+        }
+    }
+}
+
 pub struct TargetStore {
     base: PathBuf,
     roots: Vec<Root>,
@@ -317,12 +335,12 @@ impl TargetStore {
     }
 
     pub fn child(
-        &self,
+        self: &Arc<Self>,
         bytes: &[u8],
         name: &str,
         origin: TargetOrigin,
         check: CaptureCheck,
-    ) -> Result<TargetInfo> {
+    ) -> Result<PublishedTarget> {
         let name = safe_name(name)?;
         let mut lease = CaptureLease::new(self.usage.clone(), self.limits, check)?;
         lease.metadata(2048usize.saturating_add(origin.entry.len().saturating_mul(8)))?;
@@ -361,7 +379,7 @@ impl TargetStore {
         self.publish(capture)
     }
 
-    pub fn publish(&self, capture: Arc<CapturedInput>) -> Result<TargetInfo> {
+    pub fn publish(self: &Arc<Self>, capture: Arc<CapturedInput>) -> Result<PublishedTarget> {
         if capture.requires_asar_plan && !capture.input.asar_dependencies_captured {
             return Err(invalid_query(
                 "ASAR capture requires an isolated dependency plan before publication",
@@ -388,7 +406,11 @@ impl TargetStore {
                 _memory: memory,
             },
         );
-        Ok(info)
+        Ok(PublishedTarget {
+            info,
+            store: Arc::clone(self),
+            delivered: false,
+        })
     }
 
     pub fn capture_paths(

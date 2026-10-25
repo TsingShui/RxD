@@ -1,5 +1,5 @@
 //! Cancellation-safe request framing and shared in-flight response admission.
-use super::resources::{Responses, json_envelope};
+use super::{requests::Responses, resources::json_envelope};
 use rmcp::{
     RoleServer,
     service::{RxJsonRpcMessage, TxJsonRpcMessage},
@@ -90,23 +90,13 @@ impl Transport<RoleServer> for StdioTransport {
                 rmcp::model::JsonRpcMessage::Error(error) => error.id.as_ref(),
                 _ => None,
             };
-            let mut memory = id.and_then(|id| {
-                responses.take(&serde_json::to_string(id).expect("request ID serialization"))
-            });
-            let size = json_envelope(&item, responses.bytes.limit()).map_err(io::Error::other)?;
-            if let Some(memory) = memory.as_mut() {
-                memory.resize(size).map_err(io::Error::other)?;
-            } else {
-                memory = Some(responses.bytes.reserve(size).map_err(io::Error::other)?);
-            }
+            let mut outbound = responses.sending(id, &item).map_err(io::Error::other)?;
             let bytes = serde_json::to_vec(&item)?;
             tokio::select! {
                 _=shutdown.cancelled()=>return Err(io::Error::new(io::ErrorKind::Interrupted,"MCP transport closed")),
                 result=async {let mut output=output.lock().await;output.write_all(&bytes).await?;output.write_all(b"\n").await?;output.flush().await}=>result?,
             }
-            if let Some(memory) = memory.as_mut() {
-                memory.delivered();
-            }
+            outbound.delivered();
             Ok(())
         }
     }
@@ -168,7 +158,8 @@ impl Transport<RoleServer> for StdioTransport {
                     );
                     continue;
                 };
-                if !self.responses.admit(id.to_string(), memory) {
+                let request_id = serde_json::from_value(id.clone()).expect("validated request ID");
+                if !self.responses.admit(request_id, memory) {
                     self.error(
                         id,
                         -32000,
@@ -179,8 +170,9 @@ impl Transport<RoleServer> for StdioTransport {
             }
             if value["method"] == "notifications/cancelled"
                 && let Some(id) = value["params"].get("requestId")
+                && let Ok(id) = serde_json::from_value(id.clone())
             {
-                self.responses.take(&id.to_string());
+                self.responses.cancel(&id);
             }
             return Some(message);
         }

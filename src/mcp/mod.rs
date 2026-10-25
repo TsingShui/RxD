@@ -2,6 +2,7 @@
 mod framing;
 mod install;
 mod native_memory;
+mod requests;
 mod resources;
 mod service;
 pub(crate) mod targets;
@@ -87,7 +88,7 @@ pub fn execute(command: Command) -> Result<()> {
     let result = runtime.block_on(async move {
         let shutdown = tokio_util::sync::CancellationToken::new();
         let responses =
-            resources::Responses::new(options.max_inflight_bytes, options.max_active_requests);
+            requests::Responses::new(options.max_inflight_bytes, options.max_active_requests);
         let transport = framing::StdioTransport::new(
             options.max_frame_bytes,
             responses.clone(),

@@ -1,5 +1,6 @@
 //! Offline, native EVMole analysis of an explicitly encoded local bytecode carrier.
-use std::{io, path::Path};
+use rxd_core::output::Output;
+use std::path::Path;
 
 use evmole::{Contract, ContractInfoArgs};
 use rxd_core::{Error, Result, perf::Perf};
@@ -360,27 +361,8 @@ impl Analysis {
                 complete: true,
             },
         };
-        let mut output = Output { bytes: Vec::new() };
-        if let Err(error) = serde_json::to_writer(&mut output, &report) {
-            return Err(Error::new("INVALID_INPUT", error.to_string()));
-        }
-        io::Write::write_all(&mut output, b"\n")
-            .map_err(|_| Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded"))?;
-        Ok(output.bytes)
-    }
-}
-
-struct Output {
-    bytes: Vec<u8>,
-}
-
-impl io::Write for Output {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        let mut output = Output::new(None);
+        output.json_line(&report)?;
+        Ok(output.into_bytes())
     }
 }
