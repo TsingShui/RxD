@@ -14,6 +14,14 @@ use std::path::PathBuf;
 #[derive(Subcommand)]
 pub enum Command {
     /// Serve MCP on stdin/stdout. All diagnostics use stderr.
+    #[command(after_long_help = "Examples:
+  rxd mcp serve --root /absolute/authorized/inputs
+  rxd mcp serve --base /workspace --root /workspace --backends js,jar,wasm
+Launch as a stdio MCP server; stdout is JSON-RPC, not CLI query output.
+Clients discover tools/list before tools/call. CLI flags use kebab-case; MCP fields use snake_case.
+Ordinary tools take input: {path: ...} or input: {target_id: ...}, not a bare path string.
+For repeated queries: rxd_open -> use returned target_id -> rxd_close.
+Schemas/descriptions include query examples; copy result at/context_at for navigation.")]
     Serve(Options),
     /// Register this executable as a user-level native MCP stdio server.
     Install(install::Options),

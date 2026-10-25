@@ -7,7 +7,8 @@ use clap::{Parser, Subcommand};
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
-    feature = "backend-pyc"
+    feature = "backend-pyc",
+    feature = "backend-dex"
 ))]
 use rxd_core::Error;
 use rxd_core::Result;
@@ -29,7 +30,8 @@ use rxd_core::perf::Perf;
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
-    feature = "backend-pyc"
+    feature = "backend-pyc",
+    feature = "backend-dex"
 ))]
 use std::{
     io::{self, Write},
@@ -75,7 +77,26 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files without executing input code"
+    about = "Analyze JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files without executing input code",
+    after_long_help = "Start here:
+  rxd dex --help       APK or DEX: classes, strings, references, Java
+  rxd jar --help       JVM class/JAR: members, references, Java/bytecode
+  rxd dotnet --help    Managed DLL/EXE: metadata, IL, optional C#
+  rxd js --help        JS/TS/JSX/TSX: original structure and source
+  rxd html --help      Local HTML: nodes, resource candidates, extraction
+  rxd asar --help      Electron ASAR: entries and original file extraction
+  rxd wasm --help      Binary core WASM: functions and instructions/C-like
+  rxd pyc --help       CPython bytecode: codes, constants, Python reconstruction
+  rxd evm --help       Local raw/hex EVM bytecode: specify --encoding
+  rxd kuna --help      Native ELF/PE/Mach-O: optional linked engine
+
+Workflow: list/search -> copy at or context_at -> fetch from the same input.
+Listings emit data-row JSONL; require exit 0, and zero rows means no matches.
+-f/--filter narrows listings; -m/--match searches xref targets with --kind.
+--raw selects original instructions where supported. Never execute analyzed input.
+Run rxd BACKEND COMMAND --help for minimal examples and parameter sources.
+For typed tools: rxd mcp serve --root /absolute/authorized/inputs; use tools/list.
+Default source builds omit Kuna/ILSpy engines; help availability is not engine availability."
 )]
 pub struct Cli {
     #[arg(long, hide = true, global = true)]
@@ -105,56 +126,136 @@ enum Backend {
     },
     #[cfg(feature = "backend-dotnet")]
     /// Analyze managed .NET assemblies without executing them.
+    #[command(after_long_help = "Examples:
+  rxd dotnet methods app.dll -f Read
+  rxd dotnet get-method app.dll --at '0x0600000b' --raw
+  rxd dotnet strings app.dll -f Authorization
+  rxd dotnet xref app.dll -m Authorization --kind string
+Copy methods.at into get-method; copy xref.context_at to fetch its caller.
+Tokens such as 0x0600000b are module-scoped; use actual returned values.
+C# requires ILSpy; missing/failed reconstruction returns original IL with a reason.")]
     Dotnet {
         #[command(subcommand)]
         command: dotnet::Command,
     },
     #[cfg(feature = "backend-evm")]
     /// Analyze local EVM bytecode through the native EVMole library.
+    #[command(after_long_help = "Examples:
+  rxd evm interface runtime.hex --encoding hex
+  rxd evm get-function runtime.hex --encoding hex --at '<interface.at>' --raw
+  rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
+  rxd evm xref runtime.hex --encoding hex --at '<literal.at>'
+--encoding raw means binary bytes; hex means ASCII hexadecimal. Never guessed.
+Use interface.at for functions, blocks.at for blocks, strings.at for literals.
+EVM interfaces/storage/ownership are inferred candidates, not verified Solidity or ABI.")]
     Evm {
         #[command(subcommand)]
         command: evm::Command,
     },
     #[cfg(feature = "backend-js")]
     /// Analyze JavaScript files without executing them.
+    #[command(after_long_help = "Examples:
+  rxd js entities bundle.js -f login
+  rxd js find bundle.js -f '/api/login'
+  rxd js slice bundle.js --at '<match.context_at>'
+  rxd js symbols bundle.js -f token
+  rxd js xref bundle.js --at '<symbol.at>'
+entities/find/resources also scan directories; other queries take one file.
+Copy find.context_at into slice for a local fragment, or parent_at for its owner.
+Use symbols.at for lexical xref; --byte uses a UTF-8 byte offset, not a line number.
+Source extraction is original bytes; references are file-local, not runtime call graphs.")]
     Js {
         #[command(subcommand)]
         command: js::Command,
     },
     #[cfg(feature = "backend-html")]
     /// Enumerate lexical_naive_v1 HTML structure (not DOM/browser-complete).
+    #[command(after_long_help = "Examples:
+  rxd html entries page.html --tag script
+  rxd html resources page.html --base-url https://example.org/page
+  rxd html extract page.html --at '<element.at>' --content -o inline.js
+  rxd js entities inline.js
+Copy entries.at or resource.at into extract. -o is required for extracted bytes.
+HTML is a lexical approximation, not a DOM; no network requests or script execution.
+Offsets in inline.js belong to the extracted file, not the original page.")]
     Html {
         #[command(subcommand)]
         command: html::Command,
     },
     #[cfg(feature = "backend-asar")]
     /// List and extract ASAR files without executing their contents.
+    #[command(after_long_help = "Examples:
+  rxd asar entries app.asar -f main
+  rxd asar extract app.asar --at 'main.js' -o extracted-main.js
+  rxd js entities extracted-main.js
+Copy entries.at (an archive-relative path) into extract. -o is required.
+Extraction returns original bytes and a receipt; analyze the extracted file separately.")]
     Asar {
         #[command(subcommand)]
         command: asar::Command,
     },
     #[cfg(feature = "backend-dex")]
     /// Analyze APK archives and standalone DEX files.
-    #[command(visible_alias = "apk")]
+    #[command(
+        visible_alias = "apk",
+        after_long_help = "Examples:
+  rxd dex methods app.apk -f onCreate
+  rxd dex get-method app.apk --at 'Lx/y;->onCreate(Landroid/os/Bundle;)V'
+  rxd dex strings app.apk -f Authorization
+  rxd dex xref app.apk -m Authorization --kind string
+  rxd dex manifest app.apk
+Copy methods.at into get-method; copy xref.context_at to fetch its caller.
+Method coordinates include parameters AND return type after ). Use actual returned values.
+classes.at selects get-class; -f filters names, --class is one exact owner.
+Input is one APK/ZIP with root DEX entries, or one bare DEX. Java may contain unsupported stubs."
+    )]
     Dex {
         #[command(subcommand)]
         command: dex::Command,
     },
     #[cfg(feature = "backend-jvm")]
     /// Analyze JVM class files and JAR archives without Java or D8.
-    #[command(name = "jar")]
+    #[command(
+        name = "jar",
+        after_long_help = "Examples:
+  rxd jar methods library.jar -f parse
+  rxd jar get-method library.jar --at 'Lx/y;->parse(Ljava/lang/String;)I' --raw
+  rxd jar strings library.jar -f Authorization
+  rxd jar xref library.jar -m Authorization --kind string
+Copy methods.at or xref.context_at into get-method; classes.at selects get-class.
+Coordinates retain JVM overload descriptors, including return type; use returned values.
+--release N selects multi-release JAR versions. No Java runtime or D8 conversion needed."
+    )]
     Jvm {
         #[command(subcommand)]
         command: jvm::Command,
     },
     #[cfg(feature = "backend-pyc")]
     /// Decompile Python bytecode without loading a Python interpreter.
+    #[command(after_long_help = "Examples:
+  rxd pyc codes module.pyc -f token
+  rxd pyc strings module.pyc -f Authorization
+  rxd pyc xref module.pyc --at '<string.at>'
+  rxd pyc get-code module.pyc --at '<reference.context_at>'
+  rxd pyc decompile module.pyc --json
+Static navigation supports final CPython 3.8-3.13; raw marshal needs --version X.Y.
+code:N selects get-code; const:N:PATH selects constant xref, not get-code.
+Name xref is explicit bytecode evidence, not resolved Python runtime dispatch.
+Decompile reconstructs the whole module; JSON detail.complete reports recovery status.")]
     Pyc {
         #[command(subcommand)]
         command: pyc::Command,
     },
     #[cfg(feature = "backend-wasm")]
     /// Analyze WebAssembly modules without instantiating or executing them.
+    #[command(after_long_help = "Examples:
+  rxd wasm functions module.wasm -f sum
+  rxd wasm xref module.wasm --at '<function.at>'
+  rxd wasm get-function module.wasm --at '<reference.context_at>' --raw
+Copy functions.at (func:N) into xref/get-function; xref.context_at names the caller.
+exports.detail.target_at also names the exported function; imported functions have no body.
+Input is a binary core module, not WAT or Component Model; never instantiated.
+Default FETCH attempts C-like reconstruction and falls back to original instructions.")]
     Wasm {
         #[command(subcommand)]
         command: wasm::Command,
@@ -372,6 +473,7 @@ pub(crate) fn default_threads() -> usize {
     feature = "backend-asar",
     feature = "backend-html",
     feature = "backend-jvm",
+    feature = "backend-dex",
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-pyc"
@@ -412,7 +514,8 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
-    feature = "backend-pyc"
+    feature = "backend-pyc",
+    feature = "backend-dex"
 ))]
 fn write_output(bytes: &[u8], destination: Option<&Path>) -> Result<()> {
     #[cfg(feature = "mcp")]

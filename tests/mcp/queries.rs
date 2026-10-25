@@ -2,6 +2,137 @@ use super::support::Client;
 use serde_json::{Value, json};
 use std::process::Command;
 
+#[test]
+fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut client = Client::start(&["--root", root.to_str().unwrap()]);
+    client.initialize();
+    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
+    for tool in tools.as_array().unwrap().iter().filter(|tool| {
+        tool["name"] != "rxd_open"
+            && tool["name"] != "rxd_close"
+            && !tool["name"].as_str().unwrap().starts_with("kuna_")
+    }) {
+        let description = tool["description"].as_str().unwrap();
+        assert!(description.contains("Examples:"), "{tool}");
+        assert!(description.contains("MCP:"), "{tool}");
+        for hidden in ["json", "output", "perf"] {
+            assert!(
+                tool["inputSchema"]["properties"].get(hidden).is_none(),
+                "{tool}"
+            );
+        }
+    }
+    #[cfg(feature = "backend-js")]
+    {
+        let find = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "js_find")
+            .unwrap();
+        assert_eq!(find["inputSchema"]["properties"]["threads"]["minimum"], 1);
+        assert_eq!(
+            find["inputSchema"]["properties"]["syntax"]["default"],
+            "auto"
+        );
+        let schema = &tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "js_xref")
+            .unwrap()["inputSchema"];
+        assert!(
+            schema["allOf"]
+                .as_array()
+                .is_some_and(|rules| rules.iter().any(|rule| rule.get("oneOf").is_some()))
+        );
+        assert_eq!(schema["properties"]["kind"]["enum"], json!(["symbol"]));
+        for args in [
+            json!({"input":{"path":"missing.js"},"at":"symbol:1:2"}),
+            json!({"input":{"path":"missing.js"},"byte":1}),
+            json!({"input":{"path":"missing.js"},"match":"token","kind":"symbol"}),
+        ] {
+            super::support::assert_schema(&args, schema);
+        }
+    }
+    let invalid: Vec<(&str, Value)> = vec![
+        #[cfg(feature = "backend-html")]
+        ("html_extract", json!({"input":{"path":"missing.html"}})),
+        #[cfg(feature = "backend-html")]
+        (
+            "html_extract",
+            json!({"input":{"path":"missing.html"},"at":42}),
+        ),
+        #[cfg(feature = "backend-asar")]
+        ("asar_extract", json!({"input":{"path":"missing.asar"}})),
+        #[cfg(feature = "backend-dex")]
+        ("dex_get_method", json!({"input":{"path":"missing.apk"}})),
+        #[cfg(feature = "backend-dex")]
+        (
+            "dex_xref",
+            json!({"input":{"path":"missing.apk"},"match":"token"}),
+        ),
+        #[cfg(feature = "backend-js")]
+        ("js_xref", json!({"input":{"path":"missing.js"}})),
+        #[cfg(feature = "backend-js")]
+        (
+            "js_xref",
+            json!({"input":{"path":"missing.js"},"at":"symbol:1:2","byte":1}),
+        ),
+        #[cfg(feature = "backend-js")]
+        (
+            "js_xref",
+            json!({"input":{"path":"missing.js"},"match":"token","kind":"method"}),
+        ),
+        #[cfg(feature = "backend-js")]
+        (
+            "js_slice",
+            json!({"input":{"path":"missing.js"},"at":"program:0:1","json":true}),
+        ),
+        #[cfg(feature = "backend-js")]
+        (
+            "js_find",
+            json!({"input":{"path":"missing.js"},"filter":"token","threads":0}),
+        ),
+        #[cfg(feature = "backend-js")]
+        (
+            "js_find",
+            json!({"input":{"path":"missing.js"},"filter":"token","threads":1.5}),
+        ),
+        #[cfg(feature = "backend-evm")]
+        (
+            "evm_analyze",
+            json!({"input":{"path":"missing.hex"},"encoding":"hex","json":true}),
+        ),
+    ];
+    for (name, arguments) in invalid {
+        let result = client.tool(name, arguments);
+        assert_eq!(result["isError"], true, "{name}: {result}");
+        assert_eq!(
+            result["structuredContent"]["error"]["code"], "INVALID_QUERY",
+            "{name}: {result}"
+        );
+    }
+    #[cfg(feature = "backend-js")]
+    {
+        let input = root.join("tests/fixtures/example.js");
+        let result = client.tool(
+            "js_find",
+            json!({"input":{"path":input},"filter":"/api/login"}),
+        );
+        assert_ne!(result["isError"], true, "{result}");
+        let at = &result["structuredContent"]["records"][0]["context_at"];
+        let source = client.tool("js_slice", json!({"input":{"path":input},"at":at}));
+        assert_ne!(source["isError"], true, "{source}");
+        assert!(
+            source["structuredContent"]["detail"]["source"]
+                .as_str()
+                .is_some_and(|text| text.contains("/api/login"))
+        );
+    }
+}
+
 #[cfg(feature = "backend-dotnet")]
 #[test]
 fn mcp_keeps_independent_fixed_service_budgets_after_cli_input_scaling() {
@@ -608,7 +739,7 @@ fn mcp_html_extract_publishes_retained_child_target_with_cli_identity() {
         .find(|tool| tool["name"] == "html_extract")
         .unwrap();
     assert_eq!(tool["inputSchema"]["additionalProperties"], false);
-    assert_eq!(tool["inputSchema"]["required"], json!(["input"]));
+    assert_eq!(tool["inputSchema"]["required"], json!(["at", "input"]));
     assert_eq!(tool["inputSchema"]["properties"]["at"]["type"], "string");
     assert_eq!(
         tool["inputSchema"]["properties"]["content"]["type"],

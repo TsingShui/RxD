@@ -44,6 +44,57 @@ use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 #[test]
+fn help_explains_parameter_sources_and_minimal_query_workflows() {
+    let binary = env!("CARGO_BIN_EXE_rxd");
+    let root = Command::new(binary).arg("--help").output().unwrap();
+    success(&root);
+    assert!(root.stderr.is_empty());
+    let text = String::from_utf8(root.stdout).unwrap();
+    assert!(text.contains("Workflow: list/search"));
+    assert!(text.contains("COMMAND --help"));
+    let routes: &[(&str, &str, &str)] = &[
+        #[cfg(feature = "backend-js")]
+        ("js", "slice", "context_at"),
+        #[cfg(feature = "backend-html")]
+        ("html", "extract", "entries.at"),
+        #[cfg(feature = "backend-asar")]
+        ("asar", "extract", "entries.at"),
+        #[cfg(feature = "backend-dex")]
+        ("dex", "get-method", "methods.at"),
+        #[cfg(feature = "backend-jvm")]
+        ("jar", "get-method", "methods.at"),
+        #[cfg(feature = "backend-dotnet")]
+        ("dotnet", "get-method", "methods.at"),
+        #[cfg(feature = "backend-wasm")]
+        ("wasm", "get-function", "functions.at"),
+        #[cfg(feature = "backend-pyc")]
+        ("pyc", "get-code", "codes.at"),
+        #[cfg(feature = "backend-evm")]
+        ("evm", "get-function", "interface.at"),
+    ];
+    for (backend, command, source) in routes {
+        let output = Command::new(binary)
+            .args([backend, command, "--help"])
+            .output()
+            .unwrap();
+        success(&output);
+        assert!(output.stderr.is_empty());
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("Examples:"), "{backend} {command}: {help}");
+        assert!(help.contains(source), "{backend} {command}: {help}");
+        assert!(help.contains("Output:"), "{backend} {command}: {help}");
+        assert!(!help.contains("Not marked required by clap"));
+        let missing = Command::new(binary)
+            .args([backend, command, "missing-input"])
+            .output()
+            .unwrap();
+        assert_eq!(missing.status.code(), Some(2), "{missing:?}");
+        assert!(missing.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&missing.stderr).contains("--at"));
+    }
+}
+
+#[test]
 fn skill_installs_the_embedded_rxd_skill_for_pi_and_prints_exact_bytes() {
     let home = TempDir::new().unwrap();
     let printed = Command::new(env!("CARGO_BIN_EXE_rxd"))
@@ -3469,7 +3520,7 @@ fn cli_argument_errors_exit_with_two() {
     ] {
         failure(invoke("entities", &example(), args), 2, "error:");
     }
-    failure(invoke("slice", &example(), &[]), 2, "INVALID_QUERY");
+    failure(invoke("slice", &example(), &[]), 2, "--at <SOURCE_AT>");
     let dir = tempfile::tempdir().unwrap();
     let destination = dir.path().join("source.js");
     fs::write(&destination, "keep me").unwrap();
@@ -4205,7 +4256,14 @@ fn asar_namespace_exposes_container_operations_without_electron_or_js_forwarding
     success(&output);
     let help = String::from_utf8(output.stdout).unwrap();
     assert!(help.contains("entries") && help.contains("extract"));
-    assert!(!help.contains("entities") && !help.contains("symbols"));
+    let commands = help
+        .split("Commands:")
+        .nth(1)
+        .unwrap()
+        .split("Options:")
+        .next()
+        .unwrap();
+    assert!(!commands.contains("entities") && !commands.contains("symbols"));
     let root = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .arg("--help")
         .output()

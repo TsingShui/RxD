@@ -9,9 +9,12 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Locate a class in an APK and decompile it.
-    #[command(name = "get-class")]
+    #[command(name = "get-class", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; not a method coordinate")), after_long_help = "Examples:\n  rxd dex classes app.apk -f Main\n  rxd dex get-class app.apk --at 'Lx/y;'\nUse actual classes.at. Output: one class_body JSON record; detail.code is Java.\nNo --raw flag. Unsupported methods may be stubs; inspect members and references.")]
     Getclass(GetClassArgs),
     /// List the entries an archive holds, in central-directory order.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex entries app.apk -f lib/arm64-v8a/\nOutput: entry JSONL with detail.name, compression and sizes. Copy detail.name into:\n  rxd dex extract app.apk --name '<entry.detail.name>' -o target/library.so\nDuplicate entry names remain visible; entry contents are never executed."
+    )]
     Entries(EntriesArgs),
     /// Write original entry bytes to --output, preserving them exactly.
     ///
@@ -19,38 +22,62 @@ pub enum Command {
     /// `--filter` (or every entry) under a destination directory. APK-native
     /// libraries are ordinary entries, so this is also how a `.so` is extracted
     /// before it is handed to a native analyzer.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex extract app.apk --name lib/arm64-v8a/libfoo.so -o target/libfoo.so\n  rxd dex extract app.apk --all -f lib/arm64-v8a/ -o target/native\nRequired: exactly one of --name/--all, plus -o FILE/DIR. Copy entries.detail.name.\nOutput: original bytes at destination, file receipt JSONL on stdout.\nUnsafe/duplicate destinations and attempts to overwrite input are rejected."
+    )]
     Extract(ExtractArgs),
     /// List every string in every root DEX of an archive.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex strings app.apk -f Authorization --limit 20\n  rxd dex xref app.apk -m Authorization --kind string\nOutput: string JSONL; detail.value is text, detail.index is a DEX string index.\nString indices are not class/method coordinates. xref.context_at names a caller.\n--offset skips matching rows, --limit caps the page; omit both for full inventory."
+    )]
     Strings(StringsArgs),
     /// Find code references across every DEX in an APK.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex xref app.apk --at 'Lx/y;->run()V'\n  rxd dex xref app.apk -m Authorization --kind string\n  rxd dex xref app.apk -m run --kind method --class x.y\nRequired: exactly one of --at/--match; --match requires --kind.\n--at copies classes.at/methods.at/fields.at; literal text needs --kind string.\n--class is one exact member owner, not a caller filter or substring.\nOutput: reference JSONL; context_at is caller, detail.target is target.\nNext: rxd dex get-method app.apk --at '<reference.context_at>'."
+    )]
     Xref(XrefArgs),
     /// Decode and print AndroidManifest.xml from an APK.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex manifest app.apk -o target/AndroidManifest.xml\nInput must contain AndroidManifest.xml. Output is decoded XML, not JSONL.\nPlain XML remains original bytes; binary Android XML is decoded without execution."
+    )]
     Manifest(ManifestArgs),
     /// List classes defined across every DEX in an APK.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex classes app.apk -f Main\n  rxd dex classes app.apk --class com.example.Main\nOutput: class JSONL; at is Lcom/example/Main;.\nNext: rxd dex get-class app.apk --at '<class.at>'.\n-f searches class names; --class selects one exact class."
+    )]
     Classes(ClassesArgs),
     /// Decompile one method as Java source.
     ///
     /// `--at` takes the coordinate a `methods` row prints (`Lx/y;->name(proto)`), so a
     /// method found by `methods` or reported by `xref` renders without pulling its class.
-    #[command(name = "get-method")]
+    #[command(name = "get-method", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at; include parameters and return type, e.g. Lx/y;->run()V")), after_long_help = "Examples:\n  rxd dex methods app.apk -f run\n  rxd dex get-method app.apk --at 'Lx/y;->run()V'\nUse actual methods.at or reference.context_at, not a name, index or file hash.\nThe prototype includes return type after ): ()V, (I)I, (I)[Ljava/lang/String;.\nOutput: one method_body JSON record; detail.code is Java. No --raw flag.")]
     GetMethod(GetMethodArgs),
     /// List every field the archive's DEX files declare.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex fields app.apk --class com.example.Main -f token\n  rxd dex xref app.apk --at '<field.at>'\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f is a substring.\nFor declarations/layout use get-class with the owner classes.at."
+    )]
     Fields(FieldsArgs),
     /// List every method the archive's DEX files define.
     ///
     /// A method is reported once per definition; `method_ids` entries that are only
     /// referenced are not listed.
+    #[command(
+        after_long_help = "Examples:\n  rxd dex methods app.apk --class com.example.Main -f run\n  rxd dex methods app.apk --name run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads; -f searches names, --class selects one owner.\nNext: rxd dex get-method app.apk --at '<method.at>', or xref --at for callers."
+    )]
     Methods(MethodsArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct GetMethodArgs {
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
     #[command(flatten)]
     pub selector: Selector,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
@@ -59,6 +86,7 @@ pub struct GetMethodArgs {
 
 #[derive(Debug, Args)]
 pub struct FieldsArgs {
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
     /// Only list fields declared by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
@@ -71,9 +99,11 @@ pub struct FieldsArgs {
     pub filter: Option<String>,
     #[command(flatten)]
     pub case: CaseArgs,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
@@ -82,6 +112,7 @@ pub struct FieldsArgs {
 
 #[derive(Debug, Args)]
 pub struct MethodsArgs {
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
     /// Only list methods defined by this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
@@ -94,9 +125,11 @@ pub struct MethodsArgs {
     pub filter: Option<String>,
     #[command(flatten)]
     pub case: CaseArgs,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
@@ -105,7 +138,8 @@ pub struct MethodsArgs {
 
 #[derive(Debug, Args)]
 pub struct ClassesArgs {
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
     /// Only this class: `Lcom/foo/Bar;` or `com.foo.Bar`.
     #[arg(long)]
@@ -115,11 +149,13 @@ pub struct ClassesArgs {
     pub filter: Option<String>,
     #[command(flatten)]
     pub case: CaseArgs,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
 }
 
@@ -131,6 +167,7 @@ pub struct ClassesArgs {
         .args(["name", "all"])
 ))]
 pub struct ExtractArgs {
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
     /// Exact archive entry name; writes it to the --output file.
     #[arg(long)]
@@ -144,8 +181,8 @@ pub struct ExtractArgs {
     pub filter: Option<String>,
     #[command(flatten)]
     pub case: CaseArgs,
-    /// Destination file (--name) or directory (--all).
-    #[arg(short, long)]
+    /// Required destination file (--name) or directory (--all).
+    #[arg(short, long, required = true)]
     pub output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
@@ -166,13 +203,16 @@ pub struct StringsArgs {
     /// `--limit` this is the other half of a page.
     #[arg(long)]
     pub offset: Option<usize>,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
 }
 
@@ -183,21 +223,25 @@ pub struct EntriesArgs {
     pub filter: Option<String>,
     #[command(flatten)]
     pub case: CaseArgs,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
 }
 
 #[derive(Debug, Args)]
 pub struct ManifestArgs {
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
 }
 
@@ -208,10 +252,13 @@ pub struct GetClassArgs {
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
 }
 
@@ -220,11 +267,14 @@ pub struct XrefArgs {
     /// Emit the analysis perf record as JSONL on stderr.
     #[arg(long)]
     pub perf: bool,
-    #[arg(long, alias = "thread", default_value_t = default_threads())]
+    /// Parallel analysis workers; must be positive. One admitted input is held per worker.
+    #[arg(long, alias = "thread", default_value_t = default_threads(), value_parser = super::super::positive)]
     pub threads: usize,
     #[command(flatten)]
     pub target: TargetArgs,
+    /// One local APK/ZIP with root DEX entries, or a standalone DEX file.
     pub apk_path: PathBuf,
+    /// Write the same payload to FILE and stdout; input and output must differ.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 }

@@ -518,7 +518,7 @@ fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
     let wrong = run("xref", &path, &["--at", "func:1", "--kind", "type"]);
     assert!(String::from_utf8_lossy(&wrong.stderr).contains("type"));
     assert!(String::from_utf8_lossy(&wrong.stderr).contains("function"));
-    failure(wrong, 2, "INVALID_QUERY");
+    failure(wrong, 2, "invalid value 'type'");
     failure(run("xref", &path, &["--at", "func:9999"]), 2, "NOT_FOUND");
     for at in ["func:+1", "func:01", "func:-1", "type:0"] {
         failure(run("xref", &path, &["--at", at]), 2, "INVALID_QUERY");

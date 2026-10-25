@@ -31,6 +31,10 @@ the artifact and its inner archive, then put `rxd` on your executable path:
 /absolute/path/rxd --help
 ```
 
+Use `rxd BACKEND --help` to choose a workflow, then `rxd BACKEND COMMAND --help`
+for minimal examples, required argument combinations, coordinate sources and
+result routing. Copy returned `at`/`context_at` values rather than inventing IDs.
+
 The shell installer supports pinned and latest-stable installation once a public
 release is available; see [Install and update](docs/demo/install.md). After installing
 the binary, install the shared Agent skill:

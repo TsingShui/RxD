@@ -20,7 +20,7 @@ const CLI_ONLY: &[&str] = &["dex_extract"];
 
 /// CLI flags that describe where a result goes or how a local process runs, not what
 /// to analyze. They never appear in a tool schema.
-const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug"];
+const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help"];
 
 /// Numeric flags keep `integer` in the schema; clap remains the authority on values.
 const NUMERIC: &[&str] = &[
@@ -42,6 +42,9 @@ pub(super) struct ArgSpec {
     pub kind: Kind,
     pub required: bool,
     pub enum_values: Vec<String>,
+    pub default: Option<Value>,
+    pub minimum: u64,
+    pub conflicts: Vec<String>,
 }
 
 pub(super) struct ToolSpec {
@@ -50,6 +53,9 @@ pub(super) struct ToolSpec {
     pub command: String,
     pub description: String,
     pub args: Vec<ArgSpec>,
+    pub required_groups: Vec<Vec<String>>,
+    pub machine_json: bool,
+    pub output_required: bool,
     /// `--apk`-style commands take an ordered input list instead of one path.
     pub multi_input: bool,
 }
@@ -74,6 +80,9 @@ fn kind_of(arg: &Arg) -> Kind {
 }
 
 fn hidden(arg: &Arg, first_positional: bool) -> bool {
+    if arg.is_hide_set() {
+        return true;
+    }
     match arg.get_long() {
         Some(long) => HIDDEN_LONGS.contains(&long) || long.starts_with("max-") || long == "apk",
         // The first positional is always the analyzed path; later ones are selectors.
@@ -81,7 +90,7 @@ fn hidden(arg: &Arg, first_positional: bool) -> bool {
     }
 }
 
-fn arg_spec(arg: &Arg) -> ArgSpec {
+fn arg_spec(arg: &Arg, command: &Command) -> ArgSpec {
     let long = arg.get_long().map(str::to_owned);
     let kind = kind_of(arg);
     ArgSpec {
@@ -90,9 +99,37 @@ fn arg_spec(arg: &Arg) -> ArgSpec {
             .unwrap_or(arg.get_id().as_str())
             .replace('-', "_"),
         long,
-        help: arg.get_help().map(|help| help.to_string()),
+        help: arg
+            .get_long_help()
+            .or_else(|| arg.get_help())
+            .map(|help| help.to_string()),
         kind,
         required: arg.is_required_set(),
+        minimum: if kind == Kind::Integer {
+            // Ask the declared parser whether zero is admitted, rather than guessing
+            // from a flag name. This covers positive custom parsers and range parsers.
+            let zero = Command::new("value")
+                .arg(Arg::new("value").value_parser(arg.get_value_parser().clone()))
+                .try_get_matches_from(["value", "0"]);
+            u64::from(zero.is_err())
+        } else {
+            0
+        },
+        default: arg.get_default_values().first().and_then(|value| {
+            let text = value.to_str()?;
+            Some(match kind {
+                Kind::Bool => Value::Bool(text.parse().ok()?),
+                Kind::Integer => Value::from(text.parse::<u64>().ok()?),
+                Kind::Text => Value::from(text),
+            })
+        }),
+        conflicts: command
+            .get_arg_conflicts_with(arg)
+            .into_iter()
+            .filter_map(|arg| arg.get_long())
+            .filter(|long| !HIDDEN_LONGS.contains(long))
+            .map(|long| long.replace('-', "_"))
+            .collect(),
         // A boolean flag is a switch, never a `true`/`false` value enum.
         enum_values: if kind == Kind::Bool {
             Vec::new()
@@ -119,7 +156,7 @@ fn args(command: &Command) -> Vec<ArgSpec> {
                 arg.is_positional() && first.as_ref().is_some_and(|id| id == arg.get_id());
             !hidden(arg, first_positional)
         })
-        .map(arg_spec)
+        .map(|arg| arg_spec(arg, command))
         .collect()
 }
 
@@ -128,23 +165,66 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
     let multi_input = command
         .get_arguments()
         .any(|arg| arg.get_long() == Some("apk"));
+    let args = args(command);
+    let required_groups = command
+        .get_groups()
+        .filter(|group| group.is_required_set())
+        .filter_map(|group| {
+            let mut group = group.clone();
+            if group.is_multiple() {
+                return None;
+            }
+            let keys: Vec<_> = group
+                .get_args()
+                .filter_map(|id| {
+                    command
+                        .get_arguments()
+                        .find(|arg| arg.get_id() == id)
+                        .and_then(|arg| arg.get_long())
+                        .map(|long| long.replace('-', "_"))
+                })
+                .collect();
+            (!keys.is_empty()
+                && keys
+                    .iter()
+                    .all(|key| args.iter().any(|arg| &arg.key == key)))
+            .then_some(keys)
+        })
+        .collect();
+    let mut description = command
+        .get_long_about()
+        .or_else(|| command.get_about())
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    if let Some(guide) = command
+        .get_after_long_help()
+        .or_else(|| command.get_after_help())
+    {
+        description.push_str("\n\n");
+        description.push_str(&guide.to_string());
+    }
+    description.push_str("\nMCP: input is {path: ...} or {target_id: ...}; CLI flags become snake_case fields without --. JSON output is automatic; omit json/output/perf.");
     ToolSpec {
         name,
         backend: backend.to_owned(),
         command: command.get_name().to_owned(),
-        description: command
-            .get_about()
-            .map(|about| about.to_string())
-            .or_else(|| command.get_long_about().map(|about| about.to_string()))
-            .unwrap_or_default(),
-        args: args(command),
+        description,
+        args,
+        required_groups,
+        machine_json: command
+            .get_arguments()
+            .any(|arg| arg.get_long() == Some("json")),
+        output_required: command
+            .get_arguments()
+            .any(|arg| arg.get_long() == Some("output") && arg.is_required_set()),
         multi_input,
     }
 }
 
 /// Walk the CLI once and describe every analysis command as a tool.
 pub(super) fn tools() -> Vec<ToolSpec> {
-    let root = <crate::cli::Cli as clap::CommandFactory>::command();
+    let mut root = <crate::cli::Cli as clap::CommandFactory>::command();
+    root.build();
     let mut tools = Vec::new();
     for backend in root.get_subcommands() {
         if !BACKENDS.contains(&backend.get_name()) {
@@ -167,11 +247,14 @@ pub(super) fn tools() -> Vec<ToolSpec> {
 fn property(arg: &ArgSpec) -> Value {
     let mut value = match arg.kind {
         Kind::Bool => json!({"type": "boolean"}),
-        Kind::Integer => json!({"type": "integer", "minimum": 0}),
+        Kind::Integer => json!({"type": "integer", "minimum": arg.minimum}),
         Kind::Text => json!({"type": "string"}),
     };
     if !arg.enum_values.is_empty() {
         value = json!({"type": "string", "enum": arg.enum_values});
+    }
+    if let Some(default) = &arg.default {
+        value["default"] = default.clone();
     }
     if let Some(help) = &arg.help {
         value["description"] = Value::from(help.clone());
@@ -186,7 +269,7 @@ fn input_reference() -> Value {
 
 /// The tool's input schema: captured inputs and the reflected arguments.
 ///
-/// A command's own flags describe the whole surface: `xref` takes `--at`/`--filter`/`--kind`
+/// A command's own flags describe the whole surface: `xref` takes `--at`/`--match`/`--kind`
 /// like every other command takes its options, so there is no per-kind selector to project.
 pub(super) fn input_schema(spec: &ToolSpec) -> Value {
     let mut properties = Map::new();
@@ -209,12 +292,31 @@ pub(super) fn input_schema(spec: &ToolSpec) -> Value {
     }
     required.sort_unstable();
     required.dedup();
-    json!({
+    let mut schema = json!({
         "type": "object",
         "properties": properties,
         "required": required,
         "additionalProperties": false,
-    })
+    });
+    let mut constraints = Vec::new();
+    for group in &spec.required_groups {
+        constraints.push(json!({"oneOf": group.iter().map(|key| {
+            let other: Vec<_> = group.iter().filter(|other| *other != key)
+                .map(|other| json!({"required":[other]})).collect();
+            json!({"required":[key], "not":{"anyOf":other}})
+        }).collect::<Vec<_>>()}));
+    }
+    for arg in spec.exposed() {
+        for other in &arg.conflicts {
+            if &arg.key < other && spec.args.iter().any(|arg| &arg.key == other) {
+                constraints.push(json!({"not":{"required":[arg.key, other]}}));
+            }
+        }
+    }
+    if !constraints.is_empty() {
+        schema["allOf"] = Value::Array(constraints);
+    }
+    schema
 }
 
 fn value_text(value: &Value) -> String {
@@ -251,7 +353,12 @@ pub(super) fn argv(
         };
         argv.push(path.as_os_str().into());
     }
-    // Parent flags precede a reference-kind subcommand; its own positionals wait.
+    if spec.output_required {
+        // Typed extraction returns an artifact rather than publishing a caller path.
+        // Supply a placeholder only to let the shared CLI parser validate arguments.
+        argv.push("--output=.rxd-mcp-artifact".into());
+    }
+    // Selectors are data; any later positionals are appended after flags.
     let mut positionals: Vec<OsString> = Vec::new();
     for arg in spec.exposed() {
         let Some(value) = arguments.get(&arg.key) else {
@@ -268,7 +375,7 @@ pub(super) fn argv(
         }
     }
     // Typed tools always request machine-readable output when the CLI offers the switch.
-    if spec.exposed().any(|arg| arg.key == "json") {
+    if spec.machine_json {
         argv.push("--json".into());
     }
     if !positionals.is_empty() {

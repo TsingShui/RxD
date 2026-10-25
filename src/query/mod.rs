@@ -316,7 +316,15 @@ fn extract_html(
     inputs: &[CapturedInput],
     budgets: QueryBudgets,
 ) -> Result<QueryResult, QueryError> {
-    let at = arguments["at"].as_str().unwrap().to_owned();
+    let at = arguments["at"]
+        .as_str()
+        .ok_or_else(|| {
+            QueryError::new(
+                "INVALID_QUERY",
+                "html_extract requires at from html_entries.at or html_resources.at",
+            )
+        })?
+        .to_owned();
     let content = arguments["content"].as_bool().unwrap_or(false);
     let destination = synthetic_extraction_destination(&inputs[0].path);
     let mut perf = Perf::new(false, "analysis", "html", "extract");
@@ -350,7 +358,15 @@ fn extract_asar(
     inputs: &[CapturedInput],
     budgets: QueryBudgets,
 ) -> Result<QueryResult, QueryError> {
-    let at = arguments["at"].as_str().unwrap().to_owned();
+    let at = arguments["at"]
+        .as_str()
+        .ok_or_else(|| {
+            QueryError::new(
+                "INVALID_QUERY",
+                "asar_extract requires at from asar_entries.at",
+            )
+        })?
+        .to_owned();
     let destination = synthetic_extraction_destination(&inputs[0].path);
     let mut perf = Perf::new(false, "analysis", "asar", "extract");
     let response = rxd_asar::run(

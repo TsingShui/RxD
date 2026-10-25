@@ -10,6 +10,7 @@ use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Args)]
+#[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
 pub struct Target {
     #[command(flatten)]
     selector: super::super::xref::Selector,
@@ -17,7 +18,7 @@ pub struct Target {
     #[arg(short = 'm', long = "match", requires = "kind", conflicts_with = "at")]
     filter: Option<String>,
     /// name for an exact literal name or content search; constant is inferred from --at.
-    #[arg(long)]
+    #[arg(long, value_parser = ["name", "constant"])]
     kind: Option<String>,
     #[command(flatten)]
     case: super::super::filter::CaseArgs,

@@ -83,8 +83,10 @@ impl Names {
 /// Selectors shared by the grouped structure listings.
 #[derive(Args)]
 pub(crate) struct Outline {
+    /// Copy an entity.at to select its descendants; single-file queries only.
     #[arg(long)]
     pub(super) within: Option<String>,
+    /// Maximum containment depth, relative to --within or the file root; zero is valid.
     #[arg(long)]
     pub(super) depth: Option<usize>,
     /// Keep only entities of this exact structural kind (comma-separated list allowed).
@@ -103,6 +105,9 @@ pub(crate) struct Outline {
 #[derive(Subcommand)]
 pub(crate) enum Command {
     /// List every structural entity, including the file root (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js entities bundle.js -f login\nOutput: entity JSONL, including program root; at/parent_at are file-scoped coordinates.\nNext: rxd js slice bundle.js --at '<entity.at>'.\n--kind accepts comma-separated structural kinds; --name is exact, -f a substring.\n--within/--depth select containment, not calls. Directories scan files in path order."
+    )]
     Entities {
         #[command(flatten)]
         common: Common,
@@ -112,6 +117,9 @@ pub(crate) enum Command {
         outline: Outline,
     },
     /// List function declarations, expressions, and arrows (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js functions bundle.js -f login\nOutput: entity JSONL restricted to functions/arrows. Copy at into slice.\nAnonymous functions may have detail.label rather than detail.name; -f matches that label.\nA directory is scanned recursively without executing code."
+    )]
     Functions {
         #[command(flatten)]
         common: Common,
@@ -121,6 +129,9 @@ pub(crate) enum Command {
         outline: Outline,
     },
     /// List classes, interfaces, enums, aliases, and namespaces (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js classes bundle.ts -f Client\nOutput: entity JSONL for class/type groups. Copy at into slice for original bytes.\nJSX/TSX need their file extension or --syntax override; no transpilation or runtime."
+    )]
     Classes {
         #[command(flatten)]
         common: Common,
@@ -130,6 +141,9 @@ pub(crate) enum Command {
         outline: Outline,
     },
     /// List class and object members: methods, constructors, getters, setters (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js methods bundle.js -f login\nOutput: entity JSONL for methods/constructors/getters/setters. Copy at into slice.\nParent means syntactic containment, not a call target; --name is exact, -f a substring."
+    )]
     Methods {
         #[command(flatten)]
         common: Common,
@@ -139,6 +153,9 @@ pub(crate) enum Command {
         outline: Outline,
     },
     /// Find substrings in decoded JS literals (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions; it never runs input code."
+    )]
     Find {
         #[command(flatten)]
         common: Common,
@@ -154,6 +171,9 @@ pub(crate) enum Command {
         resolve_static: bool,
     },
     /// List syntax-backed loading candidates, including unresolved expressions (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js resources bundle.js --kind request\nOutput: resource JSONL with known strings or unresolved loading expressions.\nUse context_at with slice; known text is not a resolved URL or permission to fetch.\n--resolve-bindings follows earlier unwritten local const strings only."
+    )]
     Resources {
         #[command(flatten)]
         common: Common,
@@ -178,6 +198,9 @@ pub(crate) enum Command {
         within: Option<String>,
     },
     /// List source-backed object entries, array elements, initializers and arguments.
+    #[command(
+        after_long_help = "Examples:\nrxd js values bundle.js --within '<entity.at>' --kind property\nOutput: value JSONL for syntax-backed slots; inspect detail.value/status, not runtime values.\n--within accepts a structure, fragment or symbol coordinate; use result context_at with slice."
+    )]
     Values {
         #[command(flatten)]
         common: Common,
@@ -191,6 +214,9 @@ pub(crate) enum Command {
         names: Names,
     },
     /// List lexical identifier occurrences (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js identifiers bundle.js --name token --role reference\nOutput: identifier JSONL with occurrence ranges and local context_at.\nProperty foo in obj.foo is not a lexical identifier; obj[key] does reference key.\nNext: slice --at '<identifier.context_at>', or xref --byte '<identifier.start>'."
+    )]
     Identifiers {
         #[command(flatten)]
         common: Common,
@@ -203,6 +229,9 @@ pub(crate) enum Command {
         within: Option<String>,
     },
     /// List statically named direct/member call and constructor sites (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js calls bundle.js --name fetch\nOutput: call JSONL, direct/member/new sites. Static syntax only, not return values or a call graph.\nUse context_at with slice for the exact local call; --within limits containment."
+    )]
     Calls {
         #[command(flatten)]
         common: Common,
@@ -213,6 +242,9 @@ pub(crate) enum Command {
         within: Option<String>,
     },
     /// Find static member names, property keys, and JSX attribute names (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js members bundle.js --name token --access write\nOutput: member JSONL for known keys/access sites; dynamic computed keys stay unresolved.\n--access filters actual property reads/writes, not every declaration.\nNext: rxd js slice bundle.js --at '<member.context_at>'."
+    )]
     Members {
         #[command(flatten)]
         common: Common,
@@ -226,15 +258,20 @@ pub(crate) enum Command {
         within: Option<String>,
     },
     /// Locate the innermost structure covering a UTF-8 byte offset (JSON).
+    #[command(
+        after_long_help = "Examples:\nrxd js locate bundle.js --byte 120\nRequired: UTF-8 byte offset, not a character/line number; inside input, not EOF.\nOutput: one location JSON record with detail.entity and ancestors.\nNext: rxd js slice bundle.js --at '<detail.entity.at>'.\nUse actual byte offsets from query rows or rg -boF; numbers here are examples."
+    )]
     Locate {
         #[command(flatten)]
         common: Common,
+        /// Original UTF-8 byte offset from a result start or rg -boF; not a line number.
         #[arg(long)]
         byte: u64,
         #[arg(long)]
         json: bool,
     },
     /// List lexical references for a binding/reference (JSONL).
+    #[command(after_long_help = "Examples:\nrxd js symbols bundle.js -f token\nrxd js xref bundle.js --at '<symbol.at>'\nrxd js xref bundle.js --byte 120\nrxd js xref bundle.js -m token --kind symbol\nRequired: exactly one of --at/--byte/--match; --match requires --kind symbol.\n--at copies symbols.at or a lexical identifier coordinate; --byte must be inside its name.\nOutput: reference JSONL; start/end are actual occurrences, context_at/parent_at route to slice.\nFile-local lexical bindings only. Zero rows do not prove absence under with/direct eval.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "byte", "filter"])))]
     Xref {
         #[command(flatten)]
         common: Common,
@@ -247,12 +284,15 @@ pub(crate) enum Command {
         #[arg(short = 'm', long = "match", conflicts_with_all = ["at", "byte"], requires = "kind")]
         filter: Option<String>,
         /// Only `symbol`: the one reference kind JS has is a lexical binding.
-        #[arg(long, value_name = "KIND", requires = "filter")]
+        #[arg(long, value_name = "KIND", value_parser = ["symbol"], requires = "filter")]
         kind: Option<String>,
         #[command(flatten)]
         case: CaseArgs,
     },
     /// Discover lexical bindings and unresolved references (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js symbols bundle.js -f token\nrxd js symbols bundle.js --within '<entity.at>'\nOutput: symbol and unresolved_reference JSONL; relation is declared or external.\nCopy symbol.at into xref for uses, or slice for its canonical declaration.\n--within requires an entity coordinate, not a fragment coordinate."
+    )]
     Symbols {
         #[command(flatten)]
         common: Common,
@@ -264,12 +304,13 @@ pub(crate) enum Command {
     },
     /// Slice the original bytes at a coordinate: a structure body, a symbol's declaration,
     /// or an explicit range.
+    #[command(after_long_help = "Examples:\nrxd js entities bundle.js -f login\nrxd js slice bundle.js --at '<entity.at>'\nrxd js slice bundle.js --at '<match.context_at>' --json\nRequired: --at copied from this input. Structure: its body; fragment: local original syntax;\nsymbol: canonical declaration. Do not pass a raw byte offset, name or file hash.\nOutput: byte-exact source on stdout with no added newline. --json returns one source\nrecord; read detail.source. -o atomically writes instead of stdout.", mut_arg("at", |arg| arg.required(true).value_name("SOURCE_AT").help("Copy entity.at, syntax context_at or symbol.at from this same file")))]
     Slice {
         #[command(flatten)]
         common: Common,
         #[command(flatten)]
         selector: super::super::xref::Selector,
-        /// Bound semantic analysis for symbol IDs; structure IDs do not build it.
+        /// Return one source JSON record instead of raw bytes; read detail.source.
         #[arg(long)]
         json: bool,
     },

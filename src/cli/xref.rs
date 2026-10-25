@@ -6,7 +6,7 @@
 //! - `--at COORD` names one identity, exactly as a row prints it. The coordinate says what
 //!   kind it is (`Lx/y;` a type, `Lx/y;->m()V` a method), so `--kind` is only needed to read
 //!   `--at` as a literal, which is the one target that cannot describe itself.
-//! - `-m/--match PATTERN` searches content: a case-sensitive substring, where an empty
+//! - `-m/--match PATTERN` searches content: folded unless `--case sensitive`, where an empty
 //!   answer is a true answer rather than a failure. A content search cannot say what kind it
 //!   looks for, so `--kind` is required here.
 //!
@@ -16,6 +16,7 @@
 
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 use super::filter::CaseMode;
+#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 use anyhow::{Context, Result, bail};
 use clap::Args;
 #[cfg(any(
@@ -107,10 +108,7 @@ pub struct Target {
 /// One FETCH selector: the coordinate a row printed.
 #[derive(Debug, Args)]
 pub struct Selector {
-    /// Coordinate copied from a record, exactly as that row printed it.
-    ///
-    /// Not marked required by clap: a command may offer another way in (`--byte`, a
-    /// content search), and `resolve` then reports the missing selector itself.
+    /// Copy a printed coordinate from the same input; command examples name its source record.
     #[arg(long, value_name = "COORD")]
     pub at: Option<String>,
 }
@@ -127,13 +125,14 @@ impl Selector {
 /// The two faces every backend shares.
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 #[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
 pub struct TargetArgs {
     /// Exact target coordinate, as a row prints it: `Lx/y;`, `Lx/y;->name(proto)`,
     /// `Lx/y;->name:type`, or, with `--kind string`, a literal.
     #[arg(long, value_name = "COORD", conflicts_with = "filter")]
     pub at: Option<String>,
     /// Substring of the target's value, name or type; folded unless `--case sensitive`.
-    #[arg(short = 'm', long = "match", value_name = "PATTERN")]
+    #[arg(short = 'm', long = "match", value_name = "PATTERN", requires = "kind")]
     pub filter: Option<String>,
     /// Target kind: inferred from `--at` when the coordinate carries one, required with
     /// `--match`, and required to read `--at` as a literal.
@@ -152,6 +151,12 @@ pub struct TargetArgs {
 #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
 impl TargetArgs {
     pub fn resolve(&self) -> Result<Target> {
+        self.resolve_inner().map_err(|error| {
+            rxd_core::Error::failure(rxd_core::Failure::Query, format!("{error:#}")).into()
+        })
+    }
+
+    fn resolve_inner(&self) -> Result<Target> {
         // Clap rejects `--at` with `--match`; keep the check for direct callers.
         if self.at.is_some() && self.filter.is_some() {
             bail!(

@@ -5,6 +5,7 @@
 //! envelope (captured inputs, artifact output, server resource ceilings) and the
 //! output schema.
 use super::{CapturedInput, QueryBudgets, QueryError, reflect, schema};
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -74,9 +75,8 @@ pub fn catalog() -> Vec<ToolDefinition> {
     result
 }
 
-/// Reject a caller mistake before spawning a worker. Everything else (types, enums,
-/// conflicts, required flags) is the CLI parser's job, so the two surfaces cannot
-/// disagree about what is valid.
+/// Reject missing/wrong typed fields before input capture, then let the actual CLI
+/// parser validate combinations. Placeholder paths are never opened.
 pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
     #[cfg(feature = "bundled-kuna")]
     if name.starts_with("kuna_") {
@@ -99,19 +99,42 @@ pub fn validate(name: &str, arguments: &Value) -> Result<(), QueryError> {
             ));
         }
     }
-    if spec.multi_input {
-        if arguments.get("inputs").is_none() {
+    for key in allowed["required"].as_array().into_iter().flatten() {
+        let key = key.as_str().expect("schema required field");
+        if !object.contains_key(key) {
             return Err(QueryError::new(
                 "INVALID_QUERY",
-                "exactly one inputs selector is required",
+                format!("missing required argument `{key}` for {name}"),
             ));
         }
-    } else if arguments.get("input").is_none() {
-        return Err(QueryError::new(
-            "INVALID_QUERY",
-            "exactly one input selector is required",
-        ));
     }
+    for (key, value) in object {
+        let rule = &properties[key];
+        let valid = match rule["type"].as_str() {
+            Some("string") => value.is_string(),
+            Some("integer") => value.is_u64(),
+            Some("boolean") => value.is_boolean(),
+            _ => true,
+        };
+        if !valid
+            || value
+                .as_u64()
+                .zip(rule["minimum"].as_u64())
+                .is_some_and(|(value, minimum)| value < minimum)
+            || rule["enum"]
+                .as_array()
+                .is_some_and(|values| !values.contains(value))
+        {
+            return Err(QueryError::new(
+                "INVALID_QUERY",
+                format!("invalid `{key}` for {name}: expected {}", rule),
+            ));
+        }
+    }
+    let paths = vec![PathBuf::from(".rxd-mcp-validation-input")];
+    let argv = reflect::argv(&spec, arguments, &paths)?;
+    crate::cli::Cli::try_parse_from(argv)
+        .map_err(|error| QueryError::new("INVALID_QUERY", error.to_string()))?;
     Ok(())
 }
 

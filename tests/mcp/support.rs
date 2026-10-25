@@ -186,6 +186,16 @@ pub fn assert_schema(value: &Value, schema: &Value) {
         {
             return false;
         }
+        if let Some(branches) = rule["allOf"].as_array()
+            && !branches.iter().all(|branch| valid(value, branch, root))
+        {
+            return false;
+        }
+        if let Some(negated) = rule.get("not")
+            && valid(value, negated, root)
+        {
+            return false;
+        }
         if let Some(branches) = rule["anyOf"].as_array()
             && !branches.iter().any(|branch| valid(value, branch, root))
         {
@@ -197,6 +207,14 @@ pub fn assert_schema(value: &Value, schema: &Value) {
                 .filter(|branch| valid(value, branch, root))
                 .count()
                 != 1
+        {
+            return false;
+        }
+        if let Some(object) = value.as_object()
+            && let Some(required) = rule["required"].as_array()
+            && !required
+                .iter()
+                .all(|key| object.contains_key(key.as_str().unwrap()))
         {
             return false;
         }

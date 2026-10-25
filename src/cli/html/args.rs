@@ -10,8 +10,10 @@ pub(crate) struct Common {
     /// Write complete JSONL atomically instead of writing to stdout.
     #[arg(short, long)]
     pub(super) output: Option<PathBuf>,
+    /// Enable backend diagnostic details on stderr; does not execute input.
     #[arg(long)]
     pub(super) debug: bool,
+    /// Write timing/resource JSONL to stderr without changing the result payload.
     #[arg(long)]
     pub(super) perf: bool,
     // The shared budget table (rxd_core::Budget) supplies input, record, output and
@@ -20,7 +22,10 @@ pub(crate) struct Common {
 #[derive(Subcommand)]
 pub(crate) enum Command {
     /// Enumerate lexical_naive_v1 records (not a DOM or browser-complete parse).
-    #[command(name = "entries")]
+    #[command(
+        name = "entries",
+        after_long_help = "Examples:\nrxd html entries page.html --tag script\nrxd html entries page.html --attr 'name=AppPublic'\nOutput: element/text/comment/doctype JSONL; at is kind:start:end in UTF-8 byte offsets.\nCopy an element.at into --within; --depth is relative depth, including zero.\nNext: rxd html extract page.html --at '<element.at>' --content -o inline.js.\nLexical approximation only, not browser DOM reconstruction."
+    )]
     Entries {
         #[command(flatten)]
         common: Common,
@@ -47,6 +52,9 @@ pub(crate) enum Command {
         case: CaseArgs,
     },
     /// List source-backed resources, inline code and unresolved references without fetching.
+    #[command(
+        after_long_help = "Examples:\nrxd html resources page.html --base-url https://example.org/page\nrxd html resources page.html --kind script --location inline --include-content\nOutput: resource JSONL; at is the owning element, detail.content is original inline text.\n--base-url is the final captured page URL; resolves relative references without fetching.\nExternal candidates are not automatically downloaded; hint/data are not executable scripts.\nNext: extract --at '<resource.at>' --content -o inline.js, then rxd js entities inline.js."
+    )]
     Resources {
         #[command(flatten)]
         common: Common,
@@ -69,6 +77,7 @@ pub(crate) enum Command {
         include_content: bool,
     },
     /// Fetch original bytes from an exact catalog record.
+    #[command(after_long_help = "Examples:\nrxd html entries page.html --tag script\nrxd html extract page.html --at '<element.at>' --content -o inline.js\nRequired: --at and -o FILE. Copy entries.at or resources.at, never an extracted-file offset.\nDefault extracts the whole node; --content extracts only an element's inner bytes.\nOutput: original bytes in FILE and one file receipt on stdout, with detail.origin.\nThen analyze FILE separately; its offsets are no longer page.html offsets.", mut_arg("at", |arg| arg.required(true).value_name("NODE_AT").help("Copy entries.at or resources.at from this HTML file, e.g. element:20:80")), mut_arg("output", |arg| arg.required(true).help("Write extracted original bytes to this file; stdout is a receipt")))]
     Extract {
         #[command(flatten)]
         common: Common,

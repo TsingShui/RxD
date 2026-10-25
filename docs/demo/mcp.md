@@ -31,6 +31,11 @@ normally. A current discovery request can carry this metadata in `params._meta`:
 {"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"analysis-agent","version":"1"},"io.modelcontextprotocol/clientCapabilities":{}}}}
 ```
 
+Command `--help` includes minimal examples, parameter sources and result routing.
+MCP descriptions inherit the same guidance; `tools/list` publishes required fields,
+exclusive selectors and enums. JSON output is automatic: omit `json`, `output` and
+`perf`. Invalid argument combinations fail with `INVALID_QUERY` before input capture.
+
 Use the exact schemas returned by `tools/list`. Tool names follow CLI namespaces (JVM uses
 `jar_*`); build/startup filters control availability. For codemode, the following glue assumes
 a client `callTool` method returning the MCP result object:

@@ -12,7 +12,11 @@ use super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
 #[derive(Subcommand)]
 pub enum Command {
     /// List the class metadata an archive defines as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nOutput: class JSONL; at is Lx/y;. Copy at into get-class for Java.\n--class is an exact internal/dotted/descriptor name; -f is a substring."
+    )]
     Classes {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         /// Exact internal, dotted or descriptor class name.
         #[arg(long)]
@@ -26,7 +30,11 @@ pub enum Command {
         options: Options,
     },
     /// List the entries an archive holds, in central-directory order.
+    #[command(
+        after_long_help = "Examples:\nrxd jar entries library.jar -f META-INF\nOutput: entry JSONL with names, compression and sizes. Entries are archive metadata,\nnot member coordinates. --release N controls multi-release class selection."
+    )]
     Entries {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         ///  substring over the entry name. Folded unless `--case sensitive`.
         #[arg(short, long)]
@@ -37,7 +45,11 @@ pub enum Command {
         options: Options,
     },
     /// List the fields an archive declares as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd jar fields library.jar --class x.y -f token\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f a substring.\nNext: rxd jar xref library.jar --at '<field.at>'."
+    )]
     Fields {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         /// Only list fields of this class: internal, dotted or descriptor name.
         #[arg(long)]
@@ -54,7 +66,11 @@ pub enum Command {
         options: Options,
     },
     /// List the methods an archive defines as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd jar methods library.jar --class x.y -f run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads. Next: get-method --at '<method.at>'."
+    )]
     Methods {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         /// Only list methods of this class: internal, dotted or descriptor name.
         #[arg(long)]
@@ -71,8 +87,9 @@ pub enum Command {
         options: Options,
     },
     /// Extract one method as Java or original JVM instructions.
-    #[command(name = "get-method")]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd jar methods library.jar -f run\nrxd jar get-method library.jar --at 'Lx/y;->run()V' --raw\nCopy methods.at or xref.context_at verbatim; include parameters AND return type.\nOutput: one method_body JSON record. Default detail.code is reconstructed Java;\n--raw returns original JVM instructions, byte offsets and exception handlers.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at: JVM descriptor including return type, e.g. Lx/y;->run()V")))]
     Get {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
@@ -83,8 +100,9 @@ pub enum Command {
         options: Options,
     },
     /// Decompile a whole class to Java by its internal, dotted or descriptor name.
-    #[command(name = "get-class")]
+    #[command(name = "get-class", after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nrxd jar get-class library.jar --at 'Lx/y;'\nCopy classes.at, not a method coordinate. Output: one class_body record, detail.code is Java.\nWhole-class rendering may contain unsupported-method stubs; inspect method --raw separately.", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; do not pass a method coordinate")))]
     GetClass {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
@@ -92,7 +110,11 @@ pub enum Command {
         options: Options,
     },
     /// List string literals from every selected class constant pool as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd jar strings library.jar -f Authorization\nrxd jar xref library.jar -m Authorization --kind string\nOutput: string JSONL from CONSTANT_String literals, not every constant-pool Utf8 name.\nPool indices are not methods. xref.context_at routes to get-method for the caller."
+    )]
     Strings {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         /// Exact internal, dotted or descriptor class name to scope the listing.
         #[arg(long)]
@@ -106,7 +128,11 @@ pub enum Command {
         options: Options,
     },
     /// Find code references to a string, type, method or field across all classes.
+    #[command(
+        after_long_help = "Examples:\nrxd jar xref library.jar --at 'Lx/y;->run()V'\nrxd jar xref library.jar -m Authorization --kind string\nrxd jar xref library.jar -m append --kind method --class java.lang.StringBuilder\nRequired: exactly one of --at/--match; --match requires --kind.\nCoordinates copy classes.at/methods.at/fields.at; literal --at needs --kind string.\n--class is one exact target owner, not caller filtering.\nOutput: reference JSONL; context_at names caller, detail.byte_offset/mnemonic the use.\nNext: rxd jar get-method library.jar --at '<reference.context_at>' --raw."
+    )]
     Xref {
+        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
         #[command(flatten)]
         target: TargetArgs,
@@ -120,6 +146,7 @@ pub struct Options {
     /// JVM release used to select multi-release JAR entries.
     #[arg(long, default_value_t = 8)]
     release: u16,
+    /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
     /// Emit the analysis perf record as JSONL on stderr.

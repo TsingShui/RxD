@@ -12,7 +12,11 @@ use serde_json::{Map, Value, json};
 #[derive(Subcommand)]
 pub enum Command {
     /// List the types an assembly defines as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd dotnet classes app.dll -f JsonReader\nOutput: class JSONL; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd dotnet get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
+    )]
     Classes {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         /// Exact full type name.
         #[arg(long)]
@@ -26,7 +30,11 @@ pub enum Command {
         options: Options,
     },
     /// List the fields an assembly defines as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd dotnet fields app.dll --class Example.Client -f token\nOutput: field JSONL; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd dotnet xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
+    )]
     Fields {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         /// Exact full type name.
         #[arg(long)]
@@ -43,7 +51,11 @@ pub enum Command {
         options: Options,
     },
     /// List the methods an assembly defines as JSONL.
+    #[command(
+        after_long_help = "Examples:\nrxd dotnet methods app.dll --class Example.Client -f Send\nOutput: method JSONL; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd dotnet get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
+    )]
     Methods {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         /// Exact full type name.
         #[arg(long)]
@@ -60,8 +72,9 @@ pub enum Command {
         options: Options,
     },
     /// Get one method as conservative code or original instructions.
-    #[command(name = "get-method")]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd dotnet methods app.dll -f Read\nrxd dotnet get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context_at from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: one method_body JSON record. --raw preserves IL; C# needs ILSpy.\nInspect detail.representation/decompiled/reason; engine fallback IL is not C#.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context_at: eight-digit MethodDef token, e.g. 0x0600000b")))]
     Get {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
@@ -72,8 +85,9 @@ pub enum Command {
         options: Options,
     },
     /// Fetch a selected type and every recursively owned nested type.
-    #[command(name = "get-class")]
+    #[command(name = "get-class", after_long_help = "Examples:\nrxd dotnet classes app.dll -f Client\nrxd dotnet get-class app.dll --at '0x0200000b' --raw\nCopy classes.at or a member's parent_at. TypeDef token, not a class name.\nOutput: one class_body JSON record including recursively owned nested types.\n--raw keeps metadata/IL/EH; C# requires ILSpy and may explicitly fall back to IL.", mut_arg("at", |arg| arg.required(true).value_name("TYPE_TOKEN").help("Copy classes.at or member.parent_at: eight-digit TypeDef token, e.g. 0x0200000b")))]
     GetClass {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
@@ -84,7 +98,11 @@ pub enum Command {
         options: Options,
     },
     /// Query decoded user-string heap literals without executing input.
+    #[command(
+        after_long_help = "Examples:\nrxd dotnet strings app.dll -f Authorization\nOutput: string JSONL; at is a #US token, context_at an owning method, parent_at a type.\nNext: rxd dotnet get-method app.dll --at '<string.context_at>' --raw,\nor rxd dotnet xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have null caller/owner; equal values may be separate heap entries."
+    )]
     Strings {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         ///  substring over the decoded literal. Folded unless `--case sensitive`.
         #[arg(short, long)]
@@ -95,7 +113,9 @@ pub enum Command {
         options: Options,
     },
     /// Find exact/semantic member and type operands or decoded user-string loads.
+    #[command(after_long_help = "Examples:\nrxd dotnet xref app.dll --at '0x0600000b'\nrxd dotnet xref app.dll -m Authorization --kind string\nRequired: exactly one of --at/--match; --match supports only --kind string.\nCopy member/class/string at tokens; --at literal text requires --kind string.\nOutput: reference JSONL; context_at is caller, detail.target is referenced value/token.\nNext: rxd dotnet get-method app.dll --at '<reference.context_at>' --raw.\nReferences are explicit IL operands, not reflection or runtime dispatch.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
     Xref {
+        /// One regular local managed PE DLL/EXE; analyzed without loading it.
         input: PathBuf,
         /// Exact target: the metadata token of a member or type, such as `0x0a00001f`; it
         /// also covers external members, generic instantiations and `#US` string tokens
@@ -103,13 +123,13 @@ pub enum Command {
         #[arg(long, value_name = "TOKEN", conflicts_with = "filter")]
         at: Option<String>,
         /// Substring of a decoded user-string literal; folded unless `--case sensitive`.
-        #[arg(short = 'm', long = "match", value_name = "PATTERN")]
+        #[arg(short = 'm', long = "match", value_name = "PATTERN", requires = "kind")]
         filter: Option<String>,
         /// Target kind: read off the token's table when it names one; required with
         /// `--match`, which can only search literals.
         #[arg(long, value_enum)]
         kind: Option<Kind>,
-        /// Whether `-f` folds case: `insensitive` (default) or `sensitive`.
+        /// Whether `--match` folds case: `insensitive` (default) or `sensitive`.
         #[arg(long, value_enum, default_value_t = crate::cli::filter::CaseMode::Insensitive)]
         case: crate::cli::filter::CaseMode,
 
@@ -126,8 +146,10 @@ type Kind = crate::cli::xref::Kind;
 
 #[derive(Args)]
 pub struct Options {
+    /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
+    /// Write timing/resource JSONL to stderr without changing the result payload.
     #[arg(long)]
     perf: bool,
 }

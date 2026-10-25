@@ -10,12 +10,16 @@ use std::{
 
 #[derive(Args)]
 pub struct Options {
+    /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     pub(crate) output: Option<PathBuf>,
+    /// Write timing/resource JSONL to stderr without changing the result payload.
     #[arg(long)]
     pub perf: bool,
+    /// Enable backend diagnostic details on stderr; does not execute input.
     #[arg(long)]
     pub debug: bool,
+    /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
     #[arg(skip)]
     pub(crate) budget: rxd_core::Budget,
 }

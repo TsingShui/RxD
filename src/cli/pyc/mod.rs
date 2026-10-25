@@ -18,20 +18,31 @@ use serde_json::json;
 #[derive(Subcommand)]
 pub enum Command {
     /// Find explicit name or constant-occurrence references, with enclosing code IDs.
+    #[command(
+        after_long_help = "Examples:\nrxd pyc strings module.pyc -f token\nrxd pyc xref module.pyc --at '<string.at>'\nrxd pyc xref module.pyc --at token --kind name\nrxd pyc xref module.pyc -m token --kind name\nRequired: exactly one of --at/--match; --match requires --kind name.\nConstant coordinates copy strings.at (const:N:PATH), not codes.at; names are literal text.\n--within copies codes.at to restrict scanning. Output: reference JSONL; context_at names code.\nNext: rxd pyc get-code module.pyc --at '<reference.context_at>'."
+    )]
     Xref {
+        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
         input: PathBuf,
         #[command(flatten)]
         target: refs::Target,
+        /// Copy codes.at (code:N) to restrict the bytecode scan to this owner.
         #[arg(long)]
         within: Option<String>,
+        /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
         #[command(flatten)]
         options: refs::RefsOptions,
     },
     /// Enumerate lossless str/bytes constants without decoding instructions.
+    #[command(
+        after_long_help = "Examples:\nrxd pyc strings module.pyc -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nOutput: string JSONL; at is const:N:PATH, context_at its code:N owner.\nUse xref --at '<string.at>' for loads, or get-code --at '<string.context_at>'.\nText and hexadecimal filters are exclusive. Non-UTF-8 bytes retain raw_bytes."
+    )]
     Strings {
+        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
         input: PathBuf,
+        /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
         /// Substring over literal text or raw bytes, folded unless `--case sensitive`.
@@ -39,25 +50,31 @@ pub enum Command {
         filter: Option<String>,
         #[command(flatten)]
         case: CaseArgs,
-        ///  substring over raw bytes, given as even hexadecimal digits. Folded unless `--case sensitive`.
+        /// Byte-exact substring as even hexadecimal digits without 0x or separators; use this for non-UTF-8 constants.
         #[arg(long, value_parser = strings::valid_hex)]
         filter_hex: Option<String>,
         #[command(flatten)]
         options: static_commands::Options,
     },
     /// Fetch original instructions, tables and location evidence for one code coordinate.
+    #[command(after_long_help = "Examples:\nrxd pyc codes module.pyc -f login\nrxd pyc get-code module.pyc --at 'code:0'\nRequired: --at copied from codes.at or xref.context_at; code:N, not const:N:PATH.\nOutput: one code_view JSON record with original instructions, caches, tables and ranges.\nNo source reconstruction here; use decompile for whole-module Python text.", mut_arg("at", |arg| arg.required(true).value_name("CODE_AT").help("Copy codes.at or xref.context_at: code:N, not a constant coordinate")))]
     GetCode {
+        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
+        /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
         #[arg(long,value_parser=parse_version)]
         version: Option<(u8, u8)>,
         #[command(flatten)]
         options: fetch_commands::FetchOptions,
     },
     /// Enumerate bounded code-object metadata without decoding instructions.
+    #[command(after_long_help = "Examples:\nrxd pyc codes module.pyc -f login\nrxd pyc codes module.pyc --at 'code:0'\nOutput: code JSONL in original depth-first order; at is code:N, parent_at first containment.\n--at is optional; --name exact and -f substring filters preserve original indices.\nNext: rxd pyc get-code module.pyc --at '<code.at>'. No instruction/source recovery during listing.", mut_arg("at", |arg| arg.value_name("CODE_AT").help("Optional codes.at coordinate, code:N; omit to enumerate all code objects")))]
     Codes {
+        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
         input: PathBuf,
+        /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
         /// Substring over the code name, folded unless `--case sensitive`.
@@ -74,7 +91,11 @@ pub enum Command {
         options: static_commands::Options,
     },
     /// Reconstruct Python source from a .pyc or versioned raw marshal code object.
+    #[command(
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile module.pyc --json\nrxd pyc decompile raw.marshal --version 3.12 -o recovered.py\nReconstruct the whole module, not a selected code:N. Never execute the input.\nDefault stdout is Python text; incomplete recovery fails without partial text.\n--json returns one source record with detail.source and detail.complete.\nFor original selected bytecode use codes -> get-code --at instead."
+    )]
     Decompile {
+        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
         input: PathBuf,
         /// Interpret input as raw marshal for the exact Python version X.Y.
         #[arg(long, value_parser = parse_version)]
@@ -89,8 +110,10 @@ pub enum Command {
 
 #[derive(Args)]
 pub struct Options {
+    /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
+    /// Write timing/resource JSONL to stderr without changing the result payload.
     #[arg(long)]
     perf: bool,
     #[arg(skip)]

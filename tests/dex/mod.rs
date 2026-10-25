@@ -200,18 +200,18 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
             &path,
             &["--at", "LFixture0;->m0()V", "--kind", "field"],
         ),
-        1,
+        2,
         "is a method coordinate, but --kind field was given",
     );
     failure(
         query("xref", &path, &["--at", "LFixture0;", "--class", "Fixture"]),
-        1,
+        2,
         "already names the owner class",
     );
     failure(
         query("xref", &path, &["-m", "Authorization"]),
-        1,
-        "--match searches content, so it needs --kind",
+        2,
+        "--kind <KIND>",
     );
     failure(
         query(
@@ -219,7 +219,7 @@ fn dex_xref_separates_coordinate_anchors_from_content_searches() {
             &path,
             &["-m", "Authorization", "--kind", "type", "--class", "F"],
         ),
-        1,
+        2,
         "it needs --kind method or --kind field",
     );
     // Clap rejects both anchor faces before the query runs.

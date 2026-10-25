@@ -9,8 +9,10 @@ pub(crate) struct Common {
     /// Write output atomically; extract writes raw file bytes here.
     #[arg(short, long)]
     pub(super) output: Option<PathBuf>,
+    /// Enable backend diagnostic details on stderr; does not execute input.
     #[arg(long)]
     pub(super) debug: bool,
+    /// Write timing/resource JSONL to stderr without changing the result payload.
     #[arg(long)]
     pub(super) perf: bool,
     // Every ceiling comes from rxd_core::Budget; no CLI flag exposes one.
@@ -19,7 +21,14 @@ pub(crate) struct Common {
 #[derive(Subcommand)]
 pub(crate) enum Command {
     /// Enumerate every indexed file and its range status (metadata JSONL).
-    #[command(name = "entries")]
+    #[command(
+        name = "entries",
+        after_long_help = "Examples:
+  rxd asar entries app.asar -f main
+Output: file JSONL; at is an archive-relative path, detail describes packed/unpacked storage.
+Next: rxd asar extract app.asar --at '<file.at>' -o extracted.js.
+Listing does not execute or parse entry contents; invalid packed ranges stay explicit."
+    )]
     Entries {
         #[command(flatten)]
         common: Common,
@@ -30,6 +39,12 @@ pub(crate) enum Command {
         case: CaseArgs,
     },
     /// Write one original file to --output and return a JSON extraction receipt.
+    #[command(mut_arg("at", |arg| arg.required(true).value_name("ENTRY_PATH").help("Copy entries.at: exact archive-relative path, e.g. main.js; not a host path")), mut_arg("output", |arg| arg.required(true).help("Write original entry bytes to this file; stdout is a receipt")), after_long_help = "Examples:
+  rxd asar entries app.asar -f main
+  rxd asar extract app.asar --at 'main.js' -o extracted-main.js
+Required: --at and -o FILE. Use actual entries.at, not an absolute host path.
+Output: original entry bytes in FILE and a file receipt on stdout.
+Next: rxd js entities extracted-main.js. Analysis never executes extracted code.")]
     Extract {
         #[command(flatten)]
         common: Common,
