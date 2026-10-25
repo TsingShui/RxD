@@ -180,7 +180,7 @@ rxd skill
 
 The skill covers all current backends. Placing the Markdown where an Agent discovers
 it is the caller's job; `rxd skill` creates no directories or Agent configuration.
-See [README](../../README.md#-installation). The old `rxd dex skill` entry is removed.
+See [README](../README.md#-installation). The old `rxd dex skill` entry is removed.
 Unsupported clients can still use manual stdio registration with the exact absolute
 executable/argv: see the [MCP demo](mcp.md). Never put a shell command string in
 an argv field.

@@ -65,13 +65,15 @@ The current layout is:
   generation were removed; a backend that needs one gets it written against the
   current surface (`entries`/`classes`/`codes`, `--at`, `-f`/`--case`,
   `--name`).
-- `docs/demo/`: one `*.md` of runnable examples per backend.
+- `docs/`: user-facing `install.md`, `ci.md` and `mcp.md`, plus `docs/agents/`
+  working agreements. Backend usage lives in `rxd --help` and the embedded skill;
+  there are no per-backend example documents to keep in sync.
 - `site/`: static GitHub Pages site (`index.html`, `examples.html`,
   `arxd.html`, `roadmap.html`, `changelog.html`, and `zh/` counterparts) served
   by `.github/workflows/pages.yml`; no build step.
 
 Use the implementation, CLI help and focused tests as the source of truth.
-Update affected runnable examples in `docs/demo/` when commands change; separate
+Keep that help and the embedded skill current when a command changes; separate
 design or decision documents are not required.
 
 Build binaries, benchmark reports, demo outputs and native runtime bundles belong

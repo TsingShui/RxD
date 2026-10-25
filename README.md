@@ -11,7 +11,7 @@ Project site: [tsingshui.github.io/RxD](https://tsingshui.github.io/RxD/) · [Ex
 
 [![Build RxD](https://github.com/TsingShui/RxD/actions/workflows/build.yml/badge.svg)](https://github.com/TsingShui/RxD/actions/workflows/build.yml)
 [![Rust](https://img.shields.io/badge/rust-1.97%2B-orange?logo=rust)](https://www.rust-lang.org)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](docs/demo/ci.md)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](docs/ci.md)
 [![Formats](https://img.shields.io/badge/formats-11-success)](#-supported-formats)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![No Exec](https://img.shields.io/badge/input-never%20executed-critical)](#safety-model)
@@ -36,7 +36,7 @@ for minimal examples, required argument combinations, coordinate sources and
 result routing. Copy returned `at`/`context_at` values rather than inventing IDs.
 
 The shell installer supports pinned and latest-stable installation once a public
-release is available; see [Install and update](docs/demo/install.md). After installing
+release is available; see [Install and update](docs/install.md). After installing
 the binary, print the shared Agent skill:
 
 ```sh
@@ -57,7 +57,7 @@ rxd mcp --allow-path /absolute/path/to/inputs
 ```
 
 Reload and verify using the
-[Pi, Claude Code and Codex onboarding guide](docs/demo/install.md#agent-onboarding).
+[Pi, Claude Code and Codex onboarding guide](docs/install.md#agent-onboarding).
 Writing configuration does not establish a live session; client opt-outs and
 overrides still apply.
 
@@ -158,7 +158,7 @@ for method and limits.
 
 **macOS / Linux**: supported targets are macOS arm64 and Linux x86_64/arm64
 (glibc ≥ 2.39). Download a package from a successful Actions run; the
-[distribution guide](docs/demo/ci.md) covers checksums and manual installation.
+[distribution guide](docs/ci.md) covers checksums and manual installation.
 
 When a public release is available, the planned installer is:
 
@@ -166,7 +166,7 @@ When a public release is available, the planned installer is:
 curl -fsSL https://github.com/TsingShui/RxD/releases/latest/download/install.sh | sh
 ```
 
-See [Install and update](docs/demo/install.md) for pinned versions, custom
+See [Install and update](docs/install.md) for pinned versions, custom
 directories, script inspection, PATH and troubleshooting.
 
 **Windows**: download `rxd-windows-x86_64.zip` and its SHA-256 file, verify and
@@ -204,7 +204,7 @@ No native engine is checked in. Desktop ILSpy is produced per target with
 `scripts/build-ilspy.py`; Android App engines are produced from source with the
 instructions in [`devtools/android-ilspy/`](devtools/android-ilspy/). The full
 maintenance and release flow is in
-[Build and verification](docs/demo/ci.md#build-and-verification-details).
+[Build and verification](docs/ci.md#build-and-verification-details).
 
 **Agent skills**: print the embedded Agent skill to stdout; it writes no files and
 configures no Agent:
@@ -252,8 +252,8 @@ local input; each supplied file or directory grant narrows that set.
 Use `rxd_open` / `rxd_close` to pin inputs, or pass a path directly. Every built-in
 backend preserves its original commands, content identities, completeness and
 degradation semantics; optional Kuna provides native JSON `functions` and
-single-function `decompile`. See [configuration and codemode examples](docs/demo/mcp.md)
-and [four-platform release builds](docs/demo/ci.md). HTTPS is a later transport milestone.
+single-function `decompile`. See [configuration and codemode examples](docs/mcp.md)
+and [four-platform release builds](docs/ci.md). HTTPS is a later transport milestone.
 
 ## Safety model
 

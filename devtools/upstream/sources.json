@@ -18,7 +18,7 @@
         "src/cli/kuna",
         "src/query/kuna.rs"
       ],
-      "evidence": "docs/demo/kuna.md"
+      "evidence": "third_party/kuna/README.md"
     },
     {
       "id": "radguard",

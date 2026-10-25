@@ -6,7 +6,8 @@ Static, dependency-free pages served by GitHub Pages at
 ## Structure
 
 - `index.html` — RxD overview and backend provenance.
-- `examples.html` — ShowCase placeholder; CLI examples live in `docs/demo/`.
+- `examples.html` — ShowCase placeholder; CLI usage lives in
+  `src/skills/rxd/SKILL.md` and `rxd --help`.
 - `arxd.html` — notice that Arxd is maintained separately.
 - `roadmap.html` — development status and future work.
 - `changelog.html` — dated public/site milestones and unreleased work.
@@ -43,12 +44,11 @@ Keep these aligned with the repository:
   invent benchmark numbers on the site;
 - cross-platform claims match the release targets: macOS arm64, Linux
   x86_64/arm64 (glibc ≥ 2.39), Windows x86_64;
-- example commands come from `docs/demo/*.md`; `<id>` placeholders are always
-  outputs of the preceding query, never invented offsets;
+- example commands follow `src/skills/rxd/SKILL.md` and `rxd --help`; `<id>`
+  placeholders are always outputs of the preceding query, never invented offsets;
 - Arxd is maintained in the standalone private repository `TsingShui/Arxd`;
   its former App source is no longer included here;
-- install commands come from `docs/demo/install.md`, `docs/demo/ci.md`, and the
-  root README;
+- install commands come from `docs/install.md`, `docs/ci.md`, and the root README;
 - backend provenance names the actual upstream engine or states that the
   component is RxD-owned; versions and licenses stay in NOTICE and component
   provenance files;

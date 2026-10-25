@@ -37,7 +37,7 @@ Local scope inspection and validation reuse:
 python3 scripts/ci-scope.py --base HEAD
 ```
 
-Detail is in [docs/agents/testing.md](../agents/testing.md).
+Detail is in [docs/agents/testing.md](agents/testing.md).
 
 ## Complete build artifacts
 
