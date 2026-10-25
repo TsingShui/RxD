@@ -9,7 +9,9 @@ mod fragment;
 mod identifiers;
 mod lexical;
 mod members;
+mod modules;
 mod names;
+mod project;
 mod refs;
 mod resources;
 mod static_eval;
@@ -21,7 +23,9 @@ mod values;
 
 pub use decode::Decoders;
 pub use members::MemberAccess;
+pub use modules::{Listing as ModuleListing, ModuleQuery};
 pub use names::NameQuery;
+pub use project::xref as project_xref;
 pub use resources::{RESOURCE_KINDS, ResourcesQuery};
 pub use syntax::Syntax;
 pub use values::{VALUE_KINDS, ValuesQuery};
@@ -72,6 +76,7 @@ pub enum Query {
     Outline {
         /// `functions`, `classes` or `methods`; `None` is the full `entities` catalog.
         group: Option<&'static str>,
+        resolve_static: bool,
         within: Option<String>,
         depth: Option<usize>,
         kind: Option<String>,
@@ -87,6 +92,7 @@ pub enum Query {
         resolve_static: bool,
     },
     Resources(ResourcesQuery),
+    Modules(ModuleQuery),
     Values(ValuesQuery),
     Identifiers {
         names: NameQuery,
@@ -159,6 +165,11 @@ impl Query {
             Self::Outline { group, .. } => group.unwrap_or("entities"),
             Self::Find { .. } => "find",
             Self::Resources(_) => "resources",
+            Self::Modules(q) => match q.listing {
+                ModuleListing::Modules => "modules",
+                ModuleListing::Imports => "imports",
+                ModuleListing::Exports => "exports",
+            },
             Self::Values(_) => "values",
             Self::Identifiers { .. } => "identifiers",
             Self::Calls { .. } => "calls",
@@ -303,6 +314,9 @@ pub fn run_source(
     {
         names.validate()?;
     }
+    if let Query::Modules(module) = &query {
+        module.names.validate()?;
+    }
     if let Query::Resources(resources) = &query {
         resources.validate()?;
     }
@@ -364,10 +378,15 @@ pub fn run_source(
     let resolve_static = match &query {
         Query::Find { resolve_static, .. }
         | Query::Calls { resolve_static, .. }
-        | Query::Members { resolve_static, .. } => *resolve_static,
+        | Query::Members { resolve_static, .. }
+        | Query::Outline { resolve_static, .. } => *resolve_static,
+        Query::Values(v) => v.resolve_static,
+        Query::Resources(r) => r.resolve_static,
         _ => false,
     };
-    let decoders = resolve_static.then(|| Decoders::build(&parsed.program));
+    let decoders = resolve_static
+        .then(|| Decoders::build(&parsed.program, limits, perf))
+        .transpose()?;
     let mut collector = Collector::new(
         &source,
         limits,
@@ -399,6 +418,7 @@ pub fn run_source(
         limit: if matches!(
             query,
             Query::Values(_)
+                | Query::Modules(_)
                 | Query::Identifiers { .. }
                 | Query::Calls { .. }
                 | Query::Members { .. }
@@ -419,6 +439,7 @@ pub fn run_source(
             name,
             contains,
             contains_case_sensitive,
+            ..
         } => {
             let group_kinds = match group {
                 None => None,
@@ -504,6 +525,17 @@ pub fn run_source(
             perf.measure("serialize", || -> Result<()> {
                 for found in &collector.matches {
                     output.json(&found.envelope())?;
+                }
+                Ok(())
+            })?;
+        }
+        Query::Modules(module) => {
+            perf.record("query", query_start);
+            let rows = modules::run(&parsed.program, &source, &collector, &module, limits, perf)?;
+            perf.counters.records = Some(rows.len());
+            perf.measure("serialize", || -> Result<()> {
+                for row in rows {
+                    output.json(&row.envelope())?;
                 }
                 Ok(())
             })?;

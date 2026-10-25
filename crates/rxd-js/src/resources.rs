@@ -29,6 +29,7 @@ pub struct ResourcesQuery {
     pub case_sensitive: bool,
     pub within: Option<String>,
     pub resolve_bindings: bool,
+    pub resolve_static: bool,
 }
 
 impl ResourcesQuery {
@@ -77,6 +78,8 @@ struct Strings<'b, 'a> {
     steps: usize,
     bindings: Option<&'b Bindings<'a>>,
     proofs: Vec<BindingProof>,
+    decoders: Option<&'b crate::Decoders>,
+    decoded: bool,
 }
 
 impl<'a> Strings<'_, 'a> {
@@ -89,6 +92,10 @@ impl<'a> Strings<'_, 'a> {
             return Err("fold_limit");
         }
         self.steps -= 1;
+        if let Some(value) = self.decoders.and_then(|d| d.expression(expression)) {
+            self.decoded = true;
+            return Ok(value.value.clone());
+        }
         match expression.get_inner_expression() {
             Expression::StringLiteral(literal) => {
                 self.decoded(literal.value.as_str(), literal.lone_surrogates)
@@ -169,7 +176,7 @@ pub(crate) fn value(
     span: Span,
     forced: Option<&'static str>,
 ) -> Value {
-    value_with_bindings(source, expression, span, forced, None)
+    value_with_bindings(source, expression, span, forced, None, None)
 }
 
 fn value_with_bindings<'a>(
@@ -178,6 +185,7 @@ fn value_with_bindings<'a>(
     span: Span,
     forced: Option<&'static str>,
     bindings: Option<&Bindings<'a>>,
+    decoders: Option<&crate::Decoders>,
 ) -> Value {
     let inner = expression.get_inner_expression();
     if forced.is_none() {
@@ -206,12 +214,16 @@ fn value_with_bindings<'a>(
         steps: FOLD_STEPS,
         bindings,
         proofs: Vec::new(),
+        decoders,
+        decoded: false,
     };
     let result = forced.map_or_else(|| strings.expression(expression, 0), Err);
     let (name, resolution, reason) = match result {
         Ok(name) => (
             name,
-            if strings.proofs.is_empty() {
+            if strings.decoded {
+                "decoder"
+            } else if strings.proofs.is_empty() {
                 "static"
             } else {
                 "binding"
@@ -428,6 +440,7 @@ struct Visitor<'a, 's> {
     source: &'s Source,
     query: &'a ResourcesQuery,
     bindings: Option<&'a Bindings<'s>>,
+    decoders: Option<&'a crate::Decoders>,
     locations: Locations<'a, 's>,
     contexts: Contexts,
     region: Span,
@@ -441,7 +454,14 @@ impl<'s> Visitor<'_, 's> {
         span: Span,
         forced: Option<&'static str>,
     ) -> Value {
-        value_with_bindings(self.source, expression, span, forced, self.bindings)
+        value_with_bindings(
+            self.source,
+            expression,
+            span,
+            forced,
+            self.bindings,
+            self.decoders,
+        )
     }
 
     fn push(&mut self, site: Site, value: Value, base: Base) {
@@ -690,6 +710,7 @@ pub fn run<'s>(
     perf.measure("query", || {
         let mut visitor = Visitor {
             bindings: bindings.as_ref(),
+            decoders: collector.decoders(),
             source,
             query,
             locations: Locations::new(collector),

@@ -46,16 +46,21 @@ impl RecordBudget {
     pub fn charge(&mut self, label: &JsString) -> Result<()> {
         let budget = self.limits;
         self.records += 1;
-        self.bytes = self
-            .bytes
-            .saturating_add(label.len_utf16().saturating_mul(2) + 512);
-        if budget.work.is_some_and(|limit| self.records > limit)
-            || self.bytes > budget.metadata_bytes
-        {
+        if budget.work.is_some_and(|limit| self.records > limit) {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "JS name listing budget exceeded",
             ));
+        }
+        self.charge_bytes(label.len_utf16().saturating_mul(2).saturating_add(512))
+    }
+    pub fn charge_bytes(&mut self, bytes: usize) -> Result<()> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes)
+            .ok_or_else(|| Error::new("RESOURCE_LIMIT", "JS metadata accounting overflow"))?;
+        if self.bytes > self.limits.metadata_bytes {
+            return Err(Error::new("RESOURCE_LIMIT", "JS metadata budget exceeded"));
         }
         Ok(())
     }

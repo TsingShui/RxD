@@ -8,6 +8,8 @@ mod container_entry;
 #[cfg(feature = "backend-html")]
 #[path = "html/mod.rs"]
 mod html;
+#[cfg(feature = "backend-js")]
+mod js_modules;
 #[path = "resource_policy/mod.rs"]
 mod resource_policy;
 #[cfg(feature = "backend-zip")]
@@ -1814,7 +1816,7 @@ fn symbols_within_includes_nested_declarations_and_external_bindings_without_nam
 }
 
 #[test]
-fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
+fn symbols_is_bounded_atomic_and_rejects_invalid_structure_ids() {
     let (dir, path) = fixture("let x=0; function f(p){return x+p+host}", "symbols.js");
     let plain = invoke("symbols", &path, &[]);
     let rows = jsonl(&plain);
@@ -1839,7 +1841,13 @@ fn symbols_is_bounded_atomic_single_file_and_rejects_invalid_structure_ids() {
         ));
         assert_eq!(fs::read(&destination).unwrap(), b"preserved");
     }
-    failure(invoke("symbols", dir.path(), &[]), 1, "INVALID_INPUT");
+    let directory = jsonl(&invoke("symbols", dir.path(), &[]));
+    assert_eq!(&directory[1..], rows);
+    failure(
+        invoke("symbols", dir.path(), &["--within", "program:0:1"]),
+        2,
+        "--within requires a single-file input",
+    );
     failure(invoke("symbols", &path, &["-r"]), 2, "unexpected argument");
     // A ceiling is not a CLI knob any more; the flag is simply unknown.
     failure(
@@ -2133,8 +2141,8 @@ fn refs_is_single_file_bounded_atomic_and_semantic_only_on_demand() {
     failure(invoke("xref", &path, &["--byte", "0"]), 1, "NOT_FOUND");
     failure(
         invoke("xref", dir.path(), &["--byte", "0"]),
-        1,
-        "INVALID_INPUT",
+        2,
+        "directory coordinates require --file",
     );
     failure(
         invoke("xref", &path, &["--byte", "4", "-r"]),

@@ -35,7 +35,7 @@ pub(crate) enum MemberAccessArg {
 
 #[derive(Args)]
 pub(crate) struct Common {
-    /// Local UTF-8 JavaScript file; structure/find/resources listings also accept directories.
+    /// Local UTF-8 JavaScript file; listings and name searches also accept directories.
     pub(super) input: PathBuf,
     #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
     #[command(flatten)]
@@ -103,6 +103,9 @@ pub(crate) struct Outline {
     pub(super) filter: Option<String>,
     #[command(flatten)]
     pub(super) case: CaseArgs,
+    /// Also recover labels from proven literal-table lookups.
+    #[arg(long)]
+    pub(super) resolve_static: bool,
 }
 
 #[derive(Subcommand)]
@@ -155,6 +158,48 @@ pub(crate) enum Command {
         #[command(flatten)]
         outline: Outline,
     },
+    /// List retained file and bundler module boundaries (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js modules bundle.js\nrxd js modules bundle.js --name 42\nOutput: module JSONL with retained module_id (null for the file root), registry_at, chunk_ids and import/export counts.\nCopy module.at into slice; --within selects a file-local structural range.\nWebpack factory invocation and chunk registration are syntax evidence; absent boundaries do not reconstruct original files.\nentry: true marks a direct initializer invocation, not a runtime call graph."
+    )]
+    Modules {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
+        names: Names,
+        #[arg(long)]
+        within: Option<String>,
+    },
+    /// List ESM, CommonJS and retained bundler import sites (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js imports entry.mjs\nrxd js imports bundle.js --within '<module.at>'\nOutput: import JSONL with source/expression, imported/local names, syntax and type_only.\n--name/-f match the imported name, falling back to source for a side-effect import.\nCopy at for a local binding, or context_at for the original import/loading site. Dynamic expressions stay explicit."
+    )]
+    Imports {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
+        names: Names,
+        #[arg(long)]
+        within: Option<String>,
+    },
+    /// List exported names, definitions and re-export sites (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js exports entry.mjs --name login\nrxd js exports src/ -f login\nOutput: export JSONL with exported/local names, source/imported re-export evidence, syntax and type_only.\n--name/-f match the exported name; at selects a lexical definition where available.\nUse context_at for an export site. A default expression is not a live alias of an identifier it reads."
+    )]
+    Exports {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
+        names: Names,
+        #[arg(long)]
+        within: Option<String>,
+    },
     /// Find substrings in decoded JS literals (JSONL).
     #[command(
         after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions and recognized literal-table decoders."
@@ -196,6 +241,9 @@ pub(crate) enum Command {
         /// Follow earlier, unwritten const strings in the same lexical scope; no calls or object reads.
         #[arg(long)]
         resolve_bindings: bool,
+        /// Resolve supported literal-table decoder calls in loading expressions.
+        #[arg(long)]
+        resolve_static: bool,
         /// Restrict loading sites to this structure and its descendants; single file only.
         #[arg(long)]
         within: Option<String>,
@@ -215,6 +263,9 @@ pub(crate) enum Command {
         /// The row's own name is its property/binding, target or syntactic index.
         #[command(flatten)]
         names: Names,
+        /// Resolve supported literal-table values and computed keys.
+        #[arg(long)]
+        resolve_static: bool,
     },
     /// List lexical identifier occurrences (JSONL).
     #[command(
@@ -223,6 +274,8 @@ pub(crate) enum Command {
     Identifiers {
         #[command(flatten)]
         common: Common,
+        #[command(flatten)]
+        scan: Scan,
         #[command(flatten)]
         names: Names,
         #[arg(long, value_enum, default_value = "all")]
@@ -239,6 +292,8 @@ pub(crate) enum Command {
         #[command(flatten)]
         common: Common,
         #[command(flatten)]
+        scan: Scan,
+        #[command(flatten)]
         names: Names,
         /// Restrict call sites to this structure and its descendants.
         #[arg(long)]
@@ -254,6 +309,8 @@ pub(crate) enum Command {
     Members {
         #[command(flatten)]
         common: Common,
+        #[command(flatten)]
+        scan: Scan,
         #[command(flatten)]
         names: Names,
         /// Select syntactic reads or writes; compound assignments and updates match both.
@@ -280,10 +337,15 @@ pub(crate) enum Command {
         json: bool,
     },
     /// List lexical references for a binding/reference (JSONL).
-    #[command(after_long_help = "Examples:\nrxd js symbols bundle.js -f token\nrxd js xref bundle.js --at '<symbol.at>'\nrxd js xref bundle.js --byte 120\nrxd js xref bundle.js -m token --kind symbol\nRequired: exactly one of --at/--byte/--match; --match requires --kind symbol.\n--at copies symbols.at or a lexical identifier coordinate; --byte must be inside its name.\nOutput: reference JSONL; start/end are actual occurrences, context_at/parent_at route to slice.\nFile-local lexical bindings only. Zero rows do not prove absence under with/direct eval.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "byte", "filter"])))]
+    #[command(after_long_help = "Examples:\nrxd js symbols bundle.js -f token\nrxd js xref bundle.js --at '<symbol.at>'\nrxd js xref bundle.js --byte 120\nrxd js xref bundle.js -m token --kind symbol\nRequired: exactly one of --at/--byte/--match; --match requires --kind symbol.\n--at copies symbols.at or a lexical identifier coordinate; --byte must be inside its name.\nOutput: reference JSONL; start/end are actual occurrences, context_at/parent_at route to slice.\nA file resolves lexical bindings; directory --match aggregates separate file-local results.\nrxd js xref src/ --file auth.mjs --at '<symbol.at>'\nDirectory --file follows proven relative ESM imports/re-exports, not same-name guesses.\nOnly exact ./ and ../ file paths are linked; packages, namespace properties and URL-like specifiers stay unlinked.\nMCP accepts a JS directory snapshot; retain it with rxd_open backend=js for repeated project queries.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "byte", "filter"])))]
     Xref {
         #[command(flatten)]
         common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        /// On a directory, anchor --at/--byte in this relative file and follow exact relative ESM links.
+        #[arg(long, conflicts_with = "filter")]
+        file: Option<PathBuf>,
         #[command(flatten)]
         selector: super::super::xref::Selector,
         /// A byte offset to anchor on instead, including one inside a multi-byte identifier.
@@ -305,6 +367,8 @@ pub(crate) enum Command {
     Symbols {
         #[command(flatten)]
         common: Common,
+        #[command(flatten)]
+        scan: Scan,
         #[command(flatten)]
         names: Names,
         /// Include declarations and dependencies in this structure and its descendants.
@@ -330,6 +394,7 @@ impl Command {
         match self {
             Self::Entities { outline, .. } => Query::Outline {
                 group: None,
+                resolve_static: outline.resolve_static,
                 within: outline.within,
                 depth: outline.depth,
                 kind: outline.kind,
@@ -339,6 +404,7 @@ impl Command {
             },
             Self::Functions { outline, .. } => Query::Outline {
                 group: Some("functions"),
+                resolve_static: outline.resolve_static,
                 within: outline.within,
                 depth: outline.depth,
                 kind: outline.kind,
@@ -348,6 +414,7 @@ impl Command {
             },
             Self::Classes { outline, .. } => Query::Outline {
                 group: Some("classes"),
+                resolve_static: outline.resolve_static,
                 within: outline.within,
                 depth: outline.depth,
                 kind: outline.kind,
@@ -357,6 +424,7 @@ impl Command {
             },
             Self::Methods { outline, .. } => Query::Outline {
                 group: Some("methods"),
+                resolve_static: outline.resolve_static,
                 within: outline.within,
                 depth: outline.depth,
                 kind: outline.kind,
@@ -364,6 +432,21 @@ impl Command {
                 contains: outline.filter,
                 contains_case_sensitive: outline.case.sensitive(),
             },
+            Self::Modules { names, within, .. } => Query::Modules(rxd_js::ModuleQuery {
+                listing: rxd_js::ModuleListing::Modules,
+                names: names.query(),
+                within,
+            }),
+            Self::Imports { names, within, .. } => Query::Modules(rxd_js::ModuleQuery {
+                listing: rxd_js::ModuleListing::Imports,
+                names: names.query(),
+                within,
+            }),
+            Self::Exports { names, within, .. } => Query::Modules(rxd_js::ModuleQuery {
+                listing: rxd_js::ModuleListing::Exports,
+                names: names.query(),
+                within,
+            }),
             Self::Find {
                 filter,
                 case,
@@ -381,6 +464,7 @@ impl Command {
                 case,
                 within,
                 resolve_bindings,
+                resolve_static,
                 ..
             } => Query::Resources(rxd_js::ResourcesQuery {
                 kind,
@@ -389,16 +473,19 @@ impl Command {
                 case_sensitive: case.sensitive(),
                 within,
                 resolve_bindings,
+                resolve_static,
             }),
             Self::Values {
                 within,
                 kind,
                 names,
+                resolve_static,
                 ..
             } => Query::Values(rxd_js::ValuesQuery {
                 within,
                 kind,
                 names: names.query(),
+                resolve_static,
             }),
             Self::Identifiers {
                 names,
@@ -462,6 +549,9 @@ impl Command {
             Self::Classes { .. } => "classes",
             Self::Methods { .. } => "methods",
             Self::Find { .. } => "find",
+            Self::Modules { .. } => "modules",
+            Self::Imports { .. } => "imports",
+            Self::Exports { .. } => "exports",
             Self::Resources { .. } => "resources",
             Self::Values { .. } => "values",
             Self::Identifiers { .. } => "identifiers",
@@ -480,7 +570,15 @@ impl Command {
             | Self::Classes { scan, .. }
             | Self::Methods { scan, .. }
             | Self::Find { scan, .. }
-            | Self::Resources { scan, .. } => Some(scan),
+            | Self::Resources { scan, .. }
+            | Self::Modules { scan, .. }
+            | Self::Imports { scan, .. }
+            | Self::Exports { scan, .. }
+            | Self::Identifiers { scan, .. }
+            | Self::Calls { scan, .. }
+            | Self::Members { scan, .. }
+            | Self::Symbols { scan, .. }
+            | Self::Xref { scan, .. } => Some(scan),
             _ => None,
         }
     }
@@ -492,6 +590,9 @@ impl Command {
             | Self::Methods { common, .. }
             | Self::Find { common, .. }
             | Self::Resources { common, .. }
+            | Self::Modules { common, .. }
+            | Self::Imports { common, .. }
+            | Self::Exports { common, .. }
             | Self::Values { common, .. }
             | Self::Identifiers { common, .. }
             | Self::Calls { common, .. }

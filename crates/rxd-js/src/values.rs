@@ -23,6 +23,7 @@ pub struct ValuesQuery {
     pub within: Option<String>,
     pub kind: Option<String>,
     pub names: crate::NameQuery,
+    pub resolve_static: bool,
 }
 impl ValuesQuery {
     pub fn validate(&self) -> Result<()> {
@@ -166,6 +167,7 @@ struct Visitor<'c, 's> {
     records: Vec<Value<'s>>,
     bytes: usize,
     limits: Limits,
+    decoders: Option<&'c crate::Decoders>,
     error: Option<Error>,
 }
 impl<'s> Visitor<'_, 's> {
@@ -210,8 +212,19 @@ impl<'s> Visitor<'_, 's> {
         name: JsString,
         syntax: &'static str,
         owner: Span,
-        value: ExpressionValue<'s>,
+        mut value: ExpressionValue<'s>,
     ) -> Detail<'s> {
+        if value.resolution == "unresolved"
+            && value.unresolved_reason == Some("not_closed_string")
+            && let Some(resolved) = self
+                .decoders
+                .and_then(|d| d.at_span(Span::new(value.start, value.end)))
+        {
+            value.kind = "string";
+            value.resolution = "decoder";
+            value.value = Some(Primitive::String(resolved.value.clone()));
+            value.unresolved_reason = None;
+        }
         Detail {
             kind,
             name,
@@ -282,7 +295,13 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                     match p {
                         ObjectPropertyKind::ObjectProperty(p) => {
                             let key = p.key.span();
-                            let (name, resolution) = if p.computed {
+                            let decoded = p
+                                .key
+                                .as_expression()
+                                .and_then(|e| self.decoders.and_then(|d| d.expression(e)));
+                            let (name, resolution) = if let Some(decoded) = decoded {
+                                (decoded.value.clone(), "decoder")
+                            } else if p.computed {
                                 let v = p
                                     .key
                                     .as_expression()
@@ -431,6 +450,7 @@ pub fn run<'s>(
             records: Vec::new(),
             bytes: 0,
             limits: collector.limits,
+            decoders: collector.decoders(),
             error: None,
         };
         v.visit_program(program);

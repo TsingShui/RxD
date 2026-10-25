@@ -30,10 +30,20 @@ pub(super) fn execute(
         SyntaxArg::Ts => Syntax::Ts,
         SyntaxArg::Tsx => Syntax::Tsx,
     };
+    let project_file = match &command {
+        Command::Xref { file, .. } => file.clone(),
+        _ => None,
+    };
     let scan = command.scan().map(|s| s.threads);
     let directory = scan.is_some() && input.symlink_metadata().is_ok_and(|m| m.is_dir());
     #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
     let directory = directory && entry.is_none();
+    if project_file.is_some() && !directory {
+        return Err(rxd_core::Error::new(
+            "INVALID_QUERY",
+            "--file requires a directory snapshot",
+        ));
+    }
     let budget = if directory {
         // Discovery has its own depth/concurrency protection; each file gets its own policy.
         rxd_core::Budget::default()
@@ -108,6 +118,7 @@ pub(super) fn execute(
                     mode,
                     syntax,
                     query,
+                    project_file: project_file.as_deref(),
                     policy,
                     max_files: match policy {
                         rxd_core::BudgetPolicy::Fixed(budget) => Some(budget.entries),

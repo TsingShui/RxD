@@ -355,8 +355,10 @@ fn restore_paths(value: &mut Value, inputs: &[CapturedInput]) {
     match value {
         Value::Object(object) => {
             for (key, value) in object {
-                if matches!(key.as_str(), "path" | "container" | "input" | "archive")
-                    && let Some(path) = value.as_str()
+                if matches!(
+                    key.as_str(),
+                    "path" | "container" | "input" | "archive" | "target_path"
+                ) && let Some(path) = value.as_str()
                 {
                     for input in inputs {
                         if std::path::Path::new(path) == input.path {

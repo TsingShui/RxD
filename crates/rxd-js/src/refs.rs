@@ -119,7 +119,11 @@ pub fn run_filter(
 }
 
 /// The fragment id path of the node that owns one occurrence, for a row's `context_at`.
-fn context_at(semantic: &Semantic<'_>, node_id: NodeId, source: &Source) -> Option<String> {
+pub(crate) fn context_at(
+    semantic: &Semantic<'_>,
+    node_id: NodeId,
+    source: &Source,
+) -> Option<String> {
     std::iter::once(semantic.nodes().kind(node_id))
         .chain(semantic.nodes().ancestor_kinds(node_id))
         .take_while(|&node| !fragment::boundary(node))

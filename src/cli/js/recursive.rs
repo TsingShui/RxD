@@ -16,8 +16,9 @@ fn at_path(path: &Path, error: Error) -> Error {
 
 /// A directory scan has no stream header, so each file opens its rows with a `file`
 /// data record: the only thing that ties a file-scoped `at` to its input.
-fn file_record(path: &Path) -> Result<Vec<u8>> {
-    let input_bytes = fs::metadata(path).map_err(Error::from)?.len();
+fn file_record(path: &Path, input_bytes: Option<usize>) -> Result<Vec<u8>> {
+    let input_bytes =
+        input_bytes.ok_or_else(|| Error::new("INTERNAL_ERROR", "missing analyzed input size"))?;
     let mut row = serde_json::to_vec(&json!({
         "record": "file",
         "detail": {
@@ -90,6 +91,7 @@ pub(super) struct Request<'a> {
     pub mode: SourceMode,
     pub syntax: Syntax,
     pub query: Query,
+    pub project_file: Option<&'a Path>,
     pub policy: rxd_core::BudgetPolicy,
     pub max_files: Option<usize>,
     pub threads: usize,
@@ -109,6 +111,7 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
         mode,
         syntax,
         query,
+        project_file,
         policy,
         max_files,
         threads,
@@ -126,13 +129,34 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
     if let Query::Resources(resources) = &query {
         resources.validate()?;
     }
+    match &query {
+        Query::Calls { names, .. }
+        | Query::Members { names, .. }
+        | Query::Identifiers { names, .. }
+        | Query::Symbols { names, .. } => names.validate()?,
+        Query::Modules(q) => q.names.validate()?,
+        _ => {}
+    }
     if matches!(
         &query,
         Query::Outline {
             within: Some(_),
             ..
+        } | Query::Calls {
+            within: Some(_),
+            ..
+        } | Query::Members {
+            within: Some(_),
+            ..
+        } | Query::Identifiers {
+            within: Some(_),
+            ..
+        } | Query::Symbols {
+            within: Some(_),
+            ..
         }
     ) || matches!(&query, Query::Resources(resources) if resources.within.is_some())
+        || matches!(&query, Query::Modules(q) if q.within.is_some())
     {
         return Err(Error::new(
             "INVALID_QUERY",
@@ -145,6 +169,41 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
     let files = perf
         .measure("discover", || discover(input, max_files))
         .map_err(|e| at_path(input, e))?;
+    if let Some(file) = project_file {
+        if file.components().any(|c| {
+            !matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        }) {
+            return Err(Error::new(
+                "INVALID_QUERY",
+                "--file must be a relative path inside the snapshot",
+            ));
+        }
+        let anchor = input.join(file);
+        if !files.contains(&anchor) {
+            return Err(Error::new(
+                "NOT_FOUND",
+                "--file is not a discovered JS file",
+            ));
+        }
+        let Query::Refs { target } = &query else {
+            return Err(Error::new("INVALID_QUERY", "--file requires xref"));
+        };
+        return rxd_js::project_xref(&files, &anchor, target, mode, syntax, policy, perf);
+    }
+    if matches!(
+        &query,
+        Query::Refs {
+            target: rxd_js::RefsTarget::Coordinate(_) | rxd_js::RefsTarget::Byte(_)
+        }
+    ) {
+        return Err(Error::new(
+            "INVALID_QUERY",
+            "directory coordinates require --file RELATIVE_PATH",
+        ));
+    }
     let mut output = Vec::new();
     let mut records = 0;
     if files.len() == 1 && !directory {
@@ -180,6 +239,7 @@ fn run_serial(
         remaining,
         perf,
     );
+    let input_bytes = perf.counters.input_bytes;
     *records += perf.counters.records.unwrap_or(0);
     // Timings already accumulate in Perf; counters need explicit summation.
     macro_rules! accumulate {
@@ -190,12 +250,21 @@ fn run_serial(
             };)*
         };
     }
-    accumulate!(input_bytes, entities, matches, records, output_bytes);
+    accumulate!(
+        input_bytes,
+        entities,
+        matches,
+        records,
+        output_bytes,
+        semantic_nodes,
+        semantic_symbols,
+        semantic_references
+    );
     // A scan has multiple content identities, never the last file's identity.
     perf.source_id = None;
     let bytes = result.map_err(|e| at_path(path, e))?;
     if file_row {
-        output.extend_from_slice(&file_record(path)?);
+        output.extend_from_slice(&file_record(path, input_bytes)?);
     }
     output.extend_from_slice(&bytes);
     Ok(())
@@ -242,9 +311,10 @@ fn run_parallel(
     for (path, (result, shard)) in files.iter().zip(results) {
         let bytes = result.map_err(|e| at_path(path, e))?;
         let file_records = shard.counters.records.unwrap_or(0);
+        let input_bytes = shard.counters.input_bytes;
         *records += file_records;
         perf.merge(&shard);
-        output.extend_from_slice(&file_record(path)?);
+        output.extend_from_slice(&file_record(path, input_bytes)?);
         output.extend_from_slice(&bytes);
     }
     // A scan has multiple content identities, never the last file's identity.

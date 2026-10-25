@@ -15,7 +15,7 @@ explicitly, then locate → associate
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
+| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols`, `modules`/`imports`/`exports` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
 | Electron ASAR | `rxd asar` | `entries` / JS, HTML and WASM queries accept `rxd BACKEND COMMAND app.asar --entry ENTRY_PATH`; other backends use `extract --at` first |
 | ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; JS/HTML/WASM also accept `--entry` with a printed `zip:N` coordinate or unique exact path |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
@@ -101,10 +101,40 @@ fragment, falling back to `parent_at` for the enclosing entity. `ENTITY_AT` is a
 row from `entities` or a match's `parent_at`; a fragment coordinate is not valid
 for `symbols --within`. A symbol row's `at` anchors `xref`; its `start` byte is the
 `--byte` spelling when the anchor is a raw position. `xref` resolves lexical bindings
-within one file,
-not properties or cross-file calls; unresolved names and dynamic `with`/`eval`
-produce no reference rows. For directory find,
-route each hit through the enclosing `file` record's `detail.path` into single-file commands.
+within a file; unresolved names and dynamic `with`/`eval` produce no reference rows.
+Directory searches (`calls`, `members`, `identifiers`, `symbols`, `xref --match`,
+`modules`, `imports`, `exports`, and the structure/literal listings) aggregate
+independent file-local results. Route each hit through the enclosing `file`
+record's `detail.path`; same names in different files are not a binding relation.
+`--within` requires a single file.
+
+```sh
+rxd js modules bundle.js
+rxd js imports bundle.js --within "$MODULE_AT"
+rxd js exports entry.mjs --name login
+rxd js calls src/ --name fetch
+rxd js xref src/ -m login --kind symbol
+rxd js xref src/ --file "$RELATIVE_FILE" --at "$SYMBOL_AT"
+```
+
+`modules` reports the file plus retained webpack factory/registration boundaries;
+`module_id` (null for the file root), `registry_at`, `chunk_ids`, counts and direct initializer `entry`
+evidence describe the artifact, not a recovered original file tree. Its `at` is
+sliceable original syntax. `imports` exposes source/expression, imported/local
+aliases and `type_only`; `--name`/`-f` match the imported name (source for side-effect
+imports). `exports` filters exported names and exposes definitions or re-export
+sites. Follow an available `at` to a local binding and `context_at` to the site.
+
+Directory `xref --file` anchors a symbol/identifier coordinate or `--byte` in the
+relative discovered file and joins only proven ESM bindings through exact `./`
+and `../` file paths. Aliases and named/star re-exports may link; ambiguity,
+missing targets and unsupported relationships stay unlinked. Default function/
+class declarations and live export specifiers can link; a default expression
+snapshot is not an alias of the identifier it reads. No package/extension guessing,
+namespace-property inference or URL-like specifier resolution is provided.
+`target_path` plus `detail.target` identifies the canonical binding; `link: esm`
+marks cross-file references. MCP can capture a JS directory snapshot; open it with
+`rxd_open` and `backend: js` to reuse identical files across project queries.
 
 The identifier/call/member queries are syntax-first locators. `identifiers`
 returns binding/reference occurrences of a full lexical name (so `obj.foo` never
@@ -122,12 +152,28 @@ rows restricted to one kind group. `find
 hits are `literal_kind: static_expression` with `detail.raw` and
 `resolution: static`.
 
-`--resolve-static` on `find`, `calls` and `members` also recognizes a whole
-literal-table decoder (one string array, one `table[index - constant]` function,
-one solved rotation loop). Those hits are `literal_kind: decoded` with
-`resolution: decoder`, `calls` reports the proven callee key, and `members`
-reports `key_resolution: decoder`. Whole tables only: encoded arrays, ambiguous
-rotations and partial tables stay unresolved.
+`--resolve-static` shares one decoder proof across `find`, `calls`, `members`,
+`values`, `resources` and structure labels. Supported shapes use a closed string
+array factory, a lexical decoder with a bounded integral numeric index and at
+most one numeric offset, and optionally one uniquely solved cached-table rotation.
+Unwritten initialized `const` aliases are followed only after their activation/order
+is proven; captured declarations must not be read or escape before initialization. Plain tables and direct
+standard `atob` table decoding are supported; `atob` yields Latin-1 code units,
+not UTF-8. RC4 and arbitrary custom decoder bodies are unsupported. Rotation bootstrap is
+restricted to pure declarations/closed values and known decoder calls; opaque
+bootstrap effects, runtime imports and evaluator/reflection/constructor escapes
+leave intrinsic-dependent recovery unresolved. Computed reads outside the proven
+decoder/initializer need closed or recovered keys; opaque reads remain unsupported.
+
+Recovered find hits have `literal_kind: decoded`, `resolution: decoder` and the
+original call in `raw`; calls/members expose the proven key, values use
+`key_resolution: decoder`, and resources use `resolution: decoder`. Opt-in entity
+labels use `label_origin: decoder` without changing declared `name`, coordinates
+or source bytes. Mutated/escaping tables or decoders, unsafe initialization,
+string/fractional or opaque indices, exported/ambient table escapes, prototype or
+intrinsic mutation, ambiguous rotations and partially
+invalid encoded tables stay unresolved. These are syntax/semantic proofs, not
+sample fingerprints or runtime execution.
 
 ```sh
 rxd asar entries app.asar -f main

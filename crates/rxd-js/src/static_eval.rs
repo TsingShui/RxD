@@ -50,7 +50,7 @@ impl Value {
         }
     }
 
-    fn string(&self) -> Option<JsString> {
+    pub(crate) fn string(&self) -> Option<JsString> {
         Some(match self {
             Self::String(s) => s.clone(),
             Self::Number(n) => JsString::from(n.to_js_string().as_str()),

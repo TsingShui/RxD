@@ -194,7 +194,14 @@ impl<'s> Collector<'s> {
         } else {
             node.span()
         };
-        let context = self.labels.get(&(span.start, span.end)).cloned();
+        let context = self
+            .labels
+            .get(&(span.start, span.end))
+            .cloned()
+            .or_else(|| {
+                key.and_then(|key| self.decoders.and_then(|d| d.at_span(key)))
+                    .map(|v| (v.value.clone(), "decoder"))
+            });
         let (label, label_origin) = if let Some(name) = &name {
             (Some(name.clone()), "declared")
         } else if let Some((label, origin)) = context {
@@ -406,7 +413,17 @@ impl<'a> Visit<'a> for Collector<'_> {
                         property.computed.then_some(key),
                     );
                 } else {
-                    self.label(&property.value, name, "property");
+                    let decoded = property
+                        .key
+                        .as_expression()
+                        .and_then(|e| self.decoders.and_then(|d| d.expression(e)));
+                    let origin = if decoded.is_some() {
+                        "decoder"
+                    } else {
+                        "property"
+                    };
+                    let name = name.or_else(|| decoded.map(|v| v.value.clone()));
+                    self.label(&property.value, name, origin);
                 }
             }
             AstKind::PropertyDefinition(property) => {
@@ -586,7 +603,6 @@ impl<'a> Visit<'a> for Collector<'_> {
             AstKind::CallExpression(call) if self.query.is_some() && self.resolve_static => {
                 let decoders = self.decoders;
                 let decoded = decoders
-                    .filter(|decoders| !decoders.suppressed(call.span))
                     .and_then(|decoders| decoders.call(call))
                     .map(|resolved| resolved.value.clone());
                 if let Some(value) = decoded {

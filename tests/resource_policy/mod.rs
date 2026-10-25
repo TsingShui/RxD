@@ -1,6 +1,74 @@
 //! Ordinary CLI scaling is distinct from explicit limits and MCP service admission.
 use super::*;
 
+#[cfg(feature = "backend-js")]
+#[test]
+fn review_js_module_metadata_charges_every_repeated_owned_field() {
+    // Fixed metadata admission is a public backend API contract, not a CLI quota knob.
+    let ids = (0..32)
+        .map(|i| format!("'{}{i}'", "c".repeat(256)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let factories = (0..32)
+        .map(|i| format!("{i}:(m,e,r)=>{{}}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let names = (0..32)
+        .map(|i| format!("v{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let source = "S".repeat(4096);
+    let cases = [
+        (
+            format!(
+                "(self.webpackChunk_app=self.webpackChunk_app||[]).push([[{ids}],{{{factories}}}]);"
+            ),
+            rxd_js::ModuleListing::Modules,
+            "modules",
+            33,
+        ),
+        (
+            format!("import {{{names}}} from '{source}';"),
+            rxd_js::ModuleListing::Imports,
+            "imports",
+            32,
+        ),
+        (
+            format!("export {{{names}}} from '{source}';"),
+            rxd_js::ModuleListing::Exports,
+            "exports",
+            32,
+        ),
+    ];
+    for (source, listing, command, count) in cases {
+        let (_dir, path) = fixture(&source, "metadata.mjs");
+        let mut limits =
+            rxd_core::Limits::from(rxd_core::Budget::for_input_bytes(source.len()).unwrap());
+        limits.metadata_bytes = 128 * 1024;
+        let query = rxd_js::Query::Modules(rxd_js::ModuleQuery {
+            listing,
+            names: rxd_js::NameQuery::default(),
+            within: None,
+        });
+        let mut perf = rxd_core::perf::Perf::new(false, "analysis", "js", command);
+        match rxd_js::run(
+            &path,
+            rxd_js::SourceMode::Auto,
+            rxd_js::Syntax::Auto,
+            query,
+            limits,
+            &mut perf,
+        ) {
+            Err(error) => assert_eq!(error.code, "RESOURCE_LIMIT"),
+            Ok(bytes) => panic!(
+                "metadata admission bypass for {command}: {} bytes",
+                bytes.len()
+            ),
+        }
+        assert_eq!(jsonl(&invoke(command, &path, &[])).len(), count);
+    }
+}
+
 #[test]
 fn cli_has_no_work_instruction_or_output_quota_and_keeps_atomic_file_parity() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

@@ -58,6 +58,7 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
                 .is_some_and(|rules| rules.iter().any(|rule| rule.get("oneOf").is_some()))
         );
         assert_eq!(schema["properties"]["kind"]["enum"], json!(["symbol"]));
+        assert_eq!(schema["properties"]["file"]["type"], "string");
         for args in [
             json!({"input":{"path":"missing.js"},"at":"symbol:1:2"}),
             json!({"input":{"path":"missing.js"},"byte":1}),
@@ -156,6 +157,75 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
                 .is_some_and(|text| text.contains("/api/login"))
         );
     }
+}
+
+#[cfg(feature = "backend-js")]
+#[test]
+fn mcp_js_module_and_decoder_queries_share_the_immutable_snapshot() {
+    use sha2::{Digest, Sha256};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("entry.mjs");
+    let source = "import {remote as alias} from './dep.mjs';function t(){const a=['login','/api/login'];return a}function d(i){return t()[i]}export const item={[d(0)](){fetch(d(1))}};";
+    std::fs::write(&path, source).unwrap();
+    let identity = format!("{:x}", Sha256::digest(source));
+    let mut client = Client::start(&["--allow-path", dir.path().to_str().unwrap()]);
+    client.initialize();
+    let opened = client.tool("rxd_open", json!({"path":path}));
+    assert_ne!(opened["isError"], true, "{opened}");
+    assert_eq!(opened["structuredContent"]["source_id"], identity);
+    let input = json!({"target_id":opened["structuredContent"]["target_id"]});
+    std::fs::write(&path, "invalid {{ {").unwrap();
+    let mut module_at = Value::Null;
+    for tool in ["js_modules", "js_imports", "js_exports"] {
+        let result = client.tool(tool, json!({"input":input}));
+        assert_ne!(result["isError"], true, "{result}");
+        let data = &result["structuredContent"];
+        assert_eq!(data["records"].as_array().unwrap().len(), 1, "{result}");
+        if tool == "js_modules" {
+            assert!(data["records"][0]["detail"]["module_id"].is_null());
+            module_at = data["records"][0]["at"].clone();
+        }
+        if tool == "js_imports" {
+            assert_eq!(data["records"][0]["detail"]["local"], "alias");
+            assert_eq!(data["records"][0]["detail"]["source"], "./dep.mjs");
+        }
+    }
+    let fetched = client.tool("js_slice", json!({"input":input,"at":module_at}));
+    assert_ne!(fetched["isError"], true, "{fetched}");
+    assert_eq!(fetched["structuredContent"]["detail"]["source"], source);
+    for tool in ["js_find", "js_methods", "js_resources"] {
+        let result = client.tool(
+            tool,
+            json!({"input":input,"filter":"login","resolve_static":true}),
+        );
+        assert_ne!(result["isError"], true, "{result}");
+        let records = result["structuredContent"]["records"].as_array().unwrap();
+        assert!(!records.is_empty(), "{result}");
+        assert!(
+            records
+                .iter()
+                .any(|r| r["detail"]["resolution"] == "decoder"
+                    || r["detail"]["label_origin"] == "decoder"),
+            "{result}"
+        );
+    }
+    let values = client.tool(
+        "js_values",
+        json!({"input":input,"kind":"property","name":"login","resolve_static":true}),
+    );
+    assert_ne!(values["isError"], true, "{values}");
+    assert_eq!(
+        values["structuredContent"]["records"][0]["detail"]["key_resolution"],
+        "decoder"
+    );
+    let rejected = client.tool(
+        "js_xref",
+        json!({"input":input,"byte":7,"file":"entry.mjs"}),
+    );
+    assert_eq!(
+        rejected["structuredContent"]["error"]["code"],
+        "INVALID_QUERY"
+    );
 }
 
 #[cfg(feature = "backend-dotnet")]
@@ -396,6 +466,9 @@ fn checked(client: &mut Client, tools: &Value, name: &str, arguments: Value) -> 
 /// participates in the oracle; only complete stdout at the other public entry.
 const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("js_entities", "js", "entities"),
+    ("js_modules", "js", "modules"),
+    ("js_imports", "js", "imports"),
+    ("js_exports", "js", "exports"),
     ("js_functions", "js", "functions"),
     ("js_classes", "js", "classes"),
     ("js_methods", "js", "methods"),
@@ -1595,10 +1668,25 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan() {
     let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    for name in ["js_entities", "js_find"] {
+    for name in [
+        "js_entities",
+        "js_find",
+        "js_modules",
+        "js_imports",
+        "js_exports",
+        "js_calls",
+        "js_members",
+        "js_identifiers",
+        "js_symbols",
+        "js_xref",
+    ] {
         let mut arguments = json!({"input":{"path":sources}});
         if name == "js_find" {
             arguments["filter"] = json!("needle");
+        }
+        if name == "js_xref" {
+            arguments["match"] = json!("token");
+            arguments["kind"] = json!("symbol");
         }
         let result = checked(&mut client, &tools, name, arguments);
         let records = result["records"].as_array().unwrap();
@@ -1615,6 +1703,65 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan() {
         json!({"input":{"path":empty}}),
     );
     assert_eq!(result["records"], json!([]));
+}
+
+#[cfg(feature = "backend-js")]
+#[test]
+fn mcp_project_xref_uses_fixed_directory_bytes_and_restores_target_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let sources = dir.path().join("sources");
+    std::fs::create_dir(&sources).unwrap();
+    let auth = sources.join("auth.mjs");
+    std::fs::write(&auth, "export function value(){};value();").unwrap();
+    std::fs::write(
+        sources.join("use.mjs"),
+        "import {value as alias} from './auth.mjs';alias();",
+    )
+    .unwrap();
+    let mut client = Client::start(&["--allow-path", dir.path().to_str().unwrap()]);
+    client.initialize();
+    let opened = client.tool("rxd_open", json!({"path":sources,"backend":"js"}));
+    assert_ne!(opened["isError"], true, "{opened}");
+    let input = json!({"target_id":opened["structuredContent"]["target_id"]});
+    std::fs::write(&auth, "invalid {{ {").unwrap();
+    std::fs::remove_file(sources.join("use.mjs")).unwrap();
+    let result = client.tool(
+        "js_xref",
+        json!({"input":input,"file":"auth.mjs","byte":16}),
+    );
+    assert_ne!(result["isError"], true, "{result}");
+    let records = result["structuredContent"]["records"].as_array().unwrap();
+    let refs: Vec<_> = records
+        .iter()
+        .filter(|r| r["record"] == "reference")
+        .collect();
+    assert_eq!(refs.len(), 2, "{result}");
+    assert_eq!(
+        refs.iter().filter(|r| r["detail"]["link"] == "esm").count(),
+        1
+    );
+    assert!(
+        refs.iter()
+            .all(|r| r["detail"]["target_path"] == auth.to_str().unwrap()),
+        "{result}"
+    );
+    assert!(records.iter().filter(|r| r["record"] == "file").all(|r| {
+        r["detail"]["path"]
+            .as_str()
+            .unwrap()
+            .starts_with(sources.to_str().unwrap())
+    }));
+    for tool in ["js_modules", "js_imports", "js_exports", "js_symbols"] {
+        let result = client.tool(tool, json!({"input":input}));
+        assert_ne!(result["isError"], true, "{result}");
+        let files = result["structuredContent"]["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["record"] == "file")
+            .count();
+        assert_eq!(files, 2, "{result}");
+    }
 }
 
 #[cfg(feature = "backend-asar")]

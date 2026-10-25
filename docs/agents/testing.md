@@ -129,4 +129,4 @@ changing them. Prefer cheaper equivalent fixture construction and immutable
 fixture reuse, with independent mutable test state. Avoid broad mocking,
 unbounded parallelism and timing assertions in ordinary tests.
 
-CI tiers and required-check migration are documented in [CI](../demo/ci.md).
+CI tiers and required-check migration are documented in [CI](../ci.md).
