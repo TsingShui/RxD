@@ -141,11 +141,11 @@ measurable contracts, never whether output is pleasant for a person to read.
 The 150 ms acceptance gate applies only to decompilation/analysis backend
 operations, including navigation, search, reference, extraction and
 reconstruction queries. Non-backend commands have no 150 ms requirement:
-installation/update, `mcp install`, skill printing,
+installation/update, skill printing,
 configuration/preview, help/version, standalone MCP startup/discovery/target
 lifecycle, maintenance, and build/test/release orchestration are exempt.
 Classify the operation, not its namespace: a backend query invoked through MCP
-retains its backend contract, while registering MCP does not.
+retains its backend contract, while starting the service does not.
 
 Do not require numeric latency exceptions, repeated timing batches or release
 benchmarks solely to change non-backend commands. Their measurements are

@@ -66,13 +66,12 @@ backend-evm = ["dep:rxd-evm"]
 backend-wasm = ["dep:rxd-wasm"]
 backend-pyc = ["dep:rxd-pyc"]
 backend-kuna = []
-mcp = ["dep:rmcp", "dep:tokio", "dep:tokio-util", "dep:schemars", "dep:sha2", "dep:base64", "dep:rayon", "dep:toml_edit", "dep:windows-sys"]
+mcp = ["dep:rmcp", "dep:tokio", "dep:tokio-util", "dep:schemars", "dep:sha2", "dep:base64", "dep:rayon", "dep:windows-sys"]
 csharp-decompiler = ["backend-dotnet", "rxd-dotnet/csharp-decompiler"]
 bundled-kuna = ["backend-kuna", "rxd-core/runtime-bundle", "dep:rxd-kuna-cli"]
 bundled-ilspy = ["backend-dotnet", "csharp-decompiler", "rxd-dotnet/bundled-ilspy"]
 
 [dependencies]
-toml_edit = { version = "=0.25.17", optional = true }
 rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"], optional = true }
 tokio = { version = "=1.53.2", features = ["rt-multi-thread", "io-std", "io-util", "sync", "process", "time", "signal"], optional = true }
 tokio-util = { version = "0.7", optional = true }
@@ -98,7 +97,6 @@ rxd-html = { workspace = true, optional = true }
 rxd-pyc = { workspace = true, optional = true }
 
 [dev-dependencies]
-toml = "=1.1.8"
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
 flate2 = { version = "1", default-features = false, features = ["zlib"] }
 sha2 = "0.10"

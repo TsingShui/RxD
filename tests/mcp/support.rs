@@ -37,10 +37,7 @@ impl Client {
         for key in remove {
             command.env_remove(key);
         }
-        command
-            .args(["mcp", "serve"])
-            .args(extra)
-            .envs(env.iter().copied());
+        command.args(["mcp"]).args(extra).envs(env.iter().copied());
         Self::start_command(command)
     }
     pub fn start_command(mut command: Command) -> Self {

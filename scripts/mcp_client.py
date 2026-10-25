@@ -13,7 +13,7 @@ class Client:
         self.serial = 0
         self.pending = {}
         self.responses = queue.Queue()
-        argv = [str(binary), 'mcp', 'serve']
+        argv = [str(binary), 'mcp']
         for root in roots:
             argv += ['--root', str(root)]
         argv += list(options)

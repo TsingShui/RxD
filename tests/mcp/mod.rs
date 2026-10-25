@@ -1,4 +1,3 @@
-mod install;
 #[cfg(feature = "bundled-kuna")]
 mod native;
 mod native_availability;

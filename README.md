@@ -47,12 +47,11 @@ The skill is emitted as the exact `SKILL.md` Markdown on stdout with the name `r
 covers every current backend and needs no network or source checkout. `rxd skill`
 writes no files or Agent configuration; place the output where an Agent discovers it.
 
-Register the native MCP server separately, using only roots that may be analyzed:
+Start the native MCP stdio server separately with only roots that may be analyzed,
+and register that command in the client's own configuration:
 
 ```sh
-rxd mcp install -a pi --root /absolute/path/to/inputs --preview
-rxd mcp install -a pi --root /absolute/path/to/inputs
-# Repeat -a for cc and codex, or use -a all. Without -a, detected clients are configured.
+rxd mcp --root /absolute/path/to/inputs
 ```
 
 Reload and verify using the
@@ -214,8 +213,8 @@ rxd skill
 
 Redirect or copy the output into the skills directory an Agent discovers; the skill
 name is `rxd` and it covers every current backend. The Markdown is embedded in the
-binary, needs no network or source checkout, and diagnostics stay on stderr. Register
-MCP separately with `rxd mcp install`.
+binary, needs no network or source checkout, and diagnostics stay on stderr. Start
+MCP separately with `rxd mcp --root ...` and register it in the client configuration.
 
 ## 🧩 Supported formats
 
@@ -238,12 +237,12 @@ Release builds provide a local typed MCP service; Agents can consume
 `structuredContent` directly:
 
 ```sh
-rxd mcp install -a pi -a cc -a codex --root /workspace --preview
-rxd mcp install -a pi -a cc -a codex --root /workspace
-# Clients without automatic registration can use stdio directly:
-rxd mcp serve --base /workspace --root /workspace
+rxd mcp --base /workspace --root /workspace
 # Default source builds include MCP; reduced builds must enable it explicitly.
 ```
+
+`rxd mcp` is the stdio server; it starts no client and writes no client
+configuration. Register the absolute executable and argv in the client yourself.
 
 Use `rxd_open` / `rxd_close` to pin inputs, or pass a path directly. Every built-in
 backend preserves its original commands, content identities, completeness and

@@ -537,7 +537,6 @@ fn mcp_startup_rejects_capture_depth_above_the_safe_protocol_process_ceiling() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args([
             "mcp",
-            "serve",
             "--root",
             root.path().to_str().unwrap(),
             "--max-snapshot-depth",

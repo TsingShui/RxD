@@ -55,7 +55,7 @@ fn mcp_native_worker_memory_limit_is_adjustable_without_a_fixed_ceiling() {
     client.initialize();
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["mcp", "serve", "--max-native-worker-bytes", "0"])
+        .args(["mcp", "--max-native-worker-bytes", "0"])
         .output()
         .unwrap();
     assert!(!output.status.success());

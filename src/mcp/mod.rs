@@ -1,6 +1,5 @@
 //! Local MCP entry point; transport-independent handlers live in service.
 mod framing;
-mod install;
 mod native_memory;
 mod requests;
 mod resources;
@@ -8,17 +7,15 @@ mod service;
 pub(crate) mod targets;
 pub(crate) mod worker;
 
-use clap::{Args, Subcommand};
+use clap::Args;
 use rmcp::ServiceExt;
 use rxd_core::{Error, Result};
 use std::path::PathBuf;
 
-#[derive(Subcommand)]
-pub enum Command {
-    /// Serve MCP on stdin/stdout. All diagnostics use stderr.
-    #[command(after_long_help = "Examples:
-  rxd mcp serve --root /absolute/authorized/inputs
-  rxd mcp serve --base /workspace --root /workspace --backends js,jar,wasm
+#[derive(Args)]
+#[command(after_long_help = "Examples:
+  rxd mcp --root /absolute/authorized/inputs
+  rxd mcp --base /workspace --root /workspace --backends js,jar,wasm
 Launch as a stdio MCP server; stdout is JSON-RPC, not CLI query output.
 Clients discover tools/list before tools/call. CLI flags use kebab-case; MCP fields use snake_case.
 Ordinary tools take input: {path: ...} or input: {target_id: ...}, not a bare path string.
@@ -30,12 +27,6 @@ Shared in-flight storage still applies; linked engines retain their own protecti
 Targets remain valid until rxd_close or shutdown; no target TTL or count quota.
 Service byte envelopes include metadata and protocol copies, not hard process RSS.
 Raise the listed storage/deadline/RSS settings for larger workloads.")]
-    Serve(Options),
-    /// Register this executable as a user-level native MCP stdio server.
-    Install(install::Options),
-}
-
-#[derive(Args)]
 pub struct Options {
     /// Local roots permitted for input capture. Defaults to the server base.
     #[arg(long)]
@@ -75,11 +66,7 @@ pub struct Options {
     pub max_snapshot_depth: usize,
 }
 
-pub fn execute(command: Command) -> Result<()> {
-    let options = match command {
-        Command::Install(options) => return install::execute(options),
-        Command::Serve(options) => options,
-    };
+pub fn execute(options: Options) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()

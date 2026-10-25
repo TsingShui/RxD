@@ -61,7 +61,7 @@ container handling is planned, not an available command.
   instruction counts, expanded-entry bytes and output have no input-derived quotas. Format, recursion and
   expansion guards remain. MCP shares that analysis policy; its adjustable
   service-wide storage/concurrency/deadline protections are listed by
-  `rxd mcp serve --help`, not per-query `limits`. Backend CLI queries have no
+  `rxd mcp --help`, not per-query `limits`. Backend CLI queries have no
   `--max-*` flags. Resource failure is not evidence of absence, and
   partial output is never discarded silently.
   Zero hits in a complete query are valid within that query's stated scope.
@@ -269,7 +269,7 @@ fallback; `--raw` requests original selected regions.
 rxd kuna --help
 rxd kuna functions ./native-app --summary --json
 rxd kuna decompile ./native-app main --json
-rxd mcp serve --root /workspace --backends js
+rxd mcp --root /workspace --backends js
 ```
 
 Kuna requires the optional linked engine feature with bundled specs; those builds

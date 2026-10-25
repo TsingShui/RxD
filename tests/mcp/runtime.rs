@@ -209,7 +209,7 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
     // The whole-file program coordinate is what a large `js_slice` fetch needs.
     let at = format!("program:0:{}", source.len());
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["mcp", "serve", "--root", root.path().to_str().unwrap()])
+        .args(["mcp", "--root", root.path().to_str().unwrap()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())

@@ -1,28 +1,26 @@
 # Local typed MCP
 
 Default source builds include MCP (Kuna remains optional); a reduced build needs
-`--features mcp` and the desired backends. Register this existing executable in
-Pi, CC or Codex user configuration, without starting a client or an engine:
+`--features mcp` and the desired backends. `rxd mcp` is the stdio server; it
+starts no client, writes no client configuration and initializes no engine:
 
 ```sh
-rxd mcp install -a pi -a cc -a codex --base /workspace --root /workspace --preview
-rxd mcp install -a pi -a cc -a codex --base /workspace --root /workspace
-# Direct stdio launch remains available:
-rxd mcp serve --root /workspace --base /workspace --backends js,jar,wasm
+rxd mcp --root /workspace --base /workspace --backends js,jar,wasm
 ```
 
-Replace `/workspace` with an existing authorized input directory. See
-[onboarding](install.md#agent-onboarding) for selection/detection, overrides,
-preview/no-op/replace, client reload and actual native no-model verification.
-Persistence alone is not a connected session; Pi shell listing does not prove its
-session route when extensions replace or disable native MCP.
-
-Manual stdio fallback for unsupported clients (adapt to their native format;
-replace the executable and authorized base/root):
+Replace `/workspace` with an existing authorized input directory. Register the
+exact absolute executable and argv array in the client's own user configuration
+(Pi/CC JSON `mcpServers.rxd`; Codex TOML `mcp_servers.rxd`):
 
 ```json
-{"mcpServers":{"rxd":{"command":"/absolute/path/rxd","args":["mcp","serve","--base","/workspace","--root","/workspace"]}}}
+{"mcpServers":{"rxd":{"command":"/absolute/path/rxd","args":["mcp","--base","/workspace","--root","/workspace"]}}}
 ```
+
+Never put a shell command string in an argv field. See
+[onboarding](install.md#agent-onboarding) for root selection, client reload and
+native verification. Persistence alone is not a connected session; Pi shell
+listing does not prove its session route when extensions replace or disable
+native MCP.
 
 The server uses stdin/stdout for JSON-RPC; diagnostics go to stderr. Legacy clients initialize
 normally. A current discovery request can carry this metadata in `params._meta`:
@@ -110,7 +108,7 @@ and no per-query `limits` object. Ordinary analysis has no input-derived work,
 instruction, individual expanded-entry or serialized-output quotas;
 MCP still enforces shared in-flight storage. Structural depth, expansion and address checks remain.
 
-`rxd mcp serve --help` lists the adjustable service protections: incoming frames,
+`rxd mcp --help` lists the adjustable service protections: incoming frames,
 active requests, workers/threads, deadlines, shared snapshot storage (including
 metadata and empty files), shared in-flight request/IPC/response storage, and sampled
 Kuna worker RSS. Snapshot and in-flight envelopes default to 1 GiB each; these are

@@ -1,7 +1,7 @@
 # CLI benchmarks and performance instrumentation
 
 **Scope:** the 150 ms gate applies only to existing decompilation/analysis backend
-queries. Installation, configuration, `mcp install`, skill printing, help/version,
+queries. Installation, configuration, skill printing, help/version,
 standalone MCP discovery/lifecycle, maintenance and build/test/release orchestration are
 not gated, and code changes there do not require latency benchmarks or numeric
 exceptions. Runners and historical timings may remain as optional diagnostics; their

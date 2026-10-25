@@ -94,7 +94,7 @@ Listings emit data-row JSONL; require exit 0, and zero rows means no matches.
 -f/--filter narrows listings; -m/--match searches xref targets with --kind.
 --raw selects original instructions where supported.
 Run rxd BACKEND COMMAND --help for minimal examples and parameter sources.
-For typed tools: rxd mcp serve --root /absolute/authorized/inputs; use tools/list.
+For typed tools: rxd mcp --root /absolute/authorized/inputs; use tools/list.
 Default source builds omit Kuna/ILSpy engines; help availability is not engine availability."
 )]
 pub struct Cli {
@@ -108,11 +108,8 @@ enum Backend {
     /// Print the embedded RxD skill for coding agents.
     Skill,
     #[cfg(feature = "mcp")]
-    /// Register or serve typed analysis tools over local MCP stdio.
-    Mcp {
-        #[command(subcommand)]
-        command: crate::mcp::Command,
-    },
+    /// Serve typed analysis tools over local MCP stdio.
+    Mcp(crate::mcp::Options),
     #[cfg(feature = "backend-kuna")]
     /// Run the bundled Kuna CLI with native arguments.
     #[command(disable_help_flag = true, visible_alias = "bin")]
@@ -266,7 +263,7 @@ impl Cli {
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => true,
             #[cfg(feature = "mcp")]
-            Backend::Mcp { .. } => true,
+            Backend::Mcp(_) => true,
             #[cfg(any(
                 feature = "backend-js",
                 feature = "backend-asar",
@@ -283,7 +280,7 @@ impl Cli {
     pub fn perf(&self) -> bool {
         match &self.backend {
             #[cfg(feature = "mcp")]
-            Backend::Mcp { .. } => false,
+            Backend::Mcp(_) => false,
             Backend::Skill => false,
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => false,
@@ -310,7 +307,7 @@ impl Cli {
     pub fn backend_name(&self) -> &'static str {
         match self.backend {
             #[cfg(feature = "mcp")]
-            Backend::Mcp { .. } => "mcp",
+            Backend::Mcp(_) => "mcp",
             Backend::Skill => "skill",
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => "kuna",
@@ -337,7 +334,7 @@ impl Cli {
     pub fn command_name(&self) -> &'static str {
         match &self.backend {
             #[cfg(feature = "mcp")]
-            Backend::Mcp { .. } => "mcp",
+            Backend::Mcp(_) => "mcp",
             Backend::Skill => "skill",
             #[cfg(feature = "backend-kuna")]
             Backend::Kuna { .. } => "kuna",
@@ -399,7 +396,7 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
     let _ = policy;
     match cli.backend {
         #[cfg(feature = "mcp")]
-        Backend::Mcp { command } => crate::mcp::execute(command).map(|()| 0),
+        Backend::Mcp(options) => crate::mcp::execute(options).map(|()| 0),
         Backend::Skill => skill::execute().map(|()| 0),
         #[cfg(feature = "backend-kuna")]
         Backend::Kuna { args } => Ok(kuna::run(args)),
