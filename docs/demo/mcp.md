@@ -5,19 +5,24 @@ Default source builds include MCP (Kuna remains optional); a reduced build needs
 starts no client, writes no client configuration and initializes no engine:
 
 ```sh
-rxd mcp --root /workspace --base /workspace --backends js,jar,wasm
+rxd mcp
+# Optional restrictions; repeat for additional files/directories:
+rxd mcp --allow-path /workspace --allow-path /inputs/app.apk
 ```
 
-Replace `/workspace` with an existing authorized input directory. Register the
-exact absolute executable and argv array in the client's own user configuration
+All local input paths must be absolute, independent of the server's working
+directory. Without `--allow-path`, all local paths are permitted. With grants,
+only the named files and descendants of the named directories are permitted;
+relative inputs fail with `INVALID_QUERY` and out-of-scope inputs with `ACCESS_DENIED`.
+Register the exact absolute executable and argv array in the client's user configuration
 (Pi/CC JSON `mcpServers.rxd`; Codex TOML `mcp_servers.rxd`):
 
 ```json
-{"mcpServers":{"rxd":{"command":"/absolute/path/rxd","args":["mcp","--base","/workspace","--root","/workspace"]}}}
+{"mcpServers":{"rxd":{"command":"/absolute/path/rxd","args":["mcp"]}}}
 ```
 
 Never put a shell command string in an argv field. See
-[onboarding](install.md#agent-onboarding) for root selection, client reload and
+[onboarding](install.md#agent-onboarding) for path grants, client reload and
 native verification. Persistence alone is not a connected session; Pi shell
 listing does not prove its session route when extensions replace or disable
 native MCP.
@@ -38,7 +43,7 @@ Results go to an explicit bounded buffer, not thread-local stdout capture; JSON
 projection and Native/extraction adapters retain their existing behavior.
 
 Use the exact schemas returned by `tools/list`. Tool names follow CLI namespaces (JVM uses
-`jar_*`); build/startup filters control availability. For codemode, the following glue assumes
+`jar_*`); all tools supported by the build are exposed automatically. For codemode, this glue assumes
 a client `callTool` method returning the MCP result object:
 
 ```js

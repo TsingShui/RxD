@@ -103,31 +103,35 @@ failed updates, including latest resolution, download and checksum failures.
 ## Agent onboarding
 
 Install the binary first; the bootstrap never edits Agent configuration. With an
-MCP-enabled RxD binary, run the stdio server from an intended analysis directory
-(not HOME or a filesystem root), and register that exact command in the client's
-own user configuration:
+MCP-enabled RxD binary, run the stdio server and register that exact command in
+the client's own user configuration:
 
 ```sh
-cd /absolute/path/to/inputs
-rxd mcp --base /absolute/path/to/inputs --root /absolute/path/to/inputs
+rxd mcp
+# Optional restrictions; repeat for additional absolute files/directories:
+rxd mcp --allow-path /absolute/path/to/inputs --allow-path /other/app.apk
 ```
+
+Local input paths must be absolute. Without `--allow-path`, all paths are allowed.
+With grants, only the named files and descendants of the named directories are
+allowed; the server's working directory does not affect path resolution.
 
 RxD writes no client configuration. Register the absolute executable and argv
 array yourself; Pi/CC use JSON `mcpServers.rxd`, Codex uses TOML
 `mcp_servers.rxd`:
 
 ```json
-{"mcpServers":{"rxd":{"command":"/absolute/path/rxd","args":["mcp","--base","/absolute/path/to/inputs","--root","/absolute/path/to/inputs"]}}}
+{"mcpServers":{"rxd":{"command":"/absolute/path/rxd","args":["mcp"]}}}
 ```
 
 ```toml
 [mcp_servers.rxd]
 command = "/absolute/path/rxd"
-args = ["mcp", "--base", "/absolute/path/to/inputs", "--root", "/absolute/path/to/inputs"]
+args = ["mcp"]
 ```
 
-Use an argv array, never a shell string. `--root` limits input capture, not an OS
-sandbox. Backend names follow CLI namespaces (`jar`, not `jvm`) and must exist in
+Use an argv array, never a shell string. `--allow-path` limits input capture, not
+an OS sandbox. Backend names follow CLI namespaces (`jar`, not `jvm`) and must exist in
 the build. Service ceilings and stdio behavior are listed by `rxd mcp --help` and
 [the MCP demo](mcp.md).
 
@@ -178,5 +182,5 @@ The skill covers all current backends. Placing the Markdown where an Agent disco
 it is the caller's job; `rxd skill` creates no directories or Agent configuration.
 See [README](../../README.md#-installation). The old `rxd dex skill` entry is removed.
 Unsupported clients can still use manual stdio registration with the exact absolute
-executable/base/roots: see the [MCP demo](mcp.md). Never put a shell command string in
+executable/argv: see the [MCP demo](mcp.md). Never put a shell command string in
 an argv field.

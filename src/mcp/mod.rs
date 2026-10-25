@@ -14,9 +14,10 @@ use std::path::PathBuf;
 
 #[derive(Args)]
 #[command(after_long_help = "Examples:
-  rxd mcp --root /absolute/authorized/inputs
-  rxd mcp --base /workspace --root /workspace --backends js,jar,wasm
+  rxd mcp
+  rxd mcp --allow-path /workspace --allow-path /inputs/app.apk
 Launch as a stdio MCP server; stdout is JSON-RPC, not CLI query output.
+Input paths must be absolute. Without --allow-path, all local paths are permitted.
 Clients discover tools/list before tools/call. CLI flags use kebab-case; MCP fields use snake_case.
 Ordinary tools take input: {path: ...} or input: {target_id: ...}, not a bare path string.
 For repeated queries: rxd_open -> use returned target_id -> rxd_close.
@@ -28,15 +29,9 @@ Targets remain valid until rxd_close or shutdown; no target TTL or count quota.
 Service byte envelopes include metadata and protocol copies, not hard process RSS.
 Raise the listed storage/deadline/RSS settings for larger workloads.")]
 pub struct Options {
-    /// Local roots permitted for input capture. Defaults to the server base.
-    #[arg(long)]
-    pub root: Vec<PathBuf>,
-    /// Backend tool catalog filter (comma separated).
-    #[arg(long, value_delimiter = ',')]
-    pub backends: Vec<String>,
-    /// Base for relative caller paths.
-    #[arg(long)]
-    pub base: Option<PathBuf>,
+    /// Permit only these absolute files/directories (repeatable). Omit to allow all paths.
+    #[arg(long = "allow-path", value_name = "PATH")]
+    pub allow_paths: Vec<PathBuf>,
     /// Maximum incoming JSON-RPC frame bytes, including its newline.
     #[arg(long, default_value = "1048576", value_parser = crate::cli::positive)]
     pub max_frame_bytes: usize,

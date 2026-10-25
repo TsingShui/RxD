@@ -153,10 +153,53 @@ impl CapturedInput {
     }
 }
 
-struct Root {
+struct AllowedPath {
     path: PathBuf,
+    is_directory: bool,
     #[cfg(unix)]
     directory: File,
+}
+
+impl AllowedPath {
+    fn new(path: PathBuf) -> Result<Self> {
+        if !path.is_absolute() {
+            return Err(invalid_query("allowed input paths must be absolute"));
+        }
+        let path = fs::canonicalize(path)?;
+        let metadata = fs::metadata(&path)?;
+        if !metadata.is_dir() && !metadata.is_file() {
+            return Err(invalid_query(
+                "allowed paths must be regular files or directories",
+            ));
+        }
+        let is_directory = metadata.is_dir();
+        #[cfg(unix)]
+        let directory = open_directory(if is_directory {
+            &path
+        } else {
+            path.parent()
+                .ok_or_else(|| invalid_query("allowed file has no parent"))?
+        })?;
+        Ok(Self {
+            path,
+            is_directory,
+            #[cfg(unix)]
+            directory,
+        })
+    }
+
+    fn includes(&self, path: &Path) -> bool {
+        path == self.path || (self.is_directory && path.starts_with(&self.path))
+    }
+
+    #[cfg(unix)]
+    fn anchor(&self) -> &Path {
+        if self.is_directory {
+            &self.path
+        } else {
+            self.path.parent().unwrap()
+        }
+    }
 }
 
 struct CaptureLease {
@@ -224,8 +267,7 @@ impl Drop for PublishedTarget {
 }
 
 pub struct TargetStore {
-    base: PathBuf,
-    roots: Vec<Root>,
+    allow_paths: Vec<AllowedPath>,
     limits: TargetLimits,
     storage: Arc<TempDir>,
     storage_canonical: PathBuf,
@@ -234,7 +276,7 @@ pub struct TargetStore {
 }
 
 impl TargetStore {
-    pub fn new(base: PathBuf, roots: Vec<PathBuf>, limits: TargetLimits) -> Result<Self> {
+    pub fn new(allow_paths: Vec<PathBuf>, limits: TargetLimits) -> Result<Self> {
         if limits.max_total_bytes == 0 || limits.max_depth == 0 {
             return Err(invalid_query(
                 "snapshot byte budget and depth must be positive",
@@ -246,33 +288,12 @@ impl TargetStore {
                 "snapshot depth cannot exceed the safe server ceiling of 256",
             ));
         }
-        if roots.is_empty() {
-            return Err(invalid_query("at least one allowed root is required"));
-        }
-        let base = fs::canonicalize(base)?;
-        if !base.is_dir() {
-            return Err(invalid_query("server base must be a directory"));
-        }
-        let mut allowed = Vec::new();
-        for path in roots {
-            let path = fs::canonicalize(if path.is_absolute() {
-                path
-            } else {
-                base.join(path)
-            })?;
-            if !path.is_dir() {
-                return Err(invalid_query("allowed roots must be directories"));
-            }
-            #[cfg(unix)]
-            let directory = open_directory(&path)?;
-            allowed.push(Root {
-                path,
-                #[cfg(unix)]
-                directory,
-            });
-        }
-        // Prefer the most specific root when authorized roots overlap.
-        allowed.sort_by_key(|root| std::cmp::Reverse(root.path.components().count()));
+        let mut allowed = allow_paths
+            .into_iter()
+            .map(AllowedPath::new)
+            .collect::<Result<Vec<_>>>()?;
+        // Prefer the most specific grant when allowed paths overlap.
+        allowed.sort_by_key(|grant| std::cmp::Reverse(grant.path.components().count()));
         let storage = Arc::new(
             tempfile::Builder::new()
                 .prefix("rxd-mcp-targets-")
@@ -281,8 +302,7 @@ impl TargetStore {
         );
         let storage_canonical = fs::canonicalize(storage.path())?;
         Ok(Self {
-            base,
-            roots: allowed,
+            allow_paths: allowed,
             limits,
             storage,
             storage_canonical,
@@ -425,6 +445,9 @@ impl TargetStore {
                 "capture requires one path or an explicit input bundle",
             ));
         }
+        if paths.iter().any(|path| !path.is_absolute()) {
+            return Err(invalid_query("input paths must be absolute"));
+        }
         let mut lease = CaptureLease::new(self.usage.clone(), self.limits, check)?;
         let directory = tempfile::Builder::new()
             .prefix("capture-")
@@ -437,7 +460,7 @@ impl TargetStore {
         for (index, input) in paths.iter().enumerate() {
             lease.check()?;
             let canonical = self.resolve(input)?;
-            let original = self.display_path(input);
+            let original = input.clone();
             if matches!(mode, CaptureMode::JavaScriptDirectory) && canonical.is_dir() {
                 return self.capture_directory(original, canonical, directory, lease);
             }
@@ -654,17 +677,8 @@ impl TargetStore {
         Ok(capture)
     }
 
-    fn display_path(&self, path: &Path) -> PathBuf {
-        if path.is_absolute() {
-            path.to_owned()
-        } else {
-            self.base.join(path)
-        }
-    }
-
     fn resolve(&self, path: &Path) -> Result<PathBuf> {
-        let absolute = self.display_path(path);
-        let canonical = fs::canonicalize(absolute)?;
+        let canonical = fs::canonicalize(path)?;
         if canonical.starts_with(&self.storage_canonical) {
             return Err(Error::new(
                 "ACCESS_DENIED",
@@ -674,37 +688,48 @@ impl TargetStore {
         if canonical.to_str().is_none() {
             return Err(invalid_input("input paths must be UTF-8"));
         }
-        if !self
-            .roots
-            .iter()
-            .any(|root| canonical.starts_with(&root.path))
+        if !self.allow_paths.is_empty()
+            && !self
+                .allow_paths
+                .iter()
+                .any(|grant| grant.includes(&canonical))
         {
             return Err(Error::new(
                 "ACCESS_DENIED",
-                "input resolves outside configured roots",
+                "input resolves outside allowed paths",
             ));
         }
         Ok(canonical)
     }
 
     fn open_allowed(&self, canonical: &Path, directory: bool) -> Result<File> {
-        let root = self
-            .roots
-            .iter()
-            .find(|root| canonical.starts_with(&root.path))
-            .ok_or_else(|| {
-                Error::new("ACCESS_DENIED", "input resolves outside configured roots")
-            })?;
+        let unrestricted;
+        let grant = if self.allow_paths.is_empty() {
+            // Even unrestricted capture traverses from a held filesystem root without following links.
+            let root = canonical
+                .ancestors()
+                .last()
+                .ok_or_else(|| invalid_input("absolute input has no filesystem root"))?;
+            unrestricted = AllowedPath::new(root.to_owned())?;
+            &unrestricted
+        } else {
+            self.allow_paths
+                .iter()
+                .find(|grant| grant.includes(canonical) && (!directory || grant.is_directory))
+                .ok_or_else(|| {
+                    Error::new("ACCESS_DENIED", "input resolves outside allowed paths")
+                })?
+        };
         #[cfg(unix)]
         let file = open_beneath(
-            &root.directory,
+            &grant.directory,
             canonical
-                .strip_prefix(&root.path)
-                .map_err(|_| invalid_input("input is not under its allowed root"))?,
+                .strip_prefix(grant.anchor())
+                .map_err(|_| invalid_input("input is not under its allowed path"))?,
             directory,
         )?;
         #[cfg(not(unix))]
-        let file = open_checked(canonical, &root.path, directory)?;
+        let file = open_checked(canonical, &grant.path, directory)?;
         let metadata = file.metadata()?;
         if (directory && !metadata.is_dir()) || (!directory && !metadata.is_file()) {
             return Err(invalid_input(if directory {
@@ -1370,7 +1395,7 @@ fn open_checked(path: &Path, root: &Path, directory: bool) -> Result<File> {
         if !actual.starts_with(root) {
             return Err(Error::new(
                 "ACCESS_DENIED",
-                "opened input resolves outside configured roots",
+                "opened input resolves outside allowed paths",
             ));
         }
     }

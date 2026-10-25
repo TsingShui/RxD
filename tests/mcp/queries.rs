@@ -5,7 +5,7 @@ use std::process::Command;
 #[test]
 fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut client = Client::start(&["--root", root.to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     for tool in tools.as_array().unwrap().iter().filter(|tool| {
@@ -151,10 +151,8 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
     // CLI and MCP share the input-scaled analysis policy. A deliberately small
     // service-wide storage envelope rejects this result without narrowing its rows.
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.to_str().unwrap(),
-        "--backends",
-        "dotnet",
         "--max-inflight-bytes",
         "16384",
     ]);
@@ -194,7 +192,7 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
 fn mcp_input_scaled_dotnet_xref_finishes_above_the_old_fixed_work_budget() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "dotnet"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let result = client.tool(
         "dotnet_xref",
@@ -216,7 +214,7 @@ fn mcp_input_scaled_listings_can_exceed_the_old_row_and_output_quotas() {
     let input = root.path().join("literals.js");
     // More than the old 100,000-row quota; complete JSON also exceeds 8 MiB.
     std::fs::write(&input, r#""x";"#.repeat(100_001)).unwrap();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let result = client.tool("js_find", json!({"input":{"path":input},"filter":"x"}));
     assert_ne!(
@@ -251,7 +249,7 @@ fn mcp_input_scaled_listings_can_exceed_the_old_row_and_output_quotas() {
 fn mcp_js_navigation_preserves_cli_identity_and_source() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let fixture = root.join("tests/fixtures/example.js");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let catalog = client.request("tools/list", json!({}));
     let entities_schema = catalog["result"]["tools"]
@@ -324,7 +322,7 @@ fn mcp_js_member_writes_and_call_contexts_match_cli() {
     let path = dir.path().join("loader.js");
     let source = "runtime.p; runtime.p=document.querySelector('meta[name=AppPublic]').content;";
     std::fs::write(&path, source).unwrap();
-    let mut client = Client::start(&["--root", dir.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", dir.path().to_str().unwrap()]);
     client.initialize();
     let catalog = client.request("tools/list", json!({}));
     let tools = &catalog["result"]["tools"];
@@ -608,12 +606,7 @@ fn mcp_html_entries_preserves_cli_catalog_and_immutable_target() {
         "<!doctype html><DIV HREF='/a&amp;b'><span>old</span><!-- note --></DIV>",
     )
     .unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "html",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let tool = tools
@@ -680,12 +673,7 @@ fn mcp_html_entries_filters_follow_cli_semantics_and_the_response_budget_fails()
         "<main><A HREF='/a&amp;b'>one</A><a href='/other'>two</a></main>",
     )
     .unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "html",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let all = checked(
@@ -762,10 +750,8 @@ fn mcp_html_entries_filters_follow_cli_semantics_and_the_response_budget_fails()
     assert_eq!(directory_input["isError"], true, "{directory_input}");
     // The MCP response budget, not a backend flag, is where an oversized result fails.
     let mut bounded = Client::start(&[
-        "--root",
+        "--allow-path",
         directory.path().to_str().unwrap(),
-        "--backends",
-        "html",
         "--max-inflight-bytes",
         "16384",
     ]);
@@ -788,12 +774,7 @@ fn mcp_html_extract_publishes_retained_child_target_with_cli_identity() {
     let input = directory.path().join("page.html");
     let html = "<!doctype html><html><head><title>t</title></head><body><script>function hello(){return \"world\";}</script></body></html>";
     std::fs::write(&input, html).unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "html,js",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let tool = tools
@@ -982,10 +963,8 @@ fn mcp_html_extract_failure_paths_do_not_leak_children() {
     // Publication failure (snapshot byte budget) leaves no unreachable child.
     {
         let mut client = Client::start(&[
-            "--root",
+            "--allow-path",
             directory.path().to_str().unwrap(),
-            "--backends",
-            "html",
             "--max-snapshot-bytes",
             "7000",
         ]);
@@ -1014,10 +993,8 @@ fn mcp_html_extract_failure_paths_do_not_leak_children() {
     // Response-budget rollback frees a just-published child handle.
     {
         let mut client = Client::start(&[
-            "--root",
+            "--allow-path",
             directory.path().to_str().unwrap(),
-            "--backends",
-            "html",
             "--max-inflight-bytes",
             "65536",
             "--max-snapshot-bytes",
@@ -1056,12 +1033,7 @@ fn mcp_asar_extraction_returns_original_bytes_for_js_navigation() {
     let archive = directory.path().join("app.asar");
     let source = b"const message='captured'; function read(){return message}\n";
     super::super::pack_asar(&archive, &[("main.js", source)]);
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "asar,js",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let listing = checked(
@@ -1128,12 +1100,7 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
         dex_inputs::stored_zip(&[("classes.dex", &dex), ("AndroidManifest.xml", &manifest)]),
     )
     .unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "dex",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let methods = checked(
@@ -1212,12 +1179,7 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
     );
     let expected = cli_projection("dex_classes", &cli.stdout);
     assert_eq!(expected["records"].as_array().unwrap().len(), 9000);
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "dex",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     for threads in [1, 2] {
         let result = client.tool(
@@ -1228,10 +1190,8 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
         assert_eq!(result["structuredContent"], expected);
     }
     let mut bounded = Client::start(&[
-        "--root",
+        "--allow-path",
         directory.path().to_str().unwrap(),
-        "--backends",
-        "dex",
         "--max-inflight-bytes",
         "131072",
     ]);
@@ -1262,7 +1222,7 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
 fn mcp_jvm_navigation_preserves_original_instruction_fetch() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/fixtures/jvm/fixture/FlowFixture.class");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "jar"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let classes = checked(
@@ -1311,12 +1271,7 @@ fn mcp_js_literal_search_preserves_lone_surrogate_units() {
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("surrogate.js");
     std::fs::write(&input, b"const text='x\\uD800';").unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "js",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let found = checked(
@@ -1336,7 +1291,7 @@ fn mcp_js_literal_search_preserves_lone_surrogate_units() {
 fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/fixtures/dotnet/Fixture.dll");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "dotnet"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let classes = checked(
@@ -1383,7 +1338,7 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
 fn mcp_wasm_navigation_retains_raw_body_and_explicit_references() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/fixtures/wasm/fixture.wasm");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "wasm"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let functions = checked(
@@ -1424,7 +1379,7 @@ fn mcp_wasm_navigation_retains_raw_body_and_explicit_references() {
 fn mcp_python_navigation_preserves_code_tables_and_source_completeness() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/fixtures/pyc/hello.3.12.pyc");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "pyc"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let codes = checked(
@@ -1454,7 +1409,7 @@ fn mcp_python_navigation_preserves_code_tables_and_source_completeness() {
 fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/fixtures/evm/storage-runtime.hex");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "evm"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     // Single-object analyses keep their detail at the top level.
@@ -1515,10 +1470,8 @@ fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {
     }
     // Oversized results fail at the MCP response budget, never at a backend flag.
     let mut bounded = Client::start(&[
-        "--root",
+        "--allow-path",
         root.to_str().unwrap(),
-        "--backends",
-        "evm",
         "--max-inflight-bytes",
         "16384",
     ]);
@@ -1544,12 +1497,7 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan() {
     std::fs::write(sources.join("b.ts"), "const b: string='needle';").unwrap();
     let empty = directory.path().join("empty");
     std::fs::create_dir(&empty).unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "js",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     for name in ["js_entities", "js_find"] {
@@ -1583,12 +1531,7 @@ fn mcp_asar_optional_binary_bytes_are_recoverable_and_content_bound() {
     let archive = directory.path().join("bytes.mcp-extracted");
     let bytes = [0, 255, 128, 1, 13, 10, 0, 42];
     super::super::pack_asar(&archive, &[("binary.dat", &bytes)]);
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "asar",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let extracted = checked(
@@ -1615,12 +1558,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     let input = directory.path().join("input.dex");
     let victim = directory.path().join("victim.txt");
     std::fs::write(&input, dex_inputs::const_string_dex(1)).unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        directory.path().to_str().unwrap(),
-        "--backends",
-        "dex",
-    ]);
+    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","match":format!("--output={}",victim.display())}));
@@ -1724,7 +1662,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
     // Client executable selection is a public process fixture, never an in-process handler.
     let mut client = Client::start_binary_with_env(
         &binary,
-        &["--root", root.to_str().unwrap()],
+        &["--allow-path", root.to_str().unwrap()],
         &[("RXD_CACHE_DIR", mcp_cache.to_str().unwrap())],
         &["RXD_DOTNET_NATIVE_LIBRARY"],
     );
@@ -1765,7 +1703,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
 fn mcp_latest_evm_navigation_routes_returned_ids_to_exact_cli_fetch_and_references() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/corpus/evm/authored-navigation-legacy.runtime.hex");
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "evm"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let interface = checked(

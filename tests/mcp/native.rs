@@ -11,7 +11,7 @@ fn fixture() -> std::path::PathBuf {
 fn mcp_native_functions_enumerate_exact_pinned_cli_facts_with_declared_schema() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let path = fixture();
-    let mut client = Client::start(&["--root", root.to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let catalog = client.request("tools/list", json!({}));
     let definition = catalog["result"]["tools"]
@@ -58,7 +58,7 @@ fn mcp_native_functions_enumerate_exact_pinned_cli_facts_with_declared_schema() 
 fn mcp_native_decompile_uses_returned_address_and_preserves_native_quality_and_source() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let path = fixture();
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "kuna"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let functions = client.tool("kuna_functions", json!({"input":{"path":path}}));
     let main = functions["structuredContent"]["functions"]
@@ -120,7 +120,7 @@ fn mcp_native_decompile_uses_returned_address_and_preserves_native_quality_and_s
 fn mcp_native_worker_rss_limit_reaps_native_request_and_preserves_other_queries() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.to_str().unwrap(),
         "--max-native-worker-bytes",
         "1",
@@ -164,7 +164,7 @@ fn mcp_native_ambiguous_name_preserves_complete_native_error_and_address_navigat
     bytes[positions[0]..positions[0] + marker.len()].fill(0);
     bytes[positions[0]..positions[0] + 4].copy_from_slice(b"main");
     std::fs::write(&path, bytes).unwrap();
-    let mut client = Client::start(&["--root", scratch.path().to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", scratch.path().to_str().unwrap()]);
     client.initialize();
     let result = client.tool(
         "kuna_decompile",
@@ -226,7 +226,7 @@ fn mcp_native_ambiguous_name_preserves_complete_native_error_and_address_navigat
 fn mcp_native_rejects_removed_instruction_limits_and_decompiles_completely() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let path = fixture();
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "kuna"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let result = client.tool(
         "kuna_decompile",
@@ -256,7 +256,7 @@ fn mcp_native_rejects_removed_instruction_limits_and_decompiles_completely() {
 #[test]
 fn mcp_native_inventory_has_no_ignored_byte_or_record_limit_parameters() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut client = Client::start(&["--root", root.to_str().unwrap(), "--backends", "kuna"]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     for limits in [
         json!({"input_bytes":1}),
@@ -283,7 +283,7 @@ fn mcp_native_inventory_has_no_ignored_byte_or_record_limit_parameters() {
 #[test]
 fn mcp_native_selectors_cannot_inject_flags_multi_selection_or_external_io() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut client = Client::start(&["--root", root.to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let cases = [
         json!({"name":"--engine=foreign"}),
@@ -339,7 +339,7 @@ fn mcp_native_target_keeps_original_bytes_and_logical_path_after_caller_mutation
         .unwrap();
     assert!(expected.status.success());
     let expected: Value = serde_json::from_slice(&expected.stdout).unwrap();
-    let mut client = Client::start(&["--root", scratch.path().to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", scratch.path().to_str().unwrap()]);
     client.initialize();
     let opened = client.tool("rxd_open", json!({"path":path,"backend":"kuna"}));
     assert_ne!(opened["isError"], true, "{opened}");
@@ -376,7 +376,7 @@ fn mcp_native_serial_thread_budget_overrides_inherited_decode_lanes() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut client = Client::start_with_env(
         &[
-            "--root",
+            "--allow-path",
             root.to_str().unwrap(),
             "--max-workers",
             "1",

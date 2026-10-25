@@ -15,7 +15,7 @@ class Client:
         self.responses = queue.Queue()
         argv = [str(binary), 'mcp']
         for root in roots:
-            argv += ['--root', str(root)]
+            argv += ['--allow-path', str(root)]
         argv += list(options)
         self.process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=stderr, env=env, cwd=cwd)

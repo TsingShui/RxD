@@ -79,21 +79,11 @@ impl AnalysisService {
             ));
         }
         let catalog = crate::query::catalog();
-        for backend in &options.backends {
-            if !catalog.iter().any(|tool| &tool.backend == backend) {
-                return Err(Error::new(
-                    "INVALID_QUERY",
-                    format!("unsupported MCP backend: {backend}"),
-                ));
-            }
-        }
         let mut tools=vec![
-            Tool::new("rxd_open","Capture immutable local input; backend hint establishes recursive JS or ASAR dependency scope.",open_schema(options)).with_raw_output_schema(Arc::new(with_error(schema::<TargetInfo>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
+            Tool::new("rxd_open","Capture immutable local input from absolute paths; backend hint establishes recursive JS or ASAR dependency scope.",open_schema()).with_raw_output_schema(Arc::new(with_error(schema::<TargetInfo>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
             Tool::new("rxd_close","Invalidate a process-local target handle; acquired requests retain their immutable bytes.",schema::<CloseArgs>()).with_raw_output_schema(Arc::new(with_error(schema::<Closed>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
         ];
-        for definition in catalog.into_iter().filter(|definition| {
-            options.backends.is_empty() || options.backends.contains(&definition.backend)
-        }) {
+        for definition in catalog {
             let creates_target =
                 matches!(definition.name.as_str(), "asar_extract" | "html_extract");
             let mut tool = Tool::new(
@@ -127,12 +117,6 @@ impl AnalysisService {
             ));
             tools.push(tool);
         }
-        let base = options.base.clone().unwrap_or(std::env::current_dir()?);
-        let roots = if options.root.is_empty() {
-            vec![base.clone()]
-        } else {
-            options.root.clone()
-        };
         let limits = TargetLimits {
             max_total_bytes: options.max_snapshot_bytes,
             max_depth: options.max_snapshot_depth,
@@ -144,7 +128,7 @@ impl AnalysisService {
         };
         Ok(Self {
             tools: Arc::new(tools),
-            store: Arc::new(TargetStore::new(base, roots, limits)?),
+            store: Arc::new(TargetStore::new(options.allow_paths.clone(), limits)?),
             admission: Arc::new(Semaphore::new(worker_slots)),
             worker_slots,
             shutdown,
@@ -474,7 +458,7 @@ impl AnalysisService {
 }
 impl ServerHandler for AnalysisService {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(Implementation::new("rxd",env!("CARGO_PKG_VERSION"))).with_instructions("rxd analyzes local inputs. Query tools accept direct paths or process-local immutable targets; configured roots apply to every capture.")
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(Implementation::new("rxd",env!("CARGO_PKG_VERSION"))).with_instructions("rxd analyzes local inputs. Query tools accept absolute paths or process-local immutable targets; optional --allow-path grants apply to every capture.")
     }
     async fn list_tools(
         &self,
@@ -602,13 +586,12 @@ fn with_error(mut success: serde_json::Map<String, Value>) -> serde_json::Map<St
     schema
 }
 
-fn open_schema(options: &Options) -> serde_json::Map<String, Value> {
+fn open_schema() -> serde_json::Map<String, Value> {
     let backends: Vec<String> = crate::query::catalog()
         .into_iter()
         .map(|definition| definition.backend)
-        .filter(|backend| options.backends.is_empty() || options.backends.contains(backend))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    json!({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string","minLength":1},"paths":{"type":"array","items":{"type":"string","minLength":1},"minItems":1},"backend":{"type":"string","enum":backends}},"oneOf":[{"required":["path"],"not":{"required":["paths"]}},{"required":["paths"],"not":{"required":["path"]}}]}).as_object().unwrap().clone()
+    json!({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string","minLength":1,"description":"Absolute local input path."},"paths":{"type":"array","items":{"type":"string","minLength":1,"description":"Absolute local input path."},"minItems":1},"backend":{"type":"string","enum":backends}},"oneOf":[{"required":["path"],"not":{"required":["paths"]}},{"required":["paths"],"not":{"required":["path"]}}]}).as_object().unwrap().clone()
 }

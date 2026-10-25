@@ -94,7 +94,7 @@ Listings emit data-row JSONL; require exit 0, and zero rows means no matches.
 -f/--filter narrows listings; -m/--match searches xref targets with --kind.
 --raw selects original instructions where supported.
 Run rxd BACKEND COMMAND --help for minimal examples and parameter sources.
-For typed tools: rxd mcp --root /absolute/authorized/inputs; use tools/list.
+For typed tools: rxd mcp; use tools/list and absolute input paths.
 Default source builds omit Kuna/ILSpy engines; help availability is not engine availability."
 )]
 pub struct Cli {

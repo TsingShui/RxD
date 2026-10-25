@@ -1,5 +1,6 @@
 use super::support::Client;
 use serde_json::json;
+use std::collections::BTreeSet;
 #[test]
 fn mcp_legacy_and_modern_clients_discover_the_server() {
     let mut legacy = Client::start(&[]);
@@ -17,37 +18,69 @@ fn mcp_legacy_and_modern_clients_discover_the_server() {
     assert!(modern.wait_exit().success());
 }
 
-#[cfg(feature = "backend-js")]
 #[test]
-fn mcp_catalog_filters_backends_and_publishes_input_output_schemas() {
-    let mut client = Client::start(&["--backends", "js"]);
+fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas() {
+    let mut client = Client::start(&[]);
     client.initialize();
     let response = client.request("tools/list", json!({}));
     let tools = response["result"]["tools"].as_array().unwrap();
-    assert!(tools.iter().any(|tool| tool["name"] == "js_slice"));
-    assert!(tools.iter().any(|tool| tool["name"] == "rxd_open"));
-    assert!(
-        !tools
-            .iter()
-            .any(|tool| tool["name"].as_str().unwrap().starts_with("jar_"))
-    );
+    let expected: BTreeSet<_> = [
+        ("js", cfg!(feature = "backend-js")),
+        ("asar", cfg!(feature = "backend-asar")),
+        ("html", cfg!(feature = "backend-html")),
+        ("dex", cfg!(feature = "backend-dex")),
+        ("jar", cfg!(feature = "backend-jvm")),
+        ("dotnet", cfg!(feature = "backend-dotnet")),
+        ("evm", cfg!(feature = "backend-evm")),
+        ("wasm", cfg!(feature = "backend-wasm")),
+        ("pyc", cfg!(feature = "backend-pyc")),
+        ("kuna", cfg!(feature = "bundled-kuna")),
+    ]
+    .into_iter()
+    .filter_map(|(backend, enabled)| enabled.then_some(backend))
+    .collect();
+    let actual: BTreeSet<_> = tools
+        .iter()
+        .filter_map(|tool| tool["_meta"]["backend"].as_str())
+        .collect();
+    assert_eq!(expected, actual);
+    let open = tools
+        .iter()
+        .find(|tool| tool["name"] == "rxd_open")
+        .unwrap();
+    let capture_backends: BTreeSet<_> = open["inputSchema"]["properties"]["backend"]["enum"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|backend| backend.as_str().unwrap())
+        .collect();
+    assert_eq!(expected, capture_backends);
     for tool in tools {
         assert!(tool["inputSchema"].is_object(), "{tool}");
         assert!(tool["outputSchema"].is_object(), "{tool}");
     }
-    let disabled = client.request("tools/call", json!({"name":"jar_entries","arguments":{}}));
-    assert!(disabled["error"].is_object(), "{disabled}");
+    let unknown = client.request("tools/call", json!({"name":"missing_tool","arguments":{}}));
+    assert!(unknown["error"].is_object(), "{unknown}");
     client.send_raw(b"not-json\n");
     assert_eq!(client.receive()["error"]["code"], -32700);
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
     client.disconnect();
     assert!(client.wait_exit().success());
+
+    let rejected = std::process::Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["mcp", "--backends", "js"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(rejected.status.code(), Some(2));
+    assert!(rejected.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("--backends"));
 }
 
 #[cfg(feature = "backend-asar")]
 #[test]
 fn mcp_artifact_tools_are_annotated_as_creating_a_target() {
-    let mut asar = Client::start(&["--backends", "asar"]);
+    let mut asar = Client::start(&[]);
     asar.initialize();
     let response = asar.request("tools/list", json!({}));
     let extraction = response["result"]["tools"]
@@ -110,7 +143,7 @@ fn mcp_protocol_request_admission_is_bounded_and_recovers_after_cancellation() {
     )
     .unwrap();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
         "--max-active-requests",
         "1",

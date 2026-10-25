@@ -47,11 +47,13 @@ The skill is emitted as the exact `SKILL.md` Markdown on stdout with the name `r
 covers every current backend and needs no network or source checkout. `rxd skill`
 writes no files or Agent configuration; place the output where an Agent discovers it.
 
-Start the native MCP stdio server separately with only roots that may be analyzed,
-and register that command in the client's own configuration:
+Start the native MCP stdio server separately and register that command in the
+client's own configuration. Inputs use absolute paths; all local paths are allowed
+by default. Optionally restrict access with repeatable `--allow-path` grants:
 
 ```sh
-rxd mcp --root /absolute/path/to/inputs
+rxd mcp
+rxd mcp --allow-path /absolute/path/to/inputs
 ```
 
 Reload and verify using the
@@ -214,7 +216,7 @@ rxd skill
 Redirect or copy the output into the skills directory an Agent discovers; the skill
 name is `rxd` and it covers every current backend. The Markdown is embedded in the
 binary, needs no network or source checkout, and diagnostics stay on stderr. Start
-MCP separately with `rxd mcp --root ...` and register it in the client configuration.
+MCP separately with `rxd mcp` and register it in the client configuration.
 
 ## 🧩 Supported formats
 
@@ -237,12 +239,14 @@ Release builds provide a local typed MCP service; Agents can consume
 `structuredContent` directly:
 
 ```sh
-rxd mcp --base /workspace --root /workspace
+rxd mcp
 # Default source builds include MCP; reduced builds must enable it explicitly.
 ```
 
 `rxd mcp` is the stdio server; it starts no client and writes no client
 configuration. Register the absolute executable and argv in the client yourself.
+Local input paths must be absolute. Without `--allow-path`, the server permits any
+local input; each supplied file or directory grant narrows that set.
 
 Use `rxd_open` / `rxd_close` to pin inputs, or pass a path directly. Every built-in
 backend preserves its original commands, content identities, completeness and

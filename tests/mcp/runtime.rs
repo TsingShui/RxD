@@ -38,10 +38,8 @@ fn mcp_shared_inflight_budget_rejects_large_output_and_recovers() {
     )
     .unwrap();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
-        "--backends",
-        "js",
         "--max-inflight-bytes",
         "131072",
     ]);
@@ -65,7 +63,7 @@ fn mcp_shared_inflight_budget_rejects_large_output_and_recovers() {
 fn mcp_deadline_failure_leaves_the_protocol_process_usable() {
     let (root, large, _small) = fixture();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
         "--deadline-ms",
         "1",
@@ -84,7 +82,7 @@ fn mcp_deadline_failure_leaves_the_protocol_process_usable() {
 fn mcp_worker_admission_is_bounded_and_cancellation_releases_the_slot() {
     let (root, large, small) = fixture();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
         "--max-workers",
         "1",
@@ -146,7 +144,7 @@ pub(super) fn child_worker(parent: u32) -> u32 {
 #[cfg(unix)]
 fn mcp_killed_worker_reports_failure_then_subsequent_queries_succeed() {
     let (root, large, small) = fixture();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     client.send(tool_call(100, &large));
     let worker = child_worker(client.pid());
@@ -175,7 +173,7 @@ fn mcp_killed_worker_reports_failure_then_subsequent_queries_succeed() {
 #[cfg(unix)]
 fn mcp_client_eof_reaps_active_workers_before_server_exit() {
     let (root, large, _small) = fixture();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap()]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     client.send(tool_call(100, &large));
     let worker = child_worker(client.pid());
@@ -209,7 +207,7 @@ fn mcp_client_eof_terminates_even_when_a_response_pipe_is_backpressured() {
     // The whole-file program coordinate is what a large `js_slice` fetch needs.
     let at = format!("program:0:{}", source.len());
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["mcp", "--root", root.path().to_str().unwrap()])
+        .args(["mcp", "--allow-path", root.path().to_str().unwrap()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -276,10 +274,8 @@ fn mcp_inflight_budget_counts_rpc_identity_and_rolls_back_unreachable_targets() 
     )
     .unwrap();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
-        "--backends",
-        "js",
         "--max-inflight-bytes",
         "65536",
         "--max-snapshot-bytes",
@@ -329,7 +325,7 @@ fn mcp_unrepresentable_snapshot_metadata_does_not_leak_a_target_slot() {
     let path = root.path().join("valid.js");
     fs::write(&path, "function valid(){}\n").unwrap();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
         "--max-snapshot-bytes",
         "10000",

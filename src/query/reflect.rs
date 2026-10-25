@@ -195,7 +195,7 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
         description.push_str("\n\n");
         description.push_str(&guide.to_string());
     }
-    description.push_str("\nMCP: input is {path: ...} or {target_id: ...}; CLI flags become snake_case fields without --. JSON output is automatic; omit json/output/perf.");
+    description.push_str("\nMCP: input is {path: ABSOLUTE_PATH} or {target_id: ...}; CLI flags become snake_case fields without --. JSON output is automatic; omit json/output/perf.");
     ToolSpec {
         name,
         backend: backend.to_owned(),
@@ -254,7 +254,7 @@ fn property(arg: &ArgSpec) -> Value {
 }
 
 fn input_reference() -> Value {
-    json!({"oneOf":[{"type":"object","properties":{"path":{"type":"string","minLength":1}},"required":["path"],"additionalProperties":false},
+    json!({"oneOf":[{"type":"object","properties":{"path":{"type":"string","minLength":1,"description":"Absolute local input path."}},"required":["path"],"additionalProperties":false},
         {"type":"object","properties":{"target_id":{"type":"string","minLength":1}},"required":["target_id"],"additionalProperties":false}]})
 }
 

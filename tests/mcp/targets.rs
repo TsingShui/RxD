@@ -23,7 +23,7 @@ fn mcp_target_snapshot_retains_original_bytes_and_close_invalidates_future_calls
     let path = root.path().join("原始 source.js");
     let source = "function original(){return \"你好\";}\r\n";
     fs::write(&path, source).unwrap();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let opened = client.tool("rxd_open", json!({"path":path}));
     let info = success(&opened);
@@ -81,10 +81,8 @@ fn mcp_one_shot_queries_release_snapshot_storage_after_each_call() {
     let path = root.path().join("source.js");
     fs::write(&path, format!("function ready(){{}}{}", " ".repeat(20_000))).unwrap();
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
-        "--backends",
-        "js",
         "--max-snapshot-bytes",
         "30000",
     ]);
@@ -117,10 +115,8 @@ fn mcp_snapshot_bytes_include_empty_file_metadata_and_release_after_close() {
         fs::write(empty.join(format!("{index}.js")), b"").unwrap();
     }
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
-        "--backends",
-        "js",
         "--max-snapshot-bytes",
         "30000",
     ]);
@@ -153,7 +149,7 @@ fn mcp_targets_have_no_fixed_count_or_expiry_and_remain_valid_until_close() {
 ",
     )
     .unwrap();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let mut targets = Vec::new();
     for _ in 0..70 {
@@ -176,7 +172,7 @@ fn mcp_recursive_target_freezes_selected_sources_and_preserves_file_boundaries()
     fs::write(&first, "function first(){}\n").unwrap();
     fs::write(&second, "function second(value: number){return value;}\n").unwrap();
     fs::write(root.path().join("ignored.txt"), "this is not JavaScript").unwrap();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let opened = client.tool("rxd_open", json!({"path":root.path(),"backend":"js"}));
     let info = success(&opened);
@@ -227,12 +223,7 @@ fn mcp_input_bundle_preserves_supplied_order_and_duplicate_identity() {
     let second_bytes = b"second fixed input";
     fs::write(&first, first_bytes).unwrap();
     fs::write(&second, second_bytes).unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        root.path().to_str().unwrap(),
-        "--backends",
-        "dex,js",
-    ]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let opened = client.tool(
         "rxd_open",
@@ -288,12 +279,7 @@ fn mcp_asar_dependencies_and_child_targets_remain_stable_after_parent_changes_an
         b"",
     );
     let archive_bytes = fs::read(&archive).unwrap();
-    let mut client = Client::start(&[
-        "--root",
-        root.path().to_str().unwrap(),
-        "--backends",
-        "asar,js",
-    ]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let opened = client.tool("rxd_open", json!({"path":archive,"backend":"asar"}));
     let parent = success(&opened);
@@ -337,7 +323,7 @@ fn mcp_asar_dependencies_and_child_targets_remain_stable_after_parent_changes_an
 #[cfg(unix)]
 #[cfg(feature = "backend-js")]
 #[test]
-fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking() {
+fn mcp_allow_path_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking() {
     use std::{ffi::CString, os::unix::fs::symlink};
     let root = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
@@ -353,7 +339,7 @@ fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking(
     let fifo_path = CString::new(fifo.to_str().unwrap()).unwrap();
     // SAFETY: fifo_path is a valid NUL-terminated path used only as a handcrafted input fixture.
     assert_eq!(unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) }, 0);
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     error(
         &client.tool("rxd_open", json!({"path":escape})),
@@ -371,6 +357,14 @@ fn mcp_root_checks_reject_symlink_escape_and_nonregular_inputs_without_blocking(
             .iter()
             .any(|record| record["detail"]["name"] == "allowed")
     );
+    let mut unrestricted = Client::start(&[]);
+    unrestricted.initialize();
+    error(
+        &unrestricted.tool("rxd_open", json!({"path":fifo})),
+        "INVALID_INPUT",
+    );
+    let opened = unrestricted.tool("rxd_open", json!({"path":escape}));
+    success(&opened);
 }
 
 #[cfg(unix)]
@@ -408,7 +402,7 @@ fn mcp_captures_never_follow_raced_directory_links_outside_allowed_roots() {
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
     let input_path = directory.join("input.js");
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let mutator = Mutator {
         stop,
@@ -455,10 +449,8 @@ fn mcp_asar_dependency_capture_rejects_missing_and_linked_sources_and_releases_f
         b"",
     );
     let mut client = Client::start(&[
-        "--root",
+        "--allow-path",
         root.path().to_str().unwrap(),
-        "--backends",
-        "asar",
         "--max-snapshot-bytes",
         "30000",
     ]);
@@ -497,7 +489,7 @@ fn mcp_closing_a_target_keeps_already_acquired_worker_bytes_available() {
     let path = root.path().join("inflight.js");
     let source = format!("function slow(){{\n{}}}", "var item=1;\n".repeat(180_000));
     fs::write(&path, &source).unwrap();
-    let mut client = Client::start(&["--root", root.path().to_str().unwrap(), "--backends", "js"]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     let opened = client.tool("rxd_open", json!({"path":path}));
     let target = success(&opened)["target_id"].as_str().unwrap();
@@ -537,7 +529,7 @@ fn mcp_startup_rejects_capture_depth_above_the_safe_protocol_process_ceiling() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args([
             "mcp",
-            "--root",
+            "--allow-path",
             root.path().to_str().unwrap(),
             "--max-snapshot-depth",
             "257",
@@ -560,12 +552,7 @@ fn mcp_startup_rejects_capture_depth_above_the_safe_protocol_process_ceiling() {
 fn mcp_child_artifacts_reject_windows_device_and_aliased_filenames_before_writing() {
     let root = tempfile::tempdir().unwrap();
     let archive = root.path().join("app.asar");
-    let mut client = Client::start(&[
-        "--root",
-        root.path().to_str().unwrap(),
-        "--backends",
-        "asar",
-    ]);
+    let mut client = Client::start(&["--allow-path", root.path().to_str().unwrap()]);
     client.initialize();
     for name in ["NUL.dll", "COM¹.bin", "LPT3.txt", "trailing.", "trailing "] {
         let mut files = serde_json::Map::new();

@@ -269,20 +269,22 @@ fallback; `--raw` requests original selected regions.
 rxd kuna --help
 rxd kuna functions ./native-app --summary --json
 rxd kuna decompile ./native-app main --json
-rxd mcp --root /workspace --backends js
+rxd mcp
 ```
 
 Kuna requires the optional linked engine feature with bundled specs; those builds
 can also use an explicitly configured external engine. Unavailable builds report
 that requirement. Use its
 native names/addresses and JSON contracts, not invented RxD coordinates. MCP
-requires an `mcp` build; complete single-file distributions include MCP, Kuna and
-ILSpy. Discover `tools/list` and actual capability/engine availability before
-calling typed tools. Normal calls use exactly one `input: {path}` or
-`input: {target_id}`. `rxd_open` captures immutable bytes; use the returned target
+requires an `mcp` build and exposes all tools supported by that build; complete
+single-file distributions include MCP, Kuna and ILSpy. Discover `tools/list` and
+actual capability/engine availability before calling typed tools. Normal calls
+use exactly one `input: {path}` or `input: {target_id}`. Local input paths must be
+absolute. All paths are allowed by default; repeat `--allow-path` at startup to
+restrict access to selected files/directories. `rxd_open` captures immutable bytes; use the returned target
 handle for related calls and `rxd_close` afterward. Targets fix input bytes but do
 not cache parser state. Backend tools retain original identity, reference and
-fallback semantics. Roots and worker/capture/deadline/full-response budgets apply;
+fallback semantics. Path grants and worker/capture/deadline/full-response budgets apply;
 consume `structuredContent` (`{records: [...]}` for streams), not a truncated text preview.
 
 ## Scope and maintenance
