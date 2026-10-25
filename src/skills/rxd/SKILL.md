@@ -122,6 +122,13 @@ rows restricted to one kind group. `find
 hits are `literal_kind: static_expression` with `detail.raw` and
 `resolution: static`.
 
+`--resolve-static` on `find`, `calls` and `members` also recognizes a whole
+literal-table decoder (one string array, one `table[index - constant]` function,
+one solved rotation loop). Those hits are `literal_kind: decoded` with
+`resolution: decoder`, `calls` reports the proven callee key, and `members`
+reports `key_resolution: decoder`. Whole tables only: encoded arrays, ambiguous
+rotations and partial tables stay unresolved.
+
 ```sh
 rxd asar entries app.asar -f main
 rxd asar extract app.asar --at main.js -o extracted-main.js

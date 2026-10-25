@@ -47,6 +47,13 @@ writes and dynamic boundaries are covered by handwritten CLI scenarios. Expectat
 include generator hash, Acorn version, input SHA-256, raw ranges and flags, never rxd
 output, and never decrypt obfuscated strings.
 
+Plain literal-table lookups are proven separately when a query asks for them:
+`find --resolve-static` and `calls/members --resolve-static` resolve
+`application-flattened-string-array` (plain table, solved rotation) and every
+`literal_table_decoder_*` test pins that behavior. `application-rc4` stays
+unresolved because encoded tables are not decoded, so its zero-hit and
+structural-only expectations are unchanged.
+
 ```sh
 cargo test --test cli refs_
 cargo test --test cli published_and_obfuscated_corpus

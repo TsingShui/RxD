@@ -14,6 +14,7 @@ use rxd_core::{Result, Source, perf::Perf};
 use serde::Serialize;
 
 use crate::{
+    decode::Decoders,
     fragment::{Contexts, Target},
     lexical::Locations,
     static_eval,
@@ -88,7 +89,7 @@ impl Member {
     }
 }
 
-struct Visitor<'a, 's> {
+struct Visitor<'a, 's, 'd> {
     source: &'s Source,
     locations: Locations<'a, 's>,
     contexts: Contexts,
@@ -98,12 +99,13 @@ struct Visitor<'a, 's> {
     region: Span,
     names: crate::names::Names<'a>,
     access: MemberAccess,
+    decoders: Option<&'d Decoders>,
     records: Vec<Member>,
     budget: crate::names::RecordBudget,
     error: Option<rxd_core::Error>,
 }
 
-impl Visitor<'_, '_> {
+impl Visitor<'_, '_, '_> {
     fn member_access(&self, span: Span) -> Access {
         self.target.filter(|(target, _)| *target == span).map_or(
             Access {
@@ -118,9 +120,10 @@ impl Visitor<'_, '_> {
 fn static_key_name(
     key: &PropertyKey<'_>,
     computed: bool,
+    decoders: Option<&Decoders>,
 ) -> Option<(JsString, Span, Option<&'static str>)> {
     if computed {
-        return computed_key(key.as_expression()?)
+        return computed_key(key.as_expression()?, decoders)
             .map(|(name, span, resolution)| (name, span, Some(resolution)));
     }
     match key {
@@ -136,14 +139,20 @@ fn static_key_name(
     }
 }
 
-/// Accept string literals/proven constant keys; never resolve bindings or numeric indices.
-pub(crate) fn computed_key(expression: &Expression<'_>) -> Option<(JsString, Span, &'static str)> {
+/// Accept string literals, proven constant keys and recognized table lookups.
+pub(crate) fn computed_key(
+    expression: &Expression<'_>,
+    decoders: Option<&Decoders>,
+) -> Option<(JsString, Span, &'static str)> {
     if let Expression::StringLiteral(literal) = expression.get_inner_expression() {
         return Some((
             JsString::decoded(literal.value.as_str(), literal.lone_surrogates),
             literal.span,
             "literal",
         ));
+    }
+    if let Some(resolved) = decoders.and_then(|decoders| decoders.expression(expression)) {
+        return Some((resolved.value.clone(), expression.span(), "decoder"));
     }
     match static_eval::evaluate(
         expression,
@@ -188,7 +197,7 @@ fn target_span(target: &SimpleAssignmentTarget<'_>) -> Option<Span> {
     }
 }
 
-impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
+impl<'a, 's, 'd> Visit<'s> for Visitor<'a, 's, 'd> {
     fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'s>) {
         // Oxc visits the actual leaves of destructuring and for-in/of targets here;
         // default expressions and computed keys are ordinary expressions, not writes.
@@ -240,27 +249,35 @@ impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
                 "static_member",
                 None,
             )),
-            AstKind::ComputedMemberExpression(member) => computed_key(&member.expression)
-                .map(|(name, span, resolution)| (name, span, "computed_key", Some(resolution))),
-            AstKind::ObjectProperty(property) => static_key_name(&property.key, property.computed)
-                .map(|(name, span, resolution)| {
-                    (
-                        name,
-                        span,
-                        if property.method || property.kind != oxc_ast::ast::PropertyKind::Init {
-                            "object_method_key"
-                        } else {
-                            "property_key"
-                        },
-                        resolution,
-                    )
-                }),
+            AstKind::ComputedMemberExpression(member) => {
+                computed_key(&member.expression, self.decoders)
+                    .map(|(name, span, resolution)| (name, span, "computed_key", Some(resolution)))
+            }
+            AstKind::ObjectProperty(property) => {
+                static_key_name(&property.key, property.computed, self.decoders).map(
+                    |(name, span, resolution)| {
+                        (
+                            name,
+                            span,
+                            if property.method || property.kind != oxc_ast::ast::PropertyKind::Init
+                            {
+                                "object_method_key"
+                            } else {
+                                "property_key"
+                            },
+                            resolution,
+                        )
+                    },
+                )
+            }
             AstKind::PropertyDefinition(property) => {
-                static_key_name(&property.key, property.computed)
+                static_key_name(&property.key, property.computed, self.decoders)
                     .map(|(name, span, resolution)| (name, span, "class_field_key", resolution))
             }
-            AstKind::MethodDefinition(method) => static_key_name(&method.key, method.computed)
-                .map(|(name, span, resolution)| (name, span, "class_method_key", resolution)),
+            AstKind::MethodDefinition(method) => {
+                static_key_name(&method.key, method.computed, self.decoders)
+                    .map(|(name, span, resolution)| (name, span, "class_method_key", resolution))
+            }
             AstKind::JSXAttribute(attribute) => match &attribute.name {
                 JSXAttributeName::Identifier(id) => Some((
                     JsString::from(id.name.as_str()),
@@ -331,6 +348,7 @@ pub fn run(
             region,
             names: names.compile(),
             access,
+            decoders: collector.decoders(),
             records: Vec::new(),
             budget: crate::names::RecordBudget::new(collector.limits),
             error: None,

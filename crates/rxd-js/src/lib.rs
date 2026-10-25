@@ -2,6 +2,7 @@
 
 mod bindings;
 mod calls;
+mod decode;
 mod definition;
 mod envelope;
 mod fragment;
@@ -18,6 +19,7 @@ mod symbols;
 mod syntax;
 mod values;
 
+pub use decode::Decoders;
 pub use members::MemberAccess;
 pub use names::NameQuery;
 pub use resources::{RESOURCE_KINDS, ResourcesQuery};
@@ -94,11 +96,13 @@ pub enum Query {
     Calls {
         names: NameQuery,
         within: Option<String>,
+        resolve_static: bool,
     },
     Members {
         names: NameQuery,
         access: MemberAccess,
         within: Option<String>,
+        resolve_static: bool,
     },
     Locate {
         byte: u64,
@@ -357,13 +361,13 @@ pub fn run_source(
         }
         _ => None,
     };
-    let resolve_static = matches!(
-        query,
-        Query::Find {
-            resolve_static: true,
-            ..
-        }
-    );
+    let resolve_static = match &query {
+        Query::Find { resolve_static, .. }
+        | Query::Calls { resolve_static, .. }
+        | Query::Members { resolve_static, .. } => *resolve_static,
+        _ => false,
+    };
+    let decoders = resolve_static.then(|| Decoders::build(&parsed.program));
     let mut collector = Collector::new(
         &source,
         limits,
@@ -371,6 +375,7 @@ pub fn run_source(
         query_case_sensitive,
         contexts,
         resolve_static,
+        decoders.as_ref(),
     );
     let visited = catch_unwind(AssertUnwindSafe(|| {
         if resolve_static {
@@ -586,7 +591,7 @@ pub fn run_source(
                 Ok(())
             })?;
         }
-        Query::Calls { names, within } => {
+        Query::Calls { names, within, .. } => {
             perf.record("query", query_start);
             let result = calls::run(
                 &parsed.program,
@@ -608,6 +613,7 @@ pub fn run_source(
             names,
             access,
             within,
+            ..
         } => {
             perf.record("query", query_start);
             let result = members::run(

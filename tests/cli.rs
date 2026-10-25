@@ -2932,6 +2932,112 @@ fn outline_kind_accepts_a_comma_separated_exact_kind_list() {
 }
 
 #[test]
+fn literal_table_decoder_resolves_whole_tables_only() {
+    // A rotated table: the checksum matches only after two shifts, so a wrong offset
+    // would answer `pad`/`needle` in the wrong order and the table must be rejected.
+    let source = r#"function _0xt(){const _0xv=['needle','pad','1','2'];_0xt=function(){return _0xv;};return _0xt();}function _0xd(_0xi){_0xi=_0xi-0x10;const _0xa=_0xt();let _0xb=_0xa[_0xi];return _0xb;}(function(_0xf,_0x1){const _0x2=_0xd;while(!![]){try{const _0x3=parseInt(_0x2(0x10))+parseInt(_0x2(0x11));if(_0x3===_0x1)break;else _0xf().push(_0xf().shift());}catch(_0x4){_0xf().push(_0xf().shift());}}}(_0xt,0x3));const _0x5=_0xd;const tag=_0x5(0x12);client[_0x5(0x13)](tag);"#;
+    let (_dir, path) = fixture(source, "table.js");
+
+    // Without the flag nothing is claimed and the raw call sites stay opaque.
+    assert!(jsonl(&invoke("find", &path, &["-f", "needle"])).len() == 1);
+    assert!(jsonl(&invoke("find", &path, &["-f", "tag"])).is_empty());
+
+    let decoded = jsonl(&invoke(
+        "find",
+        &path,
+        &["-f", "needle", "--resolve-static"],
+    ));
+    assert_eq!(decoded.len(), 2, "{decoded:?}");
+    let resolved = decoded
+        .iter()
+        .find(|row| row["detail"]["literal_kind"] == "decoded")
+        .expect("a decoded lookup row");
+    assert_eq!(resolved["detail"]["value"], "needle");
+    assert_eq!(resolved["detail"]["resolution"], "decoder");
+    assert_eq!(resolved["detail"]["raw"], "_0x5(0x12)");
+
+    // Rotation and the alias are proven, so the call and member names resolve too.
+    let calls = jsonl(&invoke("calls", &path, &["-f", "pad", "--resolve-static"]));
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(calls[0]["detail"]["callee"], "pad");
+    assert!(jsonl(&invoke("calls", &path, &["-f", "pad"])).is_empty());
+    // A rotated index is only exact when every shift is checked: 0x13 is `pad`
+    // after two rotations and the last element before them.
+    let members = jsonl(&invoke(
+        "members",
+        &path,
+        &["-f", "pad", "--resolve-static"],
+    ));
+    assert_eq!(members.len(), 1, "{members:?}");
+    assert_eq!(members[0]["detail"]["key_resolution"], "decoder");
+    assert_eq!(members[0]["detail"]["read"], true);
+    assert!(jsonl(&invoke("members", &path, &["-f", "pad"])).is_empty());
+
+    // An ambiguous rotation (every shift matches) is rejected instead of guessed.
+    let ambiguous = r#"function _0xt(){const _0xv=['1','1','1','1'];_0xt=function(){return _0xv;};return _0xt();}function _0xd(_0xi){_0xi=_0xi-0x10;const _0xa=_0xt();let _0xb=_0xa[_0xi];return _0xb;}(function(_0xf,_0x1){const _0x2=_0xd;while(!![]){try{const _0x3=parseInt(_0x2(0x10))+parseInt(_0x2(0x11));if(_0x3===_0x1)break;else _0xf().push(_0xf().shift());}catch(_0x4){_0xf().push(_0xf().shift());}}}(_0xt,0x2));const _0x5=_0xd;_0x5(0x12);"#;
+    let (_dir, path) = fixture(ambiguous, "ambiguous.js");
+    let rows = jsonl(&invoke("find", &path, &["-f", "1", "--resolve-static"]));
+    assert!(
+        rows.iter()
+            .all(|row| row["detail"]["literal_kind"] != "decoded"),
+        "an ambiguous rotation must stay unresolved: {rows:?}"
+    );
+}
+
+#[test]
+fn literal_table_decoder_names_are_never_invented_for_generated_syntax() {
+    // Encoded tables, partial tables and shadowed aliases stay unresolved.
+    let source = r#"function _0xt(){const _0xv=['q','w',7];_0xt=function(){return _0xv;};return _0xt();}function _0xd(_0xi){_0xi=_0xi-0x10;const _0xa=_0xt();let _0xb=_0xa[_0xi];return _0xb;}const _0x5=_0xd;const shadow=(_0x5)=>_0x5(0x12);const value=_0x5(0x10);"#;
+    let (_dir, path) = fixture(source, "partial.js");
+    let rows = jsonl(&invoke("find", &path, &["-f", "q", "--resolve-static"]));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["detail"]["literal_kind"], "string");
+    assert!(jsonl(&invoke("calls", &path, &["-f", "q", "--resolve-static"])).is_empty());
+}
+
+#[test]
+fn literal_table_decoder_recovers_obfuscated_query_names() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/corpus/artifacts/application-flattened-string-array.js");
+    let calls = jsonl(&invoke(
+        "calls",
+        &path,
+        &["-f", "login", "--resolve-static"],
+    ));
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(calls[0]["detail"]["callee"], "login");
+    assert!(jsonl(&invoke("calls", &path, &["-f", "login"])).is_empty());
+
+    let members = jsonl(&invoke(
+        "members",
+        &path,
+        &["-f", "timeoutMs", "--resolve-static"],
+    ));
+    assert_eq!(members.len(), 1, "{members:?}");
+    assert_eq!(members[0]["detail"]["key_resolution"], "decoder");
+    assert_eq!(members[0]["detail"]["write"], true);
+
+    let decoded = jsonl(&invoke(
+        "find",
+        &path,
+        &["-f", "/api/login", "--resolve-static"],
+    ));
+    assert!(
+        decoded
+            .iter()
+            .any(|row| row["detail"]["literal_kind"] == "decoded"
+                && row["detail"]["resolution"] == "decoder"),
+        "{decoded:?}"
+    );
+    // Rotation checksum call sites are table syntax, not business lookups.
+    assert!(
+        jsonl(&invoke("find", &path, &["-f", "1821", "--resolve-static"]))
+            .iter()
+            .all(|row| row["detail"]["literal_kind"] != "decoded")
+    );
+}
+
+#[test]
 fn static_resolution_matches_closed_ast_expressions_without_executing_bindings() {
     let source = r#"const a='set'+'Interval'; const b=`flag_${'correct'}`; const c=String.fromCharCode(115,101,116)+'Timeout'; const d=['window','document'][0]; const e='abc'.slice(1); const f=unknown+'unsafe'; const g=String.fromCodePoint(67,68); const h='abc'.toUpperCase(); const i=first(1)+'_joined'+second(2); const j=plain.toUpperCase();"#;
     let (_dir, path) = fixture(source, "static.js");

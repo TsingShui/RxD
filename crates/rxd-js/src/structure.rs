@@ -9,7 +9,7 @@ use oxc_span::{GetSpan, Span};
 use rxd_core::{Error, Limits, Result, Source};
 use serde::Serialize;
 
-use crate::{fragment::Contexts, static_eval, strings::JsString};
+use crate::{decode::Decoders, fragment::Contexts, static_eval, strings::JsString};
 
 #[derive(Default, Serialize)]
 pub struct Flags {
@@ -137,6 +137,7 @@ pub struct Collector<'s> {
     type_strings: HashSet<(u32, u32)>,
     type_templates: HashSet<(u32, u32)>,
     resolve_static: bool,
+    decoders: Option<&'s Decoders>,
     pub static_limits: static_eval::Limits,
 }
 
@@ -148,6 +149,7 @@ impl<'s> Collector<'s> {
         query_case_sensitive: bool,
         contexts: Option<Contexts>,
         resolve_static: bool,
+        decoders: Option<&'s Decoders>,
     ) -> Self {
         Self {
             source,
@@ -174,6 +176,7 @@ impl<'s> Collector<'s> {
             type_strings: HashSet::new(),
             type_templates: HashSet::new(),
             resolve_static,
+            decoders,
             static_limits: static_eval::Limits::default(),
         }
     }
@@ -269,7 +272,7 @@ impl<'s> Collector<'s> {
             end: span.end,
             dynamic,
             resolution,
-            raw: (literal_kind == "static_expression")
+            raw: matches!(literal_kind, "static_expression" | "decoded")
                 .then(|| self.source.text[span.start as usize..span.end as usize].to_owned()),
             entity_id: self.entities[parent].entity.id.clone(),
             context_id: self
@@ -277,6 +280,11 @@ impl<'s> Collector<'s> {
                 .as_ref()
                 .and_then(|contexts| contexts.current_id(self.source)),
         });
+    }
+
+    /// Decoders are built once per run and shared by every query that resolves keys.
+    pub fn decoders(&self) -> Option<&Decoders> {
+        self.decoders
     }
 
     pub fn ordered_entities(&self) -> Vec<usize> {
@@ -575,13 +583,17 @@ impl<'a> Visit<'a> for Collector<'_> {
                     );
                 }
             }
-            AstKind::CallExpression(call)
-                if self.query.is_some()
-                    && self.resolve_static
-                    && static_eval::call_can_yield_string(call) =>
-            {
-                if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_call(call, self.static_limits)
+            AstKind::CallExpression(call) if self.query.is_some() && self.resolve_static => {
+                let decoders = self.decoders;
+                let decoded = decoders
+                    .filter(|decoders| !decoders.suppressed(call.span))
+                    .and_then(|decoders| decoders.call(call))
+                    .map(|resolved| resolved.value.clone());
+                if let Some(value) = decoded {
+                    self.literal(call.span, value, "decoded", false, Some("decoder"));
+                } else if static_eval::call_can_yield_string(call)
+                    && let Some(static_eval::Value::String(value)) =
+                        static_eval::evaluate_call(call, self.static_limits)
                 {
                     self.literal(call.span, value, "static_expression", false, Some("static"));
                 }

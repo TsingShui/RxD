@@ -10,6 +10,7 @@ use rxd_core::{Result, Source, perf::Perf};
 use serde::Serialize;
 
 use crate::{
+    decode::Decoders,
     fragment::{Contexts, Target},
     lexical::Locations,
     strings::JsString,
@@ -55,32 +56,38 @@ impl Call {
     }
 }
 
-struct Visitor<'a, 's> {
+struct Visitor<'a, 's, 'd> {
     source: &'s Source,
     contexts: Contexts,
     locations: Locations<'a, 's>,
     region: Span,
     names: crate::names::Names<'a>,
+    decoders: Option<&'d Decoders>,
     records: Vec<Call>,
     budget: crate::names::RecordBudget,
     error: Option<rxd_core::Error>,
 }
 
-fn callee_name(expression: &Expression<'_>) -> Option<(JsString, &'static str)> {
+fn callee_name(
+    expression: &Expression<'_>,
+    decoders: Option<&Decoders>,
+) -> Option<(JsString, &'static str)> {
     match expression.get_inner_expression() {
         Expression::Identifier(id) => Some((JsString::from(id.name.as_str()), "direct")),
         Expression::StaticMemberExpression(m) => {
             Some((JsString::from(m.property.name.as_str()), "member"))
         }
         Expression::ComputedMemberExpression(m) => {
-            crate::members::computed_key(&m.expression).map(|(name, _, _)| (name, "member"))
+            crate::members::computed_key(&m.expression, decoders)
+                .map(|(name, _, _)| (name, "member"))
         }
         Expression::ChainExpression(c) => match &c.expression {
             ChainElement::StaticMemberExpression(m) => {
                 Some((JsString::from(m.property.name.as_str()), "member"))
             }
             ChainElement::ComputedMemberExpression(m) => {
-                crate::members::computed_key(&m.expression).map(|(name, _, _)| (name, "member"))
+                crate::members::computed_key(&m.expression, decoders)
+                    .map(|(name, _, _)| (name, "member"))
             }
             _ => None,
         },
@@ -116,7 +123,7 @@ fn optional_path(mut expression: &Expression<'_>) -> bool {
     }
 }
 
-impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
+impl<'a, 's, 'd> Visit<'s> for Visitor<'a, 's, 'd> {
     fn enter_node(&mut self, node: AstKind<'s>) {
         self.contexts.enter(node, 0);
         if self.error.is_some() {
@@ -142,7 +149,7 @@ impl<'a, 's> Visit<'s> for Visitor<'a, 's> {
         if span.start < self.region.start || span.end > self.region.end {
             return;
         }
-        let named = callee_expr.and_then(|expr| callee_name(expr));
+        let named = callee_expr.and_then(|expr| callee_name(expr, self.decoders));
         let Some((name, call_kind)) = named else {
             return;
         };
@@ -194,6 +201,7 @@ pub fn run(
             locations: Locations::new(collector),
             region,
             names: names.compile(),
+            decoders: collector.decoders(),
             records: Vec::new(),
             budget: crate::names::RecordBudget::new(collector.limits),
             error: None,

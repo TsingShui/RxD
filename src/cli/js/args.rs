@@ -157,7 +157,7 @@ pub(crate) enum Command {
     },
     /// Find substrings in decoded JS literals (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions."
+        after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions and recognized literal-table decoders."
     )]
     Find {
         #[command(flatten)]
@@ -169,7 +169,7 @@ pub(crate) enum Command {
         filter: String,
         #[command(flatten)]
         case: CaseArgs,
-        /// Also match values proven by bounded, side-effect-free AST evaluation.
+        /// Also match values proven by bounded side-effect-free evaluation and table decoders.
         #[arg(long)]
         resolve_static: bool,
     },
@@ -233,7 +233,7 @@ pub(crate) enum Command {
     },
     /// List statically named direct/member call and constructor sites (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js calls bundle.js --name fetch\nOutput: call JSONL, direct/member/new sites. Static syntax only, not return values or a call graph.\nUse context_at with slice for the exact local call; --within limits containment."
+        after_long_help = "Examples:\nrxd js calls bundle.js --name fetch\nOutput: call JSONL, direct/member/new sites. Static syntax only, not return values or a call graph.\nUse context_at with slice for the exact local call; --within limits containment.\n--resolve-static also names computed callee keys a literal-table decoder proves."
     )]
     Calls {
         #[command(flatten)]
@@ -243,10 +243,13 @@ pub(crate) enum Command {
         /// Restrict call sites to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
+        /// Also name callee keys proven by a recognized literal-table decoder.
+        #[arg(long)]
+        resolve_static: bool,
     },
     /// Find static member names, property keys, and JSX attribute names (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js members bundle.js --name token --access write\nOutput: member JSONL for known keys/access sites; dynamic computed keys stay unresolved.\n--access filters actual property reads/writes, not every declaration.\nNext: rxd js slice bundle.js --at '<member.context_at>'."
+        after_long_help = "Examples:\nrxd js members bundle.js --name token --access write\nOutput: member JSONL for known keys/access sites; dynamic computed keys stay unresolved.\n--access filters actual property reads/writes, not every declaration.\nNext: rxd js slice bundle.js --at '<member.context_at>'.\n--resolve-static also names computed keys a literal-table decoder proves."
     )]
     Members {
         #[command(flatten)]
@@ -259,6 +262,9 @@ pub(crate) enum Command {
         /// Restrict occurrences to this structure and its descendants.
         #[arg(long)]
         within: Option<String>,
+        /// Also name keys proven by a recognized literal-table decoder.
+        #[arg(long)]
+        resolve_static: bool,
     },
     /// Locate the innermost structure covering a UTF-8 byte offset (JSON).
     #[command(
@@ -408,14 +414,21 @@ impl Command {
                     IdentifierRoleArg::Reference => rxd_js::IdentifierRole::Reference,
                 },
             },
-            Self::Calls { names, within, .. } => Query::Calls {
+            Self::Calls {
+                names,
+                within,
+                resolve_static,
+                ..
+            } => Query::Calls {
                 names: names.query(),
                 within,
+                resolve_static,
             },
             Self::Members {
                 names,
                 access,
                 within,
+                resolve_static,
                 ..
             } => Query::Members {
                 names: names.query(),
@@ -425,6 +438,7 @@ impl Command {
                     MemberAccessArg::Write => rxd_js::MemberAccess::Write,
                 },
                 within,
+                resolve_static,
             },
             Self::Locate { byte, .. } => Query::Locate { byte },
             Self::Xref { byte, .. } => Query::Refs {
