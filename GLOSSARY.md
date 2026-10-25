@@ -5,6 +5,5 @@
   backends and query layer.
 - **Arxd**: the Android App host for rxd, now maintained in the standalone
   private repository `TsingShui/Arxd`. It owns the App interface, Agent
-  orchestration and Android storage/execution adapters. The old `apps/arxd/`
-  copy in this monorepo is archived. Hosting rxd locally does not imply that
+  orchestration and Android storage/execution adapters. Hosting rxd locally does not imply that
   model inference is local.

@@ -1,4 +1,7 @@
 /target/
 .DS_Store
 /tests/corpus/node_modules/
+__pycache__/
+.vscode/
+/apps/arxd/
 .pi

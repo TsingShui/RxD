@@ -227,7 +227,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         _, payload = checked(command("entities"), options.timeout)
         structures = jsonl(payload, manifest["source_id"])
         fallback = manifest["fallback_entity"]
-        selected = next((e for e in structures[1:-1]
+        selected = next((e for e in structures
                          if [e["detail"]["kind"], e["start"], e["end"]] == fallback), None)
         if selected is None:
             raise RuntimeError("entities does not contain the independent fallback entity")
@@ -330,7 +330,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
         }
         cases.extend([("slice_context", command("slice", ["--at", context_id])),
                       ("slice_context_json", command("slice", ["--at", context_id, "--json"]))])
-        if matches and matches[0].get("context_id"):
+        if matches and matches[0].get("context_at"):
             cases.append(("find_context_slice", None))
     else:
         manifest.setdefault("cases", []).append({"name": "slice_context", "status": "not_applicable",
@@ -363,7 +363,7 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
             started = time.perf_counter_ns()
             first, found_payload = checked(command("find", ["-f", needle], profiled), options.timeout)
             records = jsonl(found_payload, manifest["source_id"])
-            selected = next(r["context_at" if name == "find_context_get" else "parent_at"]
+            selected = next(r["context_at" if name == "find_context_slice" else "parent_at"]
                             for r in records if r.get("record") == "match")
             second, output = checked(command("slice", ["--at", selected], profiled), options.timeout)
             elapsed = time.perf_counter_ns() - started
@@ -413,12 +413,12 @@ def benchmark_fixture(manifest, binary, rg, options, extra):
                         raise RuntimeError("entities returned an unexpected structure count")
             elif name in ("slice_context", "find_context_slice") and output != context_original:
                 raise RuntimeError("local context extraction changed original bytes")
-            elif name == "get_context_json":
+            elif name == "slice_context_json":
                 if json.loads(output) != context_metadata:
                     raise RuntimeError("local context metadata changed from validated setup")
             elif name == "slice_symbol" and output != definition_original:
                 raise RuntimeError("binding declaration extraction changed original bytes")
-            elif name == "get_symbol_parent" and output != parent_original:
+            elif name == "slice_symbol_parent" and output != parent_original:
                 raise RuntimeError("binding parent extraction changed original bytes")
             elif name == "slice_symbol_json":
                 binding = json.loads(output)

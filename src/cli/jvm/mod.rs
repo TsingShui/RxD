@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 use rxd_core::Result;
-use rxd_core::envelope::{RecordMeta, SCHEMA_VERSION, header, record, summary};
+use rxd_core::envelope::{RecordMeta, SCHEMA_VERSION, record};
 use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
@@ -139,16 +139,6 @@ enum Listing {
     Classes,
     Fields,
     Methods,
-}
-
-impl Listing {
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Classes => "classes",
-            Self::Fields => "fields",
-            Self::Methods => "methods",
-        }
-    }
 }
 
 /// Owns the normalized class spellings a query borrows, so the query can be built from
@@ -350,21 +340,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
             .as_deref()
             .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
         let mut output = Vec::new();
-        append(
-            &mut output,
-            &header(
-                "jvm",
-                "strings",
-                Some(&input.source_id),
-                Some(input.file_bytes),
-                json!({"class":class,"filter":filter}),
-                json!({"analysis":"strings","release":options.release})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-            ),
-        )?;
-        let mut records = 0usize;
         for selected in &input.classes {
             if wanted
                 .as_ref()
@@ -401,10 +376,8 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                         .clone(),
                     ),
                 )?;
-                records += 1;
             }
         }
-        append(&mut output, &summary(records, true, serde_json::Map::new()))?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
@@ -426,20 +399,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
             anyhow::bail!("{}", query.anchor_not_found());
         }
         let mut output = Vec::new();
-        append(
-            &mut output,
-            &header(
-                "jvm",
-                "xref",
-                Some(&input.source_id),
-                Some(input.file_bytes),
-                target.json(),
-                json!({"analysis":"xref","release":options.release})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-            ),
-        )?;
         for hit in &hits {
             append(
                 &mut output,
@@ -462,10 +421,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                 ),
             )?;
         }
-        append(
-            &mut output,
-            &summary(hits.len(), true, serde_json::Map::new()),
-        )?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
@@ -477,24 +432,8 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
     } = command
     {
         let limits = options.limits(&input, policy)?;
-        let (source_id, file_bytes, entries) =
-            Input::read_entries(&input, limits, options.release)?;
+        let (_, _, entries) = Input::read_entries(&input, limits, options.release)?;
         let mut output = Vec::new();
-        append(
-            &mut output,
-            &header(
-                "jvm",
-                "entries",
-                Some(&source_id),
-                Some(file_bytes),
-                json!({}),
-                json!({"analysis":"entries","release":options.release})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-            ),
-        )?;
-        let mut records = 0usize;
         let pattern = filter.map(|value| rxd_core::filter::Contains::new(&value, case.sensitive()));
         for entry in &entries {
             if pattern
@@ -524,9 +463,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                     .clone(),
                 ),
             )?;
-            records += 1;
         }
-        append(&mut output, &summary(records, true, serde_json::Map::new()))?;
         super::write_output(&output, options.output.as_deref())?;
         return Ok(());
     }
@@ -602,7 +539,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
             Command::Strings { .. } => unreachable!("handled above"),
             Command::Xref { .. } => unreachable!("handled above"),
         };
-    let command_name = listing.name();
     let limits = options.limits(&path, policy)?;
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
@@ -679,21 +615,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                     .is_none_or(|name| *name == item.class.name)
             })
             .collect();
-        append(
-            &mut output,
-            &header(
-                "jvm",
-                command_name,
-                Some(&input.source_id),
-                Some(input.file_bytes),
-                json!({"class":class_filter,"name":exact_name,"filter":method_filter}),
-                json!({"analysis":command_name,"release":options.release})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-            ),
-        )?;
-        let mut records = 0usize;
         let exact_name = exact_name.as_deref();
         for selected in &selected_classes {
             let class = &selected.class;
@@ -735,7 +656,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                             .clone(),
                         ),
                     )?;
-                    records += 1;
                 }
                 continue;
             }
@@ -770,7 +690,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                             .clone(),
                         ),
                     )?;
-                    records += 1;
                 }
                 continue;
             }
@@ -800,7 +719,6 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                     .clone(),
                 ),
             )?;
-            records += 1;
             if listing == Listing::Classes {
                 continue;
             }
@@ -830,29 +748,14 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
                         .clone(),
                     ),
                 )?;
-                records += 1;
             }
         }
-        append(
-            &mut output,
-            &summary(
-                records,
-                true,
-                json!({"classes":selected_classes.len(), "records":records})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-            ),
-        )?;
     }
     super::write_output(&output, options.output.as_deref())?;
     Ok(())
 }
 
 fn append(output: &mut Vec<u8>, record: &serde_json::Value) -> anyhow::Result<()> {
-    if rxd_core::envelope::is_wrapper(record) {
-        return Ok(());
-    }
     serde_json::to_writer(&mut *output, record)
         .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
     output.push(b'\n');

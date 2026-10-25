@@ -111,7 +111,7 @@ paths still parse, validate and output completely without a resident index.
 
 `slice_context/slice_context_json/find_context_slice` use independent Acorn local ancestor
 ranges/parents from `contexts-expectations.json`, choosing the first literal hit;
-zero-hit corpora use independent parameter positions only for get_context and do not run
+zero-hit corpora use independent parameter positions only for slice_context and do not run
 find_context_slice or recover encrypted literals. Authored inputs use a known marker's
 declarator and variable declaration; custom inputs only check returned span/byte
 consistency and the report states the verification source. Workloads are timed

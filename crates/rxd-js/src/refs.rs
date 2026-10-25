@@ -120,18 +120,14 @@ pub fn run_filter(
         let locations = Locations::new(collector);
         if lexical::is_dynamic(&semantic) {
             return Ok(FilterReferences {
-                resolution: "dynamic",
-                targets: 0,
                 references: Vec::new(),
             });
         }
-        let mut targets = 0usize;
         let mut references = Vec::new();
         for symbol in semantic.scoping().symbol_ids() {
             if !lexical::name(&semantic, symbol).contains_filter(pattern.text(), case_sensitive) {
                 continue;
             }
-            targets += 1;
             let (_, mut rows) = symbol_references(&semantic, symbol, source, &locations, typed)?;
             references.append(&mut rows);
         }
@@ -142,18 +138,12 @@ pub fn run_filter(
                 reference.target.clone(),
             )
         });
-        Ok(FilterReferences {
-            resolution: "resolved",
-            targets,
-            references,
-        })
+        Ok(FilterReferences { references })
     })
 }
 
 /// The result of a name-filtered xref: no single selected occurrence.
 pub struct FilterReferences {
-    pub resolution: &'static str,
-    pub targets: usize,
     pub references: Vec<Reference>,
 }
 

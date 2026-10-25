@@ -326,18 +326,17 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                             include_bytecode: options.include_bytecode,
                             filter: strings.filter.as_deref(),
                             case_sensitive: strings.case.sensitive(),
-                            search: None,
                         },
                         limits,
                         &mut perf,
                     )
                 }
                 Command::Xref(refs) => {
-                    let (at, search) = match (&refs.at, &refs.filter) {
-                        (Some(at), None) => (at.clone(), None),
+                    let at = match (&refs.at, &refs.filter) {
+                        (Some(at), None) => at.clone(),
                         (None, Some(filter)) => {
                             let kind = refs.kind.expect("clap requires --kind with --match");
-                            let at = resolve_xref_search(
+                            resolve_xref_search(
                                 &navigation,
                                 functions.as_ref().unwrap(),
                                 kind,
@@ -345,8 +344,7 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                                 refs.case.sensitive(),
                                 limits,
                                 &mut perf,
-                            )?;
-                            (at, Some((kind.as_str(), filter.as_str())))
+                            )?
                         }
                         _ => unreachable!("clap enforces exactly one xref anchor"),
                     };
@@ -358,7 +356,6 @@ pub fn execute(command: Command, policy: rxd_core::BudgetPolicy) -> Result<()> {
                             include_bytecode: options.include_bytecode,
                             filter: None,
                             case_sensitive: false,
-                            search,
                         },
                         limits,
                         &mut perf,

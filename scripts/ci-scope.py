@@ -28,7 +28,10 @@ def plan(paths):
     full, tools = False, False
     for path in paths:
         if path.startswith(("apps/arxd/", "third_party/termux-exec/")):
-            reasons[path] = "archived Arxd app; no product checks"
+            # Deleted archive paths still appear in comparisons across the removal.
+            reasons[path] = "removed standalone Arxd archive; no product checks"
+        elif path.startswith("site/") or path == ".gitignore" or path.startswith(".vscode/"):
+            reasons[path] = "static site or local development configuration"
         elif path in FULL_FILES or path.startswith((
             ".cargo/", ".github/workflows/", "crates/rxd-dotnet/native/", "devtools/android-ilspy/",
             "crates/rxd-kuna-cli/", "third_party/kuna", "src/cli/kuna/",
@@ -42,7 +45,7 @@ def plan(paths):
             tools = True
             reasons[path] = "maintenance tooling contracts"
         elif path.endswith(".md") and (
-            path.startswith(("docs/", ".agents/"))
+            path.startswith(("docs/", ".agents/", "benches/"))
             or path in ("AGENTS.md", "README.md", "GLOSSARY.md", "tests/AGENTS.md")
         ):
             reasons[path] = "documentation/development reference only"

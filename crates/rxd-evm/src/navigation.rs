@@ -31,14 +31,12 @@ pub struct BasicBlock {
 /// The two output options every EVM row listing shares.
 #[derive(Clone, Copy)]
 pub struct Listing<'a> {
-    /// Emit the exact decoded bytecode as lowercase hex in the header.
+    /// Emit the exact decoded bytecode as lowercase hex in the analysis record.
     pub include_bytecode: bool,
     /// Substring over the value the row is named by, folded unless `case_sensitive`.
     pub filter: Option<&'a str>,
     /// Whether `filter` folds case; the CLI's `--case` decides it.
     pub case_sensitive: bool,
-    /// Echo the target search that resolved an xref anchor: `(kind, filter)`.
-    pub search: Option<(&'a str, &'a str)>,
 }
 
 pub struct Navigation {
@@ -288,29 +286,17 @@ impl Navigation {
             })
             .collect();
         perf.counters.records = Some(selected.len());
-        let header = envelope::header(
-            "evm",
-            "blocks",
-            Some(&self.carrier.source_id),
-            Some(self.carrier.bytes.len()),
-            json!({"encoding": self.carrier.encoding, "filter": filter}),
-            header_detail(object(json!({"carrier": self.carrier_detail(),
-                "bytecode": self.bytecode_detail(include), "offset_unit": "decoded_bytecode_byte",
-                "basic_block_end": "exclusive", "boundary_status": "producer_candidate", "discovery_complete": null,
-                "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "undecoded_tail": self.undecoded_tail()}))),
-        );
-        let summary = envelope::summary(
-            selected.len(),
-            true,
-            summary_detail(object(json!({"blocks": selected.len(),
-            "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "discovery_complete": null}))),
-        );
+        let analysis = analysis_record(analysis_detail(object(
+            json!({"carrier": self.carrier_detail(),
+            "bytecode": self.bytecode_detail(include), "offset_unit": "decoded_bytecode_byte",
+            "basic_block_end": "exclusive", "boundary_status": "producer_candidate", "discovery_complete": null,
+            "disassembly_complete": self.decoded_end == self.carrier.bytecode.len(), "undecoded_tail": self.undecoded_tail()}),
+        )));
         let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &analysis_record(&header))?;
+        write_record(&mut output, &analysis)?;
         for block in selected {
             write_record(&mut output, &self.block_record(block, false))?;
         }
-        write_record(&mut output, &summary)?;
         Ok(output.bytes)
     }
 
@@ -324,9 +310,6 @@ impl Navigation {
 }
 
 pub(crate) fn write_record(output: &mut Output, record: &Value) -> Result<()> {
-    if envelope::is_wrapper(record) {
-        return Ok(());
-    }
     if let Err(error) = serde_json::to_writer(&mut *output, record) {
         return Err(Error::new("INVALID_INPUT", error.to_string()));
     }
@@ -335,14 +318,12 @@ pub(crate) fn write_record(output: &mut Output, record: &Value) -> Result<()> {
         .map_err(|_| Error::new("RESOURCE_LIMIT", "EVM output byte budget exceeded"))
 }
 
-/// Fixed nullable EVM JSONL header detail, shared by all navigation commands.
-/// EVM keeps its bytecode/metadata evidence as a normal first data record. It is not
-/// a stream wrapper: it has no query, command or summary fields.
-pub(crate) fn analysis_record(header: &Value) -> Value {
-    json!({"record": "analysis", "detail": header["detail"].clone()})
+/// EVM bytecode/metadata evidence is a normal first data record, not a wrapper.
+pub(crate) fn analysis_record(detail: Map<String, Value>) -> Value {
+    json!({"record": "analysis", "detail": detail})
 }
 
-pub(crate) fn header_detail(
+pub(crate) fn analysis_detail(
     detail: serde_json::Map<String, Value>,
 ) -> serde_json::Map<String, Value> {
     let mut fields = object(json!({
@@ -351,20 +332,6 @@ pub(crate) fn header_detail(
         "excluded_unindexed_pushes":null,"discovery_complete":null,"disassembly_complete":null,"undecoded_tail":null,
         "source_call_graph_complete":null,"abi_verified":null,"data_scope":null,"metadata_range":null,"copy_witnesses":null,
         "unknown_copy_witnesses":null,"unvisited_copy_sites":null,"data_reference_coverage":null,"unknown_copy_evidence":null,"metadata":null
-    }));
-    fields.extend(detail);
-    fields
-}
-
-/// Fixed nullable EVM JSONL summary detail, shared by all navigation commands.
-pub(crate) fn summary_detail(
-    detail: serde_json::Map<String, Value>,
-) -> serde_json::Map<String, Value> {
-    let mut fields = object(json!({
-        "blocks":null,"functions":null,"target_kind":null,"target_decoded_offset":null,"references":null,"literals":null,
-        "data_literals":null,"reference_status":null,"excluded_unindexed_pushes":null,"resolved_edges":null,"unknown_jumps":null,
-        "invalid_jumps":null,"analysis_problems":null,"scanned_contexts":null,"scanned_blocks":null,"external_call_sites":null,
-        "resolution_complete":null,"discovery_complete":null,"disassembly_complete":null,"source_call_graph_complete":null
     }));
     fields.extend(detail);
     fields

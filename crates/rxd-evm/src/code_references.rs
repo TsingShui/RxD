@@ -10,7 +10,7 @@ use crate::{
     Edge, FunctionNavigation, Limits, Navigation, Output,
     functions::block_local_edges,
     navigation::{Listing, object, work, write_record},
-    references::{self, HeaderDetail, SummaryDetail},
+    references::{self, AnalysisDetail},
 };
 
 #[derive(Default)]
@@ -234,11 +234,10 @@ impl<'a> References<'a> {
         let needle = listing
             .filter
             .map(|needle| rxd_core::filter::Contains::new(needle, listing.case_sensitive));
-        let header = references::header(
+        let analysis = references::analysis(
             navigation,
-            self.id,
             listing,
-            HeaderDetail {
+            AnalysisDetail {
                 data: None,
                 target_kind: self.target_kind,
                 target_decoded_offset: self.target,
@@ -254,43 +253,15 @@ impl<'a> References<'a> {
                 excluded_unindexed_pushes: None,
             },
         );
-        let coverage = &self.coverage;
         let mut output = Output { bytes: Vec::new() };
-        write_record(&mut output, &crate::navigation::analysis_record(&header))?;
-        let mut emitted = 0;
+        write_record(&mut output, &analysis)?;
         for hit in &self.hits {
             let record = self.record(navigation, functions, hit);
             if !references::keeps(&record, needle.as_ref()) {
                 continue;
             }
             write_record(&mut output, &record)?;
-            emitted += 1;
         }
-        write_record(
-            &mut output,
-            &references::summary(
-                navigation,
-                SummaryDetail {
-                    target_kind: self.target_kind,
-                    target_decoded_offset: self.target,
-                    references: emitted,
-                    resolved_edges: Some(coverage.resolved_edges),
-                    unknown_jumps: Some(coverage.unknown_jumps),
-                    invalid_jumps: Some(coverage.invalid_jumps),
-                    analysis_problems: Some(coverage.analysis_problems),
-                    scanned_contexts: Some(coverage.scanned_contexts),
-                    scanned_blocks: Some(coverage.scanned_blocks),
-                    external_call_sites: Some(coverage.external_call_sites),
-                    resolution_complete: Some(
-                        coverage.unknown_jumps == 0
-                            && coverage.invalid_jumps == 0
-                            && coverage.analysis_problems == 0
-                            && navigation.decoded_end == navigation.carrier.bytecode.len(),
-                    ),
-                    ..SummaryDetail::default()
-                },
-            ),
-        )?;
         Ok(output.bytes)
     }
 }

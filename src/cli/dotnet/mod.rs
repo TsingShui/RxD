@@ -236,38 +236,6 @@ fn execute_inner(
         }
         _ => None,
     };
-    // The header names the reference target: a member identity, or the `#US` literal
-    // when the query went through the string route.
-    let reference_target = match (&reference_result, &command) {
-        (Some(result), _) => match result.target.as_deref() {
-            Some(target) => serde_json::to_value(target)?,
-            None => Value::Null,
-        },
-        (None, _) => match xref_target.as_ref() {
-            Some(Target::Literal { pattern, exact, .. }) => {
-                if *exact {
-                    json!({"target_kind": "user_string", "value": pattern})
-                } else {
-                    json!({"target_kind": "user_string", "match": pattern})
-                }
-            }
-            Some(Target::Token { token, .. }) => {
-                let mut target =
-                    json!({"target_kind": "user_string", "token": format!("0x{token:08x}")});
-                if let Some(record) = user_string(&input, *token) {
-                    match (record.value, record.utf16_units) {
-                        (Some(text), _) => target["value"] = Value::from(text),
-                        (None, Some(units)) => {
-                            target["utf16_units"] = serde_json::to_value(units)?;
-                        }
-                        (None, None) => {}
-                    }
-                }
-                target
-            }
-            None => Value::Null,
-        },
-    };
     if let Command::Get { selector, raw, .. } = &command {
         let at = selector.resolve()?;
         // FETCH resolves and decodes only the selected method; unrelated signatures
@@ -425,47 +393,6 @@ fn execute_inner(
         );
         append(&mut output, &value)?;
     } else {
-        let query = match &command {
-            Command::Classes { class, .. } => json!({"class":class}),
-            Command::Fields { class, name, .. } => json!({"class":class,"name":name}),
-            Command::Methods { class, name, .. } => json!({"class":class,"name":name}),
-            Command::Strings { filter, .. } => json!({"filter":filter}),
-            Command::Xref {
-                at, filter, case, ..
-            } => {
-                let mut query = json!({
-                    "kind": xref_target.as_ref().map(Target::kind).map(Kind::as_str),
-                });
-                if let Some(at) = at {
-                    query["at"] = json!(at);
-                }
-                if let Some(filter) = filter {
-                    query["match"] = json!(filter);
-                    query["case"] = json!(if case.is_sensitive() {
-                        "sensitive"
-                    } else {
-                        "insensitive"
-                    });
-                }
-                query
-            }
-            Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
-        };
-        append(
-            &mut output,
-            &envelope::header(
-                "dotnet",
-                command.name(),
-                Some(&input.source_id),
-                Some(input.file_bytes),
-                query,
-                if matches!(command, Command::Xref { .. }) {
-                    detail(json!({"target": reference_target}))
-                } else {
-                    Map::new()
-                },
-            ),
-        )?;
         match &command {
             Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
                 list(&mut input, &command, options, &mut output, &mut records)?;
@@ -549,7 +476,6 @@ fn execute_inner(
             }
             Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
         }
-        append(&mut output, &envelope::summary(records, true, Map::new()))?;
     }
     perf.record("query", query_start);
     perf.counters.records = Some(
@@ -617,9 +543,7 @@ fn record(
 }
 
 fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
-    if !rxd_core::envelope::is_wrapper(value) {
-        output.json_line(value)?;
-    }
+    output.json_line(value)?;
     Ok(())
 }
 
@@ -721,14 +645,6 @@ fn literal_values(input: &Input) -> BTreeMap<u32, String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn user_string(input: &Input, token: u32) -> Option<rxd_dotnet::StringRecord> {
-    input
-        .strings()
-        .ok()?
-        .into_iter()
-        .find(|record| record.offset == token & 0x00ff_ffff)
 }
 
 fn engine_state() -> &'static str {
@@ -1105,22 +1021,13 @@ fn detail(value: Value) -> Map<String, Value> {
 /// The one target a .NET reference query names.
 enum Target {
     /// A metadata or `#US` token: an identity, matched exactly.
-    Token { token: u32, kind: Kind },
+    Token { token: u32 },
     /// A decoded user-string literal: an exact anchor, or a substring search.
     Literal {
         pattern: String,
         exact: bool,
         case_sensitive: bool,
     },
-}
-
-impl Target {
-    fn kind(&self) -> Kind {
-        match self {
-            Self::Token { kind, .. } => *kind,
-            Self::Literal { .. } => Kind::String,
-        }
-    }
 }
 
 /// Resolve the reference target from its two faces.
@@ -1166,10 +1073,7 @@ fn dotnet_target(
                         inferred.map_or("non-string", |kind| kind.as_str())
                     );
                 }
-                Ok(Target::Token {
-                    token,
-                    kind: crate::cli::xref::Kind::String,
-                })
+                Ok(Target::Token { token })
             }
             Err(_) => Ok(Target::Literal {
                 pattern: coordinate,
@@ -1191,10 +1095,7 @@ fn dotnet_target(
             given.as_str()
         );
     }
-    Ok(Target::Token {
-        token,
-        kind: kind.or(inferred).unwrap_or(Kind::Method),
-    })
+    Ok(Target::Token { token })
 }
 
 /// The kind a token's table names, or `None` where the table covers two (`MemberRef`).

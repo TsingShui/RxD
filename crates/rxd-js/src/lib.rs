@@ -33,11 +33,10 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast_visit::Visit;
 use oxc_parser::{ParseOptions, Parser};
-use rxd_core::envelope::{RecordMeta, header};
+use rxd_core::envelope::RecordMeta;
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Limits, Origin, Result, Source};
 use serde::Serialize;
-use serde_json::json;
 use structure::Collector;
 
 #[derive(Clone, Copy, Debug)]
@@ -351,79 +350,6 @@ pub fn run_source(
         Some((text, case)) => (Some(text.as_str()), *case),
         None => (None, false),
     };
-    // Echo the caller's spelling: a short coordinate stays short in `query` even though the
-    // library expands it for lookup.
-    let query_json = match &query {
-        Query::Outline {
-            group,
-            within,
-            depth,
-            kind,
-            name,
-            contains,
-            contains_case_sensitive,
-        } => {
-            json!({"group":group,"within":within,"depth":depth,"kind":kind,"name":name,"contains":contains,"case":if *contains_case_sensitive {"sensitive"} else {"insensitive"}})
-        }
-        Query::Find {
-            filter,
-            case_sensitive,
-            resolve_static,
-        } => {
-            json!({"filter":filter,"case":if *case_sensitive {"sensitive"} else {"insensitive"},"resolve_static":resolve_static})
-        }
-        Query::Resources(resources) => json!({
-            "kind": resources.kind,
-            "resolution": resources.resolution,
-            "filter": resources.filter,
-            "case": if resources.case_sensitive { "sensitive" } else { "insensitive" },
-            "within": resources.within,
-            "resolve_bindings": resources.resolve_bindings,
-        }),
-        Query::Values(values) => {
-            json!({"within": values.within, "kind": values.kind, "name": values.names.name, "filter": values.names.filter, "case": if values.names.case_sensitive { "sensitive" } else { "insensitive" }})
-        }
-        Query::Identifiers {
-            names,
-            role,
-            within,
-        } => json!({
-            "name": names.name,
-            "filter": names.filter,
-            "case": if names.case_sensitive { "sensitive" } else { "insensitive" },
-            "within": within,
-            "role": match role {
-                IdentifierRole::All => "all",
-                IdentifierRole::Declaration => "declaration",
-                IdentifierRole::Reference => "reference",
-            }
-        }),
-        Query::Calls { names, within } => {
-            json!({"name":names.name,"filter":names.filter,"case":if names.case_sensitive {"sensitive"} else {"insensitive"},"within":within})
-        }
-        Query::Members {
-            names,
-            access,
-            within,
-        } => {
-            json!({"name":names.name,"filter":names.filter,"case":if names.case_sensitive {"sensitive"} else {"insensitive"},"access":access,"within":within})
-        }
-        Query::Refs { target } => match target {
-            RefsTarget::Coordinate(at) => json!({"at":at,"kind":"symbol"}),
-            RefsTarget::Byte(byte) => json!({"byte":byte}),
-            RefsTarget::Filter {
-                pattern,
-                case_sensitive,
-            } => {
-                json!({"kind":"symbol","match":pattern,"case":if *case_sensitive {"sensitive"} else {"insensitive"}})
-            }
-        },
-        Query::Locate { byte } => json!({"byte":byte}),
-        Query::Symbols { names, within } => {
-            json!({"name":names.name,"filter":names.filter,"case":if names.case_sensitive {"sensitive"} else {"insensitive"},"within":within})
-        }
-        Query::Slice { id, json } => json!({"id":id,"json":json}),
-    };
     let contexts = match &query {
         Query::Find { .. } | Query::Identifiers { .. } => {
             Some(fragment::Contexts::new(fragment::Target::Matches))
@@ -474,12 +400,6 @@ pub fn run_source(
         }
     }
     let query_start = perf.start_stage();
-    let root = &collector.entities[0].entity;
-    let final_mode = if parsed.program.source_type.is_module() {
-        "module"
-    } else {
-        "script"
-    };
     let mut output = Output {
         bytes: Vec::new(),
         limit: matches!(
@@ -493,10 +413,6 @@ pub fn run_source(
         .then_some(limits.output_bytes),
         limit_hit: false,
     };
-    let header = header("js", query.name(), Some(&source.id), Some(source.text.len()), query_json,
-        json!({"path":source.path,"root_id":root.id.clone(),"source_type":final_mode,
-            "analysis":null,"syntax":syntax_info.syntax,"declaration_file":syntax_info.declaration_file,"origin":source.origin})
-        .as_object().unwrap().clone());
     match query {
         Query::Outline {
             group,
@@ -649,9 +565,6 @@ pub fn run_source(
             let result = values::run(&parsed.program, &source, &collector, &values, region, perf)?;
             perf.counters.records = Some(result.len());
             perf.measure("serialize", || -> Result<()> {
-                let mut header = header;
-                header["detail"]["analysis"] = json!("syntax");
-                header["detail"]["value_profile"] = json!("syntax_value_slots_v1");
                 for row in &result {
                     output.json(&row.envelope())?;
                 }
@@ -795,10 +708,6 @@ pub fn run_source(
                 within.as_deref(),
                 perf,
             )?;
-            let mut header = header;
-            header["detail"]["analysis"] = json!("lexical");
-            header["detail"]["resolution"] = json!(result.resolution);
-            header["detail"]["within_id"] = json!(result.within_id.clone());
             let records = result.records.len();
             perf.counters.records = Some(records);
             perf.measure("serialize", || -> Result<()> {
@@ -810,8 +719,6 @@ pub fn run_source(
         }
         Query::Refs { target } => {
             perf.record("query", query_start);
-            let mut header = header;
-            header["detail"]["analysis"] = json!("lexical");
             let references = match &target {
                 // A row's coordinate is `<kind>:<start>:<end>`; the name occurrence starts
                 // at `start`, and the kind stays in the coordinate so a nested node with
@@ -843,9 +750,6 @@ pub fn run_source(
                         limits,
                         perf,
                     )?;
-                    header["detail"]["resolution"] = json!(result.resolution);
-                    header["detail"]["selected"] = json!(null);
-                    header["detail"]["targets"] = json!(result.targets);
                     result.references
                 }
             };

@@ -56,6 +56,12 @@ class ScopeCli(unittest.TestCase):
     def test_docs_and_tooling_never_trigger_product_builds(self):
         self.put(".agents/skills/example/SKILL.md")
         self.put("AGENTS.md")
+        self.put("site/zh/examples.html")
+        self.put("site/assets/main.js")
+        self.put("site/README.md")
+        self.put("benches/README.md")
+        self.put(".gitignore")
+        self.put(".vscode/launch.json")
         report, outputs = self.discover()
         self.assertFalse(report["rust"])
         self.assertFalse(report["full"])
@@ -97,7 +103,7 @@ class ScopeCli(unittest.TestCase):
         report, _ = self.discover("--full")
         self.assertEqual(self.scopes(report), ["dex", "dotnet", "jvm", "shared"])
 
-    def test_archived_arxd_has_no_product_checks(self):
+    def test_removed_arxd_paths_have_no_product_checks(self):
         self.put("apps/arxd/README.md")
         self.put("apps/arxd/AGENTS.md")
         self.put("third_party/termux-exec/ExecIntercept.c")
@@ -107,7 +113,7 @@ class ScopeCli(unittest.TestCase):
         self.assertFalse(report["full"])
         self.assertFalse(report["tools"])
         self.assertNotIn("apps/arxd/README.md", [row["scope"] for row in report["matrix"]["include"]])
-        self.assertTrue(all("archived Arxd" in value for value in report["reasons"].values()))
+        self.assertTrue(all("removed standalone Arxd" in value for value in report["reasons"].values()))
         self.assertNotIn("arxd=", outputs)
 
     def test_deletions_renames_and_explicit_head_do_not_lose_inputs(self):

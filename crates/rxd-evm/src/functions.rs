@@ -1459,13 +1459,8 @@ impl FunctionNavigation {
             .collect();
         perf.counters.records = Some(selected.len());
         let disassembly_complete = navigation.decoded_end == navigation.carrier.bytecode.len();
-        let header = envelope::header(
-            "evm",
-            "interface",
-            Some(&navigation.carrier.source_id),
-            Some(navigation.carrier.bytes.len()),
-            json!({"encoding": navigation.carrier.encoding, "filter": filter.map(|filter| filter.text())}),
-            crate::navigation::header_detail(object(json!({
+        let analysis =
+            crate::navigation::analysis_record(crate::navigation::analysis_detail(object(json!({
                 "carrier": navigation.carrier_detail(),
                 "bytecode": navigation.bytecode_detail(include),
                 "offset_unit": "decoded_bytecode_byte",
@@ -1475,21 +1470,11 @@ impl FunctionNavigation {
                 "disassembly_complete": disassembly_complete,
                 "undecoded_tail": navigation.undecoded_tail(),
                 "abi_verified": false,
-                "metadata": self.metadata}))),
-        );
-        let summary = envelope::summary(
-            selected.len(),
-            true,
-            crate::navigation::summary_detail(object(json!({
-                "functions": selected.len(),
-                "discovery_complete": null,
-                "disassembly_complete": disassembly_complete,
-                "source_call_graph_complete": false}))),
-        );
+                "metadata": self.metadata}))));
         let stage = perf.start_stage();
         let result = (|| {
             let mut output = Output { bytes: Vec::new() };
-            write_record(&mut output, &crate::navigation::analysis_record(&header))?;
+            write_record(&mut output, &analysis)?;
             for function in selected {
                 self.prepare_record(navigation, function, false, limits, perf)?;
                 write_record(
@@ -1497,7 +1482,6 @@ impl FunctionNavigation {
                     &self.function_record(navigation, function, None),
                 )?;
             }
-            write_record(&mut output, &summary)?;
             Ok(output.bytes)
         })();
         perf.record("serialize", stage);

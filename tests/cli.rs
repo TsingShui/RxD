@@ -3808,7 +3808,15 @@ fn benchmark_runs_actual_cli_and_produces_reproducible_artifacts() {
             rxd_core::identity::input_id(&fs::read(fixture["path"].as_str().unwrap()).unwrap())
         );
         assert_eq!(fixture["observed_entities"], fixture["expected_entities"]);
-        for case in fixture["cases"].as_array().unwrap() {
+        let cases = fixture["cases"].as_array().unwrap();
+        for required in [
+            "find_context_slice",
+            "slice_context_json",
+            "slice_symbol_parent",
+        ] {
+            assert!(cases.iter().any(|case| case["name"] == required));
+        }
+        for case in cases {
             if case["status"] == "unavailable" {
                 continue;
             }
@@ -3826,7 +3834,10 @@ fn benchmark_runs_actual_cli_and_produces_reproducible_artifacts() {
                 assert_eq!(case["profiles"].as_array().unwrap().len(), 2);
                 assert!(!case["profile_summary"].as_array().unwrap().is_empty());
             }
-            if case["name"] == "find_slice" {
+            if matches!(
+                case["name"].as_str(),
+                Some("find_slice" | "find_context_slice")
+            ) {
                 let sample = &case["samples"][0];
                 assert_eq!(sample["steps"].as_array().unwrap().len(), 2);
                 assert!(

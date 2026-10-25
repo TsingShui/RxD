@@ -87,24 +87,6 @@ impl Anchor {
             Self::Field { .. } => Kind::Field,
         }
     }
-
-    /// The coordinate as the backend's own `get-*` commands spell it, for error messages.
-    pub fn text(&self) -> String {
-        match self {
-            Self::String(value) => value.clone(),
-            Self::Type(name) => name.clone(),
-            Self::Method {
-                class,
-                name,
-                descriptor,
-            } => format!("{class}->{name}{descriptor}"),
-            Self::Field {
-                class,
-                name,
-                descriptor,
-            } => format!("{class}->{name}:{descriptor}"),
-        }
-    }
 }
 
 /// What a resolved target query asks for.
@@ -113,41 +95,13 @@ impl Anchor {
 pub struct Target {
     pub kind: Kind,
     pub anchor: Option<Anchor>,
-    /// The content search pattern, for the `-f` face.
+    /// The content search pattern, for the `--match` face.
     pub filter: Option<String>,
     /// An owner class constraint: one exact class, never a pattern. A member search that
     /// wants "owners whose name contains X" lists `classes -f X` first.
     pub class: Option<String>,
     /// Whether `filter` folds case. Coordinates and `--class` are matched exactly.
     pub case_sensitive: bool,
-}
-
-#[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
-impl Target {
-    /// The header's echo of the query. Only fields the query actually used are present.
-    pub fn json(&self) -> serde_json::Value {
-        let mut query = serde_json::Map::new();
-        query.insert("kind".into(), self.kind.as_str().into());
-        if let Some(anchor) = self.anchor.as_ref().map(Anchor::text) {
-            query.insert("at".into(), anchor.into());
-        }
-        if let Some(filter) = &self.filter {
-            query.insert("match".into(), filter.clone().into());
-            query.insert(
-                "case".into(),
-                (if self.case_sensitive {
-                    "sensitive"
-                } else {
-                    "insensitive"
-                })
-                .into(),
-            );
-        }
-        if let Some(class) = &self.class {
-            query.insert("class".into(), class.clone().into());
-        }
-        serde_json::Value::Object(query)
-    }
 }
 
 /// One FETCH selector: the coordinate a row printed.

@@ -2,7 +2,7 @@
 use crate::{
     FunctionNavigation, Limits, Navigation, Output, hex,
     navigation::{Listing, object, work, write_record},
-    references::{self, HeaderDetail, SummaryDetail},
+    references::{self, AnalysisDetail},
 };
 use alloy_primitives::U256;
 use rxd_core::{
@@ -132,22 +132,6 @@ impl LiteralQuery {
             }
         }
         Ok(matches)
-    }
-
-    fn mode(&self) -> &'static str {
-        if self.normalized.is_none() {
-            "inventory"
-        } else {
-            match self.kind {
-                LiteralKind::Text => "contains",
-                LiteralKind::Bytes => "equal_bytes",
-                LiteralKind::Number => "equal_u256",
-            }
-        }
-    }
-
-    fn json(&self, navigation: &Navigation) -> Value {
-        json!({"encoding": navigation.carrier.encoding, "kind": self.kind, "query": self.normalized, "match_mode": self.mode()})
     }
 }
 
@@ -366,17 +350,10 @@ impl LiteralInventory {
         )
     }
 
-    fn header(&self, navigation: &Navigation, command: &str, query: Value, include: bool) -> Value {
-        envelope::header(
-            "evm",
-            command,
-            Some(&navigation.carrier.source_id),
-            Some(navigation.carrier.bytes.len()),
-            query,
-            crate::navigation::header_detail(object(
-                json!({"carrier": navigation.carrier_detail(), "bytecode": navigation.bytecode_detail(include), "offset_unit": "decoded_bytecode_byte", "literal_scope": "validated_block_push_immediates", "excluded_unindexed_pushes": self.excluded_unindexed_pushes, "discovery_complete": null, "disassembly_complete": navigation.decoded_end == navigation.carrier.bytecode.len(), "undecoded_tail": navigation.undecoded_tail()}),
-            )),
-        )
+    fn analysis(&self, navigation: &Navigation, include: bool) -> Value {
+        crate::navigation::analysis_record(crate::navigation::analysis_detail(object(
+            json!({"carrier": navigation.carrier_detail(), "bytecode": navigation.bytecode_detail(include), "offset_unit": "decoded_bytecode_byte", "literal_scope": "validated_block_push_immediates", "excluded_unindexed_pushes": self.excluded_unindexed_pushes, "discovery_complete": null, "disassembly_complete": navigation.decoded_end == navigation.carrier.bytecode.len(), "undecoded_tail": navigation.undecoded_tail()}),
+        )))
     }
 
     fn search_matches<'a>(
@@ -486,18 +463,12 @@ impl LiteralInventory {
         let stage = perf.start_stage();
         let result = (|| {
             let mut output = Output { bytes: Vec::new() };
-            let mut header = self.header(
-                navigation,
-                "strings",
-                query.json(navigation),
-                listing.include_bytecode,
-            );
-            header["query"]["filter"] = json!(listing.filter);
-            header["detail"].as_object_mut().unwrap().extend(object(
+            let mut analysis = self.analysis(navigation, listing.include_bytecode);
+            analysis["detail"].as_object_mut().unwrap().extend(object(
                 serde_json::to_value(data.coverage(navigation, functions))
                     .expect("fixed data coverage schema"),
             ));
-            write_record(&mut output, &crate::navigation::analysis_record(&header))?;
+            write_record(&mut output, &analysis)?;
             for item in &found {
                 for owner in Self::routes(functions, item.literal) {
                     write_record(
@@ -519,16 +490,6 @@ impl LiteralInventory {
             for record in data.search_records(navigation, functions, query, &data_found) {
                 write_record(&mut output, &record)?;
             }
-            write_record(
-                &mut output,
-                &envelope::summary(
-                    records,
-                    true,
-                    crate::navigation::summary_detail(object(json!({
-                "literals": found.len() + data_found.len(), "data_literals": data_found.len(), "references": null, "reference_status": null, "excluded_unindexed_pushes": self.excluded_unindexed_pushes,
-                "disassembly_complete": navigation.decoded_end == navigation.carrier.bytecode.len(), "discovery_complete": null}))),
-                ),
-            )?;
             Ok(output.bytes)
         })();
         perf.record("serialize", stage);
@@ -553,7 +514,7 @@ impl LiteralInventory {
             let stage = perf.start_stage();
             let selected = data.refs(navigation, functions, &id, needle.as_ref(), limits, perf);
             perf.record("references", stage);
-            let (literal, routes, status) = selected?;
+            let (literal, routes, _) = selected?;
             perf.counters.records = Some(routes.len());
             perf.counters.matches = Some(1);
             let stage = perf.start_stage();
@@ -561,11 +522,10 @@ impl LiteralInventory {
                 let mut output = Output { bytes: Vec::new() };
                 write_record(
                     &mut output,
-                    &crate::navigation::analysis_record(&references::header(
+                    &references::analysis(
                         navigation,
-                        &id,
                         listing,
-                        HeaderDetail {
+                        AnalysisDetail {
                             target_kind: "literal",
                             target_decoded_offset: literal.start,
                             target_semantics: "bytecode_data_candidate",
@@ -574,7 +534,7 @@ impl LiteralInventory {
                             excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
                             data: Some(data.coverage(navigation, functions)),
                         },
-                    )),
+                    ),
                 )?;
                 for &route in &routes {
                     write_record(
@@ -582,22 +542,6 @@ impl LiteralInventory {
                         &data.reference_record(navigation, functions, &literal, route),
                     )?;
                 }
-                write_record(
-                    &mut output,
-                    &references::summary(
-                        navigation,
-                        SummaryDetail {
-                            target_kind: "literal",
-                            target_decoded_offset: literal.start,
-                            references: routes.len(),
-                            literals: Some(1),
-                            data_literals: Some(1),
-                            reference_status: Some(status),
-                            excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
-                            ..SummaryDetail::default()
-                        },
-                    ),
-                )?;
                 Ok(output.bytes)
             })();
             perf.record("serialize", stage);
@@ -625,11 +569,10 @@ impl LiteralInventory {
             let mut output = Output { bytes: Vec::new() };
             write_record(
                 &mut output,
-                &crate::navigation::analysis_record(&references::header(
+                &references::analysis(
                     navigation,
-                    &id,
                     listing,
-                    HeaderDetail {
+                    AnalysisDetail {
                         target_kind: "literal",
                         target_decoded_offset: navigation.instructions[literal.instruction]
                             .decoded_offset,
@@ -639,34 +582,15 @@ impl LiteralInventory {
                         literal_scope: Some("validated_block_push_immediates"),
                         excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
                     },
-                )),
+                ),
             )?;
-            let mut emitted = 0;
             for owner in routes {
                 let record = self.record(navigation, functions, literal, owner, None);
                 if !references::keeps(&record, needle.as_ref()) {
                     continue;
                 }
                 write_record(&mut output, &record)?;
-                emitted += 1;
             }
-            write_record(
-                &mut output,
-                &references::summary(
-                    navigation,
-                    SummaryDetail {
-                        target_kind: "literal",
-                        target_decoded_offset: navigation.instructions[literal.instruction]
-                            .decoded_offset,
-                        references: emitted,
-                        literals: Some(1),
-                        data_literals: Some(0),
-                        reference_status: Some("decoded_push_use"),
-                        excluded_unindexed_pushes: Some(self.excluded_unindexed_pushes),
-                        ..SummaryDetail::default()
-                    },
-                ),
-            )?;
             Ok(output.bytes)
         })();
         perf.record("serialize", stage);

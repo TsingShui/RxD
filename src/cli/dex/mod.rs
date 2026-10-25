@@ -7,8 +7,7 @@
 mod args;
 mod output;
 use output::{emit, emit_rows};
-use rxd_core::envelope::{header, is_wrapper, summary};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use anyhow::{Result, bail};
 pub(crate) use args::Command;
@@ -159,12 +158,10 @@ fn run_command(
             // Assembling the payload line by line: a pre-sized buffer measured no faster
             // than letting the String grow (macOS's allocator re-extends the large block in
             // place), so the length pass is not worth it.
-            let mut payload =
-                stream_header("xref", std::slice::from_ref(&args.apk_path), target.json())?;
+            let mut payload = String::new();
             for hit in &hits {
                 push_reference(&mut payload, &hit.dex_name, &hit.member, &hit.matched)?;
             }
-            finish_stream(&mut payload, hits.len())?;
             if args.perf {
                 rxd_dex::diag::diagnose(format_args!(
                     "[xref] rows={} scan={:.2} ms sort={:.2} ms assemble={:.2} ms payload={} MiB",
@@ -212,11 +209,6 @@ fn run_command(
                 )?;
             }
             let listed = started.elapsed();
-            let header = stream_header(
-                "classes",
-                std::slice::from_ref(&args.apk_path),
-                json!({"class":args.class,"filter":args.filter}),
-            )?;
             // Keep the existing parallel, ordered chunk rendering for large class indexes.
             const RENDER_CHUNK: usize = 8192;
             let pieces: Vec<(String, usize)> = classes
@@ -261,13 +253,8 @@ fn run_command(
                     Ok((payload, records))
                 })
                 .collect::<Result<_>>()?;
-            let records = pieces.iter().map(|(_, count)| count).sum();
-            let mut summary = String::new();
-            finish_stream(&mut summary, records)?;
             let payload_len = emit_rows(
-                std::iter::once(header)
-                    .chain(pieces.into_iter().map(|(payload, _)| payload))
-                    .chain(std::iter::once(summary)),
+                pieces.into_iter().map(|(payload, _)| payload),
                 args.output.as_deref(),
             )?;
             if args.perf {
@@ -296,13 +283,7 @@ fn run_command(
             )?;
             #[cfg(feature = "mcp")]
             crate::query::check_records(strings.len())?;
-            let mut payload = stream_header(
-                "strings",
-                std::slice::from_ref(&args.apk_path),
-                json!({
-                    "filter":args.filter, "offset":args.offset, "limit":args.limit,
-                }),
-            )?;
+            let mut payload = String::new();
             {
                 use rayon::prelude::*;
                 // Render a bounded batch at a time: a whole-output piece vector would
@@ -330,7 +311,6 @@ fn run_command(
                     }
                 }
             }
-            finish_stream(&mut payload, strings.len())?;
             emit(&payload, args.output.as_deref())?;
         }
         Command::GetMethod(args) => {
@@ -366,26 +346,14 @@ fn run_command(
                 exact_name: args.name.as_deref(),
                 case_sensitive: args.case.sensitive(),
             };
-            let (chunks, records) = apk::list_fields_with_policy(
+            let (chunks, _) = apk::list_fields_with_policy(
                 &args.apk_path,
                 archive_policy,
                 &selector,
                 args.threads,
                 args.perf,
             )?;
-            let header = stream_header(
-                "fields",
-                std::slice::from_ref(&args.apk_path),
-                json!({"class":args.class, "name":args.name, "filter":args.filter}),
-            )?;
-            let mut summary = String::new();
-            finish_stream(&mut summary, records)?;
-            emit_rows(
-                std::iter::once(header)
-                    .chain(chunks)
-                    .chain(std::iter::once(summary)),
-                args.output.as_deref(),
-            )?;
+            emit_rows(chunks.into_iter(), args.output.as_deref())?;
         }
         Command::Methods(args) => {
             let selector = apk::MethodSelector {
@@ -394,28 +362,14 @@ fn run_command(
                 exact_name: args.name.as_deref(),
                 case_sensitive: args.case.sensitive(),
             };
-            let (chunks, records) = apk::list_methods_with_policy(
+            let (chunks, _) = apk::list_methods_with_policy(
                 &args.apk_path,
                 archive_policy,
                 &selector,
                 args.threads,
                 args.perf,
             )?;
-            let header = stream_header(
-                "methods",
-                std::slice::from_ref(&args.apk_path),
-                json!({
-                    "class":args.class, "filter":args.filter,
-                }),
-            )?;
-            let mut summary = String::new();
-            finish_stream(&mut summary, records)?;
-            emit_rows(
-                std::iter::once(header)
-                    .chain(chunks)
-                    .chain(std::iter::once(summary)),
-                args.output.as_deref(),
-            )?;
+            emit_rows(chunks.into_iter(), args.output.as_deref())?;
         }
         Command::Entries(args) => {
             let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {
@@ -424,16 +378,11 @@ fn run_command(
             rxd_dex::profile::count(rxd_dex::profile::Counter::Entries, entries.len() as u64);
             #[cfg(feature = "mcp")]
             crate::query::check_records(entries.len())?;
-            let mut payload = stream_header(
-                "entries",
-                std::slice::from_ref(&args.apk_path),
-                json!({"filter":args.filter}),
-            )?;
+            let mut payload = String::new();
             let pattern = args
                 .filter
                 .as_deref()
                 .map(|needle| rxd_core::filter::Contains::new(needle, args.case.sensitive()));
-            let mut listed = 0usize;
             for entry in &entries {
                 if pattern
                     .as_ref()
@@ -441,7 +390,6 @@ fn run_command(
                 {
                     continue;
                 }
-                listed += 1;
                 append_json(
                     &mut payload,
                     &data_record(
@@ -455,7 +403,6 @@ fn run_command(
                     ),
                 )?;
             }
-            finish_stream(&mut payload, listed)?;
             emit(&payload, args.output.as_deref())?;
         }
         Command::Extract(args) => {
@@ -498,12 +445,7 @@ fn run_command(
             } else if destination.is_dir() {
                 bail!("INVALID_QUERY: --name requires a file for --output");
             }
-            let mut payload = stream_header(
-                "extract",
-                std::slice::from_ref(&args.apk_path),
-                json!({"name":args.name, "all":args.all, "filter":args.filter}),
-            )?;
-            let mut records = 0usize;
+            let mut payload = String::new();
             apk::extract_entries_with_policy(
                 &args.apk_path,
                 archive_policy,
@@ -540,11 +482,9 @@ fn run_command(
                             }),
                         ),
                     )?;
-                    records += 1;
                     Ok(())
                 },
             )?;
-            finish_stream(&mut payload, records)?;
             emit(&payload, None)?;
         }
         Command::Manifest(args) => {
@@ -792,9 +732,6 @@ fn data_record(kind: &str, detail: Value) -> Value {
 }
 
 fn append_json(payload: &mut String, value: &Value) -> Result<()> {
-    if is_wrapper(value) {
-        return Ok(());
-    }
     let encoded = serde_json::to_string(value)?;
     #[cfg(feature = "mcp")]
     if crate::query::output_limit()
@@ -805,27 +742,6 @@ fn append_json(payload: &mut String, value: &Value) -> Result<()> {
     payload.push_str(&encoded);
     payload.push('\n');
     Ok(())
-}
-
-fn stream_header(command: &str, inputs: &[std::path::PathBuf], query: Value) -> Result<String> {
-    let input_bytes = inputs
-        .iter()
-        .try_fold(0usize, |total, path| -> Result<usize> {
-            let bytes = usize::try_from(std::fs::metadata(path)?.len())?;
-            total
-                .checked_add(bytes)
-                .ok_or_else(|| anyhow::anyhow!("input byte count overflow"))
-        })?;
-    let mut payload = String::new();
-    append_json(
-        &mut payload,
-        &header("dex", command, None, Some(input_bytes), query, Map::new()),
-    )?;
-    Ok(payload)
-}
-
-fn finish_stream(payload: &mut String, records: usize) -> Result<()> {
-    append_json(payload, &summary(records, true, Map::new()))
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use super::filter::CaseArgs;
 use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::Result;
-use rxd_core::envelope::{RecordMeta, attach_protocol, header, record, summary};
+use rxd_core::envelope::{RecordMeta, attach_protocol, record};
 use rxd_core::perf::Perf;
 use rxd_wasm::{Limits, Module};
 use serde_json::{Map, Value, json};
@@ -390,7 +390,6 @@ fn execute_inner(
     } else {
         None
     };
-    let mut query = command_query(&command);
     let reference_targets = if let Command::Xref {
         selector,
         filter,
@@ -443,36 +442,11 @@ fn execute_inner(
                     )
                 )
             );
-            query["at"] = json!(at);
-            query["kind"] = json!("function");
             Some(vec![index])
         }
     } else {
         None
     };
-    if let Some(index) = selected_function {
-        query["at"] = json!(coordinate("func", index));
-    }
-
-    append(
-        &mut output,
-        &header(
-            "wasm",
-            command.name(),
-            Some(&module.source_id),
-            Some(module.file_bytes),
-            query,
-            json!({
-                "analysis": "metadata",
-                "imported_funcs": module.imported_func_count(),
-                "total_funcs": module.total_functions()
-            })
-            .as_object()
-            .unwrap()
-            .clone(),
-        ),
-    )?;
-
     let filter = command.filter();
     match &command {
         Command::Types { .. } => emit_rows(
@@ -580,7 +554,6 @@ fn execute_inner(
         Command::Get { .. } => unreachable!(),
     }
 
-    append(&mut output, &summary(records, true, serde_json::Map::new()))?;
     perf.record("query", query_start);
     perf.counters.records = Some(records);
     perf.counters.output_bytes = Some(output.len());
@@ -590,46 +563,6 @@ fn execute_inner(
     Ok(())
 }
 
-/// The `query` echo: the selectors this command actually took.
-fn command_query(command: &Command) -> Value {
-    match command {
-        Command::Functions { selector, name, .. } => {
-            json!({"at": selector.at, "name": name, "filter": command.filter(), "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
-        }
-        Command::Xref {
-            selector,
-            kind,
-            filter,
-            ..
-        } => {
-            let mut query = json!({});
-            if let Some(at) = &selector.at {
-                query["at"] = json!(at);
-            }
-            if let Some(kind) = kind {
-                query["kind"] = json!(kind);
-            }
-            if let Some(filter) = filter {
-                query["match"] = json!(filter);
-                query["case"] = json!(if command.case_sensitive() {
-                    "sensitive"
-                } else {
-                    "insensitive"
-                });
-            }
-            query
-        }
-        _ => {
-            json!({"filter": command.filter(), "case": if command.case_sensitive() {"sensitive"} else {"insensitive"}})
-        }
-    }
-}
-
-/// One catalog row before it becomes an envelope record.
-///
-/// `label` is the value the row is named by, which is what `-f/--filter`
-/// matches: the name-section label, else the kind's own descriptive text, else
-/// the row's `at` coordinate.
 struct Row {
     kind: &'static str,
     at: Option<String>,
@@ -938,8 +871,6 @@ fn push_limited(
 }
 
 fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
-    if !rxd_core::envelope::is_wrapper(value) {
-        output.json_line(value)?;
-    }
+    output.json_line(value)?;
     Ok(())
 }

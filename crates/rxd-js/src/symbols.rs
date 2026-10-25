@@ -95,8 +95,6 @@ impl Record {
 }
 
 pub struct Symbols {
-    pub resolution: &'static str,
-    pub within_id: String,
     pub records: Vec<Record>,
 }
 
@@ -119,8 +117,6 @@ pub fn run(
     perf.measure("query", || {
         if lexical::is_dynamic(&semantic) {
             return Ok(Symbols {
-                resolution: "dynamic",
-                within_id: region.id.clone(),
                 records: Vec::new(),
             });
         }
@@ -211,10 +207,6 @@ pub fn run(
             let location = record.location();
             (location.start, location.end)
         });
-        Ok(Symbols {
-            resolution: "static",
-            within_id: region.id.clone(),
-            records,
-        })
+        Ok(Symbols { records })
     })
 }
