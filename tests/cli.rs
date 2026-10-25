@@ -4078,6 +4078,266 @@ fn asar_lists_all_file_types_and_extracts_packed_and_unpacked_original_bytes() {
     );
 }
 
+#[cfg(all(feature = "backend-js", feature = "backend-asar"))]
+fn asar_entry(command: &str, input: &Path, entry: &str, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["js", command])
+        .arg(input)
+        .args(["--entry", entry])
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+#[cfg(all(feature = "backend-js", feature = "backend-asar"))]
+#[test]
+fn asar_entry_queries_match_extracted_js_and_preserve_source_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("app.asar");
+    let source = "\u{feff}const 名称='你好';\r\nfunction run(value){return 名称+value;}".as_bytes();
+    let entry = "dist/主程序.cjs";
+    pack_asar(&archive, &[(entry, source)]);
+    let extracted = dir.path().join("主程序.cjs");
+    success(&asar(
+        "extract",
+        &archive,
+        &["--at", entry, "-o", extracted.to_str().unwrap()],
+    ));
+    let rows = jsonl(&asar_entry("entities", &archive, entry, &[]));
+    let at = rows
+        .iter()
+        .find(|row| row["detail"]["name"] == "run")
+        .unwrap()["at"]
+        .as_str()
+        .unwrap();
+    let byte = source
+        .windows(5)
+        .position(|window| window == b"value")
+        .unwrap()
+        .to_string();
+    for (command, args) in [
+        ("entities", vec![]),
+        ("functions", vec![]),
+        ("classes", vec![]),
+        ("methods", vec![]),
+        ("find", vec!["-f", "你好"]),
+        ("resources", vec![]),
+        ("values", vec![]),
+        ("identifiers", vec![]),
+        ("calls", vec![]),
+        ("members", vec![]),
+        ("symbols", vec![]),
+        ("xref", vec!["--byte", byte.as_str()]),
+        ("slice", vec!["--at", at]),
+    ] {
+        let direct = asar_entry(command, &archive, entry, &args);
+        let ordinary = invoke(command, &extracted, &args);
+        success(&direct);
+        success(&ordinary);
+        assert_eq!(direct.stdout, ordinary.stdout, "{command}");
+    }
+    for (command, args) in [
+        ("slice", vec!["--at", at, "--json"]),
+        ("locate", vec!["--byte", byte.as_str()]),
+    ] {
+        let mut direct = js_object(&asar_entry(command, &archive, entry, &args).stdout);
+        let ordinary = js_object(&invoke(command, &extracted, &args).stdout);
+        assert_eq!(
+            direct["detail"]["origin"],
+            serde_json::json!({
+                "container":archive, "format":"asar", "entry":entry
+            })
+        );
+        direct["detail"]["origin"] = Value::Null;
+        assert_eq!(direct, ordinary);
+    }
+    let measured = asar_entry("functions", &archive, entry, &["--perf"]);
+    success(&measured);
+    let perf: Value = String::from_utf8(measured.stderr)
+        .unwrap()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|record| record["scope"] == "analysis")
+        .unwrap();
+    let extraction = asar(
+        "extract",
+        &archive,
+        &["--at", entry, "-o", extracted.to_str().unwrap()],
+    );
+    success(&extraction);
+    assert_eq!(
+        perf["source_id"],
+        js_object(&extraction.stdout)["source_id"]
+    );
+    assert_eq!(perf["counters"]["input_bytes"], source.len());
+    assert_eq!(perf["limits"]["input_bytes"], source.len());
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+}
+
+#[cfg(all(feature = "backend-js", feature = "backend-asar"))]
+#[test]
+fn asar_entry_uses_entry_syntax_and_supports_guarded_unpacked_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("app.asar");
+    let unpacked = dir.path().join("app.asar.unpacked");
+    fs::create_dir(&unpacked).unwrap();
+    for (entry, source) in [
+        (
+            "view.tsx",
+            "export const render=(x:number)=><Card title='你好'>{x}</Card>;",
+        ),
+        (
+            "api.d.ts",
+            "export declare function run(value: string): number;",
+        ),
+        (
+            "main.mjs",
+            "export const result = await Promise.resolve(7);",
+        ),
+    ] {
+        pack_asar(&archive, &[(entry, source.as_bytes())]);
+        let ordinary = dir.path().join(entry);
+        fs::write(&ordinary, source).unwrap();
+        let direct = asar_entry("entities", &archive, entry, &[]);
+        success(&direct);
+        assert_eq!(direct.stdout, invoke("entities", &ordinary, &[]).stdout);
+    }
+    let source = "const render=(x:number)=><Card>{x}</Card>;";
+    pack_asar(&archive, &[("view.bin", source.as_bytes())]);
+    failure(
+        asar_entry("entities", &archive, "view.bin", &[]),
+        1,
+        "INVALID_INPUT",
+    );
+    success(&asar_entry(
+        "entities",
+        &archive,
+        "view.bin",
+        &["--syntax", "tsx"],
+    ));
+    let entry = "main.ts";
+    let source = "const result:number=7;";
+    fs::write(unpacked.join(entry), source).unwrap();
+    write_asar(
+        &archive,
+        &serde_json::json!({"files":{
+            (entry):{"size":source.len(),"unpacked":true}
+        }}),
+        b"",
+    );
+    let direct = asar_entry("entities", &archive, entry, &[]);
+    success(&direct);
+    assert_eq!(
+        direct.stdout,
+        invoke("entities", &unpacked.join(entry), &[]).stdout
+    );
+    let original = fs::read(unpacked.join(entry)).unwrap();
+    failure(
+        asar_entry(
+            "entities",
+            &archive,
+            entry,
+            &["-o", unpacked.join(entry).to_str().unwrap()],
+        ),
+        2,
+        "output must not replace",
+    );
+    assert_eq!(fs::read(unpacked.join(entry)).unwrap(), original);
+    fs::write(unpacked.join(entry), "short").unwrap();
+    failure(
+        asar_entry("entities", &archive, entry, &[]),
+        1,
+        "size differs",
+    );
+    fs::remove_file(unpacked.join(entry)).unwrap();
+    failure(asar_entry("entities", &archive, entry, &[]), 1, "IO_ERROR");
+}
+
+#[cfg(all(feature = "backend-js", feature = "backend-asar"))]
+#[test]
+fn asar_entry_failures_preserve_outputs_and_do_not_read_unrelated_payloads() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("app.asar");
+    let source = b"function run(){return 'needle';}";
+    write_asar(
+        &archive,
+        &serde_json::json!({"files":{
+            "main.js":{"offset":"0", "size":source.len()},
+            "decoy":{"offset":u64::MAX.to_string(), "size":u64::MAX},
+            "link.js":{"link":"main.js"}
+        }}),
+        source,
+    );
+    success(&asar_entry("functions", &archive, "main.js", &[]));
+    let destination = dir.path().join("keep");
+    fs::write(&destination, "keep").unwrap();
+    for entry in [
+        "missing",
+        "decoy",
+        "link.js",
+        "../main.js",
+        "/main.js",
+        "a\\main.js",
+        "",
+    ] {
+        failure(
+            asar_entry(
+                "entities",
+                &archive,
+                entry,
+                &["-o", destination.to_str().unwrap()],
+            ),
+            1,
+            "INVALID_INPUT",
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"keep");
+    }
+    let original = fs::read(&archive).unwrap();
+    failure(
+        asar_entry(
+            "entities",
+            &archive,
+            "main.js",
+            &["-o", archive.to_str().unwrap()],
+        ),
+        2,
+        "output must not replace",
+    );
+    assert_eq!(fs::read(&archive).unwrap(), original);
+    for bytes in [b"\xff".as_slice(), b"const = ;"] {
+        pack_asar(&archive, &[("main.js", bytes)]);
+        failure(
+            asar_entry(
+                "entities",
+                &archive,
+                "main.js",
+                &["-o", destination.to_str().unwrap()],
+            ),
+            1,
+            "INVALID_INPUT",
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"keep");
+    }
+    #[cfg(unix)]
+    {
+        let unpacked = dir.path().join("app.asar.unpacked");
+        fs::create_dir(&unpacked).unwrap();
+        std::os::unix::fs::symlink(&destination, unpacked.join("main.js")).unwrap();
+        write_asar(
+            &archive,
+            &serde_json::json!({"files":{
+                "main.js":{"size":4,"unpacked":true}
+            }}),
+            b"",
+        );
+        failure(
+            asar_entry("entities", &archive, "main.js", &[]),
+            1,
+            "IO_ERROR",
+        );
+    }
+}
+
 #[test]
 fn asar_extract_then_js_queries_preserve_exact_navigation() {
     let dir = tempfile::tempdir().unwrap();
@@ -4371,6 +4631,11 @@ fn asar_extracted_production_sources_match_independent_acorn_expectations() {
         ));
         assert_eq!(fs::read(&destination).unwrap(), source);
         let rows = outline_rows(&destination, &[]);
+        #[cfg(all(feature = "backend-js", feature = "backend-asar"))]
+        assert_eq!(
+            jsonl(&asar_entry("entities", &archive, "bundle.js", &[])),
+            rows
+        );
         assert_eq!(rows.len(), case["expected"]["entity_count"]);
         for expected in case["expected"]["sample_entities"].as_array().unwrap() {
             assert!(rows.iter().any(|r| r["detail"]["kind"] == expected["kind"]

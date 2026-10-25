@@ -16,6 +16,8 @@ pub(super) fn execute(
     let input = common.input.clone();
     let destination = common.output.clone();
     let emit_perf = common.perf;
+    #[cfg(feature = "backend-asar")]
+    let entry = common.entry.clone();
     let mode = match common.source_type {
         Mode::Auto => SourceMode::Auto,
         Mode::Script => SourceMode::Script,
@@ -30,6 +32,8 @@ pub(super) fn execute(
     };
     let scan = command.scan().map(|s| s.threads);
     let directory = scan.is_some() && input.symlink_metadata().is_ok_and(|m| m.is_dir());
+    #[cfg(feature = "backend-asar")]
+    let directory = directory && entry.is_none();
     let budget = if directory {
         // Discovery has its own depth/concurrency protection; each file gets its own policy.
         rxd_core::Budget::default()
@@ -78,10 +82,47 @@ pub(super) fn execute(
         _ => command.into_query(),
     };
     let result = (|| {
-        // A directory is a scan; a file is one input. There is no flag to choose,
-        // because the same file must produce the same stream either way.
-        let bytes = if let Some(threads) = scan
-            && input.symlink_metadata().is_ok_and(|m| m.is_dir())
+        let (source, limits) = (None::<rxd_core::Source>, limits);
+        #[cfg(feature = "backend-asar")]
+        let (source, limits) = if let Some(entry) = entry {
+            let mut archive_limits = limits;
+            if matches!(policy, rxd_core::BudgetPolicy::InputScaled) {
+                archive_limits.input_bytes = rxd_core::MAX_SPAN_BYTES;
+            }
+            let bytes = rxd_asar::read_entry(
+                &entry,
+                rxd_asar::Options {
+                    input: &input,
+                    output: destination.as_deref(),
+                    limits: archive_limits,
+                    max_entries: budget.entries,
+                    max_header_bytes: budget.metadata_bytes,
+                },
+                &mut perf,
+            )?;
+            let entry_budget = match policy {
+                rxd_core::BudgetPolicy::InputScaled => {
+                    rxd_core::Budget::for_input_bytes(bytes.len())?
+                }
+                rxd_core::BudgetPolicy::Fixed(budget) => budget,
+            };
+            let limits = Limits::from(entry_budget);
+            perf.limits = Some(limits);
+            let mut source = rxd_core::Source::from_bytes(entry.clone(), bytes, limits, &mut perf)?;
+            source.origin = Some(rxd_core::Origin {
+                container: input.to_string_lossy().into_owned(),
+                format: "asar",
+                entry,
+            });
+            (Some(source), limits)
+        } else {
+            (source, limits)
+        };
+        perf.limits = (!directory).then_some(limits);
+        let bytes = if let Some(source) = source {
+            rxd_js::run_source(source, mode, syntax, query, limits, &mut perf)?
+        } else if let Some(threads) = scan
+            && directory
         {
             recursive::run(
                 recursive::Request {

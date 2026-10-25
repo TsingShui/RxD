@@ -3,7 +3,7 @@
 mod archive;
 mod local;
 
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::{Error, Limits, Origin, Result, output::Output, perf::Perf};
@@ -53,6 +53,65 @@ fn storage(entry: &Entry) -> &'static str {
     }
 }
 
+fn open_archive(
+    input: &Path,
+    max_header_bytes: usize,
+    max_entries: usize,
+    perf: &mut Perf,
+) -> Result<(archive::Archive, BTreeMap<String, Entry>)> {
+    if input.to_str().is_none() {
+        return Err(invalid("ASAR input path must be UTF-8"));
+    }
+    perf.measure("container", || {
+        if !fs::symlink_metadata(input)?.is_file() {
+            return Err(invalid(
+                "ASAR input must be a regular file, not an application directory or symlink",
+            ));
+        }
+        archive::Archive::open(input, max_header_bytes, max_entries)
+    })
+}
+
+fn check_output(input: &Path, at: &str, entry: &Entry, output: Option<&Path>) -> Result<()> {
+    let Some(destination) = output.and_then(|path| fs::canonicalize(path).ok()) else {
+        return Ok(());
+    };
+    let mut sources = vec![input.to_owned()];
+    if matches!(entry.storage, Storage::Unpacked) {
+        let mut unpacked = input.as_os_str().to_owned();
+        unpacked.push(".unpacked");
+        sources.push(Path::new(&unpacked).join(at));
+    }
+    for source in sources {
+        if fs::canonicalize(source).is_ok_and(|source| source == destination) {
+            return Err(Error::new(
+                "INVALID_QUERY",
+                "output must not replace an input file",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Read one selected entry into memory without publishing an extraction artifact.
+/// Optional output is checked only to prevent a later query from replacing its source.
+pub fn read_entry(at: &str, options: Options<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
+    local::validate_entry(at)?;
+    let (mut archive, entries) = open_archive(
+        options.input,
+        options.max_header_bytes,
+        options.max_entries,
+        perf,
+    )?;
+    let entry = entries
+        .get(at)
+        .ok_or_else(|| invalid(format!("entry not found: {at}")))?;
+    check_output(options.input, at, entry, options.output)?;
+    perf.measure("read", || {
+        archive.read(at, entry, options.limits.input_bytes)
+    })
+}
+
 pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Response> {
     let Options {
         input,
@@ -67,15 +126,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
     if let Query::Extract { at: file } = &query {
         local::validate_entry(file)?;
     }
-    let (mut archive, entries) = perf.measure("container", || {
-        let metadata = fs::symlink_metadata(input)?;
-        if !metadata.is_file() {
-            return Err(invalid(
-                "ASAR input must be a regular file, not an application directory or symlink",
-            ));
-        }
-        archive::Archive::open(input, max_header_bytes, max_entries)
-    })?;
+    let (mut archive, entries) = open_archive(input, max_header_bytes, max_entries, perf)?;
     match query {
         Query::Entries {
             contains,
@@ -125,23 +176,7 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
             let entry = entries
                 .get(&file)
                 .ok_or_else(|| invalid(format!("entry not found: {file}")))?;
-            // Never replace the archive or an unpacked source while preparing an artifact.
-            let mut sources = vec![input.to_owned()];
-            if matches!(entry.storage, Storage::Unpacked) {
-                let mut unpacked = input.as_os_str().to_owned();
-                unpacked.push(".unpacked");
-                sources.push(Path::new(&unpacked).join(&file));
-            }
-            if let Ok(destination) = fs::canonicalize(destination) {
-                for source in sources {
-                    if fs::canonicalize(source).is_ok_and(|source| source == destination) {
-                        return Err(Error::new(
-                            "INVALID_QUERY",
-                            "output must not replace an input file",
-                        ));
-                    }
-                }
-            }
+            check_output(input, &file, entry, Some(destination))?;
             let bytes = perf.measure("read", || archive.read(&file, entry, limits.input_bytes))?;
             perf.counters.input_bytes = Some(bytes.len());
             let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));

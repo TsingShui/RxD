@@ -1,8 +1,8 @@
 # ASAR examples
 
 `rxd asar` lists an ASAR index and extracts original bytes on demand. It never starts
-the application or executes/interprets entry contents. Only `entries` and `extract` exist;
-extracted JavaScript is passed to `rxd js`.
+the application or executes/interprets entry contents. Only `entries` and `extract` exist
+in that namespace; `rxd js --entry` analyzes one selected JavaScript entry directly.
 
 ## Setup
 
@@ -86,7 +86,30 @@ actual length is checked. Ordinary extraction does not access unrelated fake ent
 out-of-bounds target fails before allocation/seek. This is not whole-archive unpacking,
 and bad targets are never silently skipped.
 
-## Continue with JavaScript
+## Analyze JavaScript without extracting
+
+Build with both `backend-js` and `backend-asar` (the default includes both):
+
+```sh
+"$RXD" js entities "$ASAR" --entry main.cjs -o "$DEMO/entry-entities.jsonl"
+"$RXD" js find "$ASAR" --entry main.cjs -f '/api/login'
+AT=$(jq -r 'select(.detail.kind == "program") | .at' "$DEMO/entry-entities.jsonl")
+"$RXD" js slice "$ASAR" --entry main.cjs --at "$AT" -o "$DEMO/entry-source.cjs"
+"$RXD" js slice "$ASAR" --entry main.cjs --at "$AT" --json > "$DEMO/entry-source.json"
+```
+
+`--entry` copies the exact `asar entries.at`; `--at` still selects a JS structure,
+fragment or symbol inside that entry. Every JS query uses the same fixed entry
+buffer without writing an extraction artifact. Auto syntax uses the entry extension,
+including `.tsx` and `.d.ts`; `--syntax` and `--source-type` retain their normal meaning.
+Coordinates, UTF-8 byte offsets and source identity match the same extracted bytes
+under the same parse options. JSON `slice`/`locate` carry ASAR `detail.origin`; raw
+`slice` stays byte-exact. Other entries' invalid payload ranges do not block a valid
+selection; links, unsafe paths and missing/size-mismatched unpacked files fail.
+The output may not replace the archive or selected unpacked source. Other backends
+still use explicit extraction; MCP retains its `asar_extract` child-target workflow.
+
+## Continue with extracted JavaScript
 
 ```sh
 "$RXD" js entities "$DEMO/main.cjs" -o "$DEMO/entities.jsonl"

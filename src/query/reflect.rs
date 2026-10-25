@@ -13,8 +13,8 @@ const BACKENDS: &[&str] = &[
 /// supports batch output, which the one-artifact tool contract cannot express.
 const CLI_ONLY: &[&str] = &["dex_extract"];
 
-/// Exclude output/process flags from analysis schemas.
-const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help"];
+/// Exclude output/process flags and CLI container selectors; MCP uses child targets.
+const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help", "entry"];
 
 /// Numeric flags keep `integer` in the schema; clap remains the authority on values.
 const NUMERIC: &[&str] = &[

@@ -26,7 +26,7 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
         ] {
             assert!(!description.to_lowercase().contains(phrase), "{tool}");
         }
-        for hidden in ["json", "output", "perf"] {
+        for hidden in ["json", "output", "perf", "entry"] {
             assert!(
                 tool["inputSchema"]["properties"].get(hidden).is_none(),
                 "{tool}"
@@ -99,6 +99,11 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
         (
             "js_slice",
             json!({"input":{"path":"missing.js"},"at":"program:0:1","json":true}),
+        ),
+        #[cfg(feature = "backend-js")]
+        (
+            "js_find",
+            json!({"input":{"path":"missing.asar"},"entry":"main.js","filter":"token"}),
         ),
         #[cfg(feature = "backend-js")]
         (
