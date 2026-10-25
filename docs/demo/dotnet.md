@@ -76,8 +76,7 @@ instructions and the ordered EH table.
 The pinned MIT Newtonsoft.Json 13.0.3 net6.0 assembly is included as an offline
 regression input; provenance and independent expectations are in
 [`tests/corpus/dotnet/`](../../tests/corpus/dotnet/README.md). It is never executed.
-These queries use the input-scaled CLI policy, with no budget overrides
-([ADR 0016](../adr/0016-input-scaled-cli-resources.md)):
+These queries use the input-scaled CLI policy, with no budget overrides:
 
 ```sh
 dll=tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll
@@ -120,8 +119,7 @@ and `embed.rs` under `target/dotnet-native/<rid>/`; Cargo embeds that explicit i
 and never calls dotnet. There is no checked-in desktop ILSpy bundle; `bundled-ilspy`
 without `RXD_ILSPY_EMBED_RS` fails with the producer command.
 
-The pinned engine is ILSpy `11.1.0.9782`; see
-[ADR 0009](../adr/0009-dotnet-ilspy-v11.md). Native builds need .NET 10 SDK and the
+The pinned engine is ILSpy `11.1.0.9782`. Native builds need .NET 10 SDK and the
 platform toolchain. Analysis only reads assemblies.
 
 ```sh
@@ -204,7 +202,7 @@ Any metadata token (`--at 0x0a000001` for an external member, `--at 0x06000006` 
 local definition) resolves member/type identity, and unproven targets stay
 `external`/`unresolved`/`ambiguous` with null canonical ID. Method/field/type XREF reports
 only explicit instruction operands; it does not infer reflection, cross-assembly loading
-or virtual dispatch. See the [.NET design](../design/dotnet-design.md#commands-and-protocol).
+or virtual dispatch.
 
 ## Android App embedding
 
@@ -218,5 +216,5 @@ ARM64 libraries for Bionic.
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, inference and degradation are in the
-[.NET design](../design/dotnet-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

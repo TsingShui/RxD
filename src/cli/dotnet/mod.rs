@@ -995,7 +995,7 @@ fn list(
         .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
     // A filter answers "does this record's own name contain the needle?". The declaring
     // type is a separate question that `--class` answers exactly, so a member is never
-    // reported for a match on its owner's name (ADR 0014).
+    // reported for a match on its owner's name.
     let matches = |name: &str| pattern.as_ref().is_none_or(|pattern| pattern.matches(name));
     // Resolve signatures only for the rows this query can emit. Filtering by name and
     // declaring type never needs them, so unrelated corrupt members stay unread.

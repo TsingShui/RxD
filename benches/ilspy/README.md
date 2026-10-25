@@ -4,8 +4,7 @@ The `.NET` C# reconstruction backend calls a pinned ILSpy
 `ICSharpCode.Decompiler`, built as a NativeAOT shared library and invoked
 in-process over a stable C ABI. It statically decompiles managed assemblies;
 it never loads or executes the analyzed assembly, and the shared library is
-self-contained (no CoreCLR dependency on the target machine). The route decision and measurements are recorded in
-[ADR 0009](../../docs/adr/0009-dotnet-ilspy-v11.md).
+self-contained (no CoreCLR dependency on the target machine).
 
 The reference is the official `ICSharpCode.Decompiler` NuGet package
 `11.1.0.9782`, repository commit `a6909b2e1062d2404a52711926fa74030bd96119`.
@@ -13,8 +12,6 @@ Package SHA-256:
 `1f76df4d35193ba4eeb50ffcd84eae381a2c48c67f95c1104dc406759448a811`.
 ILSpy is MIT licensed; the library is downloaded and built, not vendored.
 
-The current fixed-buffer/framework-resolver route is measured in ADR 0009.
-Those results are workload-specific and do not generalize to every input/platform.
 The full CLI validates/hashes/decodes the input and writes its record; ABI-only
 numbers cannot replace fresh-process CLI acceptance. The only required v11 API
 adaptation delegates `IAssemblyResolver.BeginSnapshot` to the underlying
@@ -33,9 +30,8 @@ RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
 
 Cargo embeds only the explicit producer include and never downloads or invokes
 .NET. `bundled-ilspy` without `RXD_ILSPY_EMBED_RS` fails with the producer command.
-macOS is ARM64 only. See
-[ADR 0019](../../docs/adr/0019-native-desktop-ilspy.md). No ILSpy runtime is checked
-in; Android App engines are produced separately from source.
+macOS is ARM64 only. No ILSpy runtime is checked in; Android App engines are
+produced separately from source.
 
 ## Build the NativeAOT shared library
 

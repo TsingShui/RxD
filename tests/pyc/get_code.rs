@@ -107,7 +107,7 @@ fn pyc_get_code_checks_ids_selected_body_and_malformed_evidence_atomically() {
     ] {
         failure(fetch(&original, &bad, &[]), 2, "INVALID_QUERY");
     }
-    // A canonical coordinate that names no code is not malformed (ADR 0015).
+    // A canonical coordinate that names no code is not malformed.
     failure(fetch(&original, "code:99999", &[]), 2, "NOT_FOUND");
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("keep.json");

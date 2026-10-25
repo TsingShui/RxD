@@ -497,7 +497,7 @@ fn jvm_xref_locates_string_type_method_and_field_uses_with_owning_unit() {
             && v["detail"]["target"].as_str().unwrap().contains("toJson")
     }));
 
-    // Owner narrowing names one exact class (ADR 0014): the full name matches, a
+    // Owner narrowing names one exact class: the full name matches, a
     // fragment of it is not a pattern and selects nothing.
     let filtered = jvm_jsonl(&run(
         &[

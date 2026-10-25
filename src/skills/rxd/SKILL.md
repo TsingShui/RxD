@@ -34,7 +34,7 @@ applying code-reference semantics to the container. HTML is a lexical container
 `element`/`text`/`comment`/`doctype` records with copy-only coordinates, `extract`
 returns the exact original interval, and inline JS/TS is then handed to the code
 backend with artifact-side offsets. PyInstaller/zipapp (`pyz`)
-and binwalk integration are planned, not available commands.
+container handling is planned, not an available command.
 
 ## Consume results and preserve identity
 
@@ -286,11 +286,10 @@ consume `structuredContent` (`{records: [...]}` for streams), not a truncated te
 
 ## Scope and maintenance
 
-Deobfuscation, control-flow deflattening and string decryption are permanently
-excluded for every backend. Standard literal/immediate decoding (escapes, LEB128,
-float/memory operands, PUSH values) is parsing. Existing structured reconstruction
-(DEX/JVM→Java, IL→C#, WASM→C-like, PYC→Python, selected EVM pseudo-code) is not
-obfuscation reversal. Never run inputs to fill static-analysis gaps.
+Standard literal/immediate decoding (escapes, LEB128, float/memory operands,
+PUSH values) is parsing. Existing structured reconstruction (DEX/JVM→Java, IL→C#,
+WASM→C-like, PYC→Python, selected EVM pseudo-code) remains subject to its declared
+support and fallback contracts. Never run inputs to fill static-analysis gaps.
 
 Install/update with `rxd skill install -a pi`, `-a codex`, `-a claude-code`,
 `-a agents`, multiple agents or `-a all`. Without `-a`, detected Pi/Codex/Claude

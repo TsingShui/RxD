@@ -16,7 +16,7 @@ pub struct Error {
     pub message: String,
 }
 
-/// One failure class, chosen by whoever knows the reason (ADR 0015).
+/// One failure class, chosen by whoever knows the reason.
 ///
 /// A failure carries exactly one code as data. The set is closed: a new code is a
 /// contract change, not a message. Grouping is by what the caller can do about it, which

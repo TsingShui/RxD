@@ -2,8 +2,8 @@
 
 **Historical checkpoint, not current acceptance evidence.** The commands, selector
 exceptions and test counts below describe the earlier unification work and must not
-be reused as validation of the current tree. Current contracts live in
-`docs/design/*-design.md`; in particular WASM/PYC now use coordinate selectors and
+be reused as validation of the current tree. Current behavior is defined by the
+implementation, CLI help and tests; WASM/PYC now use coordinate selectors, and
 PYC exact name references use `--kind name --at`. Later real-input checks found
 remaining backend gaps and stale tests; do not infer that all backends are green.
 
@@ -41,7 +41,7 @@ exposes `--max-*`.
    (dex, pyc) have no `--raw` because there is nothing to switch away from.
 5. **Record shape.** Identity in `at`, caller in `context_at`, extras in `detail`, and no
    per-record `source_id` (the header carries it; a backend may omit it or print `null`,
-   and ADR 0003 says the two are equivalent). Ids nested inside `detail` are the same copy-only coordinate, so any
+   and the two are equivalent). Ids nested inside `detail` are the same copy-only coordinate, so any
    coordinate a caller copies is one `--at` accepts.
 6. **`strings` rows carry `{value,index}`** plus the platform fields. `index` is the
    backend's own identifier for that string: DEX `string_ids`, JVM constant pool, pyc
@@ -69,7 +69,7 @@ exposes `--max-*`.
 - `706f125` docs/skill/site synchronisation.
 - `63c359a`/`84fb398` dex `--class` became a substring like every other backend, and the
   per-entry pre-check became a cost heuristic (`bounded_by_class`) instead of "names one
-  class"; release measurement recorded in `dex-design.md`.
+  class"; release measurement remains in the historical Git revision.
 - `xref` two faces: `src/cli/xref.rs` (shared surface) + dex/jar projection, `detail.target`
   became a full coordinate, js `--at`/`--byte`, wasm `xref --at func:N`, pyc `xref --at`,
   and the MCP subcommand-selector machinery removed.
@@ -155,7 +155,7 @@ them by name, which is why the module filter is not used as evidence for those t
    machinery in `src/query/reflect.rs` was deleted because no command has subcommands any
    more (`dex_xref`/`jar_xref` are one tool each, down from four).
 6. **Anchors are coordinates only.** `--from` was added for dex/jar/dotnet, then removed
-   by [ADR 0018](../adr/0018-remove-from-selectors.md): it took the first unit record, its
+   later: it took the first unit record, its
    identity check only accepted the exact same input, and ASAR/DEX carried no content
    identity at all. `--at` is the only anchor; a coordinate is file-scoped.
 7. **dotnet `--string` became `-f … --kind string`.** Resolved: the search face is a

@@ -51,7 +51,7 @@ fn rows(output: &Output) -> Vec<Value> {
         .collect()
 }
 fn fails(output: Output, code: &str) {
-    // ADR 0015: query-class codes and clap usage errors exit 2; input/resource failures exit 1.
+    // Query-class codes and clap usage errors exit 2; input/resource failures exit 1.
     let expected = match code {
         "unexpected argument" | "INVALID_QUERY" | "NOT_FOUND" | "AMBIGUOUS" => 2,
         _ => 1,

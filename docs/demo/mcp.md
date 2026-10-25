@@ -102,6 +102,5 @@ python3 scripts/mcp-smoke.py --binary target/release/rxd
 python3 scripts/mcp-smoke.py --binary target/release/rxd --expect-native
 ```
 
-Full finite defaults, UTF-16 projection, errors and future HTTPS boundary are documented in
-[MCP design](../design/mcp-design.md). Correctness/CI configuration is not a latency result;
+Correctness/CI configuration is not a latency result;
 measure frozen release binaries with [MCP runner](../../benches/README.md#mcp-release-measurements).

@@ -622,7 +622,7 @@ fn fixture(source: impl AsRef<[u8]>, filename: &str) -> (TempDir, PathBuf) {
 }
 
 fn failure(output: Output, code: i32, diagnostic: &str) {
-    // ADR 0015: query-class failures exit 2 even when a call site still passes 1.
+    // Query-class failures exit 2 even when a call site still passes 1.
     let expected = match diagnostic {
         "INVALID_QUERY" | "NOT_FOUND" | "AMBIGUOUS" => 2,
         _ => code,

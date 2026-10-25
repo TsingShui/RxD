@@ -3,8 +3,7 @@
 Ordinary CLI work, instructions, retained references and complete serialized
 output scale with admitted module size. Canonical coordinates, body bounds and
 validation of original instructions remain unchanged.
-See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
-remain independent and unchanged.
+MCP service quotas remain independent and unchanged.
 
 The examples use the repository's independently rebuildable handwritten WASM fixture;
 modules are never instantiated.
@@ -92,5 +91,5 @@ instruction view get remain under the 150 ms rule.
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend coordinates, offsets, inference and degradation are in the
-[WASM design](../design/wasm-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

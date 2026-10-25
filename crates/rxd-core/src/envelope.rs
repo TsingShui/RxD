@@ -1,8 +1,8 @@
-//! ADR 0003 envelope constructors. Backends define each record's determinate detail schema.
+//! Shared output envelope constructors. Backends define each record's determinate detail schema.
 
 use serde_json::{Map, Value, json};
 
-/// Version of the ADR 0003 envelope, independent of the legacy output version.
+/// Version of the shared envelope, independent of the legacy output version.
 pub const SCHEMA_VERSION: u32 = 2;
 
 /// Navigation and byte offsets; absent values serialize as null, never omitted keys.

@@ -74,9 +74,9 @@ target/debug/rxd pyc codes tests/corpus/pyc/3.12.14/graph.timestamp.pyc --name s
 
 `codes` does not scan bytecode or recover source; `instruction_validation: not_scanned`.
 Body status is present/empty/unavailable. Static entry accepts only the six final magic
-formats in the design matrix; other versions/implementations are rejected explicitly.
-Ordinary CLI input/work/metadata/output allowances grow with admitted input under
-[ADR 0016](../adr/0016-input-scaled-cli-resources.md); no command exposes a `--max-*` flag. Perf stderr `resource_limits` echoes the projected
+formats listed below; other versions/implementations are rejected explicitly.
+Ordinary CLI input/work/metadata/output allowances grow with admitted input; no command
+exposes a `--max-*` flag. Perf stderr `resource_limits` echoes the projected
 values and all JSONL bytes count toward output. Errors do not replace existing `-o`.
 
 ```sh
@@ -160,7 +160,7 @@ a row prints; it carries no hash, so a coordinate absent from this input is
 `context_at` routes to `get-code --at`.
 Name references describe explicit name-bearing opcodes, not runtime dispatch; constant
 references preserve the containing top-level slot and never claim a nested leaf was
-directly loaded. See the [PYC design](../design/pyc-design.md#name-references).
+directly loaded.
 
 ## Formats and budgets
 
@@ -171,11 +171,10 @@ across renames and processes. codes/strings/get-code/xref share the selected
 input-scaled CLI or fixed MCP policy; get-code and xref also use its instruction
 allowance. All
 output is complete before atomic stdout/`-o` publication. `rxd pyz` and PyInstaller
-containers are separate and still planned. Control-flow deflattening, deobfuscation and
-decryption are permanent non-goals.
+containers are separate and still planned.
 
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, inference and degradation are in the
-[PYC design](../design/pyc-design.md#capability-status-and-mcp).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

@@ -2,7 +2,7 @@
 
 `rxd asar` lists an ASAR index and extracts original bytes on demand. It never starts
 the application or executes/interprets entry contents. Only `entries` and `extract` exist;
-extracted JavaScript is passed to `rxd js`. See the [ASAR design](../design/asar-design.md).
+extracted JavaScript is passed to `rxd js`.
 
 ## Setup
 
@@ -50,7 +50,7 @@ of a real native module or run the application.
 ```
 
 Each row has backend `asar`; its detail reports metadata. Structured output
-follows [ADR 0003](../adr/0003-output-envelope.md), `schema_version=2`: file records
+uses `schema_version=2`: file records
 carry path/bytes/storage under `detail` and are ordered by logical path. Packed entries
 expose `range_valid`; invalid ranges expose `range_error` (`out_of_bounds` or
 `overflow`). Invalid ranges remain visible as `range_error` on the affected row. The
@@ -110,19 +110,17 @@ receipt is the link to the original archive; ordinary JS queries do not add ASAR
 # The ASAR runner was removed; see benches/README.md "Removed per-backend runners".
 ```
 
-Header/index allowances grow with the archive under
-[ADR 0016](../adr/0016-input-scaled-cli-resources.md), without fixed CLI input/header/
+Header/index allowances grow with the archive, without fixed CLI input/header/
 entry-count quotas. Paths retain the 4096-byte guard and selected content retains
 32-bit spans. There is no record/output quota for complete listings or artifacts. Parsing bounds,
 path traversal, duplicate paths, malformed headers, links, out-of-range targets and
 overflow never rely on running the sample.
 
-Input must be a regular ASAR file. Electron installers, application directories, ZIP and
-binwalk integration are out of scope. IPC/bridge, native analysis and V8 bytecode are not
-provided by this entry.
+Input must be a regular ASAR file. Electron installers, application directories and ZIP
+are out of scope. IPC/bridge, native analysis and V8 bytecode are not provided by this entry.
 
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend-specific IDs, offsets, inference and degradation are in the
-[ASAR design](../design/asar-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

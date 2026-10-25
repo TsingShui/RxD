@@ -3,8 +3,7 @@
 Ordinary CLI per-entry inflation uses an input-scaled expansion envelope, not a
 fixed 256 MiB total. Missing/zero/invalid `RASC_MAX_INFLATED_ENTRY` uses that
 envelope; an explicit nonzero compatibility override still works.
-See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
-remain independent and unchanged.
+MCP service quotas remain independent and unchanged.
 
 Run `cargo build --release`. `INPUT` is an authorized APK, DEX or ZIP with a root DEX;
 `CLASS` is a real name from `classes` output. Commands analyze statically and never
@@ -57,7 +56,6 @@ indices, field_ids and field slots use the actual input's indices. Exit 3 means 
 RASC_MAX_INFLATED_ENTRY=1048576 target/release/rxd dex manifest /path/to/app.apk
 ```
 
-See the [DEX design](../design/dex-design.md) for the full contract and resource limits.
 The old rasc MCP transport is not imported; the shared stdio entry is in the
 [MCP examples](mcp.md).
 
@@ -83,5 +81,5 @@ jq -r '.detail.code' target/Main.json > target/Main.java
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, inference and degradation are in the
-[DEX design](../design/dex-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

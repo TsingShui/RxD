@@ -93,7 +93,7 @@ fn main() -> ExitCode {
     };
     if let Err(error) = result {
         eprintln!("{error}");
-        // The status belongs to the failure class, in one place (ADR 0015).
+        // The status belongs to the failure class, in one place.
         return ExitCode::from(error.exit_code());
     }
     ExitCode::SUCCESS

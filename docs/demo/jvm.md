@@ -3,16 +3,14 @@
 Ordinary CLI archive/index/entry/work envelopes scale with admitted input. JVM
 format widths, code length and reconstruction-state guards remain; valid metadata
 names are not capped at 4096 units.
-See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
-remain independent and unchanged.
+MCP service quotas remain independent and unchanged.
 
 ```sh
 cargo build --release
 target/release/rxd jar methods tests/fixtures/jvm/flow-deflated.jar --class fixture.FlowFixture -o target/jvm-methods.jsonl
 ```
 
-Structured output follows [ADR 0003](../adr/0003-output-envelope.md),
-`schema_version=2`: streaming commands emit data rows, navigation
+Structured output uses `schema_version=2`: streaming commands emit data rows, navigation
 outside and content under `detail`. Take a `methods` row's `at` (`Lx;->name(proto)`) and
 query:
 
@@ -73,11 +71,10 @@ PY
 
 No Java or D8 is needed. `--release 17` selects the matching class version in a
 multi-release JAR. Dynamic-instruction methods can be inspected with `--raw`;
-unsupported Java reconstruction returns an explicit error. See the
-[JVM design](../design/jvm-design.md).
+unsupported Java reconstruction returns an explicit error.
 
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, inference and degradation are in the
-[JVM design](../design/jvm-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

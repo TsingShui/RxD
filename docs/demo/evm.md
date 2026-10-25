@@ -19,8 +19,7 @@ rxd evm analyze runtime.hex --encoding hex --perf
 `analyze`, `storage`, `disassemble`, `basic-blocks`, `cfg` and `metadata` emit one
 `evm_analysis` object. Carrier SHA-256, decoded-bytecode SHA-256, decoded-byte offsets,
 CFG producer block IDs, `undecoded_tail`, `abi_verified`/`discovery_complete` and
-inference properties are distinct. See the
-[EVM design](../design/evm-design.md#native-json).
+inference properties are distinct.
 
 ## Function listing and FETCH
 
@@ -106,13 +105,11 @@ matches the value the row is named by. The scope is validated-block PUSH immedia
 Separate `data_literal`/`data_reference` records cover unindexed, metadata and contextual
 CODECOPY candidates; a text/data hit does not prove a runtime string or executable use.
 IDs bind one exact occurrence/range; zero hits still succeed with no data rows beyond the analysis record.
-See the [EVM design](../design/evm-design.md#strings-and-data-candidates).
 
 ## Budgets and performance
 
 EVM is capability-first and has no numeric latency gate. Ordinary CLI admission and
-navigation/reconstruction work scale with input under
-[ADR 0016](../adr/0016-input-scaled-cli-resources.md); there is no `--max-*` flag or
+navigation/reconstruction work scale with input; there is no `--max-*` flag or
 fixed record/output quota. Interpreter guards remain 100,000 states and 1,048,576
 stack cells/arena entries. MCP service quotas remain separate.
 Failures are atomic with no partial stdout and preserve existing `-o` files. `--perf`
@@ -122,5 +119,5 @@ echoes the effective ceilings; measurements are informational.
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend coordinates, offsets, inference and degradation are in the
-[EVM design](../design/evm-design.md#verification-and-mcp).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

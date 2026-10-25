@@ -338,7 +338,7 @@ impl RefQuery<'_> {
 }
 
 /// One `findrefs` hit, carrying the owning class and method so a reader can
-/// route to `get-method`/`get-class` (ADR 0002 closure).
+/// route to `get-method`/`get-class`.
 #[derive(serde::Serialize)]
 pub struct RefHit {
     /// Content-bound FETCH context for the referencing instruction.

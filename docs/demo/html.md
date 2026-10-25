@@ -5,8 +5,7 @@ by coordinate. It never executes page scripts, loads external resources or build
 DOM. `entries` lists lexical nodes; `resources` classifies resource candidates and can
 include inline bodies; `extract` fetches one original range. JS content is passed to
 `rxd js` with its own source identity.
-`lexical_naive_v1` is a lexical approximation, not a browser parser. See the
-[HTML design](../design/html-design.md).
+`lexical_naive_v1` is a lexical approximation, not a browser parser.
 
 ## Setup
 
@@ -34,7 +33,7 @@ analysis of a real site.
 
 Header backend is `html`, command `entries`, with path/`analysis: lexical`/`parser:
 html5gum`/`parser_version: 0.8.4`/`lexical_profile: lexical_naive_v1`. Structured output
-follows [ADR 0003](../adr/0003-output-envelope.md), `schema_version=2`. Records appear in
+uses `schema_version=2`. Records appear in
 source order: doctype/comment/element/text. A record's `at` is
 `<kind>:<start>:<end>`; coordinates are file-scoped.
 
@@ -200,8 +199,8 @@ selected by the Agent's syntax; arbitrary script content is not promised to pars
 ```
 
 Input is admitted at its actual size, subject to 32-bit spans; no fixed CLI input,
-catalog-node or output quota is added. Lexical depth remains 512. See
-[ADR 0016](../adr/0016-input-scaled-cli-resources.md). `--perf` stages are read/hash/utf8/tokenize/query/serialize/write. Overflow
+catalog-node or output quota is added. Lexical depth remains 512.
+`--perf` stages are read/hash/utf8/tokenize/query/serialize/write. Overflow
 returns `RESOURCE_LIMIT` and never truncates or silently skips nodes. Ordinary
 representative list/extract follows the 150 ms fresh-process rule: fresh processes,
 preserved samples, median/P95, >150 ms share, sizes/hashes, hardware and cache
@@ -211,5 +210,5 @@ and was removed (see `benches/README.md`).
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, recovery and closed schema are in the
-[HTML design](../design/html-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

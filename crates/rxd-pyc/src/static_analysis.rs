@@ -153,7 +153,7 @@ impl Analysis {
             .parse::<usize>()
             .map_err(|_| Error::new("INVALID_QUERY", "invalid PYC code index"))?;
         if index >= self.codes.len() {
-            // Well formed and absent: absence, not a bad query (ADR 0015).
+            // Well formed and absent: absence, not a bad query.
             return Err(rxd_core::Error::failure(
                 rxd_core::Failure::NotFound,
                 format!("no code:{} in this input", index),

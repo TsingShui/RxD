@@ -309,7 +309,7 @@ fn execute_inner(command: Command, policy: rxd_core::BudgetPolicy) -> anyhow::Re
         let coordinate = selector.resolve()?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
         // One FETCH is one record: the source is a field of it, not the whole answer, so a
-        // consumer parses the same envelope as every other command (ADR 0003).
+        // consumer parses the same envelope as every other command.
         let mut body = record(
             "class_body",
             RecordMeta {

@@ -18,7 +18,7 @@
         "src/cli/kuna",
         "src/query/kuna.rs"
       ],
-      "evidence": "docs/adr/0006-linked-kuna-cli.md"
+      "evidence": "docs/demo/kuna.md"
     },
     {
       "id": "radguard",

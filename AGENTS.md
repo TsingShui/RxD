@@ -2,13 +2,12 @@
 
 ## Project Structure & Module Organization
 
-`rxd` is an Agent-oriented, multi-format analysis CLI. Read the relevant
-`docs/design/*-design.md` before changing a backend's behavior. The Rust
-backends cover JavaScript (Oxc), ASAR, HTML, Android APK/DEX, JVM class/JAR,
+`rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
+JavaScript (Oxc), ASAR, HTML, Android APK/DEX, JVM class/JAR,
 .NET IL, WebAssembly, and native EVMole EVM bytecode analysis. CPython bytecode
 has bounded embedded source reconstruction and static navigation for CPython
-3.8–3.13. Kuna has an optional directly linked CLI adapter and bundled specs
-(ADR 0006). PyInstaller/zipapp containers and binwalk integration are planned.
+3.8–3.13. Kuna has an optional directly linked CLI adapter and bundled specs.
+PyInstaller/zipapp containers are planned.
 
 The current layout is:
 
@@ -18,7 +17,7 @@ The current layout is:
   path dependencies.
 - `src/query/`: shared typed query catalog, bounded result sink and backend
   projections; `src/mcp/`: optional stdio protocol, immutable targets and
-  disposable analysis-worker scheduling (ADR 0007).
+  disposable analysis-worker scheduling.
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/js/`, `src/cli/asar/`,
   `src/cli/dex/`, `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`,
   `src/cli/evm/`, `src/cli/wasm/`, and `src/cli/pyc/`: peer command adapters.
@@ -30,18 +29,15 @@ The current layout is:
   (`src/structure.rs`), decoded literals (`src/strings.rs`), on-demand lexical
   references (`src/refs.rs`), and original source extraction.
 - `crates/rxd-asar/`: ASAR index and on-demand raw file extraction.
-- `crates/rxd-dex/`: APK/DEX analysis, Manifest and Java emission. DEX CLI
-  details are in `docs/design/dex-design.md`; the shared typed service is
-  provided by `src/mcp/`.
+- `crates/rxd-dex/`: APK/DEX analysis, Manifest and Java emission; the shared
+  typed service is provided by `src/mcp/`.
 - `crates/rxd-jvm/`: class/JAR parsing and JVM stack front end; lifts bytecode
   into the vendored radguard backend IR and renders Java through it.
 - `crates/rxd-dotnet/`: managed-assembly metadata, IL and C# reconstruction via
-  the ILSpy NativeAOT shared library (see
-  `docs/adr/0009-dotnet-ilspy-v11.md`). Its pinned validation fork lives in
+  the ILSpy NativeAOT shared library. Its pinned validation fork lives in
   `crates/rxd-dotnet/vendor/`.
 - `crates/rxd-evm/`: pinned EVMole Rust analysis, explicit raw/hex inputs,
-  inferred interfaces/storage/CFG and metadata; design and navigation gaps in
-  `docs/design/evm-design.md`.
+  inferred interfaces/storage/CFG and metadata.
 - `crates/rxd-wasm/`: WASM module structure, instruction decode, explicit
   reference scanning, and self-built structured C-like decompilation; uses a
   pinned wasmparser (`REFERENCE.md`).
@@ -65,19 +61,14 @@ The current layout is:
   generation were removed; a backend that needs one gets it written against the
   current surface (`entries`/`classes`/`codes`, `--at`, `-f`/`--case`,
   `--name`).
-- `docs/design/`: one `*-design.md` per backend plus the app, MCP and
-  external-tools contracts, scope, command semantics, output contracts,
-  resource constraints, and validation.
-- `docs/design/mcp-design.md`: transport, snapshot and scheduling contracts.
 - `docs/demo/`: one `*.md` of runnable examples per backend.
 - `site/`: static GitHub Pages site (`index.html`, `examples.html`,
   `arxd.html`, `roadmap.html`, `changelog.html`, and `zh/` counterparts) served
   by `.github/workflows/pages.yml`; no build step.
 
-Keep each backend's design changes in its `docs/design/*-design.md` and update
-affected examples in the matching `docs/demo/*.md`. Keep cross-backend
-architecture in this file and `docs/adr/`; there is no separate root-level
-design document.
+Use the implementation, CLI help and focused tests as the source of truth.
+Update affected runnable examples in `docs/demo/` when commands change; separate
+design or decision documents are not required.
 
 Build binaries, benchmark reports, demo outputs and native runtime bundles belong
 under ignored `target/`, not in source or documentation directories. No compiled
@@ -224,7 +215,7 @@ contradicts the coordinate is an argument error naming both kinds, never an empt
 `xref`'s `query` echo contains only the fields the call used: `at` or `match` (never
 both), plus `kind` and the applicable `case`/`class`/`within`/`version`. A nullable outer
 key (`at`, `parent_at`, `context_at`, `start`, `end`, `source_id`) is `null` or absent,
-and consumers treat the two alike (ADR 0003). A coordinate names a position in the input
+and consumers treat the two alike. A coordinate names a position in the input
 being queried; it carries no content identity, so re-run the listing for a different
 input instead of reusing a coordinate across inputs.
 
@@ -236,8 +227,8 @@ flags.
 
 Use `rustfmt`, four-space indentation, `snake_case` functions/modules, and
 `UpperCamelCase` types. Keep parsing within backend crates. Preserve original
-UTF-8 spans, deterministic ordering, and each backend's
-`docs/design/*-design.md` output contracts. Write diagnostics to stderr.
+UTF-8 spans, deterministic ordering, and each backend's tested output contracts.
+Write diagnostics to stderr.
 
 ## Testing Guidelines
 
@@ -286,21 +277,14 @@ confidence, proceed with the implementation.
   fixes with a runnable repro and actual wrong output; link issues when
   available.
 
-## Deobfuscation Scope
-
-Deobfuscation and string decryption are permanently out of scope for every
-backend. For JavaScript this covers obfuscator transforms and string decryption;
-for WASM and Python it covers control-flow deflattening and deobfuscation. Never
-implement or plan them, or list them as pending capabilities. Obfuscated inputs
-remain useful for testing original structure queries and byte-exact extraction.
-Standard literal/immediate decoding (JS escapes; WASM LEB128, floats, memarg;
-etc.) is parsing, not decryption.
+## Structured Decompilation
 
 Structured decompilation (DEX→Java, JVM→Java, IL→C#, WASM→language-neutral
-C-like) is an established capability, not deobfuscation: it recovers
-already-structured control flow and expressions, never unscrambles deliberately
-obfuscated code. Whole-function/whole-class decompilation follows the two
-decompilation exception grounds in Performance Requirements.
+C-like) recovers existing structured control flow and expressions.
+Whole-function/whole-class decompilation follows the two decompilation exception
+grounds in Performance Requirements. Standard literal/immediate decoding
+(JS escapes; WASM LEB128, floats, memarg; etc.) is parsing. Obfuscated inputs
+remain useful for testing original structure queries and byte-exact extraction.
 
 ## Input Safety
 
@@ -308,9 +292,8 @@ Treat analyzed files as untrusted data. Never execute input code or instantiate
 input modules. Parse and extract from one fixed source buffer, validate
 content-bound IDs, and enforce explicit resource budgets.
 
-Ordinary CLI resource admission follows `docs/adr/0016-input-scaled-cli-resources.md`:
-work, metadata and bounded serialization grow with admitted input instead of fixed
-total quotas. Preserve format/address validation, recursion/cycle/expansion guards
+Ordinary CLI resource admission is input-scaled: work, metadata and bounded
+serialization grow with admitted input instead of fixed total quotas. Preserve format/address validation, recursion/cycle/expansion guards
 and explicit failure; never substitute an unlimited sentinel. MCP service quotas
 remain independent and unchanged. These envelopes are not hard RSS/time limits.
 
@@ -330,7 +313,6 @@ Issues and specs live in GitHub Issues for `TsingShui/RxD`. Use `gh` with an
 explicit `--repo TsingShui/RxD`; pull requests are not a request surface.
 Publish or comment only when authorized.
 
-### Domain docs
+### Domain vocabulary
 
-Use root `GLOSSARY.md` and `docs/adr/`; read the relevant decision records before
-changing architecture. Follow the Agent-only design principle.
+Use root `GLOSSARY.md` for domain vocabulary. Follow the Agent-only design principle.

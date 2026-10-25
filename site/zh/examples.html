@@ -57,7 +57,7 @@ rxd dex get-class app.apk 'Lcom/example/Main;'</code></pre>
 
   <section class="section">
     <h2>JavaScript：定位一个请求处理器</h2>
-    <p class="section-lede">不去混淆。看结构，搜解码字面量，再按 ID 取原始源码。</p>
+    <p class="section-lede">看结构，搜解码字面量，再按 ID 取原始源码。</p>
     <pre><code>rxd js entities bundle.js
 rxd js find bundle.js -f '/api/login'
 rxd js xref bundle.js --at 'symbol:118:126'

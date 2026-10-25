@@ -595,7 +595,7 @@ fn run_command(
 }
 
 /// One FETCH result: the source is a field of a record, never the whole answer, so a
-/// consumer parses the same envelope as every other command (ADR 0003).
+/// consumer parses the same envelope as every other command.
 fn fetch_record(
     command: &str,
     kind: &str,

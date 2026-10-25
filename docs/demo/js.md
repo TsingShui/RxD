@@ -3,8 +3,7 @@
 Ordinary CLI work, semantic indexing, retained name/value metadata and bounded
 output scale with admitted input. Directory scans derive limits per file; lexical
 and static-fold recursion/expansion guards remain.
-See [ADR 0016](../adr/0016-input-scaled-cli-resources.md); MCP service quotas
-remain independent and unchanged.
+MCP service quotas remain independent and unchanged.
 
 `rxd js` locates structures, searches literals and extracts source on demand; it never
 executes input. Its query surface is:
@@ -32,20 +31,17 @@ classify URLs/preloads/hints and batch-return original inline scripts with
 `--kind script --location inline --include-content`. Save classic bodies as `.cjs`
 and modules as `.mjs`, retain the HTML origin and body hash, then scan their directory
 with `js entities`. JSON data blocks and import maps are not JS scripts. Network
-acquisition remains an explicit, policy-checked Agent + curl step; see the
-[HTML → JS workflow](../design/js-design.md#html--javascript--resource-acquisition).
+acquisition remains an explicit, policy-checked Agent + curl step.
 
 The backend performs **structural location**: literals, identifier names, call sites and
 static member names map to content-bound AST structures, lexical relationships and
-original source ranges. JS deobfuscation and string decryption are permanent non-goals;
-obfuscated files are analyzed by their existing structure and extracted verbatim. Literal
-escape decoding is parsing, not decryption. `--resolve-static` only evaluates closed AST
-constant expressions; it does not execute user functions, parse string arrays or restore
-dynamic property names.
+original source ranges. Obfuscated files are analyzed by their existing structure and
+extracted verbatim. Literal escape decoding is parsing. `--resolve-static` only evaluates
+closed AST constant expressions; it does not execute user functions, parse string arrays
+or restore dynamic property names.
 
-Structured output follows [ADR 0003](../adr/0003-output-envelope.md): streams are data
-rows only, navigation is outside `detail`, and single-object results may carry
-`schema_version`, `input_bytes` and `detail.path`. Default `slice` raw bytes are outside
+Structured output streams are data rows only, navigation is outside `detail`,
+and single-object results may carry `schema_version`, `input_bytes` and `detail.path`. Default `slice` raw bytes are outside
 the envelope.
 
 ## Setup
@@ -400,5 +396,5 @@ samples, median/P95 and >150 ms share. Whole-function decompilation exceptions f
 ## MCP
 
 See [MCP examples](mcp.md) for typed tools, direct path/immutable target calls and full
-result consumption. Backend IDs, offsets, inference and degradation are in the
-[JS design](../design/js-design.md#mcp-projection).
+result consumption. Backend-specific coordinates, offsets and fallback semantics are
+preserved by the same query implementation.

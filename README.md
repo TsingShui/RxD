@@ -260,9 +260,8 @@ rxd mcp serve --base /workspace --root /workspace
 Use `rxd_open` / `rxd_close` to pin inputs, or pass a path directly. Every built-in
 backend preserves its original commands, content identities, completeness and
 degradation semantics; optional Kuna provides native JSON `functions` and
-single-function `decompile`. See [configuration and codemode examples](docs/demo/mcp.md),
-the [full contract](docs/design/mcp-design.md) and
-[four-platform release builds](docs/demo/ci.md). HTTPS is a later transport milestone.
+single-function `decompile`. See [configuration and codemode examples](docs/demo/mcp.md)
+and [four-platform release builds](docs/demo/ci.md). HTTPS is a later transport milestone.
 
 ## Safety model
 
