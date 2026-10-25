@@ -82,8 +82,9 @@ It excludes XML documentation, debug symbols and the SDK/runtime distribution.
 
 `bundled-ilspy` implies `csharp-decompiler`. Cargo only embeds the prepared
 archive, never invokes .NET. First C# FETCH verifies and extracts the runtime
-atomically into `<cache-base>/rxd-ilspy/<bundle-sha256>/`; subsequent calls verify
-the native library before loading it. Cache policy is shared with Kuna in
+atomically into `<cache-base>/rxd-ilspy/<bundle-sha256>/`; subsequent calls check a
+recorded size/mtime/inode stamp and re-hash the native library only when it changed.
+Cache policy is shared with Kuna in
 `rxd-core::bundle`: `RXD_CACHE_DIR`, XDG cache, or platform user-cache defaults.
 Queries without reconstruction and explicit `--raw` do not create an ILSpy cache.
 A corrupt cache fails with a diagnostic; remove that version directory to rebuild it.
