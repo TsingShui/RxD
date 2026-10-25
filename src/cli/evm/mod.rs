@@ -23,7 +23,7 @@ pub enum Command {
     Xref(XrefOptions),
     /// Return all native EVMole analyses as one JSON object.
     #[command(
-        after_long_help = "Examples:\nrxd evm analyze runtime.hex --encoding hex\nrxd evm analyze runtime.bin --encoding raw --include-bytecode\nRequired: --encoding raw/hex. Output: one evm_analysis JSON record with native results.\nFor navigable coordinates use interface/blocks/strings; analyze does not execute contracts."
+        after_long_help = "Examples:\nrxd evm analyze runtime.hex --encoding hex\nrxd evm analyze runtime.bin --encoding raw --include-bytecode\nRequired: --encoding raw/hex. Output: one evm_analysis JSON record with native results.\nFor navigable coordinates use interface/blocks/strings."
     )]
     Analyze(Options),
     /// List function candidates with EVMole's own ABI fields.

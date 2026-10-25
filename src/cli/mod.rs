@@ -77,7 +77,7 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files without executing input code",
+    about = "Analyze JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
@@ -93,7 +93,7 @@ mod xref;
 Workflow: list/search -> copy at or context_at -> fetch from the same input.
 Listings emit data-row JSONL; require exit 0, and zero rows means no matches.
 -f/--filter narrows listings; -m/--match searches xref targets with --kind.
---raw selects original instructions where supported. Never execute analyzed input.
+--raw selects original instructions where supported.
 Run rxd BACKEND COMMAND --help for minimal examples and parameter sources.
 For typed tools: rxd mcp serve --root /absolute/authorized/inputs; use tools/list.
 Default source builds omit Kuna/ILSpy engines; help availability is not engine availability."
@@ -125,7 +125,7 @@ enum Backend {
         args: Vec<std::ffi::OsString>,
     },
     #[cfg(feature = "backend-dotnet")]
-    /// Analyze managed .NET assemblies without executing them.
+    /// Analyze managed .NET assemblies.
     #[command(after_long_help = "Examples:
   rxd dotnet methods app.dll -f Read
   rxd dotnet get-method app.dll --at '0x0600000b' --raw
@@ -153,7 +153,7 @@ EVM interfaces/storage/ownership are inferred candidates, not verified Solidity 
         command: evm::Command,
     },
     #[cfg(feature = "backend-js")]
-    /// Analyze JavaScript files without executing them.
+    /// Analyze JavaScript files.
     #[command(after_long_help = "Examples:
   rxd js entities bundle.js -f login
   rxd js find bundle.js -f '/api/login'
@@ -176,14 +176,14 @@ Source extraction is original bytes; references are file-local, not runtime call
   rxd html extract page.html --at '<element.at>' --content -o inline.js
   rxd js entities inline.js
 Copy entries.at or resource.at into extract. -o is required for extracted bytes.
-HTML is a lexical approximation, not a DOM; no network requests or script execution.
+HTML is a lexical approximation, not a DOM; external resources are not fetched.
 Offsets in inline.js belong to the extracted file, not the original page.")]
     Html {
         #[command(subcommand)]
         command: html::Command,
     },
     #[cfg(feature = "backend-asar")]
-    /// List and extract ASAR files without executing their contents.
+    /// List and extract ASAR files.
     #[command(after_long_help = "Examples:
   rxd asar entries app.asar -f main
   rxd asar extract app.asar --at 'main.js' -o extracted-main.js
@@ -247,14 +247,14 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
         command: pyc::Command,
     },
     #[cfg(feature = "backend-wasm")]
-    /// Analyze WebAssembly modules without instantiating or executing them.
+    /// Analyze WebAssembly modules.
     #[command(after_long_help = "Examples:
   rxd wasm functions module.wasm -f sum
   rxd wasm xref module.wasm --at '<function.at>'
   rxd wasm get-function module.wasm --at '<reference.context_at>' --raw
 Copy functions.at (func:N) into xref/get-function; xref.context_at names the caller.
 exports.detail.target_at also names the exported function; imported functions have no body.
-Input is a binary core module, not WAT or Component Model; never instantiated.
+Input is a binary core module, not WAT or Component Model.
 Default FETCH attempts C-like reconstruction and falls back to original instructions.")]
     Wasm {
         #[command(subcommand)]

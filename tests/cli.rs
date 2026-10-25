@@ -46,12 +46,25 @@ use tempfile::TempDir;
 #[test]
 fn help_explains_parameter_sources_and_minimal_query_workflows() {
     let binary = env!("CARGO_BIN_EXE_rxd");
+    let assert_query_focused = |help: &str| {
+        for phrase in [
+            "without executing",
+            "never execute",
+            "never runs input",
+            "without instantiating",
+            "no module instantiation",
+            "without loading it",
+        ] {
+            assert!(!help.to_lowercase().contains(phrase), "{help}");
+        }
+    };
     let root = Command::new(binary).arg("--help").output().unwrap();
     success(&root);
     assert!(root.stderr.is_empty());
     let text = String::from_utf8(root.stdout).unwrap();
     assert!(text.contains("Workflow: list/search"));
     assert!(text.contains("COMMAND --help"));
+    assert_query_focused(&text);
     let routes: &[(&str, &str, &str)] = &[
         #[cfg(feature = "backend-js")]
         ("js", "slice", "context_at"),
@@ -84,6 +97,7 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         assert!(help.contains(source), "{backend} {command}: {help}");
         assert!(help.contains("Output:"), "{backend} {command}: {help}");
         assert!(!help.contains("Not marked required by clap"));
+        assert_query_focused(&help);
         let missing = Command::new(binary)
             .args([backend, command, "missing-input"])
             .output()

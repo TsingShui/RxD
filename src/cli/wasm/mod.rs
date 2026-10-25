@@ -95,7 +95,7 @@ pub enum Command {
     },
     /// Enumerate the memory section as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm memories module.wasm\nOutput: memory JSONL with memory:N and page limits; no module instantiation."
+        after_long_help = "Examples:\nrxd wasm memories module.wasm\nOutput: memory JSONL with memory:N and page limits."
     )]
     Memories {
         /// The regular local `.wasm` file to read.

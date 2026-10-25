@@ -118,7 +118,7 @@ pub(crate) enum Command {
     },
     /// List function declarations, expressions, and arrows (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js functions bundle.js -f login\nOutput: entity JSONL restricted to functions/arrows. Copy at into slice.\nAnonymous functions may have detail.label rather than detail.name; -f matches that label.\nA directory is scanned recursively without executing code."
+        after_long_help = "Examples:\nrxd js functions bundle.js -f login\nOutput: entity JSONL restricted to functions/arrows. Copy at into slice.\nAnonymous functions may have detail.label rather than detail.name; -f matches that label.\nA directory is scanned recursively."
     )]
     Functions {
         #[command(flatten)]
@@ -154,7 +154,7 @@ pub(crate) enum Command {
     },
     /// Find substrings in decoded JS literals (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions; it never runs input code."
+        after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions."
     )]
     Find {
         #[command(flatten)]

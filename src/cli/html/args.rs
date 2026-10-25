@@ -10,7 +10,7 @@ pub(crate) struct Common {
     /// Write complete JSONL atomically instead of writing to stdout.
     #[arg(short, long)]
     pub(super) output: Option<PathBuf>,
-    /// Enable backend diagnostic details on stderr; does not execute input.
+    /// Enable backend diagnostic details on stderr.
     #[arg(long)]
     pub(super) debug: bool,
     /// Write timing/resource JSONL to stderr without changing the result payload.

@@ -6,8 +6,8 @@ description: Analyze JavaScript, ASAR, HTML, APK/DEX, JVM class/JAR, .NET IL, EV
 # RxD
 
 RxD is an Agent-oriented multi-format static analysis CLI. It supplies precise,
-bounded queries; reasoning belongs to the Agent. Never execute analyzed input or
-instantiate a module. Choose the input format explicitly, then locate → associate
+bounded queries; reasoning belongs to the Agent. Choose the input format
+explicitly, then locate → associate
 → fetch only the relevant unit. Start with `rxd --help` and the selected command's
 `--help`; feature availability and exact options belong to the installed binary.
 
@@ -110,7 +110,7 @@ name/label; `functions`, `classes` and `methods` are the same
 rows restricted to one kind group. `find
 --resolve-static` additionally matches bounded AST constant evaluation; those
 hits are `literal_kind: static_expression` with `detail.raw` and
-`resolution: static`, and it never executes user-defined functions.
+`resolution: static`.
 
 ```sh
 rxd asar entries app.asar -f main
@@ -118,8 +118,8 @@ rxd asar extract app.asar --at main.js -o extracted-main.js
 rxd js entities extracted-main.js
 ```
 
-ASAR extract requires an output file and returns a receipt; it never runs the
-entry or extracts the whole application implicitly.
+ASAR extract requires an output file and returns a receipt; it does not extract
+the whole application implicitly.
 
 HTML is a lexical container: `entries` returns `element`/`text`/`comment`/`doctype`
 records with copy-only coordinates and decoded attribute values; `extract` copies
@@ -288,7 +288,7 @@ consume `structuredContent` (`{records: [...]}` for streams), not a truncated te
 Standard literal/immediate decoding (escapes, LEB128, float/memory operands,
 PUSH values) is parsing. Existing structured reconstruction (DEX/JVM→Java, IL→C#,
 WASM→C-like, PYC→Python, selected EVM pseudo-code) remains subject to its declared
-support and fallback contracts. Never run inputs to fill static-analysis gaps.
+support and fallback contracts.
 
 Install/update with `rxd skill install -a pi`, `-a codex`, `-a claude-code`,
 `-a agents`, multiple agents or `-a all`. Without `-a`, detected Pi/Codex/Claude

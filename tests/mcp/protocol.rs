@@ -90,6 +90,12 @@ fn mcp_legacy_initialize_negotiates_a_supported_version() {
     let response=client.request("initialize",json!({"protocolVersion":"2099-01-01","capabilities":{},"clientInfo":{"name":"rxd-e2e","version":"1"}}));
     assert!(response.get("error").is_none(), "{response}");
     assert_ne!(response["result"]["protocolVersion"], "2099-01-01");
+    assert!(
+        !response["result"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("without executing")
+    );
     client.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
 }

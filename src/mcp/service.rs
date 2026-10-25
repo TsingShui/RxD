@@ -469,7 +469,7 @@ impl AnalysisService {
 }
 impl ServerHandler for AnalysisService {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(Implementation::new("rxd",env!("CARGO_PKG_VERSION"))).with_instructions("rxd performs bounded static analysis of local inputs without executing them. Query tools accept direct paths or process-local immutable targets; configured roots apply to every capture.")
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(Implementation::new("rxd",env!("CARGO_PKG_VERSION"))).with_instructions("rxd analyzes local inputs. Query tools accept direct paths or process-local immutable targets; configured roots apply to every capture.")
     }
     async fn list_tools(
         &self,

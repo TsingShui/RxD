@@ -16,6 +16,16 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
         let description = tool["description"].as_str().unwrap();
         assert!(description.contains("Examples:"), "{tool}");
         assert!(description.contains("MCP:"), "{tool}");
+        for phrase in [
+            "without executing",
+            "never execute",
+            "never runs input",
+            "without instantiating",
+            "no module instantiation",
+            "without loading it",
+        ] {
+            assert!(!description.to_lowercase().contains(phrase), "{tool}");
+        }
         for hidden in ["json", "output", "perf"] {
             assert!(
                 tool["inputSchema"]["properties"].get(hidden).is_none(),

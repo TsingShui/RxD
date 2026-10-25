@@ -9,7 +9,7 @@ pub(crate) struct Common {
     /// Write output atomically; extract writes raw file bytes here.
     #[arg(short, long)]
     pub(super) output: Option<PathBuf>,
-    /// Enable backend diagnostic details on stderr; does not execute input.
+    /// Enable backend diagnostic details on stderr.
     #[arg(long)]
     pub(super) debug: bool,
     /// Write timing/resource JSONL to stderr without changing the result payload.
@@ -27,7 +27,7 @@ pub(crate) enum Command {
   rxd asar entries app.asar -f main
 Output: file JSONL; at is an archive-relative path, detail describes packed/unpacked storage.
 Next: rxd asar extract app.asar --at '<file.at>' -o extracted.js.
-Listing does not execute or parse entry contents; invalid packed ranges stay explicit."
+Listing does not parse entry contents; invalid packed ranges stay explicit."
     )]
     Entries {
         #[command(flatten)]
@@ -44,7 +44,7 @@ Listing does not execute or parse entry contents; invalid packed ranges stay exp
   rxd asar extract app.asar --at 'main.js' -o extracted-main.js
 Required: --at and -o FILE. Use actual entries.at, not an absolute host path.
 Output: original entry bytes in FILE and a file receipt on stdout.
-Next: rxd js entities extracted-main.js. Analysis never executes extracted code.")]
+Next: rxd js entities extracted-main.js.")]
     Extract {
         #[command(flatten)]
         common: Common,

@@ -92,7 +92,7 @@ pub enum Command {
     },
     /// Reconstruct Python source from a .pyc or versioned raw marshal code object.
     #[command(
-        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile module.pyc --json\nrxd pyc decompile raw.marshal --version 3.12 -o recovered.py\nReconstruct the whole module, not a selected code:N. Never execute the input.\nDefault stdout is Python text; incomplete recovery fails without partial text.\n--json returns one source record with detail.source and detail.complete.\nFor original selected bytecode use codes -> get-code --at instead."
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile module.pyc --json\nrxd pyc decompile raw.marshal --version 3.12 -o recovered.py\nReconstruct the whole module, not a selected code:N.\nDefault stdout is Python text; incomplete recovery fails without partial text.\n--json returns one source record with detail.source and detail.complete.\nFor original selected bytecode use codes -> get-code --at instead."
     )]
     Decompile {
         /// One regular .pyc file, or raw marshal with explicit --version X.Y.

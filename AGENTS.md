@@ -205,7 +205,8 @@ Coordinates are file-scoped; re-list when the input changes.
 contradictory kinds and distinguish a missing coordinate from zero search hits.
 Exact options and output fields belong to the implementation, CLI help and tests.
 Absent and null navigation values are equivalent. `--raw` selects original
-instructions on backends that also offer reconstruction.
+instructions on backends that also offer reconstruction. Keep CLI help, MCP
+descriptions and the embedded skill focused on usage, not repeated safety disclaimers.
 
 ## Coding Style & Naming Conventions
 

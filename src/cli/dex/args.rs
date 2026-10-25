@@ -13,7 +13,7 @@ pub enum Command {
     Getclass(GetClassArgs),
     /// List the entries an archive holds, in central-directory order.
     #[command(
-        after_long_help = "Examples:\n  rxd dex entries app.apk -f lib/arm64-v8a/\nOutput: entry JSONL with detail.name, compression and sizes. Copy detail.name into:\n  rxd dex extract app.apk --name '<entry.detail.name>' -o target/library.so\nDuplicate entry names remain visible; entry contents are never executed."
+        after_long_help = "Examples:\n  rxd dex entries app.apk -f lib/arm64-v8a/\nOutput: entry JSONL with detail.name, compression and sizes. Copy detail.name into:\n  rxd dex extract app.apk --name '<entry.detail.name>' -o target/library.so\nDuplicate entry names remain visible."
     )]
     Entries(EntriesArgs),
     /// Write original entry bytes to --output, preserving them exactly.
@@ -38,7 +38,7 @@ pub enum Command {
     Xref(XrefArgs),
     /// Decode and print AndroidManifest.xml from an APK.
     #[command(
-        after_long_help = "Examples:\n  rxd dex manifest app.apk -o target/AndroidManifest.xml\nInput must contain AndroidManifest.xml. Output is decoded XML, not JSONL.\nPlain XML remains original bytes; binary Android XML is decoded without execution."
+        after_long_help = "Examples:\n  rxd dex manifest app.apk -o target/AndroidManifest.xml\nInput must contain AndroidManifest.xml. Output is decoded XML, not JSONL.\nPlain XML remains original bytes; binary Android XML is decoded."
     )]
     Manifest(ManifestArgs),
     /// List classes defined across every DEX in an APK.
