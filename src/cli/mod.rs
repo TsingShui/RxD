@@ -77,7 +77,7 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files",
+    about = "Analyze Native binaries, JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and HTML files",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode

@@ -64,6 +64,7 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
     let text = String::from_utf8(root.stdout).unwrap();
     assert!(text.contains("Workflow: list/search"));
     assert!(text.contains("COMMAND --help"));
+    assert!(text.lines().next().unwrap().contains("Native binaries"));
     assert_query_focused(&text);
     let routes: &[(&str, &str, &str)] = &[
         #[cfg(feature = "backend-js")]
