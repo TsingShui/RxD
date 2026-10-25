@@ -74,6 +74,16 @@ fn mcp_help_and_schemas_reject_invalid_calls_before_capturing_input() {
             "html_extract",
             json!({"input":{"path":"missing.html"},"at":42}),
         ),
+        #[cfg(feature = "backend-html")]
+        (
+            "html_entries",
+            json!({"input":{"path":"missing.asar"},"entry":"index.html"}),
+        ),
+        #[cfg(feature = "backend-wasm")]
+        (
+            "wasm_functions",
+            json!({"input":{"path":"missing.asar"},"entry":"core.wasm"}),
+        ),
         #[cfg(feature = "backend-asar")]
         ("asar_extract", json!({"input":{"path":"missing.asar"}})),
         #[cfg(feature = "backend-dex")]

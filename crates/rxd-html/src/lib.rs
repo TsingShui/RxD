@@ -4,14 +4,16 @@ mod resources;
 pub use resources::{RESOURCE_KINDS, ResourcesQuery, resources};
 use rxd_core::output::Output;
 
-use std::{cell::RefCell, collections::HashSet, convert::Infallible, fs, path::Path, rc::Rc};
+use std::{
+    borrow::Cow, cell::RefCell, collections::HashSet, convert::Infallible, fs, path::Path, rc::Rc,
+};
 
 use html5gum::{
     Emitter, ForwardingEmitter, Span, State, Tokenizer,
     emitters::callback::{CallbackEmitter, CallbackEvent},
 };
 use rxd_core::{
-    Error, Limits, Result,
+    Error, Limits, Origin, Result,
     envelope::{self, RecordMeta},
     perf::Perf,
 };
@@ -294,6 +296,8 @@ pub struct Source {
     text: String,
     hash: String,
     limits: Limits,
+    /// Enclosing container when this document is itself an archive entry.
+    pub container_origin: Option<Origin>,
 }
 
 impl Source {
@@ -308,6 +312,36 @@ impl Source {
             text,
             hash,
             limits,
+            container_origin: None,
+        })
+    }
+
+    /// Analyze one fixed in-memory document without reopening a filesystem path.
+    pub fn from_bytes(
+        path: String,
+        bytes: Vec<u8>,
+        limits: Limits,
+        perf: &mut Perf,
+    ) -> Result<Self> {
+        let source = rxd_core::Source::from_bytes(path, bytes, limits, perf)?;
+        Ok(Self {
+            path: source.path,
+            text: source.text,
+            hash: source.id,
+            limits,
+            container_origin: None,
+        })
+    }
+
+    pub fn list(&self, query: ListQuery, perf: &mut Perf) -> Result<Vec<u8>> {
+        list_from(query, self.limits, perf, |_| {
+            Ok(Cow::Borrowed(self.text.as_str()))
+        })
+    }
+
+    pub fn resources(&self, query: ResourcesQuery, perf: &mut Perf) -> Result<Vec<u8>> {
+        resources::resources_from(query, self.limits, perf, |_| {
+            Ok(Cow::Borrowed(self.text.as_str()))
         })
     }
 
@@ -429,6 +463,20 @@ fn read_source(input: &Path, limits: Limits, perf: &mut Perf) -> Result<(String,
 }
 
 pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> Result<Vec<u8>> {
+    list_from(query, limits, perf, |perf| {
+        if input.to_str().is_none() {
+            return Err(invalid("HTML input path must be UTF-8"));
+        }
+        read_source(input, limits, perf).map(|(text, _)| Cow::Owned(text))
+    })
+}
+
+fn list_from<'a>(
+    query: ListQuery,
+    limits: Limits,
+    perf: &mut Perf,
+    load: impl FnOnce(&mut Perf) -> Result<Cow<'a, str>>,
+) -> Result<Vec<u8>> {
     let ListQuery {
         kind,
         tag,
@@ -467,10 +515,7 @@ pub fn list(input: &Path, query: ListQuery, limits: Limits, perf: &mut Perf) -> 
         Some(value) => format!("{name}={value}"),
         None => name.clone(),
     });
-    let _path = input
-        .to_str()
-        .ok_or_else(|| invalid("HTML input path must be UTF-8"))?;
-    let (text, _hash) = read_source(input, limits, perf)?;
+    let text = load(perf)?;
     let (catalog, ids) = parse_catalog(&text, limits, perf)?;
     let order = perf.measure("query", || -> Result<Vec<usize>> {
         let root = if let Some(id) = within.as_deref() {
@@ -595,7 +640,8 @@ impl Source {
             return Err(Error::new("NOT_FOUND", "element has no content"));
         }
         // Never replace the container the selected bytes depend on, including path aliases.
-        if let Ok(destination) = fs::canonicalize(output)
+        if self.container_origin.is_none()
+            && let Ok(destination) = fs::canonicalize(output)
             && fs::canonicalize(path).is_ok_and(|source| source == destination)
         {
             return Err(Error::new(
@@ -639,6 +685,9 @@ impl Source {
                 .unwrap()
                 .clone(),
             );
+            if let Some(origin) = &self.container_origin {
+                receipt_record["detail"]["container_origin"] = json!(origin);
+            }
             envelope::attach_protocol(&mut receipt_record, "html", "extract");
             receipt.json_line(&receipt_record)
         })?;

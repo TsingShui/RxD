@@ -1,6 +1,6 @@
 //! Source-backed resource candidates, not a DOM, browser load plan or network client.
 
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 use rxd_core::{Error, Limits, Result, envelope, envelope::RecordMeta, perf::Perf};
 use serde_json::json;
@@ -377,6 +377,20 @@ pub fn resources(
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
+    resources_from(query, limits, perf, |perf| {
+        if input.to_str().is_none() {
+            return Err(Error::new("INVALID_INPUT", "HTML input path must be UTF-8"));
+        }
+        read_source(input, limits, perf).map(|(text, _)| Cow::Owned(text))
+    })
+}
+
+pub(super) fn resources_from<'a>(
+    query: ResourcesQuery,
+    limits: Limits,
+    perf: &mut Perf,
+    load: impl FnOnce(&mut Perf) -> Result<Cow<'a, str>>,
+) -> Result<Vec<u8>> {
     if query
         .kind
         .as_deref()
@@ -424,10 +438,7 @@ pub fn resources(
             Ok(url)
         })
         .transpose()?;
-    let _path = input
-        .to_str()
-        .ok_or_else(|| Error::new("INVALID_INPUT", "HTML input path must be UTF-8"))?;
-    let (text, _hash) = read_source(input, limits, perf)?;
+    let text = load(perf)?;
     let (catalog, ids) = parse_catalog(&text, limits, perf)?;
     let (_base, template, _total, _empty_inline, selected) =
         perf.measure("query", || -> Result<_> {

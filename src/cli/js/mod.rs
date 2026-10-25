@@ -85,35 +85,18 @@ pub(super) fn execute(
         let (source, limits) = (None::<rxd_core::Source>, limits);
         #[cfg(feature = "backend-asar")]
         let (source, limits) = if let Some(entry) = entry {
-            let mut archive_limits = limits;
-            if matches!(policy, rxd_core::BudgetPolicy::InputScaled) {
-                archive_limits.input_bytes = rxd_core::MAX_SPAN_BYTES;
-            }
-            let bytes = rxd_asar::read_entry(
+            let selected = super::input::asar_entry(
+                &input,
                 &entry,
-                rxd_asar::Options {
-                    input: &input,
-                    output: destination.as_deref(),
-                    limits: archive_limits,
-                    max_entries: budget.entries,
-                    max_header_bytes: budget.metadata_bytes,
-                },
+                destination.as_deref(),
+                policy,
                 &mut perf,
             )?;
-            let entry_budget = match policy {
-                rxd_core::BudgetPolicy::InputScaled => {
-                    rxd_core::Budget::for_input_bytes(bytes.len())?
-                }
-                rxd_core::BudgetPolicy::Fixed(budget) => budget,
-            };
-            let limits = Limits::from(entry_budget);
+            let limits = Limits::from(selected.budget);
             perf.limits = Some(limits);
-            let mut source = rxd_core::Source::from_bytes(entry.clone(), bytes, limits, &mut perf)?;
-            source.origin = Some(rxd_core::Origin {
-                container: input.to_string_lossy().into_owned(),
-                format: "asar",
-                entry,
-            });
+            let mut source =
+                rxd_core::Source::from_bytes(entry, selected.bytes, limits, &mut perf)?;
+            source.origin = Some(selected.origin);
             (Some(source), limits)
         } else {
             (source, limits)

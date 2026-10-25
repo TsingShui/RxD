@@ -1,4 +1,10 @@
 //! End-to-end tests only: every assertion exercises the actual CLI process.
+#[cfg(all(
+    feature = "backend-asar",
+    any(feature = "backend-html", feature = "backend-wasm")
+))]
+#[path = "container_entry/mod.rs"]
+mod container_entry;
 #[cfg(feature = "backend-html")]
 #[path = "html/mod.rs"]
 mod html;

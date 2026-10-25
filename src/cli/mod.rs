@@ -48,6 +48,15 @@ mod evm;
 mod filter;
 #[cfg(feature = "backend-html")]
 mod html;
+#[cfg(all(
+    feature = "backend-asar",
+    any(
+        feature = "backend-js",
+        feature = "backend-html",
+        feature = "backend-wasm"
+    )
+))]
+mod input;
 #[cfg(feature = "backend-js")]
 mod js;
 #[cfg(feature = "backend-jvm")]

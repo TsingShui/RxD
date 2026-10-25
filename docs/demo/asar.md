@@ -2,7 +2,7 @@
 
 `rxd asar` lists an ASAR index and extracts original bytes on demand. It never starts
 the application or executes/interprets entry contents. Only `entries` and `extract` exist
-in that namespace; `rxd js --entry` analyzes one selected JavaScript entry directly.
+in that namespace; JS, HTML and WASM queries accept `--entry` to analyze one selected file directly.
 
 ## Setup
 
@@ -20,6 +20,8 @@ from pathlib import Path
 files = {
     'main.cjs': Path('tests/fixtures/example.js').read_bytes(),
     'addon.node': b'\x7fELF\0\xff\x80native',
+    'pages/index.html': b'<!doctype html><script>const version=1;</script>',
+    'assets/core.wasm': Path('tests/fixtures/wasm/fixture.wasm').read_bytes(),
 }
 tree, data = {"files": {}}, bytearray()
 for entry, source in sorted(files.items()):
@@ -54,7 +56,7 @@ uses `schema_version=2`: file records
 carry path/bytes/storage under `detail` and are ordered by logical path. Packed entries
 expose `range_valid`; invalid ranges expose `range_error` (`out_of_bounds` or
 `overflow`). Invalid ranges remain visible as `range_error` on the affected row. The
-example has three entries and one out-of-bounds decoy
+example has five entries and one out-of-bounds decoy
 (`invalid_ranges: 1`); the decoy is listed without reading its claimed payload.
 
 `list -o` bytes are identical to stdout. Complete enumeration does not mean every entry
@@ -106,8 +108,34 @@ Coordinates, UTF-8 byte offsets and source identity match the same extracted byt
 under the same parse options. JSON `slice`/`locate` carry ASAR `detail.origin`; raw
 `slice` stays byte-exact. Other entries' invalid payload ranges do not block a valid
 selection; links, unsafe paths and missing/size-mismatched unpacked files fail.
-The output may not replace the archive or selected unpacked source. Other backends
-still use explicit extraction; MCP retains its `asar_extract` child-target workflow.
+The output may not replace the archive or selected unpacked source. HTML and WASM
+use the same selector below; other backends still use explicit extraction. MCP
+retains its `asar_extract` child-target workflow.
+
+## HTML and WASM entries
+
+The default build includes these backends and ASAR; reduced builds need `backend-asar`
+plus the requested backend. Every HTML/WASM command accepts `--entry`:
+
+```sh
+"$RXD" html entries "$ASAR" --entry pages/index.html -o "$DEMO/html-entries.jsonl"
+"$RXD" html resources "$ASAR" --entry pages/index.html --include-content
+HTML_AT=$(jq -r 'select(.detail.tag == "script") | .at' "$DEMO/html-entries.jsonl")
+"$RXD" html extract "$ASAR" --entry pages/index.html --at "$HTML_AT" --content \
+  -o "$DEMO/inline.js" > "$DEMO/inline-receipt.json"
+"$RXD" wasm functions "$ASAR" --entry assets/core.wasm -o "$DEMO/wasm-functions.jsonl"
+WASM_AT=$(jq -r 'select(.record == "function") | .at' "$DEMO/wasm-functions.jsonl" | head -n 1)
+"$RXD" wasm get-function "$ASAR" --entry assets/core.wasm --at "$WASM_AT" --raw
+"$RXD" wasm xref "$ASAR" --entry assets/core.wasm --at "$WASM_AT"
+```
+
+HTML node ranges and WASM body/instruction offsets are relative to the selected entry,
+not the archive. Results match ordinary file queries; no temporary extraction file is
+created. HTML resource discovery keeps its normal semantics: it neither reads relative
+URLs as archive entries nor fetches them, and `--base-url` remains an explicit HTTP(S)
+document URL. HTML extraction receipts retain their immediate HTML `detail.origin`
+and add the enclosing ASAR as `detail.container_origin`. WASM function FETCH adds ASAR
+`detail.origin`; listings keep their existing data-row schemas.
 
 ## Continue with extracted JavaScript
 

@@ -7,6 +7,10 @@ use std::path::PathBuf;
 pub(crate) struct Common {
     /// One regular local HTML file.
     pub(super) input: PathBuf,
+    /// Select one ASAR entry; HTML coordinates remain relative to its bytes.
+    #[cfg(feature = "backend-asar")]
+    #[arg(long, value_name = "ENTRY_PATH")]
+    pub(super) entry: Option<String>,
     /// Write complete JSONL atomically instead of writing to stdout.
     #[arg(short, long)]
     pub(super) output: Option<PathBuf>,

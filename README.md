@@ -224,7 +224,7 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | --- | --- | --- | --- |
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
 | **JavaScript** | `rxd js` | JS/TS/JSX/TSX and recursive directories; structure, strings, byte locations, lexical references, original source extraction | ✅ |
-| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; JS queries read selected entries directly with `--entry` | ✅ |
+| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; JS/HTML/WASM queries read selected entries directly with `--entry` | ✅ |
 | **HTML** | `rxd html` | Local-page lexical catalog and node-level raw extraction (element/text/comment/doctype) | ✅ |
 | **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |

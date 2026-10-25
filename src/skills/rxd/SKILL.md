@@ -16,7 +16,7 @@ explicitly, then locate → associate
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
 | JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
-| Electron ASAR | `rxd asar` | `entries` / JS queries accept `rxd js COMMAND app.asar --entry ENTRY_PATH`; other backends use `extract --at` first |
+| Electron ASAR | `rxd asar` | `entries` / JS, HTML and WASM queries accept `rxd BACKEND COMMAND app.asar --entry ENTRY_PATH`; other backends use `extract --at` first |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
@@ -28,9 +28,10 @@ explicitly, then locate → associate
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
 conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR is a
-container: with both JS and ASAR enabled, copy `asar entries.at` into `rxd js
-COMMAND app.asar --entry ENTRY_PATH` to analyze that entry without extraction.
-`--at` and byte offsets select inside the entry; auto syntax uses its extension.
+container: with ASAR and the requested backend enabled, copy `asar entries.at` into
+`rxd BACKEND COMMAND app.asar --entry ENTRY_PATH` with backend `js`, `html` or `wasm`
+to analyze that entry without extraction. `--at` and byte offsets select inside the
+entry; JS auto syntax uses its extension. HTML resources are not automatically followed into other entries.
 Other backends use explicit extraction. ASAR itself has no code-reference semantics. HTML is a lexical container
 (`lexical_naive_v1`, not a DOM or browser parse): `entries` enumerates
 `element`/`text`/`comment`/`doctype` records with copy-only coordinates, `extract`
