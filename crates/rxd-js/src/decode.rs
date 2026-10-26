@@ -16,7 +16,7 @@ use rxd_core::{Error, Limits, Result, perf::Perf};
 use crate::{lexical, static_eval, strings::JsString};
 
 const MAX_DEPTH: usize = 32;
-const GLOBAL_NAMES: [&str; 4] = ["globalThis", "global", "window", "self"];
+pub(crate) const GLOBAL_NAMES: [&str; 4] = ["globalThis", "global", "window", "self"];
 const MAX_EXPANSION: usize = 64 * 1024;
 
 #[derive(Default)]
@@ -572,19 +572,20 @@ fn this_escape(node: NodeId, semantic: &Semantic<'_>) -> bool {
         && !matches!(semantic.nodes().parent_kind(node),AstKind::ComputedMemberExpression(m) if m.object.span()==span)
 }
 fn known_key(expression: &Expression<'_>, facts: &Decoders) -> Option<JsString> {
-    static_eval::evaluate(
-        expression,
-        static_eval::Limits {
-            allow_intrinsics: false,
-            ..Default::default()
-        },
-    )
-    .and_then(|v| v.string())
-    .or_else(|| {
-        facts
-            .expression(expression)
-            .map(|value| value.value.clone())
-    })
+    facts
+        .expression(expression)
+        .map(|v| v.value.clone())
+        .or_else(|| {
+            (static_eval::Context {
+                limits: static_eval::Limits {
+                    allow_intrinsics: false,
+                    ..Default::default()
+                },
+                decoders: Some(facts),
+            })
+            .evaluate(expression)
+            .and_then(|v| v.value.string())
+        })
 }
 fn dangerous_key(key: &JsString) -> bool {
     ["eval", "Function", "constructor"]

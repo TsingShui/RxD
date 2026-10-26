@@ -168,6 +168,7 @@ struct Visitor<'c, 's> {
     bytes: usize,
     limits: Limits,
     decoders: Option<&'c crate::Decoders>,
+    evaluation: crate::static_eval::Context<'c>,
     error: Option<Error>,
 }
 impl<'s> Visitor<'_, 's> {
@@ -206,25 +207,48 @@ impl<'s> Visitor<'_, 's> {
             detail,
         });
     }
+    fn expression(
+        &self,
+        e: Option<&Expression<'_>>,
+        span: Span,
+        forced: Option<&'static str>,
+    ) -> ExpressionValue<'s> {
+        let mut value = expression(self.source, e, span, forced);
+        if self.query.resolve_static
+            && value.resolution == "unresolved"
+            && value.unresolved_reason == Some("not_closed_string")
+        {
+            let resolved = e
+                .and_then(|e| self.decoders.and_then(|d| d.expression(e)))
+                .map(|v| (v.value.clone(), "decoder"))
+                .or_else(|| {
+                    let result = e.and_then(|e| self.evaluation.evaluate(e))?;
+                    let origin = result.resolution();
+                    match result.value {
+                        crate::static_eval::Value::String(text) => Some((text, origin)),
+                        _ => None,
+                    }
+                });
+            if let Some((text, origin)) = resolved {
+                value.kind = "string";
+                value.resolution = origin;
+                value.value = Some(Primitive::String(text));
+                value.unresolved_reason = None;
+                if origin == "static" {
+                    value.source = None;
+                }
+            }
+        }
+        value
+    }
     fn detail(
         &self,
         kind: &'static str,
         name: JsString,
         syntax: &'static str,
         owner: Span,
-        mut value: ExpressionValue<'s>,
+        value: ExpressionValue<'s>,
     ) -> Detail<'s> {
-        if value.resolution == "unresolved"
-            && value.unresolved_reason == Some("not_closed_string")
-            && let Some(resolved) = self
-                .decoders
-                .and_then(|d| d.at_span(Span::new(value.start, value.end)))
-        {
-            value.kind = "string";
-            value.resolution = "decoder";
-            value.value = Some(Primitive::String(resolved.value.clone()));
-            value.unresolved_reason = None;
-        }
         Detail {
             kind,
             name,
@@ -257,7 +281,7 @@ impl<'s> Visitor<'_, 's> {
                 JsString::from(i.to_string().as_str()),
                 syntax,
                 owner,
-                expression(self.source, Some(e), arg.span(), spread.then_some("spread")),
+                self.expression(Some(e), arg.span(), spread.then_some("spread")),
             );
             d.index = Some(i);
             d.spread = spread;
@@ -285,7 +309,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                             self.text(d.id.span()),
                             "variable_declarator",
                             d.span,
-                            expression(self.source, Some(e), e.span(), None),
+                            self.expression(Some(e), e.span(), None),
                         ),
                     );
                 }
@@ -295,12 +319,18 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                     match p {
                         ObjectPropertyKind::ObjectProperty(p) => {
                             let key = p.key.span();
-                            let decoded = p
-                                .key
-                                .as_expression()
-                                .and_then(|e| self.decoders.and_then(|d| d.expression(e)));
-                            let (name, resolution) = if let Some(decoded) = decoded {
-                                (decoded.value.clone(), "decoder")
+                            let decoded = self
+                                .query
+                                .resolve_static
+                                .then(|| {
+                                    p.key.as_expression().and_then(|e| {
+                                        crate::members::computed_key(e, self.decoders)
+                                    })
+                                })
+                                .flatten()
+                                .filter(|v| v.2 == "decoder");
+                            let (name, resolution) = if let Some((name, _, origin)) = decoded {
+                                (name, origin)
                             } else if p.computed {
                                 let v = p
                                     .key
@@ -338,7 +368,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                                 name,
                                 syntax,
                                 o.span,
-                                expression(self.source, Some(&p.value), p.value.span(), forced),
+                                self.expression(Some(&p.value), p.value.span(), forced),
                             );
                             d.index = Some(i);
                             d.computed = p.computed;
@@ -356,7 +386,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                                 self.text(p.span),
                                 "spread",
                                 o.span,
-                                expression(self.source, Some(&p.argument), p.span, Some("spread")),
+                                self.expression(Some(&p.argument), p.span, Some("spread")),
                             );
                             d.index = Some(i);
                             d.spread = true;
@@ -379,7 +409,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                         JsString::from(i.to_string().as_str()),
                         syntax,
                         a.span,
-                        expression(self.source, expr, e.span(), spread.then_some("spread")),
+                        self.expression(expr, e.span(), spread.then_some("spread")),
                     );
                     d.index = Some(i);
                     d.spread = spread;
@@ -394,7 +424,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                     JsString::from("0"),
                     "import",
                     c.span,
-                    expression(self.source, Some(&c.source), c.source.span(), None),
+                    self.expression(Some(&c.source), c.source.span(), None),
                 );
                 d.index = Some(0);
                 self.add(c.source.span(), d);
@@ -404,7 +434,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                         JsString::from("1"),
                         "import",
                         c.span,
-                        expression(self.source, Some(options), options.span(), None),
+                        self.expression(Some(options), options.span(), None),
                     );
                     d.index = Some(1);
                     self.add(options.span(), d);
@@ -420,7 +450,7 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                         self.text(a.left.span()),
                         a.operator.as_str(),
                         a.span,
-                        expression(self.source, Some(&a.right), a.right.span(), forced),
+                        self.expression(Some(&a.right), a.right.span(), forced),
                     ),
                 );
             }
@@ -451,6 +481,7 @@ pub fn run<'s>(
             bytes: 0,
             limits: collector.limits,
             decoders: collector.decoders(),
+            evaluation: collector.evaluation(),
             error: None,
         };
         v.visit_program(program);

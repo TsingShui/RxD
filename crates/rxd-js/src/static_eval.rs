@@ -91,29 +91,69 @@ impl Default for Limits {
 }
 
 pub fn evaluate(expression: &Expression<'_>, limits: Limits) -> Option<Value> {
-    Evaluator { limits, steps: 0 }.expression(expression, 0)
-}
-pub fn evaluate_binary(binary: &BinaryExpression<'_>, limits: Limits) -> Option<Value> {
-    Evaluator { limits, steps: 0 }.binary(binary, 0)
-}
-pub fn evaluate_call(call: &oxc_ast::ast::CallExpression<'_>, limits: Limits) -> Option<Value> {
-    Evaluator { limits, steps: 0 }.call(call, 0)
-}
-pub fn evaluate_template(template: &TemplateLiteral<'_>, limits: Limits) -> Option<Value> {
-    Evaluator { limits, steps: 0 }.template(template, 0)
-}
-pub fn evaluate_member(
-    member: &oxc_ast::ast::ComputedMemberExpression<'_>,
-    limits: Limits,
-) -> Option<Value> {
-    Evaluator { limits, steps: 0 }.member(member, 0)
+    Context {
+        limits,
+        decoders: None,
+    }
+    .evaluate(expression)
+    .map(|v| v.value)
 }
 
-struct Evaluator {
+pub(crate) struct Evaluated {
+    pub value: Value,
+    pub decoded: bool,
+}
+impl Evaluated {
+    pub fn resolution(&self) -> &'static str {
+        if self.decoded { "decoder" } else { "static" }
+    }
+}
+#[derive(Clone, Copy)]
+pub(crate) struct Context<'a> {
+    pub limits: Limits,
+    pub decoders: Option<&'a crate::Decoders>,
+}
+impl<'a> Context<'a> {
+    fn run(self, f: impl FnOnce(&mut Evaluator<'a>) -> Option<Value>) -> Option<Evaluated> {
+        let mut evaluator = Evaluator {
+            limits: self.limits,
+            steps: 0,
+            decoders: self.decoders,
+            decoded: false,
+        };
+        let value = f(&mut evaluator)?;
+        Some(Evaluated {
+            value,
+            decoded: evaluator.decoded,
+        })
+    }
+    pub fn evaluate(self, expression: &Expression<'_>) -> Option<Evaluated> {
+        self.run(|e| e.expression(expression, 0))
+    }
+    pub fn binary(self, expression: &BinaryExpression<'_>) -> Option<Evaluated> {
+        self.run(|e| e.binary(expression, 0))
+    }
+    pub fn call(self, expression: &oxc_ast::ast::CallExpression<'_>) -> Option<Evaluated> {
+        self.run(|e| e.call(expression, 0))
+    }
+    pub fn template(self, expression: &TemplateLiteral<'_>) -> Option<Evaluated> {
+        self.run(|e| e.template(expression, 0))
+    }
+    pub fn member(
+        self,
+        expression: &oxc_ast::ast::ComputedMemberExpression<'_>,
+    ) -> Option<Evaluated> {
+        self.run(|e| e.member(expression, 0))
+    }
+}
+
+struct Evaluator<'a> {
     limits: Limits,
     steps: usize,
+    decoders: Option<&'a crate::Decoders>,
+    decoded: bool,
 }
-impl Evaluator {
+impl Evaluator<'_> {
     fn step(&mut self, depth: usize) -> Option<()> {
         if depth > self.limits.depth || self.steps >= self.limits.steps {
             return None;
@@ -266,6 +306,13 @@ impl Evaluator {
 
     fn call(&mut self, call: &oxc_ast::ast::CallExpression<'_>, depth: usize) -> Option<Value> {
         self.step(depth)?;
+        if let Some(value) = self.decoders.and_then(|d| d.call(call)) {
+            if value.value.len_utf16() > self.limits.value_bytes / 2 {
+                return None;
+            }
+            self.decoded = true;
+            return Some(Value::String(value.value.clone()));
+        }
         if !self.limits.allow_intrinsics
             || !is_string_call_callee(call)
             || call.arguments.len() > self.limits.steps.saturating_sub(self.steps)
@@ -463,16 +510,37 @@ fn is_string_call_callee(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
 }
 /// Disable intrinsic assumptions under visible shadowing/dynamic scope.
 /// This does not prove external code preserves prototypes.
-pub(crate) fn intrinsics_allowed(program: &oxc_ast::ast::Program<'_>, max_depth: usize) -> bool {
+pub(crate) fn intrinsics_allowed(
+    program: &oxc_ast::ast::Program<'_>,
+    max_depth: usize,
+    decoders: Option<&crate::Decoders>,
+) -> bool {
     use oxc_ast::AstKind;
     use oxc_ast_visit::Visit;
     use oxc_span::GetSpan;
-    struct Guard<'a> {
+    const CAPABILITY_KEYS: &[&str] = &[
+        "prototype",
+        "__proto__",
+        "getPrototypeOf",
+        "setPrototypeOf",
+        "defineProperty",
+        "defineProperties",
+        "getOwnPropertyDescriptor",
+        "getOwnPropertyDescriptors",
+        "__defineGetter__",
+        "__defineSetter__",
+        "__lookupGetter__",
+        "__lookupSetter__",
+        "constructor",
+        "require",
+    ];
+    struct Guard<'a, 'd> {
         parents: Vec<AstKind<'a>>,
         allowed: bool,
         max_depth: usize,
+        evaluation: Context<'d>,
     }
-    impl<'a> Visit<'a> for Guard<'a> {
+    impl<'a> Visit<'a> for Guard<'a, '_> {
         fn enter_node(&mut self, node: AstKind<'a>) {
             if self.parents.len() >= self.max_depth {
                 std::panic::panic_any(rxd_core::Error::new(
@@ -480,16 +548,61 @@ pub(crate) fn intrinsics_allowed(program: &oxc_ast::ast::Program<'_>, max_depth:
                     "AST depth budget exceeded",
                 ));
             }
+            if !self.allowed {
+                self.parents.push(node);
+                return;
+            }
+            let capability_key = |expression: &Expression<'_>| {
+                self.evaluation
+                    .evaluate(expression)
+                    .and_then(|v| v.value.string())
+                    .map(|key| CAPABILITY_KEYS.iter().any(|name| key.equals_str(name)))
+            };
+            self.allowed &= !match node {
+                AstKind::StaticMemberExpression(m) => {
+                    CAPABILITY_KEYS.contains(&m.property.name.as_str())
+                }
+                AstKind::ComputedMemberExpression(m) => {
+                    capability_key(&m.expression).unwrap_or(false)
+                }
+                AstKind::BindingProperty(p) if p.computed => p
+                    .key
+                    .as_expression()
+                    .and_then(capability_key)
+                    .unwrap_or(true),
+                AstKind::BindingProperty(p) => p
+                    .key
+                    .static_name()
+                    .is_some_and(|key| CAPABILITY_KEYS.contains(&key.as_ref())),
+                _ => false,
+            };
             match node {
                 AstKind::BindingIdentifier(id) if id.name == "String" => self.allowed = false,
-                AstKind::WithStatement(_) => self.allowed = false,
-                AstKind::CallExpression(c)
-                    if c.callee.get_inner_expression().is_specific_id("eval") =>
+                AstKind::WithStatement(_)
+                | AstKind::ThisExpression(_)
+                | AstKind::ImportExpression(_)
+                | AstKind::TSImportEqualsDeclaration(_) => self.allowed = false,
+                AstKind::ImportDeclaration(d)
+                    if d.import_kind != oxc_ast::ast::ImportOrExportKind::Type =>
+                {
+                    self.allowed = false
+                }
+                AstKind::ExportFromDeclaration(d)
+                    if d.export_kind != oxc_ast::ast::ImportOrExportKind::Type =>
+                {
+                    self.allowed = false
+                }
+                AstKind::ExportAllDeclaration(d)
+                    if d.export_kind != oxc_ast::ast::ImportOrExportKind::Type =>
                 {
                     self.allowed = false
                 }
                 AstKind::IdentifierReference(id)
-                    if matches!(id.name.as_str(), "globalThis" | "window" | "self") =>
+                    if crate::decode::GLOBAL_NAMES.contains(&id.name.as_str())
+                        || matches!(
+                            id.name.as_str(),
+                            "eval" | "Function" | "Reflect" | "require"
+                        ) =>
                 {
                     self.allowed = false
                 }
@@ -522,6 +635,13 @@ pub(crate) fn intrinsics_allowed(program: &oxc_ast::ast::Program<'_>, max_depth:
         parents: Vec::new(),
         allowed: true,
         max_depth,
+        evaluation: Context {
+            limits: Limits {
+                allow_intrinsics: false,
+                ..Default::default()
+            },
+            decoders,
+        },
     };
     guard.visit_program(program);
     guard.allowed

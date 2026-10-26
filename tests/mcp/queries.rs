@@ -228,6 +228,60 @@ fn mcp_js_module_and_decoder_queries_share_the_immutable_snapshot() {
     );
 }
 
+#[cfg(feature = "backend-js")]
+#[test]
+fn mcp_strings_and_composition_use_captured_bytes_and_cli_parity() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("input.js");
+    let source = "function t(){const a=['/api','/login'];return a;}function d(i){return t()[i];}const path=d(0)+d(1);fetch(d(0)+d(1));";
+    std::fs::write(&path, source).unwrap();
+    let mut client = Client::start(&["--allow-path", dir.path().to_str().unwrap()]);
+    client.initialize();
+    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
+    let expected = checked(
+        &mut client,
+        &tools,
+        "js_strings",
+        json!({"input":{"path":path},"resolve_static":true}),
+    );
+    let opened = client.tool("rxd_open", json!({"path":path}));
+    assert_ne!(opened["isError"], true, "{opened}");
+    let input = json!({"target_id":opened["structuredContent"]["target_id"]});
+    std::fs::write(&path, "invalid {{ {").unwrap();
+    let result = client.tool("js_strings", json!({"input":input,"resolve_static":true}));
+    assert_ne!(result["isError"], true, "{result}");
+    assert_eq!(result["structuredContent"]["records"], expected["records"]);
+    for tool in ["js_find", "js_strings", "js_resources"] {
+        let result = client.tool(
+            tool,
+            json!({"input":input,"filter":"/api/login","resolve_static":true}),
+        );
+        assert_ne!(result["isError"], true, "{result}");
+        assert!(
+            !result["structuredContent"]["records"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            result["structuredContent"]["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["detail"]["resolution"] == "decoder")
+        );
+    }
+    let result = client.tool(
+        "js_values",
+        json!({"input":input,"name":"path","resolve_static":true}),
+    );
+    assert_ne!(result["isError"], true, "{result}");
+    assert_eq!(
+        result["structuredContent"]["records"][0]["detail"]["value"]["value"],
+        "/api/login"
+    );
+}
+
 #[cfg(feature = "backend-dotnet")]
 #[test]
 fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
@@ -365,6 +419,11 @@ fn mcp_js_navigation_preserves_cli_identity_and_source() {
         ("js_classes", json!({})),
         ("js_methods", json!({})),
         ("js_find", json!({"filter":"/api/login"})),
+        ("js_strings", json!({})),
+        (
+            "js_strings",
+            json!({"filter":"/api/login","resolve_static":true}),
+        ),
         (
             "js_entities",
             json!({"kind":"function_declaration,arrow_function"}),
@@ -473,6 +532,7 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("js_classes", "js", "classes"),
     ("js_methods", "js", "methods"),
     ("js_find", "js", "find"),
+    ("js_strings", "js", "strings"),
     ("js_identifiers", "js", "identifiers"),
     ("js_calls", "js", "calls"),
     ("js_members", "js", "members"),
@@ -1671,6 +1731,7 @@ fn mcp_recursive_js_keeps_each_file_boundary_and_empty_scan() {
     for name in [
         "js_entities",
         "js_find",
+        "js_strings",
         "js_modules",
         "js_imports",
         "js_exports",

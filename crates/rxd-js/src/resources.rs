@@ -185,7 +185,7 @@ fn value_with_bindings<'a>(
     span: Span,
     forced: Option<&'static str>,
     bindings: Option<&Bindings<'a>>,
-    decoders: Option<&crate::Decoders>,
+    evaluation: Option<crate::static_eval::Context<'_>>,
 ) -> Value {
     let inner = expression.get_inner_expression();
     if forced.is_none() {
@@ -210,11 +210,26 @@ fn value_with_bindings<'a>(
             };
         }
     }
+    if forced.is_none()
+        && let Some(result) = evaluation.and_then(|context| context.evaluate(expression))
+    {
+        let origin = result.resolution();
+        if let crate::static_eval::Value::String(name) = result.value {
+            return Value {
+                name,
+                resolution: origin,
+                unresolved_reason: None,
+                start: span.start,
+                end: span.end,
+                bindings: Vec::new(),
+            };
+        }
+    }
     let mut strings = Strings {
         steps: FOLD_STEPS,
         bindings,
         proofs: Vec::new(),
-        decoders,
+        decoders: evaluation.and_then(|e| e.decoders),
         decoded: false,
     };
     let result = forced.map_or_else(|| strings.expression(expression, 0), Err);
@@ -440,7 +455,7 @@ struct Visitor<'a, 's> {
     source: &'s Source,
     query: &'a ResourcesQuery,
     bindings: Option<&'a Bindings<'s>>,
-    decoders: Option<&'a crate::Decoders>,
+    evaluation: Option<crate::static_eval::Context<'a>>,
     locations: Locations<'a, 's>,
     contexts: Contexts,
     region: Span,
@@ -460,7 +475,7 @@ impl<'s> Visitor<'_, 's> {
             span,
             forced,
             self.bindings,
-            self.decoders,
+            self.evaluation,
         )
     }
 
@@ -710,7 +725,7 @@ pub fn run<'s>(
     perf.measure("query", || {
         let mut visitor = Visitor {
             bindings: bindings.as_ref(),
-            decoders: collector.decoders(),
+            evaluation: collector.decoders().map(|_| collector.evaluation()),
             source,
             query,
             locations: Locations::new(collector),

@@ -126,6 +126,7 @@ pub struct Collector<'s> {
     query_case_sensitive: bool,
     pub entities: Vec<EntityNode>,
     pub matches: Vec<Match>,
+    match_budget: crate::names::RecordBudget,
     pub contexts: Option<Contexts>,
     stack: Vec<usize>,
     frames: Vec<bool>,
@@ -165,6 +166,7 @@ impl<'s> Collector<'s> {
             query_case_sensitive,
             entities: Vec::new(),
             matches: Vec::new(),
+            match_budget: crate::names::RecordBudget::new(limits),
             contexts,
             stack: Vec::new(),
             frames: Vec::new(),
@@ -198,6 +200,7 @@ impl<'s> Collector<'s> {
             .labels
             .get(&(span.start, span.end))
             .cloned()
+            .or_else(|| key.and_then(|key| self.labels.get(&(key.start, key.end)).cloned()))
             .or_else(|| {
                 key.and_then(|key| self.decoders.and_then(|d| d.at_span(key)))
                     .map(|v| (v.value.clone(), "decoder"))
@@ -271,6 +274,18 @@ impl<'s> Collector<'s> {
         }) {
             return;
         }
+        self.match_budget
+            .charge(&value)
+            .and_then(|_| {
+                self.match_budget.charge_bytes(
+                    if matches!(literal_kind, "static_expression" | "decoded") {
+                        span.size() as usize
+                    } else {
+                        0
+                    },
+                )
+            })
+            .unwrap_or_else(|e| panic_any(e));
         let parent = *self.stack.last().expect("program entity precedes literals");
         self.matches.push(Match {
             literal_kind,
@@ -287,6 +302,42 @@ impl<'s> Collector<'s> {
                 .as_ref()
                 .and_then(|contexts| contexts.current_id(self.source)),
         });
+    }
+
+    pub fn evaluation(&self) -> static_eval::Context<'_> {
+        static_eval::Context {
+            limits: self.static_limits,
+            decoders: self.decoders,
+        }
+    }
+    fn key_label(
+        &mut self,
+        key: &PropertyKey<'_>,
+        computed: bool,
+    ) -> Option<(JsString, &'static str)> {
+        if !computed || !self.resolve_static {
+            return None;
+        }
+        let (value, span, origin) =
+            crate::members::computed_key(key.as_expression()?, self.decoders)?;
+        if origin != "decoder" {
+            return None;
+        }
+        // Admit the key cache, optional function context and eventual entity label together.
+        self.match_budget
+            .charge_bytes(value.len_utf16().saturating_mul(6).saturating_add(384))
+            .unwrap_or_else(|e| panic_any(e));
+        self.labels
+            .insert((span.start, span.end), (value.clone(), origin));
+        Some((value, origin))
+    }
+    fn evaluated_literal(&mut self, span: Span, evaluated: Option<static_eval::Evaluated>) {
+        if let Some(value) = evaluated {
+            let resolution = value.resolution();
+            if let static_eval::Value::String(value) = value.value {
+                self.literal(span, value, "static_expression", false, Some(resolution));
+            }
+        }
     }
 
     /// Decoders are built once per run and shared by every query that resolves keys.
@@ -394,6 +445,7 @@ impl<'a> Visit<'a> for Collector<'_> {
                 let key = property.key.span();
                 self.keys.insert((key.start, key.end));
                 let name = key_name(&property.key, property.computed);
+                let decoded = self.key_label(&property.key, property.computed);
                 if property.method || property.kind != PropertyKind::Init {
                     let Expression::FunctionExpression(function) = &property.value else {
                         unreachable!("method function")
@@ -413,33 +465,28 @@ impl<'a> Visit<'a> for Collector<'_> {
                         property.computed.then_some(key),
                     );
                 } else {
-                    let decoded = property
-                        .key
-                        .as_expression()
-                        .and_then(|e| self.decoders.and_then(|d| d.expression(e)));
-                    let origin = if decoded.is_some() {
-                        "decoder"
-                    } else {
-                        "property"
-                    };
-                    let name = name.or_else(|| decoded.map(|v| v.value.clone()));
+                    let origin = decoded.as_ref().map_or("property", |v| v.1);
+                    let name = name.or_else(|| decoded.map(|v| v.0));
                     self.label(&property.value, name, origin);
                 }
             }
             AstKind::PropertyDefinition(property) => {
                 let key = property.key.span();
                 self.keys.insert((key.start, key.end));
+                let decoded = self.key_label(&property.key, property.computed);
                 if let Some(value) = &property.value {
+                    let origin = decoded.as_ref().map_or("property", |v| v.1);
                     self.label(
                         value,
-                        key_name(&property.key, property.computed),
-                        "property",
+                        key_name(&property.key, property.computed).or_else(|| decoded.map(|v| v.0)),
+                        origin,
                     );
                 }
             }
             AstKind::MethodDefinition(method) => {
                 let key = method.key.span();
                 self.keys.insert((key.start, key.end));
+                self.key_label(&method.key, method.computed);
                 self.suppressed
                     .insert((method.value.span.start, method.value.span.end));
                 let kind = match method.kind {
@@ -588,17 +635,7 @@ impl<'a> Visit<'a> for Collector<'_> {
                     && self.resolve_static
                     && static_eval::binary_can_yield_string(binary) =>
             {
-                if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_binary(binary, self.static_limits)
-                {
-                    self.literal(
-                        binary.span,
-                        value,
-                        "static_expression",
-                        false,
-                        Some("static"),
-                    );
-                }
+                self.evaluated_literal(binary.span, self.evaluation().binary(binary));
             }
             AstKind::CallExpression(call) if self.query.is_some() && self.resolve_static => {
                 let decoders = self.decoders;
@@ -607,11 +644,8 @@ impl<'a> Visit<'a> for Collector<'_> {
                     .map(|resolved| resolved.value.clone());
                 if let Some(value) = decoded {
                     self.literal(call.span, value, "decoded", false, Some("decoder"));
-                } else if static_eval::call_can_yield_string(call)
-                    && let Some(static_eval::Value::String(value)) =
-                        static_eval::evaluate_call(call, self.static_limits)
-                {
-                    self.literal(call.span, value, "static_expression", false, Some("static"));
+                } else if static_eval::call_can_yield_string(call) {
+                    self.evaluated_literal(call.span, self.evaluation().call(call));
                 }
             }
             AstKind::TemplateLiteral(template)
@@ -619,34 +653,14 @@ impl<'a> Visit<'a> for Collector<'_> {
                     && self.resolve_static
                     && static_eval::template_can_yield_string(template) =>
             {
-                if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_template(template, self.static_limits)
-                {
-                    self.literal(
-                        template.span,
-                        value,
-                        "static_expression",
-                        false,
-                        Some("static"),
-                    );
-                }
+                self.evaluated_literal(template.span, self.evaluation().template(template));
             }
             AstKind::ComputedMemberExpression(member)
                 if self.query.is_some()
                     && self.resolve_static
                     && static_eval::member_can_yield_string(member) =>
             {
-                if let Some(static_eval::Value::String(value)) =
-                    static_eval::evaluate_member(member, self.static_limits)
-                {
-                    self.literal(
-                        member.span,
-                        value,
-                        "static_expression",
-                        false,
-                        Some("static"),
-                    );
-                }
+                self.evaluated_literal(member.span, self.evaluation().member(member));
             }
             AstKind::StringLiteral(literal) if self.query.is_some() => {
                 let span = (literal.span.start, literal.span.end);

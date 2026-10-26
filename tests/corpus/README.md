@@ -38,6 +38,12 @@ exercises the full `get/locate/get --json` flow. Encrypted cases explicitly veri
 zero hits is a successful result; the static CLI is not required to decrypt or recover
 runtime call relationships.
 
+`strings-expectations.json` comes from `generate-strings.mjs`: pinned Acorn
+independently enumerates every string literal/cooked template part in jQuery,
+the plain-table and RC4 artifacts. E2E checks occurrence counts and hashes of
+ordered UTF-8 range/value tuples, including duplicates and empty strings. It
+validates default enumeration, not decrypted values or inferred call relations.
+
 `refs-expectations.json` stores independent lexical queries for all seven samples:
 Acorn selects single-parameter functions/arrows with exactly one return/throw or an
 expression body and no nested binding/assignment, then derives every read of that
@@ -113,6 +119,7 @@ node generate-definitions.mjs
 node generate-contexts.mjs
 node generate-typed.mjs
 node generate-modules.mjs
+node generate-strings.mjs
 ```
 
 Review generated files, independent expectations and licenses, then run E2E. Never

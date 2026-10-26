@@ -3,6 +3,41 @@ use super::*;
 
 #[cfg(feature = "backend-js")]
 #[test]
+fn js_strings_enumeration_enforces_explicit_metadata_and_output_admission() {
+    let values = (0..400)
+        .map(|i| format!("'{}-{i}'", "x".repeat(256)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let source = format!("const table=[{values}];");
+    let (_dir, path) = fixture(&source, "strings.js");
+    for metadata in [true, false] {
+        let mut limits =
+            rxd_core::Limits::from(rxd_core::Budget::for_input_bytes(source.len()).unwrap());
+        if metadata {
+            limits.metadata_bytes = 128 * 1024;
+        } else {
+            limits.output_bytes = Some(128);
+        }
+        let mut perf = rxd_core::perf::Perf::new(false, "analysis", "js", "strings");
+        let result = rxd_js::run(
+            &path,
+            rxd_js::SourceMode::Auto,
+            rxd_js::Syntax::Auto,
+            rxd_js::Query::Strings {
+                filter: None,
+                case_sensitive: false,
+                resolve_static: false,
+            },
+            limits,
+            &mut perf,
+        );
+        assert_eq!(result.unwrap_err().code, "RESOURCE_LIMIT");
+    }
+    assert_eq!(jsonl(&invoke("strings", &path, &[])).len(), 400);
+}
+
+#[cfg(feature = "backend-js")]
+#[test]
 fn review_js_module_metadata_charges_every_repeated_owned_field() {
     // Fixed metadata admission is a public backend API contract, not a CLI quota knob.
     let ids = (0..32)

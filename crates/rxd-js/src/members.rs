@@ -154,14 +154,17 @@ pub(crate) fn computed_key(
     if let Some(resolved) = decoders.and_then(|decoders| decoders.expression(expression)) {
         return Some((resolved.value.clone(), expression.span(), "decoder"));
     }
-    match static_eval::evaluate(
-        expression,
-        static_eval::Limits {
+    let result = (static_eval::Context {
+        limits: static_eval::Limits {
             allow_intrinsics: false,
             ..Default::default()
         },
-    ) {
-        Some(static_eval::Value::String(value)) => Some((value, expression.span(), "static")),
+        decoders,
+    })
+    .evaluate(expression)?;
+    let origin = result.resolution();
+    match result.value {
+        static_eval::Value::String(value) => Some((value, expression.span(), origin)),
         _ => None,
     }
 }

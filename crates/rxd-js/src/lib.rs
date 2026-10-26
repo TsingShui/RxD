@@ -91,6 +91,11 @@ pub enum Query {
         case_sensitive: bool,
         resolve_static: bool,
     },
+    Strings {
+        filter: Option<String>,
+        case_sensitive: bool,
+        resolve_static: bool,
+    },
     Resources(ResourcesQuery),
     Modules(ModuleQuery),
     Values(ValuesQuery),
@@ -164,6 +169,7 @@ impl Query {
         match self {
             Self::Outline { group, .. } => group.unwrap_or("entities"),
             Self::Find { .. } => "find",
+            Self::Strings { .. } => "strings",
             Self::Resources(_) => "resources",
             Self::Modules(q) => match q.listing {
                 ModuleListing::Modules => "modules",
@@ -286,8 +292,7 @@ pub fn run(
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
-    if let Query::Find { filter, .. } = &query
-        && filter.is_empty()
+    if matches!(&query,Query::Find{filter,..} | Query::Strings{filter:Some(filter),..} if filter.is_empty())
     {
         return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
     }
@@ -304,7 +309,8 @@ pub fn run_source(
     limits: Limits,
     perf: &mut Perf,
 ) -> Result<Vec<u8>> {
-    if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
+    if matches!(&query, Query::Find { filter, .. } | Query::Strings {filter:Some(filter),..} if filter.is_empty())
+    {
         return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
     }
     if let Query::Identifiers { names, .. }
@@ -351,6 +357,11 @@ pub fn run_source(
             case_sensitive,
             ..
         } => Some((filter.clone(), *case_sensitive)),
+        Query::Strings {
+            filter,
+            case_sensitive,
+            ..
+        } => Some((filter.clone().unwrap_or_default(), *case_sensitive)),
         _ => None,
     };
     let (query_text, query_case_sensitive) = match &query_string {
@@ -358,7 +369,7 @@ pub fn run_source(
         None => (None, false),
     };
     let contexts = match &query {
-        Query::Find { .. } | Query::Identifiers { .. } => {
+        Query::Find { .. } | Query::Strings { .. } | Query::Identifiers { .. } => {
             Some(fragment::Contexts::new(fragment::Target::Matches))
         }
         Query::Locate { byte } => Some(fragment::Contexts::new(fragment::Target::Byte(*byte))),
@@ -377,6 +388,7 @@ pub fn run_source(
     };
     let resolve_static = match &query {
         Query::Find { resolve_static, .. }
+        | Query::Strings { resolve_static, .. }
         | Query::Calls { resolve_static, .. }
         | Query::Members { resolve_static, .. }
         | Query::Outline { resolve_static, .. } => *resolve_static,
@@ -398,8 +410,11 @@ pub fn run_source(
     );
     let visited = catch_unwind(AssertUnwindSafe(|| {
         if resolve_static {
-            collector.static_limits.allow_intrinsics =
-                static_eval::intrinsics_allowed(&parsed.program, limits.ast_depth);
+            collector.static_limits.allow_intrinsics = static_eval::intrinsics_allowed(
+                &parsed.program,
+                limits.ast_depth,
+                decoders.as_ref(),
+            );
         }
         collector.visit_program(&parsed.program)
     }));
@@ -418,6 +433,8 @@ pub fn run_source(
         limit: if matches!(
             query,
             Query::Values(_)
+                | Query::Find { .. }
+                | Query::Strings { .. }
                 | Query::Modules(_)
                 | Query::Identifiers { .. }
                 | Query::Calls { .. }
@@ -518,7 +535,7 @@ pub fn run_source(
                 Ok(())
             })?;
         }
-        Query::Find { .. } => {
+        Query::Find { .. } | Query::Strings { .. } => {
             collector.matches.sort_by_key(|m| (m.start, m.end));
             perf.record("query", query_start);
             perf.counters.records = Some(collector.matches.len());

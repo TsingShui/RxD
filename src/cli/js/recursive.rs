@@ -123,7 +123,8 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
         policy,
     };
     // Validate even when discovery yields no files.
-    if matches!(&query, Query::Find { filter, .. } if filter.is_empty()) {
+    if matches!(&query, Query::Find { filter, .. } | Query::Strings{filter:Some(filter),..} if filter.is_empty())
+    {
         return Err(Error::new("INVALID_QUERY", "filter must not be empty"));
     }
     if let Query::Resources(resources) = &query {

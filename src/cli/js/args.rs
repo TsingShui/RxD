@@ -200,6 +200,24 @@ pub(crate) enum Command {
         #[arg(long)]
         within: Option<String>,
     },
+    /// Enumerate string occurrences and optional proven expressions (JSONL).
+    #[command(
+        after_long_help = "Examples:\nrxd js strings bundle.js\nrxd js strings src/ --resolve-static\nOptional -f/--filter searches values; occurrences are not deduplicated.\nOutput: the same match JSONL as find, in original byte order; use context_at with slice.\n--resolve-static includes bounded expressions composed from proven decoder calls, not a complete decrypted table."
+    )]
+    Strings {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        scan: Scan,
+        /// Optional substring of a string value; folded unless --case sensitive.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
+        /// Also enumerate bounded closed expressions and proven decoder values.
+        #[arg(long)]
+        resolve_static: bool,
+    },
     /// Find substrings in decoded JS literals (JSONL).
     #[command(
         after_long_help = "Examples:\nrxd js find bundle.js -f '/api/login'\nrxd js find bundle.js -f login --resolve-static\nRequired: non-empty -f/--filter. Searches decoded literals, not arbitrary source text.\nOutput: match JSONL; use context_at for a local syntax fragment, parent_at for its entity.\nNext: rxd js slice bundle.js --at '<match.context_at>'.\n--resolve-static folds bounded closed AST expressions and recognized literal-table decoders."
@@ -457,6 +475,16 @@ impl Command {
                 case_sensitive: case.sensitive(),
                 resolve_static,
             },
+            Self::Strings {
+                filter,
+                case,
+                resolve_static,
+                ..
+            } => Query::Strings {
+                filter,
+                case_sensitive: case.sensitive(),
+                resolve_static,
+            },
             Self::Resources {
                 kind,
                 resolution,
@@ -549,6 +577,7 @@ impl Command {
             Self::Classes { .. } => "classes",
             Self::Methods { .. } => "methods",
             Self::Find { .. } => "find",
+            Self::Strings { .. } => "strings",
             Self::Modules { .. } => "modules",
             Self::Imports { .. } => "imports",
             Self::Exports { .. } => "exports",
@@ -570,6 +599,7 @@ impl Command {
             | Self::Classes { scan, .. }
             | Self::Methods { scan, .. }
             | Self::Find { scan, .. }
+            | Self::Strings { scan, .. }
             | Self::Resources { scan, .. }
             | Self::Modules { scan, .. }
             | Self::Imports { scan, .. }
@@ -589,6 +619,7 @@ impl Command {
             | Self::Classes { common, .. }
             | Self::Methods { common, .. }
             | Self::Find { common, .. }
+            | Self::Strings { common, .. }
             | Self::Resources { common, .. }
             | Self::Modules { common, .. }
             | Self::Imports { common, .. }

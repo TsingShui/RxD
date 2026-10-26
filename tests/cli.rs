@@ -9,6 +9,8 @@ mod container_entry;
 #[path = "html/mod.rs"]
 mod html;
 #[cfg(feature = "backend-js")]
+mod js_literals;
+#[cfg(feature = "backend-js")]
 mod js_modules;
 #[path = "resource_policy/mod.rs"]
 mod resource_policy;

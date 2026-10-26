@@ -15,7 +15,7 @@ explicitly, then locate → associate
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `find`, `identifiers`, `calls`, `members`, `locate`, `symbols`, `modules`/`imports`/`exports` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
+| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `strings`/`find`, `identifiers`, `calls`, `members`, `locate`, `symbols`, `modules`/`imports`/`exports` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
 | Electron ASAR | `rxd asar` | `entries` / JS, HTML and WASM queries accept `rxd BACKEND COMMAND app.asar --entry ENTRY_PATH`; other backends use `extract --at` first |
 | ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; JS/HTML/WASM also accept `--entry` with a printed `zip:N` coordinate or unique exact path |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
@@ -86,6 +86,7 @@ offsets obtained from the preceding response. Keep each input fixed and use its 
 ```sh
 rxd js entities bundle.js -f login
 rxd js find bundle.js -f '/api/login'
+rxd js strings bundle.js --resolve-static
 rxd js slice bundle.js --at "$CONTEXT_AT" --json
 rxd js identifiers bundle.js --name 'AIS3' --role reference
 rxd js calls bundle.js --name 'fetch'
@@ -96,7 +97,12 @@ rxd js xref bundle.js --byte "$SYMBOL_BYTE"   # a raw offset, e.g. inside a mult
 rxd js slice bundle.js --at "$SYMBOL_AT"
 ```
 
-A find match has no coordinate of its own: use its `context_at` for a local syntax
+`strings` enumerates the same match records as `find` without requiring a needle;
+optional `-f` filters values. It preserves occurrences, including duplicate/empty
+literals and dynamic template parts, rather than deduplicating a string pool or
+claiming a complete decrypted table. `--resolve-static` adds proved expressions.
+
+A find/strings match has no coordinate of its own: use its `context_at` for a local syntax
 fragment, falling back to `parent_at` for the enclosing entity. `ENTITY_AT` is a
 row from `entities` or a match's `parent_at`; a fragment coordinate is not valid
 for `symbols --within`. A symbol row's `at` anchors `xref`; its `start` byte is the
@@ -153,9 +159,11 @@ name/label; `functions`, `classes` and `methods` are the same
 rows restricted to one kind group. `find
 --resolve-static` additionally matches bounded AST constant evaluation; those
 hits are `literal_kind: static_expression` with `detail.raw` and
-`resolution: static`.
+`resolution: static`, or `decoder` when composition uses proven decoder values.
+Existing bounded concatenation, template, indexing and string operations compose
+those values; this does not follow factory returns or interpret arbitrary calls.
 
-`--resolve-static` shares one decoder proof across `find`, `calls`, `members`,
+`--resolve-static` shares one decoder proof across `strings`, `find`, `calls`, `members`,
 `values`, `resources` and structure labels. Supported shapes use a closed string
 array factory, a lexical decoder with a bounded integral numeric index and at
 most one numeric offset, and optionally one uniquely solved cached-table rotation.
@@ -169,8 +177,9 @@ leave intrinsic-dependent recovery unresolved. Computed reads outside the proven
 decoder/initializer need closed or recovered keys; opaque reads remain unsupported.
 
 Recovered find hits have `literal_kind: decoded`, `resolution: decoder` and the
-original call in `raw`; calls/members expose the proven key, values use
-`key_resolution: decoder`, and resources use `resolution: decoder`. Opt-in entity
+original call in `raw`; calls/members expose the proven key. Values use
+`detail.value.resolution: decoder` for values and `key_resolution: decoder` for
+computed keys; resources use `resolution: decoder`. Opt-in entity
 labels use `label_origin: decoder` without changing declared `name`, coordinates
 or source bytes. Mutated/escaping tables or decoders, unsafe initialization,
 string/fractional or opaque indices, exported/ambient table escapes, prototype or
