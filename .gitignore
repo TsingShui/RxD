@@ -1,4 +1,5 @@
 /target/
+/.private-test/
 .DS_Store
 /tests/corpus/node_modules/
 __pycache__/
