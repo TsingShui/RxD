@@ -6,8 +6,8 @@
 Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native EVMole EVM
 bytecode analysis. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
-CLI adapter and bundled specs. ASAR and ZIP archives are unpacked into a
-directory; they are not analyzed in place.
+CLI adapter and bundled specs. ASAR, ZIP and PyInstaller archives are unpacked
+into a directory; they are not analyzed in place.
 
 The current layout is:
 
@@ -22,12 +22,15 @@ The current layout is:
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/dex/`, `src/cli/jvm/`,
   `src/cli/dotnet/`, `src/cli/kuna/`, `src/cli/evm/`, `src/cli/wasm/`,
   and `src/cli/pyc/`: peer command adapters. `src/cli/unpack.rs` performs
-  whole-archive ASAR/ZIP extraction. DEX preserves streaming and exit-code contracts.
+  whole-archive ASAR/ZIP/PyInstaller extraction. DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
 - `crates/rxd-zip/`: ZIP-family index and whole-archive Stored/Deflate extraction
   with CRC, length, duplicate-path and path-safety validation.
+- `crates/rxd-pyinstaller/`: PyInstaller CArchive/PYZ extraction with reconstructed
+  `.pyc` headers.
+- `crates/rxd-wxapkg/`: wxapkg index extraction and V1MMWX appid decryption.
 - `crates/rxd-dex/`: APK/DEX analysis, Manifest and Java emission; the shared
   typed service is provided by `src/mcp/`.
 - `crates/rxd-jvm/`: class/JAR parsing and JVM stack front end; lifts bytecode
@@ -50,11 +53,11 @@ The current layout is:
   its former App sources are not part of this repository.
 - `tests/fixtures/` and `tests/cli.rs`: handcrafted inputs and CLI contract
   tests; testing guidance is in `tests/AGENTS.md`.
-- `tests/corpus/`: pinned production releases, obfuscated samples, independent
-  parser expectations, and the WABT wasm-decompile differential suite;
+- `tests/corpus/`: pinned production releases, obfuscated samples, PyInstaller, ZIP and
+  wxapkg fixtures, independent parser expectations, and the WABT wasm-decompile differential suite;
   provenance and generation instructions are in `tests/corpus/README.md` and
   per-backend corpus READMEs.
-- `benches/`: end-to-end benchmarks (`cli.py` for JS, `mcp.py`),
+- `benches/`: end-to-end benchmarks (`mcp.py`)
   the pinned ILSpy build in `benches/ilspy/`, and measurement/perf contracts in
   `benches/README.md`. The per-backend runners written for the earlier CLI
   generation were removed; a backend that needs one gets it written against the

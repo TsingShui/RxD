@@ -1,4 +1,4 @@
-//! Whole-archive extraction for ASAR and ZIP containers.
+//! Whole-archive extraction for ASAR, ZIP, PyInstaller and wxapkg containers.
 use std::{
     fs,
     io::Read,
@@ -10,7 +10,7 @@ use rxd_core::{Error, Limits, Result, perf::Perf};
 
 #[derive(Args)]
 pub(crate) struct Command {
-    /// ASAR or ZIP-family archive to unpack.
+    /// ASAR, ZIP-family, PyInstaller or wxapkg input, or PyInstaller one-dir root.
     pub(super) archive: PathBuf,
     /// New directory that receives every extracted file.
     #[arg(short, long, value_name = "DIR")]
@@ -18,40 +18,92 @@ pub(crate) struct Command {
     /// Emit phase timings as JSONL on stderr.
     #[arg(long)]
     pub(super) perf: bool,
+    /// WeChat appid for encrypted V1MMWX wxapkg inputs.
+    #[arg(long, value_name = "WXID")]
+    pub(super) appid: Option<String>,
 }
 
 enum Format {
     Asar,
     Zip,
+    PyInstaller,
+    Wxapkg,
 }
 
 fn detect(path: &Path) -> Result<Format> {
     let mut file = fs::File::open(path)?;
-    let mut magic = [0u8; 4];
+    let mut magic = [0u8; 6];
     file.read_exact(&mut magic)
         .map_err(|_| Error::new("INVALID_INPUT", "archive is too short"))?;
-    if magic == [4, 0, 0, 0] {
+    if magic[..4] == [4, 0, 0, 0] {
         return Ok(Format::Asar);
     }
     if magic.starts_with(b"PK") {
         return Ok(Format::Zip);
     }
+    if rxd_wxapkg::detect(path)? {
+        return Ok(Format::Wxapkg);
+    }
+    if magic.starts_with(b"V1MMWX") {
+        return Ok(Format::Wxapkg);
+    }
+    if rxd_pyinstaller::detect(path)? {
+        return Ok(Format::PyInstaller);
+    }
     Err(Error::new(
         "UNSUPPORTED_INPUT",
-        "expected an ASAR or ZIP archive",
+        "expected an ASAR, ZIP, PyInstaller or wxapkg input",
     ))
 }
 
-fn receipt(format: &str, output: &Path, files: usize, bytes: u64) -> Vec<u8> {
+struct Receipt<'a> {
+    format: &'a str,
+    output: &'a Path,
+    files: usize,
+    bytes: u64,
+    pyinstaller: Option<&'a rxd_pyinstaller::Summary>,
+    wxapkg: Option<&'a rxd_wxapkg::Summary>,
+    layout: Option<&'a str>,
+    launcher: Option<&'a Path>,
+}
+
+fn receipt(receipt: Receipt<'_>) -> Vec<u8> {
+    let Receipt {
+        format,
+        output,
+        files,
+        bytes,
+        pyinstaller,
+        wxapkg,
+        layout,
+        launcher,
+    } = receipt;
+    let mut detail = serde_json::json!({
+        "complete": true,
+        "format": format,
+        "path": output.to_string_lossy(),
+        "files": files,
+        "bytes": bytes,
+    });
+    if let Some(summary) = pyinstaller {
+        detail["python"] = serde_json::json!(summary.python);
+        detail["pyz_files"] = serde_json::json!(summary.pyz_files);
+        detail["pyz_bytes"] = serde_json::json!(summary.pyz_bytes);
+        detail["skipped"] = serde_json::json!(summary.skipped);
+    }
+    if let Some(summary) = wxapkg {
+        detail["encrypted"] = serde_json::json!(summary.encrypted);
+        detail["appid"] = serde_json::json!(summary.appid);
+    }
+    if let Some(layout) = layout {
+        detail["layout"] = serde_json::json!(layout);
+    }
+    if let Some(launcher) = launcher {
+        detail["launcher"] = serde_json::json!(launcher.to_string_lossy());
+    }
     let mut line = serde_json::to_vec(&serde_json::json!({
         "record": "unpack",
-        "detail": {
-            "complete": true,
-            "format": format,
-            "path": output.to_string_lossy(),
-            "files": files,
-            "bytes": bytes,
-        }
+        "detail": detail,
     }))
     .expect("receipt serializes");
     line.push(b'\n');
@@ -63,10 +115,7 @@ pub(crate) fn execute(
     policy: rxd_core::BudgetPolicy,
     sink: &mut super::Output<'_>,
 ) -> Result<()> {
-    let budget = policy.for_file(&command.archive)?;
-    let limits = Limits::from(budget);
     let mut perf = Perf::new(command.perf, "analysis", "unpack", "unpack");
-    perf.limits = Some(limits);
     let result = (|| {
         if command.output.symlink_metadata().is_ok() {
             return Err(Error::new(
@@ -84,11 +133,26 @@ pub(crate) fn execute(
                 "output must not replace the input archive",
             ));
         }
-        let format = detect(&command.archive)?;
+        let onedir = command.archive.is_dir();
+        let archive = if onedir {
+            rxd_pyinstaller::find_launcher(&command.archive)?
+        } else {
+            command.archive.clone()
+        };
+        let budget = policy.for_file(&archive)?;
+        let limits = Limits::from(budget);
+        perf.limits = Some(limits);
+        let format = if onedir {
+            Format::PyInstaller
+        } else {
+            detect(&archive)?
+        };
         fs::create_dir(&command.output)?;
+        let mut pyinstaller = None;
+        let mut wxapkg = None;
         let extracted = match format {
             Format::Asar => rxd_asar::unpack(
-                &command.archive,
+                &archive,
                 &command.output,
                 limits,
                 budget.entries,
@@ -96,12 +160,52 @@ pub(crate) fn execute(
                 &mut perf,
             )
             .map(|result| ("asar", result.files, result.bytes)),
-            Format::Zip => rxd_zip::unpack(&command.archive, &command.output, budget, &mut perf)
+            Format::Zip => rxd_zip::unpack(&archive, &command.output, budget, &mut perf)
                 .map(|result| ("zip", result.files, result.bytes)),
+            Format::PyInstaller => rxd_pyinstaller::unpack(
+                &archive,
+                &command.output,
+                limits,
+                budget.entries,
+                &mut perf,
+            )
+            .map(|result| {
+                pyinstaller = Some(result);
+                ("pyinstaller", 0, 0)
+            }),
+            Format::Wxapkg => rxd_wxapkg::unpack(
+                &archive,
+                &command.output,
+                limits,
+                budget.entries,
+                command.appid.as_deref(),
+                &mut perf,
+            )
+            .map(|result| {
+                let files = result.files;
+                let bytes = result.bytes;
+                wxapkg = Some(result);
+                ("wxapkg", files, bytes)
+            }),
         };
         match extracted {
             Ok((format, files, bytes)) => {
-                let bytes = receipt(format, &command.output, files, bytes);
+                let pyinstaller = pyinstaller.as_ref();
+                let files = pyinstaller.map_or(files, |summary| summary.files);
+                let bytes = pyinstaller.map_or(bytes, |summary| summary.bytes);
+                let layout =
+                    (format == "pyinstaller").then_some(if onedir { "onedir" } else { "onefile" });
+                let launcher = onedir.then_some(archive.as_path());
+                let bytes = receipt(Receipt {
+                    format,
+                    output: &command.output,
+                    files,
+                    bytes,
+                    pyinstaller,
+                    wxapkg: wxapkg.as_ref(),
+                    layout,
+                    launcher,
+                });
                 perf.measure("write", || super::write_output(&bytes, None, sink))
             }
             Err(error) => {

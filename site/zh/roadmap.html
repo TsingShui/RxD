@@ -72,7 +72,7 @@
         <span class="rm-status">已交付</span>
         <div class="rm-body">
           <h3>10 个静态分析后端</h3>
-          <p>ASAR/ZIP 解包、APK/DEX、JVM、.NET、WASM、PYC、EVM，以及可选的 Kuna。每个后端保留自己的查询语义、输入内坐标与原始提取能力。</p>
+          <p>ASAR/ZIP/PyInstaller/wxapkg 解包、APK/DEX、JVM、.NET、WASM、PYC、EVM，以及可选的 Kuna。每个后端保留自己的查询语义、输入内坐标与原始提取能力。</p>
         </div>
       </div>
       <div class="rm-item">
@@ -111,8 +111,8 @@
       <div class="rm-item">
         <span class="rm-status is-next">计划中</span>
         <div class="rm-body">
-          <h3><code>rxd pyz</code>：PyInstaller / zipapp 容器</h3>
-          <p>独立于 PYC 的容器入口。不承诺整目录批量反编译，容器内容也不当作已验证源码。</p>
+          <h3>zipapp 容器</h3>
+          <p>PyInstaller 单文件已由 <code>rxd unpack</code> 支持，输出重建头部的 <code>.pyc</code>；zipapp 仍待补充。容器内容不自动当作已验证源码。</p>
         </div>
       </div>
       <div class="rm-item">

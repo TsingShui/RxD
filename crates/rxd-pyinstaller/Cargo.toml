@@ -1,0 +1,15 @@
+[package]
+name = "rxd-pyinstaller"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+flate2 = "1"
+rxd-core.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+sha2 = "0.10"
+tempfile = "3.27"

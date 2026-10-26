@@ -27,3 +27,15 @@ by their feature-scoped CLI tests. Sample code is never executed.
 
 `zip/` retains a published AAR/VSIX with independent metadata and payload
 expectations; see [zip/README.md](zip/README.md).
+
+## wxapkg fixtures
+
+`tests/fixtures/wxapkg/` contains small normal and `V1MMWX`-encrypted packages
+used by the unpack CLI tests; see [wxapkg/README.md](../fixtures/wxapkg/README.md).
+
+## PyInstaller corpus
+
+`pyinstaller/` retains a one-file Mach-O built with PyInstaller 6.22.3 and Python
+3.9.6, one-file and one-dir launcher handling, plus its pinned expected output; see
+[pyinstaller/README.md](pyinstaller/README.md). The executable is unpacked
+statically and never run.

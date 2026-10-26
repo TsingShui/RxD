@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC and WASM, plus ASAR/ZIP unpacking |
+| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC and WASM, plus ASAR/ZIP/PyInstaller/wxapkg unpacking |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |
@@ -215,7 +215,7 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 
 | Backend | Entry | Capability | Status |
 | --- | --- | --- | --- |
-| **Unpack** | `rxd unpack` | Detect ASAR or ZIP by content and extract every regular file into a new directory; one JSON receipt | ✅ |
+| **Unpack** | `rxd unpack` | Detect ASAR, ZIP, PyInstaller or wxapkg by content and extract every regular file into a new directory; PyInstaller one-dir roots and V1MMWX wxapkg encryption are supported | ✅ |
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
 | **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |

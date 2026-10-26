@@ -15,7 +15,7 @@ explicitly, then locate → associate
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| ASAR or ZIP archive | `rxd unpack` | `rxd unpack ARCHIVE -o DIR`; extracts every regular file into a new directory |
+| ASAR, ZIP, PyInstaller or wxapkg input | `rxd unpack` | `rxd unpack ARCHIVE_OR_ONEDIR -o DIR`; extracts every regular file, PYZ modules and reconstructed `.pyc` files; for one-dir, finds the launcher; for V1MMWX wxapkg, pass `--appid` |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
@@ -25,12 +25,17 @@ explicitly, then locate → associate
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
-conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR and ZIP
-are opaque containers: `rxd unpack ARCHIVE -o DIR` extracts every regular file
-into a new directory, then analyze those files with the matching backend. There
-is no entry selection or in-memory archive analysis. AAR code normally lives in
-`classes.jar` or `libs/*.jar`: unpack, then use `rxd jar`. Encrypted entries,
-links and automatic nested extraction are unsupported.
+conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR, ZIP and
+PyInstaller are opaque containers: `rxd unpack ARCHIVE -o DIR` extracts every
+regular file into a new directory, then analyze those files with the matching
+backend. PyInstaller one-file inputs additionally emit `PYZ.pyz_extracted`
+modules with reconstructed `.pyc` headers. A PyInstaller one-dir root is accepted too:
+its launcher's CArchive/PYZ is extracted; loose `_internal` dependencies stay in place.
+wxapkg is unpacked from its index; encrypted `V1MMWX` PC/Mac packages need
+`--appid` or a path component matching the appid. There is no entry selection or
+in-memory archive analysis. AAR code normally lives in
+`classes.jar` or `libs/*.jar`: unpack, then use `rxd jar`. Encrypted ASAR/ZIP/PyInstaller entries, links and automatic nested extraction
+beyond PYZ are unsupported.
 
 ## Consume results and preserve identity
 

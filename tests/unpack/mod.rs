@@ -193,3 +193,120 @@ fn unpack_extracts_pinned_production_archives_with_independent_payload_hashes() 
         }
     }
 }
+
+#[test]
+fn unpack_extracts_a_pinned_pyinstaller_archive_with_pyz_modules_and_pyc_headers() {
+    use sha2::{Digest, Sha256};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let expectations: Value =
+        serde_json::from_str(include_str!("../corpus/pyinstaller/expectations.json")).unwrap();
+    let archive = root
+        .join("tests/corpus/pyinstaller")
+        .join(expectations["file"].as_str().unwrap());
+    let directory = TempDir::new().unwrap();
+    let output = directory.path().join("out");
+    let receipt = receipt(&run(&archive, &output));
+    let detail = &receipt["detail"];
+    for key in [
+        "format",
+        "python",
+        "files",
+        "bytes",
+        "pyz_files",
+        "pyz_bytes",
+        "skipped",
+    ] {
+        assert_eq!(detail[key], expectations["receipt"][key], "{key}");
+    }
+    for key in ["pyc", "pyz_module"] {
+        let bytes = fs::read(output.join(expectations[key]["path"].as_str().unwrap())).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&bytes)),
+            expectations[key]["sha256"].as_str().unwrap(),
+            "{key}"
+        );
+    }
+    let pyc = fs::read(output.join("hello.pyc")).unwrap();
+    assert_eq!(&pyc[..4], b"\x61\r\r\n");
+    #[cfg(feature = "backend-pyc")]
+    {
+        let decompiled = Command::new(env!("CARGO_BIN_EXE_rxd"))
+            .args(["pyc", "decompile"])
+            .arg(output.join("hello.pyc"))
+            .output()
+            .unwrap();
+        success(&decompiled);
+        let source = String::from_utf8(decompiled.stdout).unwrap();
+        assert!(source.contains("json.dumps"), "{source}");
+    }
+}
+
+#[test]
+fn unpack_finds_the_launcher_of_a_pyinstaller_one_dir_tree() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture = root.join("tests/corpus/pyinstaller/hello");
+    let directory = TempDir::new().unwrap();
+    let application = directory.path().join("application");
+    fs::create_dir(&application).unwrap();
+    fs::copy(&fixture, application.join("hello")).unwrap();
+    fs::create_dir(application.join("_internal")).unwrap();
+    fs::write(
+        application.join("_internal/base_library.zip"),
+        b"placeholder",
+    )
+    .unwrap();
+    let output = directory.path().join("out");
+    let receipt = receipt(&run(&application, &output));
+    assert_eq!(receipt["detail"]["format"], "pyinstaller");
+    assert_eq!(receipt["detail"]["layout"], "onedir");
+    assert_eq!(
+        receipt["detail"]["launcher"],
+        application.join("hello").to_string_lossy().as_ref()
+    );
+    assert!(output.join("hello.pyc").is_file());
+    assert!(output.join("PYZ.pyz_extracted/json/__init__.pyc").is_file());
+    assert!(!output.join("_internal").exists());
+}
+
+#[test]
+fn unpack_extracts_normal_and_v1mmwx_wxapkg_packages() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = TempDir::new().unwrap();
+
+    let normal = directory.path().join("normal.wxapkg");
+    fs::copy(root.join("tests/fixtures/wxapkg/sample.wxapkg"), &normal).unwrap();
+    let output = directory.path().join("normal-out");
+    let normal_receipt = receipt(&run(&normal, &output));
+    assert_eq!(normal_receipt["detail"]["format"], "wxapkg");
+    assert_eq!(normal_receipt["detail"]["files"], 3);
+    assert_eq!(normal_receipt["detail"]["encrypted"], false);
+    assert_eq!(fs::read(output.join("app-service.js")).unwrap(), b"App({})");
+
+    let encrypted = directory.path().join("encrypted.wxapkg");
+    fs::copy(
+        root.join("tests/fixtures/wxapkg/sample.enc.wxapkg"),
+        &encrypted,
+    )
+    .unwrap();
+    let output = directory.path().join("encrypted-out");
+    failure(run(&encrypted, &output), 1, "UNSUPPORTED_INPUT");
+    assert!(!output.exists());
+
+    let output = directory.path().join("encrypted-out");
+    let request = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["unpack"])
+        .arg(&encrypted)
+        .args(["-o"])
+        .arg(&output)
+        .args(["--appid", "wx1234567890abcdef"])
+        .output()
+        .unwrap();
+    let decrypted = receipt(&request);
+    assert_eq!(decrypted["detail"]["format"], "wxapkg");
+    assert_eq!(decrypted["detail"]["encrypted"], true);
+    assert_eq!(decrypted["detail"]["appid"], "wx1234567890abcdef");
+    assert_eq!(
+        fs::read(output.join("pages/index/index.wxml")).unwrap(),
+        b"<view>hello</view>"
+    );
+}

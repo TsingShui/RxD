@@ -51,8 +51,6 @@ mod unpack;
 mod wasm;
 /// Identity selectors are shared by FETCH as well as reference queries.
 #[cfg(any(
-    feature = "backend-asar",
-    feature = "backend-zip",
     feature = "backend-dex",
     feature = "backend-jvm",
     feature = "backend-dotnet",
@@ -65,12 +63,12 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM and PYC files; unpack ASAR/ZIP archives",
+    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM and PYC files; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
   rxd dotnet --help    Managed DLL/EXE: metadata, IL, optional C#
-  rxd unpack --help    ASAR or ZIP archive: extract every file
+  rxd unpack --help    ASAR/ZIP/PyInstaller/wxapkg input: extract every file
   rxd wasm --help      Binary core WASM: functions and instructions/C-like
   rxd pyc --help       CPython bytecode: codes, constants, Python reconstruction
   rxd evm --help       Local raw/hex EVM bytecode: specify --encoding
@@ -133,14 +131,23 @@ EVM interfaces/storage/ownership are inferred candidates, not verified Solidity 
         command: evm::Command,
     },
     #[cfg(feature = "unpack")]
-    /// Unpack an ASAR or ZIP archive into a new directory.
+    /// Unpack an ASAR, ZIP, PyInstaller or wxapkg input into a new directory.
     #[command(after_long_help = "Examples:
   rxd unpack app.asar -o app
   rxd unpack archive.zip -o archive
-Output: every regular file under the new directory; one JSON receipt on stdout.
+  rxd unpack app.bin -o app
+  rxd unpack app_onedir -o app
+  rxd unpack app.wxapkg -o app
+  rxd unpack app.enc.wxapkg --appid wx1234567890abcdef -o app
+Output: extracted files under the new directory; one JSON receipt on stdout.
 Format is detected from content. The output directory must not exist.
 ZIP entries must be regular, unencrypted Stored/Deflate files.
-No entry selection, nested extraction, links, or encrypted archives.")]
+PyInstaller one-file executables yield CArchive files and a PYZ.pyz_extracted tree of .pyc files.
+For a PyInstaller one-dir root, its launcher is found and only its CArchive/PYZ is
+unpacked; loose _internal files remain in the input directory.
+wxapkg extracts the indexed files; V1MMWX PC/Mac packages require --appid or an
+appid path component.
+No entry selection, nested extraction beyond PYZ, links, or encrypted ASAR/ZIP/PyInstaller archives.")]
     Unpack {
         #[command(flatten)]
         command: unpack::Command,
@@ -222,9 +229,9 @@ impl Cli {
             Backend::Kuna { .. } => true,
             #[cfg(feature = "mcp")]
             Backend::Mcp(_) => true,
+            #[cfg(feature = "unpack")]
+            Backend::Unpack { .. } => true,
             #[cfg(any(
-                feature = "backend-asar",
-                feature = "backend-zip",
                 feature = "backend-jvm",
                 feature = "backend-dotnet",
                 feature = "backend-evm",

@@ -1,0 +1,24 @@
+{
+  "file": "hello",
+  "sha256": "ea2bf6091a3a1c7179b8b6bf27e735b42aab298f43b657463c122c37f7c27a6d",
+  "builder": "PyInstaller 6.22.3",
+  "python": "3.9.6",
+  "format": "Mach-O arm64 onefile",
+  "receipt": {
+    "format": "pyinstaller",
+    "python": "3.9",
+    "files": 135,
+    "bytes": 11495741,
+    "pyz_files": 84,
+    "pyz_bytes": 1759930,
+    "skipped": 1
+  },
+  "pyc": {
+    "path": "hello.pyc",
+    "sha256": "6836a464895e1be924c408626afe497ea3ce1e99e25dab8193700d899d85391c"
+  },
+  "pyz_module": {
+    "path": "PYZ.pyz_extracted/json/__init__.pyc",
+    "sha256": "f82fe688bbbfb6ff9be39246a25e431c793f60ddc0b84203d4fd4a68e24ecde9"
+  }
+}

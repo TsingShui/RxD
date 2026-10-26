@@ -69,7 +69,7 @@ def plan(paths):
                 scopes.add(backend)
                 reasons[path] = "backend-scoped public package/CLI checks"
             else:
-                # ASAR unpack shares unnamespaced tests/cli.rs; do not guess filters.
+                # Unpack shares unnamespaced tests/cli.rs; do not guess filters.
                 scopes.add("shared")
                 reasons[path] = "shared, unnamespaced, or unknown input; conservative full default gates"
     return {

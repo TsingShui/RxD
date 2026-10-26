@@ -129,7 +129,7 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         success(&output);
         let help = String::from_utf8(output.stdout).unwrap();
         assert!(help.contains("Examples:") && help.contains("Output:"));
-        assert!(help.contains("ASAR or ZIP"));
+        assert!(help.contains("PyInstaller") && help.contains("wxapkg"));
         assert_query_focused(&help);
         assert!(
             !Command::new(binary)
