@@ -150,6 +150,12 @@ A filter for the payload's decoded text then returns zero rows; that is a scope
 limit, not evidence of absence. Unescape the value mechanically, keep the derived
 bytes as a separate file, and analyze that file with its own coordinates.
 
+`rxd js deobfuscate file.js` rewrites only recognised string-array factories,
+rotators and decoder calls with literal arguments; unresolved calls keep their
+setup. Treat it as a source transform: write the result to a new file and use
+new coordinates. Decoder setup runs in a bounded QuickJS runtime inside the
+analysis worker with no host I/O; timeout or failure is an explicit error.
+
 A find/strings match has no coordinate of its own: use its `context_at` for a local syntax
 fragment, falling back to `parent_at` for the enclosing entity. `ENTITY_AT` is a
 row from `entities` or a match's `parent_at`; a fragment coordinate is not valid

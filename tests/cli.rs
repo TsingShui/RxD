@@ -5170,6 +5170,81 @@ fn js_parser_resources_follow_only_earlier_unwritten_same_scope_const_strings() 
     assert_eq!(rows[0]["detail"]["unresolved_reason"], "dynamic_scope");
 }
 
+#[cfg(feature = "backend-js")]
+fn deobfuscate_fixture(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/js/deobfuscate")
+        .join(name);
+    let output = invoke("deobfuscate", &path, &[]);
+    success(&output);
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[cfg(feature = "backend-js")]
+#[test]
+fn js_deobfuscate_recovers_string_tables_and_keeps_unresolved_setup() {
+    let hello = "console[\"log\"](\"Hello World!\")";
+    let cases = [
+        ("rotator-unary.js", hello),
+        (
+            "simple-string-array.js",
+            "console[\"log\"](\"Hello, World!\")",
+        ),
+        ("obfuscator.io-var-functions.js", hello),
+        ("obfuscator.io-multi-encoders.js", hello),
+        (
+            "obfuscator.io-string-array-undefined.js",
+            "console[\"log\"](void 0)",
+        ),
+        ("obfuscator.io-decode-external-vars.js", hello),
+    ];
+    for (name, expected) in cases {
+        let code = deobfuscate_fixture(name);
+        assert!(
+            code.contains(expected),
+            "{name} missing {expected:?}:\n{code}"
+        );
+        let dir = TempDir::new().unwrap();
+        let cleaned = dir.path().join("cleaned.js");
+        fs::write(&cleaned, &code).unwrap();
+        success(&invoke("functions", &cleaned, &[]));
+    }
+
+    let text = deobfuscate_fixture("simple-string-array.js");
+    assert!(
+        text.contains("const arr2 = ['log', 'Hello, World!'];"),
+        "{text}"
+    );
+    assert!(
+        text.contains("const arr4 = ['log', 'Hello, World!'];"),
+        "{text}"
+    );
+    assert!(!text.contains("const arr3 ="), "{text}");
+
+    let rotator = deobfuscate_fixture("rotator-unary.js");
+    assert!(!rotator.contains("function b("), "{rotator}");
+    assert!(!rotator.contains("function a("), "{rotator}");
+
+    let aliased = deobfuscate_fixture("obfuscator.io-multi-encoders.js");
+    assert!(aliased.contains("function b("), "{aliased}");
+    assert!(aliased.contains("function c("), "{aliased}");
+    let assigned = deobfuscate_fixture("obfuscator.io-var-functions.js");
+    assert!(assigned.contains("var d = function"), "{assigned}");
+}
+
+#[cfg(feature = "backend-js")]
+#[test]
+fn js_deobfuscate_keeps_unresolved_decoder_setup() {
+    let code = deobfuscate_fixture("obfuscator.io.js");
+    assert!(code.contains("function c()"), "{code}");
+    assert!(code.contains("function d("), "{code}");
+    assert!(
+        code.contains("console[\"log\"](\"Hello World!\")"),
+        "{code}"
+    );
+    assert!(code.contains("m(p ? 0xc7 : 0xc8)"), "{code}");
+}
+
 #[cfg(feature = "backend-dex")]
 #[path = "dex/mod.rs"]
 mod dex;

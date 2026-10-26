@@ -176,8 +176,9 @@ supports the three Unix targets above.
 **Build from source**: initialize the Kuna submodule, then a normal Cargo build
 enables `all-feature` (all backend namespaces and MCP). Desktop ILSpy is not
 checked in and is not embedded by default; C# reconstruction is opt-in. Kuna is
-not built or embedded by default. Rust and system linker tools are still required;
-the first dependency download needs network access. macOS is ARM64-only; Linux
+not built or embedded by default. Rust, system linker tools and a C compiler are
+required: the JS backend embeds QuickJS for bounded deobfuscation setup. The first
+dependency download needs network access. macOS is ARM64-only; Linux
 supports ARM64/x86_64; Windows x64 is supported.
 
 ```sh

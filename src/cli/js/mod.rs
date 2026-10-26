@@ -53,6 +53,29 @@ pub(super) fn execute(
     let limits = Limits::from(budget);
     let mut perf = Perf::new(emit_perf, "analysis", "js", command.name());
     perf.limits = (!directory).then_some(limits);
+    if let Command::Deobfuscate { .. } = &command {
+        #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
+        if entry.is_some() {
+            return Err(rxd_core::Error::new(
+                "INVALID_QUERY",
+                "deobfuscate reads one local file",
+            ));
+        }
+        if input.is_dir() {
+            return Err(rxd_core::Error::new(
+                "INVALID_QUERY",
+                "deobfuscate reads one local file, not a directory",
+            ));
+        }
+        let result = (|| {
+            let source = rxd_core::Source::read(&input, limits, &mut perf)?;
+            let outcome = rxd_js::deobfuscate_source(&source, syntax, limits, &mut perf)?;
+            perf.measure("write", || {
+                write_output(outcome.code.as_bytes(), destination.as_deref(), sink)
+            })
+        })();
+        return finish(perf, emit_perf, result);
+    }
     let query = match &command {
         Command::Xref {
             selector,

@@ -399,6 +399,14 @@ pub(crate) enum Command {
         #[arg(long)]
         within: Option<String>,
     },
+    /// Recover an obfuscator.io string table and literal decoder calls.
+    #[command(
+        after_long_help = "Examples:\nrxd js deobfuscate obfuscated.js\nrxd js deobfuscate obfuscated.js -o cleaned.js\nOutput: the original source with recovered literals; unresolved calls keep their setup.\nRecognises wrapped string-array factories, rotators and decoders called with literal arguments.\nDecoder setup runs in a bounded QuickJS runtime inside the analysis worker with no host I/O."
+    )]
+    Deobfuscate {
+        #[command(flatten)]
+        common: Common,
+    },
     /// Slice the original bytes at a coordinate: a structure body, a symbol's declaration,
     /// or an explicit range.
     #[command(after_long_help = "Examples:\nrxd js functions bundle.js --name login\nrxd js slice bundle.js --at '<entity.at>'\nrxd js slice bundle.js --at '<match.context_at>' --json\nRequired: --at copied from this input. Structure: its body; fragment: local original syntax;\nsymbol: canonical declaration. Do not pass a raw byte offset, name or file hash.\nOutput: byte-exact source on stdout with no added newline. Use this default for code reading;\n--json adds a source record when metadata is needed; read detail.source.\nFollow missing helpers with functions/symbols --name, not a whole-file reread.\n-o atomically writes instead of stdout.", mut_arg("at", |arg| arg.required(true).value_name("SOURCE_AT").help("Copy entity.at, syntax context_at or symbol.at from this same file")))]
@@ -581,6 +589,7 @@ impl Command {
                 names: names.query(),
                 within,
             },
+            Self::Deobfuscate { .. } => unreachable!("deobfuscate bypasses the query catalog"),
             Self::Slice { .. } => unreachable!("slice needs the resolved coordinate"),
         }
     }
@@ -604,6 +613,7 @@ impl Command {
             Self::Locate { .. } => "locate",
             Self::Xref { .. } => "xref",
             Self::Symbols { .. } => "symbols",
+            Self::Deobfuscate { .. } => "deobfuscate",
             Self::Slice { .. } => "slice",
         }
     }
@@ -646,6 +656,7 @@ impl Command {
             | Self::Locate { common, .. }
             | Self::Xref { common, .. }
             | Self::Symbols { common, .. }
+            | Self::Deobfuscate { common, .. }
             | Self::Slice { common, .. } => common,
         }
     }

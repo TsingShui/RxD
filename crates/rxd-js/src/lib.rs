@@ -4,6 +4,7 @@ mod bindings;
 mod calls;
 mod decode;
 mod definition;
+mod deobfuscate;
 mod envelope;
 mod fragment;
 mod identifiers;
@@ -22,6 +23,7 @@ mod syntax;
 mod values;
 
 pub use decode::Decoders;
+pub use deobfuscate::Outcome as DeobfuscateOutcome;
 pub use members::MemberAccess;
 pub use modules::{Listing as ModuleListing, ModuleQuery};
 pub use names::NameQuery;
@@ -355,6 +357,17 @@ pub fn run(
     }
     let source = Source::read(path, limits, perf)?;
     run_source(source, mode, syntax, query, limits, perf)
+}
+
+/// Recover a recognised obfuscator.io string table; only extracted setup runs.
+pub fn deobfuscate_source(
+    source: &Source,
+    syntax: Syntax,
+    limits: Limits,
+    perf: &mut Perf,
+) -> Result<DeobfuscateOutcome> {
+    let source_type = syntax::select(Path::new(&source.path), SourceMode::Auto, syntax);
+    deobfuscate::run(&source.text, source_type, limits, perf)
 }
 
 /// Reuse JS analysis for a container entry without extraction or a second read.
