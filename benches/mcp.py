@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Measure frozen CLI/MCP releases; retain complete samples and failures without granting latency exceptions."""
 import argparse
-import base64
 from collections import Counter
 import datetime
 import gzip
@@ -62,26 +61,11 @@ def project(raw, kind):
         return {'header': rows[0], 'records': rows[1:-1], 'summary': rows[-1]}
     if kind == 'text':
         return raw.decode('utf-8')
-    result = json.loads(raw)
-    if kind == 'asar-extract':
-        result['_original_bytes'] = base64.b64encode(Path(result['detail']['path']).read_bytes()).decode()
-    return result
+    return json.loads(raw)
 
 
 def parity(actual, expected, kind):
-    if kind == 'asar-extract':
-        if actual['detail']['path'] is not None:
-            raise ValueError('MCP extraction exposed a host output path')
-        if actual.get('bytes_base64') != expected['_original_bytes']:
-            raise ValueError('ASAR extracted bytes differ from actual CLI file writes')
-        if actual['child_target']['source_id'] != expected['source_id']:
-            raise ValueError('ASAR child identity differs from original extracted bytes')
-        receipt = {key: value for key, value in actual.items() if key not in ('child_target', 'bytes_base64')}
-        expected = {key: value for key, value in expected.items() if key != '_original_bytes'}
-        expected['detail']['path'] = None
-        if receipt != expected:
-            raise ValueError('ASAR extraction receipt differs beyond declared MCP child/path projection')
-    elif kind == 'text':
+    if kind == 'text':
         if actual.get('source') != expected:
             raise ValueError('unchanged source differs between CLI and MCP')
     elif actual != expected:

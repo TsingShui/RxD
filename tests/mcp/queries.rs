@@ -85,10 +85,6 @@ fn checked(client: &mut Client, tools: &Value, name: &str, arguments: Value) -> 
 /// Public CLI command matrix for every built-in tool. No internal argv/lift code
 /// participates in the oracle; only complete stdout at the other public entry.
 const CLI_ROUTES: &[(&str, &str, &str)] = &[
-    ("asar_entries", "asar", "entries"),
-    ("asar_extract", "asar", "extract"),
-    ("zip_entries", "zip", "entries"),
-    ("zip_extract", "zip", "extract"),
     ("dex_entries", "dex", "entries"),
     ("dex_classes", "dex", "classes"),
     ("dex_fields", "dex", "fields"),
@@ -277,7 +273,6 @@ fn compare_extract(name: &str, arguments: &Value, path: &str, actual: &Value) {
     assert_eq!(receipt, expected, "{name}: complete original CLI receipt");
 }
 
-#[cfg(feature = "backend-asar")]
 #[cfg(feature = "backend-dex")]
 #[test]
 fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
@@ -653,35 +648,6 @@ fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {
     assert_eq!(
         rejected["structuredContent"]["error"]["code"], "RESOURCE_LIMIT",
         "{rejected}"
-    );
-}
-
-#[cfg(feature = "backend-asar")]
-#[test]
-fn mcp_asar_optional_binary_bytes_are_recoverable_and_content_bound() {
-    use base64::Engine;
-    use sha2::{Digest, Sha256};
-    let directory = tempfile::tempdir().unwrap();
-    let archive = directory.path().join("bytes.mcp-extracted");
-    let bytes = [0, 255, 128, 1, 13, 10, 0, 42];
-    super::super::pack_asar(&archive, &[("binary.dat", &bytes)]);
-    let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
-    client.initialize();
-    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let extracted = checked(
-        &mut client,
-        &tools,
-        "asar_extract",
-        json!({"input":{"path":archive},"at":"binary.dat","include_bytes":true}),
-    );
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(extracted["bytes_base64"].as_str().unwrap())
-        .unwrap();
-    assert_eq!(decoded, bytes);
-    assert_eq!(extracted["source_id"], rxd_core::identity::input_id(&bytes));
-    assert_eq!(
-        extracted["child_target"]["source_id"],
-        format!("{:x}", Sha256::digest(bytes))
     );
 }
 

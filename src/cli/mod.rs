@@ -2,8 +2,7 @@ use clap::{Parser, Subcommand};
 mod output;
 pub(crate) use output::Output;
 #[cfg(any(
-    feature = "backend-asar",
-    feature = "backend-zip",
+    feature = "unpack",
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
@@ -14,8 +13,7 @@ pub(crate) use output::Output;
 use rxd_core::Error;
 use rxd_core::Result;
 #[cfg(any(
-    feature = "backend-asar",
-    feature = "backend-zip",
+    feature = "unpack",
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
@@ -23,8 +21,7 @@ use rxd_core::Result;
 ))]
 use rxd_core::perf::Perf;
 #[cfg(any(
-    feature = "backend-asar",
-    feature = "backend-zip",
+    feature = "unpack",
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
@@ -33,8 +30,6 @@ use rxd_core::perf::Perf;
     feature = "backend-dex"
 ))]
 use std::{io::Write, path::Path};
-#[cfg(feature = "backend-asar")]
-mod asar;
 #[cfg(feature = "backend-dex")]
 mod dex;
 #[cfg(feature = "backend-dotnet")]
@@ -43,11 +38,6 @@ mod dotnet;
 mod evm;
 /// `--case`, the one flag that governs case folding for every filter.
 mod filter;
-#[cfg(all(
-    any(feature = "backend-asar", feature = "backend-zip"),
-    feature = "backend-wasm"
-))]
-mod input;
 #[cfg(feature = "backend-jvm")]
 mod jvm;
 #[cfg(feature = "backend-kuna")]
@@ -55,6 +45,8 @@ pub(crate) mod kuna;
 #[cfg(feature = "backend-pyc")]
 mod pyc;
 mod skill;
+#[cfg(feature = "unpack")]
+mod unpack;
 #[cfg(feature = "backend-wasm")]
 mod wasm;
 /// Identity selectors are shared by FETCH as well as reference queries.
@@ -69,19 +61,16 @@ mod wasm;
     feature = "backend-pyc"
 ))]
 mod xref;
-#[cfg(feature = "backend-zip")]
-mod zip;
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and ZIP files",
+    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM and PYC files; unpack ASAR/ZIP archives",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
   rxd dotnet --help    Managed DLL/EXE: metadata, IL, optional C#
-  rxd asar --help      Electron ASAR: entries and original file extraction
-  rxd zip --help       ZIP/AAR/VSIX: entries and selected-entry extraction
+  rxd unpack --help    ASAR or ZIP archive: extract every file
   rxd wasm --help      Binary core WASM: functions and instructions/C-like
   rxd pyc --help       CPython bytecode: codes, constants, Python reconstruction
   rxd evm --help       Local raw/hex EVM bytecode: specify --encoding
@@ -143,25 +132,18 @@ EVM interfaces/storage/ownership are inferred candidates, not verified Solidity 
         #[command(subcommand)]
         command: evm::Command,
     },
-    #[cfg(feature = "backend-asar")]
-    /// List and extract ASAR files.
+    #[cfg(feature = "unpack")]
+    /// Unpack an ASAR or ZIP archive into a new directory.
     #[command(after_long_help = "Examples:
-  rxd asar entries app.asar -f main
-  rxd asar extract app.asar --at 'main.js' -o extracted-main.js
-Copy entries.at (an archive-relative path) into extract. -o is required.
-Extraction returns original bytes and a receipt; analyze the extracted file separately.")]
-    Asar {
-        #[command(subcommand)]
-        command: asar::Command,
-    },
-    #[cfg(feature = "backend-zip")]
-    /// List and extract ZIP-family archives (ZIP, AAR, VSIX, XPI, wheel, NuGet).
-    #[command(
-        after_long_help = "Examples:\n  rxd zip entries sdk.aar\n  rxd zip extract sdk.aar --at classes.jar -o target/classes.jar\n  rxd zip entries extension.vsix\nCopy entries.at to select duplicates unambiguously. Stored/Deflate entries only; no automatic nested recursion."
-    )]
-    Zip {
-        #[command(subcommand)]
-        command: zip::Command,
+  rxd unpack app.asar -o app
+  rxd unpack archive.zip -o archive
+Output: every regular file under the new directory; one JSON receipt on stdout.
+Format is detected from content. The output directory must not exist.
+ZIP entries must be regular, unencrypted Stored/Deflate files.
+No entry selection, nested extraction, links, or encrypted archives.")]
+    Unpack {
+        #[command(flatten)]
+        command: unpack::Command,
     },
     #[cfg(feature = "backend-dex")]
     /// Analyze APK archives and standalone DEX files.
@@ -261,10 +243,8 @@ impl Cli {
             Backend::Kuna { .. } => false,
             #[cfg(feature = "backend-dotnet")]
             Backend::Dotnet { command } => command.perf(),
-            #[cfg(feature = "backend-asar")]
-            Backend::Asar { command } => command.perf(),
-            #[cfg(feature = "backend-zip")]
-            Backend::Zip { command } => command.perf(),
+            #[cfg(feature = "unpack")]
+            Backend::Unpack { command } => command.perf,
             #[cfg(feature = "backend-dex")]
             Backend::Dex { .. } => false,
             #[cfg(feature = "backend-jvm")]
@@ -286,10 +266,8 @@ impl Cli {
             Backend::Kuna { .. } => "kuna",
             #[cfg(feature = "backend-dotnet")]
             Backend::Dotnet { .. } => "dotnet",
-            #[cfg(feature = "backend-asar")]
-            Backend::Asar { .. } => "asar",
-            #[cfg(feature = "backend-zip")]
-            Backend::Zip { .. } => "zip",
+            #[cfg(feature = "unpack")]
+            Backend::Unpack { .. } => "unpack",
             #[cfg(feature = "backend-dex")]
             Backend::Dex { .. } => "dex",
             #[cfg(feature = "backend-jvm")]
@@ -311,10 +289,8 @@ impl Cli {
             Backend::Kuna { .. } => "kuna",
             #[cfg(feature = "backend-dotnet")]
             Backend::Dotnet { command } => command.name(),
-            #[cfg(feature = "backend-asar")]
-            Backend::Asar { command } => command.name(),
-            #[cfg(feature = "backend-zip")]
-            Backend::Zip { command } => command.name(),
+            #[cfg(feature = "unpack")]
+            Backend::Unpack { .. } => "unpack",
             #[cfg(feature = "backend-dex")]
             Backend::Dex { command } => command.name(),
             #[cfg(feature = "backend-jvm")]
@@ -371,10 +347,8 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::Kuna { args } => Ok(kuna::run(args)),
         #[cfg(feature = "backend-dotnet")]
         Backend::Dotnet { command } => dotnet::execute(command, policy, output).map(|()| 0),
-        #[cfg(feature = "backend-asar")]
-        Backend::Asar { command } => asar::execute(command, policy, output).map(|()| 0),
-        #[cfg(feature = "backend-zip")]
-        Backend::Zip { command } => zip::execute(command, policy, output).map(|()| 0),
+        #[cfg(feature = "unpack")]
+        Backend::Unpack { command } => unpack::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-dex")]
         Backend::Dex { command } => dex::execute(command, policy, output),
         #[cfg(feature = "backend-jvm")]
@@ -406,8 +380,7 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
 }
 
 #[cfg(any(
-    feature = "backend-asar",
-    feature = "backend-zip",
+    feature = "unpack",
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
@@ -422,8 +395,7 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
 }
 
 #[cfg(any(
-    feature = "backend-asar",
-    feature = "backend-zip",
+    feature = "unpack",
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",

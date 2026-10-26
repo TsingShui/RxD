@@ -12,7 +12,7 @@ never execute analyzed input.
 ## MCP and CLI runners
 
 `mcp.py` measures the typed MCP service against the same public CLI for the pinned
-JVM, PYC, DEX, .NET, WASM and ASAR fixtures. It checks independent facts
+JVM, PYC, DEX, .NET and WASM fixtures. It checks independent facts
 before timing.
 
 ```sh

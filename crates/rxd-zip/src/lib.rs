@@ -322,3 +322,78 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
         }
     }
 }
+
+/// Whole-archive extraction result.
+pub struct Unpack {
+    pub files: usize,
+    pub bytes: u64,
+}
+
+fn unpack_path(path: &str) -> Result<std::path::PathBuf> {
+    let path = path.strip_suffix('/').unwrap_or(path);
+    if !safe_path(path) {
+        return Err(invalid(format!("unsafe ZIP entry path: {path}")));
+    }
+    let mut relative = std::path::PathBuf::new();
+    for part in path.split('/') {
+        relative.push(part);
+    }
+    Ok(relative)
+}
+
+fn write_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    std::io::Write::write_all(&mut file, bytes)?;
+    Ok(())
+}
+
+/// Extract every regular Stored/Deflate file into a new directory.
+pub fn unpack(input: &Path, destination: &Path, budget: Budget, perf: &mut Perf) -> Result<Unpack> {
+    let mut archive = perf.measure("container", || {
+        Archive::open(&Options {
+            input,
+            output: None,
+            budget,
+        })
+    })?;
+    let mut seen = std::collections::HashSet::new();
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    for index in 0..archive.entries.len() {
+        let entry = &archive.entries[index];
+        let relative = unpack_path(&entry.path)?;
+        let key = entry
+            .path
+            .strip_suffix('/')
+            .unwrap_or(&entry.path)
+            .to_owned();
+        if !seen.insert(key.clone()) {
+            return Err(invalid(format!("duplicate ZIP entry path: {key}")));
+        }
+        let target = destination.join(&relative);
+        if entry.kind == "directory" {
+            perf.measure("write", || std::fs::create_dir_all(&target))?;
+            continue;
+        }
+        if entry.kind != "file" || entry.encrypted() || !matches!(entry.method, 0 | 8) {
+            return Err(Error::new(
+                "UNSUPPORTED_INPUT",
+                format!(
+                    "cannot unpack ZIP entry {}: only regular unencrypted Stored/Deflate files are supported",
+                    entry.path
+                ),
+            ));
+        }
+        let data = perf.measure("read", || archive.read(index, budget))?;
+        perf.measure("write", || write_file(&target, &data))?;
+        files += 1;
+        bytes = bytes.saturating_add(data.len() as u64);
+    }
+    Ok(Unpack { files, bytes })
+}

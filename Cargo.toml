@@ -3,7 +3,7 @@ name = "rxd"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
-description = "Agent-oriented JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and ZIP analysis CLI"
+description = "Agent-oriented JVM, .NET IL, APK/DEX, EVM, WASM and PYC analysis CLI with ASAR/ZIP unpacking"
 license = "Apache-2.0"
 publish = false
 
@@ -36,8 +36,7 @@ rxd-pyc = { path = "crates/rxd-pyc" }
 default = ["all-feature"]
 all-feature = ["all-backends", "mcp"]
 all-backends = [
-    "backend-asar",
-    "backend-zip",
+    "unpack",
     "backend-dex",
     "backend-jvm",
     "backend-dotnet",
@@ -48,6 +47,7 @@ all-backends = [
 ]
 backend-asar = ["dep:rxd-asar"]
 backend-zip = ["dep:rxd-zip"]
+unpack = ["backend-asar", "backend-zip"]
 backend-dex = ["dep:rxd-dex", "dep:rayon", "dep:sha2"]
 backend-jvm = ["dep:rxd-jvm"]
 backend-dotnet = ["dep:rxd-dotnet"]

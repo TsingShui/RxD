@@ -9,36 +9,31 @@ from mcp_client import Client, structured
 
 
 def verify(binary, directory, env, expect_native=False):
-    source = directory / 'mcp-probe.zip'
-    original = b'MCP \xce\xbb original bytes'
-    import zipfile
-    with zipfile.ZipFile(source, 'w') as archive:
-        archive.writestr('probe.txt', original)
+    source = directory / 'mcp-probe.wasm'
+    fixture = Path(__file__).resolve().parents[1] / 'tests/fixtures/wasm/fixture.wasm'
+    original = fixture.read_bytes()
+    source.write_bytes(original)
     with (directory / 'mcp-smoke.stderr').open('wb') as stderr:
         client = Client(binary, [directory], stderr, env=env, cwd=directory)
         try:
             client.initialize()
             packet, _, _ = client.request('tools/list', {})
             names = {tool['name'] for tool in packet['result']['tools']}
-            assert {'rxd_open', 'rxd_close', 'zip_entries', 'zip_extract', 'evm_analyze'} <= names
+            assert {'rxd_open', 'rxd_close', 'wasm_functions', 'evm_analyze'} <= names
             assert ('kuna_functions' in names) == expect_native, names
             opened = structured(client.tool('rxd_open', {
-                'path': str(source), 'backend': 'zip'})[0])
-            assert opened['source_id']
-            source.write_bytes(b'changed container')
+                'path': str(source), 'backend': 'wasm'})[0])
+            assert opened['source_id'] == hashlib.sha256(original).hexdigest()
             selected = {'input': {'target_id': opened['target_id']}}
-            listed = structured(client.tool('zip_entries', selected)[0])
-            record = next(row for row in listed['records']
-                          if row['detail'].get('path') == 'probe.txt')
-            fetched = structured(client.tool('zip_extract', {
-                'input': selected['input'], 'at': record['at'],
-                'include_bytes': True})[0])
-            from base64 import b64decode
-            assert b64decode(fetched['bytes_base64']) == original
+            first = structured(client.tool('wasm_functions', selected)[0])
+            assert first['records']
+            source.write_bytes(b'changed module')
+            again = structured(client.tool('wasm_functions', selected)[0])
+            assert again == first
             closed = structured(client.tool('rxd_close', {
                 'target_id': opened['target_id']})[0])
             assert closed['target_id'] == opened['target_id'], closed
-            failed = client.tool('zip_entries', selected)[0]['result']
+            failed = client.tool('wasm_functions', selected)[0]['result']
             assert failed['isError'] and failed['structuredContent']['error']['code'] == 'TARGET_INVALID', failed
         finally:
             client.close()
@@ -56,7 +51,7 @@ def main():
         verify(args.binary.resolve(), directory, env, args.expect_native)
         assert not (directory / 'cache/rxd-ilspy').exists()
         assert not (directory / 'cache/rxd-kuna').exists()
-    print('Relocated MCP stdio, immutable snapshot extraction, closed target and lazy engines verified.')
+    print('Relocated MCP stdio, immutable snapshot queries, closed target and lazy engines verified.')
 
 
 if __name__ == '__main__':

@@ -1,12 +1,6 @@
 //! End-to-end tests only: every assertion exercises the actual CLI process.
-#[cfg(all(feature = "backend-asar", feature = "backend-wasm"))]
-#[path = "container_entry/mod.rs"]
-mod container_entry;
 #[path = "resource_policy/mod.rs"]
 mod resource_policy;
-#[cfg(feature = "backend-zip")]
-#[path = "zip/mod.rs"]
-mod zip_backend;
 
 #[cfg(feature = "backend-dex")]
 #[path = "dex/mod.rs"]
@@ -44,6 +38,10 @@ mod kuna;
 #[path = "mcp/mod.rs"]
 mod mcp;
 
+#[cfg(feature = "unpack")]
+#[path = "unpack/mod.rs"]
+mod unpack;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -80,10 +78,6 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
     assert!(!text.contains("HTML"));
     assert_query_focused(&text);
     let routes: &[(&str, &str, &str)] = &[
-        #[cfg(feature = "backend-asar")]
-        ("asar", "extract", "entries.at"),
-        #[cfg(feature = "backend-zip")]
-        ("zip", "extract", "entries.at"),
         #[cfg(feature = "backend-dex")]
         ("dex", "get-method", "methods.at"),
         #[cfg(feature = "backend-jvm")]
@@ -126,6 +120,34 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
             .status
             .success()
     );
+    #[cfg(feature = "unpack")]
+    {
+        let output = Command::new(binary)
+            .args(["unpack", "--help"])
+            .output()
+            .unwrap();
+        success(&output);
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("Examples:") && help.contains("Output:"));
+        assert!(help.contains("ASAR or ZIP"));
+        assert_query_focused(&help);
+        assert!(
+            !Command::new(binary)
+                .args(["asar", "--help"])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+        assert!(
+            !Command::new(binary)
+                .args(["zip", "--help"])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    }
 }
 
 #[test]
@@ -230,42 +252,3 @@ fn assert_record_keys(value: &Value, fields: &[&str]) {
 }
 
 // Independent handcrafted Chromium Pickles; no Electron/Node process runs input JS.
-#[allow(dead_code)]
-fn write_asar(path: &Path, header: &Value, data: &[u8]) {
-    let json = serde_json::to_vec(header).unwrap();
-    let payload = (json.len() + 4).next_multiple_of(4);
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(&4_u32.to_le_bytes());
-    bytes.extend_from_slice(&((payload + 4) as u32).to_le_bytes());
-    bytes.extend_from_slice(&(payload as u32).to_le_bytes());
-    bytes.extend_from_slice(&(json.len() as u32).to_le_bytes());
-    bytes.extend_from_slice(&json);
-    bytes.resize(payload + 12, 0);
-    bytes.extend_from_slice(data);
-    fs::write(path, bytes).unwrap();
-}
-
-#[allow(dead_code)]
-fn pack_asar(path: &Path, files: &[(&str, &[u8])]) {
-    let mut header = serde_json::json!({"files": {}});
-    let mut data = Vec::new();
-    for (path, bytes) in files {
-        let mut components = path.split('/').peekable();
-        let mut parent = &mut header;
-        while let Some(component) = components.next() {
-            let files = parent["files"].as_object_mut().unwrap();
-            if components.peek().is_none() {
-                files.insert(
-                    component.into(),
-                    serde_json::json!({"size": bytes.len(), "offset": data.len().to_string()}),
-                );
-                break;
-            }
-            parent = files
-                .entry(component)
-                .or_insert_with(|| serde_json::json!({"files": {}}));
-        }
-        data.extend_from_slice(bytes);
-    }
-    write_asar(path, &header, &data);
-}

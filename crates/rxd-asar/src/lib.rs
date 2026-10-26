@@ -215,3 +215,76 @@ pub fn run(query: Query, options: Options<'_>, perf: &mut Perf) -> Result<Respon
         }
     }
 }
+
+/// Whole-archive extraction result.
+pub struct Unpack {
+    pub files: usize,
+    pub bytes: u64,
+}
+
+fn safe_member(path: &str) -> Result<std::path::PathBuf> {
+    if path.is_empty()
+        || path.len() > 4096
+        || path.contains(['\0', '\\', ':'])
+        || path.starts_with('/')
+    {
+        return Err(invalid(format!("unsafe ASAR entry path: {path}")));
+    }
+    let mut relative = std::path::PathBuf::new();
+    for part in path.split('/') {
+        if part.is_empty() || matches!(part, "." | "..") {
+            return Err(invalid(format!("unsafe ASAR entry path: {path}")));
+        }
+        relative.push(part);
+    }
+    Ok(relative)
+}
+
+fn write_member(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    std::io::Write::write_all(&mut file, bytes)?;
+    Ok(())
+}
+
+/// Extract every regular file (and resolvable link) into a new directory.
+pub fn unpack(
+    input: &Path,
+    destination: &Path,
+    limits: Limits,
+    max_entries: usize,
+    max_header_bytes: usize,
+    perf: &mut Perf,
+) -> Result<Unpack> {
+    let (mut archive, entries) = open_archive(input, max_header_bytes, max_entries, perf)?;
+    let max_entry = limits.output_bytes.unwrap_or(rxd_core::MAX_SPAN_BYTES);
+    let mut links = Vec::new();
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    for (path, entry) in &entries {
+        let relative = safe_member(path)?;
+        let target = destination.join(relative);
+        if let Storage::Link { target: link } = &entry.storage {
+            links.push((path.clone(), link.clone()));
+            continue;
+        }
+        let data = perf.measure("read", || archive.read(path, entry, max_entry))?;
+        perf.measure("write", || write_member(&target, &data))?;
+        files += 1;
+        bytes = bytes.saturating_add(data.len() as u64);
+    }
+    for (path, link) in links {
+        let source = safe_member(&link)?;
+        let data = fs::read(destination.join(source))?;
+        let target = destination.join(safe_member(&path)?);
+        perf.measure("write", || write_member(&target, &data))?;
+        files += 1;
+        bytes = bytes.saturating_add(data.len() as u64);
+    }
+    Ok(Unpack { files, bytes })
+}

@@ -3,11 +3,11 @@
 ## Project Structure & Module Organization
 
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
-ASAR, Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native
-EVMole EVM bytecode analysis. CPython bytecode
-has bounded embedded source reconstruction and static navigation for CPython
-3.8–3.13. Kuna has an optional directly linked CLI adapter and bundled specs.
-PyInstaller/zipapp containers are planned.
+Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native EVMole EVM
+bytecode analysis. CPython bytecode has bounded embedded source reconstruction
+and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
+CLI adapter and bundled specs. ASAR and ZIP archives are unpacked into a
+directory; they are not analyzed in place.
 
 The current layout is:
 
@@ -19,16 +19,15 @@ The current layout is:
   `src/cli/output.rs`: explicit stdout/buffer output sink.
   `src/mcp/`: optional stdio protocol, immutable targets and
   disposable analysis-worker scheduling.
-- `src/cli/mod.rs`: top-level dispatch; `src/cli/asar/`, `src/cli/dex/`,
-  `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`, `src/cli/evm/`,
-  `src/cli/wasm/`, `src/cli/zip/`, and `src/cli/pyc/`: peer command adapters.
-  `src/cli/input.rs` shares ASAR/ZIP entry arguments and loading for WASM.
-  DEX preserves streaming and exit-code contracts.
+- `src/cli/mod.rs`: top-level dispatch; `src/cli/dex/`, `src/cli/jvm/`,
+  `src/cli/dotnet/`, `src/cli/kuna/`, `src/cli/evm/`, `src/cli/wasm/`,
+  and `src/cli/pyc/`: peer command adapters. `src/cli/unpack.rs` performs
+  whole-archive ASAR/ZIP extraction. DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
-- `crates/rxd-asar/`: ASAR index and on-demand raw file extraction.
-- `crates/rxd-zip/`: ZIP-family index, duplicate-safe coordinates and selected
-  Stored/Deflate decoding with CRC/length validation.
+- `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
+- `crates/rxd-zip/`: ZIP-family index and whole-archive Stored/Deflate extraction
+  with CRC, length, duplicate-path and path-safety validation.
 - `crates/rxd-dex/`: APK/DEX analysis, Manifest and Java emission; the shared
   typed service is provided by `src/mcp/`.
 - `crates/rxd-jvm/`: class/JAR parsing and JVM stack front end; lifts bytecode

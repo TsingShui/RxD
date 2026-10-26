@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, EVM, ASAR, ZIP, .NET, PYC and WASM |
+| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC and WASM, plus ASAR/ZIP unpacking |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |
@@ -103,12 +103,10 @@ ordinary queries on 64–126 MB APKs take 1.9–62 ms.
 | Backend | Command | Input | Median | P95 | Mean |
 | --- | --- | ---: | ---: | ---: | ---: |
 | `dex` | `manifest` | 64 MB | 1.9 | 2.3 | 2.0 |
-| `asar` | `entries` | 9 MB | 3.2 | 3.5 | 3.3 |
 | `evm` | `analyze` | 51 B | 3.2 | 3.6 | 3.3 |
 | `evm` | `disassemble` | 51 B | 3.2 | 3.5 | 3.2 |
 | `wasm` | `functions` | 225 B | 3.2 | 3.7 | 3.3 |
 | `wasm` | `get-function` | 225 B | 3.2 | 3.6 | 3.3 |
-| `asar` | `entries` | 804 B | 3.3 | 3.6 | 3.3 |
 | `wasm` | `functions` | 786 B | 3.3 | 3.5 | 3.3 |
 | `pyc` | `codes` | 10.4 KB | 3.5 | 3.9 | 3.7 |
 | `pyc` | `decompile` | 1.3 KB | 3.5 | 3.9 | 3.6 |
@@ -120,7 +118,6 @@ ordinary queries on 64–126 MB APKs take 1.9–62 ms.
 | `jar` | `strings` | 298.4 KB | 10.2 | 10.6 | 10.3 |
 | `jar` | `get-method` | 298.4 KB | 11.0 | 11.4 | 11.1 |
 | `dex` | `xref` | 64 MB | 12.3 | 13.1 | 12.5 |
-| `asar` | `extract` | 9 MB | 12.5 | 14.0 | 12.8 |
 | `dex` | `strings` | 64 MB | 12.5 | 12.8 | 12.5 |
 | `jar` | `xref` | 298.4 KB | 14.2 | 14.7 | 14.2 |
 | `jar` | `methods` | 298.4 KB | 14.5 | 15.1 | 14.5 |
@@ -218,9 +215,8 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 
 | Backend | Entry | Capability | Status |
 | --- | --- | --- | --- |
+| **Unpack** | `rxd unpack` | Detect ASAR or ZIP by content and extract every regular file into a new directory; one JSON receipt | ✅ |
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
-| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; WASM queries read selected entries directly with `--entry` | ✅ |
-| **ZIP family** | `rxd zip` | ZIP/AAR/VSIX/XPI/wheel/NuGet metadata and selected Stored/Deflate extraction; WASM `--entry`, ZIP64 and duplicate-name coordinates | ✅ |
 | **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |
 | **.NET IL** | `rxd dotnet` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |

@@ -25,8 +25,6 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
     let response = client.request("tools/list", json!({}));
     let tools = response["result"]["tools"].as_array().unwrap();
     let expected: BTreeSet<_> = [
-        ("asar", cfg!(feature = "backend-asar")),
-        ("zip", cfg!(feature = "backend-zip")),
         ("dex", cfg!(feature = "backend-dex")),
         ("jar", cfg!(feature = "backend-jvm")),
         ("dotnet", cfg!(feature = "backend-dotnet")),
@@ -67,21 +65,6 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
     assert!(client.wait_exit().success());
 }
 
-#[cfg(feature = "backend-asar")]
-#[test]
-fn mcp_artifact_tools_are_annotated_as_creating_a_target() {
-    let mut asar = Client::start(&[]);
-    asar.initialize();
-    let response = asar.request("tools/list", json!({}));
-    let extraction = response["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == "asar_extract")
-        .unwrap();
-    assert_eq!(extraction["annotations"]["readOnlyHint"], false);
-    assert_eq!(extraction["annotations"]["idempotentHint"], false);
-}
 #[test]
 fn mcp_modern_requests_validate_metadata_and_protocol_version() {
     let mut client = Client::start(&[]);

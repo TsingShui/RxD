@@ -204,9 +204,6 @@ pub enum Command {
 
 #[derive(Args)]
 pub struct Options {
-    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
-    #[command(flatten)]
-    container: super::input::EntryArgs,
     /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
@@ -327,17 +324,6 @@ fn execute_inner(
     let path = command.input();
     let options = command.options();
     let budget = policy.for_file(path)?;
-    let (selected, budget) = (None::<Vec<u8>>, budget);
-    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
-    let mut origin = None;
-    #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
-    let (selected, budget) = if let Some(entry) = &options.container.entry {
-        let selected = super::input::entry(path, entry, options.output.as_deref(), policy, perf)?;
-        origin = Some(selected.origin);
-        (Some(selected.bytes), selected.budget)
-    } else {
-        (selected, budget)
-    };
     let limits = Limits::from(budget);
     perf.resource_limits = Some(std::collections::BTreeMap::from([
         ("input_bytes", budget.input_bytes),
@@ -354,10 +340,7 @@ fn execute_inner(
             .unwrap()
             .insert("output_bytes", output_bytes);
     }
-    let module = perf.measure("read_parse", || match selected {
-        Some(bytes) => Module::from_bytes(bytes, limits),
-        None => Module::read(path, limits),
-    })?;
+    let module = perf.measure("read_parse", || Module::read(path, limits))?;
     perf.source_id = Some(module.source_id.clone());
     perf.counters.input_bytes = Some(module.file_bytes);
     let entities = module.func_types.len()
@@ -410,10 +393,6 @@ fn execute_inner(
                 .as_object()
                 .unwrap()
                 .clone();
-                #[cfg(any(feature = "backend-asar", feature = "backend-zip"))]
-                if let Some(origin) = &origin {
-                    fields.insert("origin".into(), json!(origin));
-                }
                 // Include original instructions for --raw or reconstruction fallback.
                 if *raw || !view.decompiled {
                     fields.insert("instructions".into(), json!(view.instructions));

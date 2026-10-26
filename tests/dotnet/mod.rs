@@ -20,7 +20,6 @@ fn enabled_backend_features_define_the_cli_catalog() {
     success(&output);
     let help = String::from_utf8(output.stdout).unwrap();
     let expected = [
-        ("asar", cfg!(feature = "backend-asar")),
         ("dex", cfg!(feature = "backend-dex")),
         ("jar", cfg!(feature = "backend-jvm")),
         ("dotnet", cfg!(feature = "backend-dotnet")),

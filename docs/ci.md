@@ -14,7 +14,7 @@ drives CI scripts.
 - **Quick checks:** affected backend package tests and
   feature-scoped debug/release CLI, or default all-backend checks for shared/unknown
   paths, including real stdio MCP checks without bundles. RadGuard selects both DEX and
-  JVM. JS/ASAR currently use shared gates because their CLI tests are unnamespaced. Quick
+  JVM. Shared harness changes still use workspace gates. Quick
   jobs initialize only the Kuna Cargo path dependency, not all .NET reference submodules,
   and do not build NativeAOT or bundled specs.
 - **Complete distribution:** the four platforms below run for native engines,

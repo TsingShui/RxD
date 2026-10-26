@@ -1,9 +1,9 @@
 # Pinned ZIP-family production corpus
 
-These published archives are parsed as data, never installed or executed. Ordinary
-tests are offline. `expectations.json` records independent Python `zipfile`
-counts, uncompressed totals, selected central-directory coordinates, sizes, CRC32s
-and complete SHA-256 hashes of selected decoded bytes.
+These published archives are parsed as data, never installed or executed.
+`expectations.json` records independent Python `zipfile` metadata, selected
+payload sizes and SHA-256 hashes; the unpack E2E extracts the whole archive and
+checks those selected files.
 
 | Artifact | Source | Bytes | SHA-256 | License |
 | --- | --- | ---: | --- | --- |
@@ -16,7 +16,8 @@ in `expectations.json`. Existing Gson/Rhino JAR inputs retain their provenance i
 [the JVM corpus](../jvm/README.md).
 
 Re-download from the recorded URLs and verify full archive SHA-256 before use.
-Independently verify or regenerate metadata without RxD:
+`selected[].at` is retained only as independent central-directory metadata; the
+current CLI has no per-entry selection. Verify payload hashes without RxD:
 
 ```sh
 python3 - <<'PY'
@@ -27,20 +28,12 @@ for expected in json.loads((root / 'expectations.json').read_text()):
     path = root / expected['file']
     assert hashlib.sha256(path.read_bytes()).hexdigest() == expected['sha256']
     with zipfile.ZipFile(path) as archive:
-        files = archive.infolist()
-        expected['entries'] = len(files)
-        expected['file_bytes'] = sum(entry.file_size for entry in files)
         for selected in expected['selected']:
-            index = next(i for i, entry in enumerate(files) if entry.filename == selected['path'])
-            entry = files[index]
-            selected.update(at=f'zip:{index}', bytes=entry.file_size,
-                            compressed_bytes=entry.compress_size, crc32=f'{entry.CRC:08x}',
-                            sha256=hashlib.sha256(archive.read(entry)).hexdigest())
-    print(json.dumps(expected, indent=2))
+            data = archive.read(selected['path'])
+            assert len(data) == selected['bytes']
+            assert hashlib.sha256(data).hexdigest() == selected['sha256']
 PY
 ```
 
-Handcrafted E2E inputs separately cover duplicate/unsafe paths, links,
-Stored/Deflate decoding, UTF-8, ZIP64, data descriptors, comment signatures,
-corruption, forged lengths/counts and atomic failures. Synthetic containers are
-not substitutes for production archive measurements.
+Handcrafted unpack E2E inputs separately cover duplicate and unsafe paths,
+symlinks, Stored/Deflate decoding, UTF-8, destination collisions and cleanup.

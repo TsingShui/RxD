@@ -52,12 +52,12 @@ async function call(name, args) {
   if (result.isError) throw result.structuredContent.error;
   return result.structuredContent;
 }
-const opened = await call("rxd_open", {path: "/workspace/app.zip", backend: "zip"});
+const opened = await call("rxd_open", {path: "/workspace/module.wasm", backend: "wasm"});
 try {
   const input = {target_id: opened.target_id};
-  const entries = await call("zip_entries", {input});
+  const functions = await call("wasm_functions", {input});
   // A stream is `{records: [...]}`; `at` identifies a row in this fixed snapshot.
-  const paths = entries.records.map(record => record.detail.path);
+  const names = functions.records.map(record => record.detail.name);
 } finally {
   await call("rxd_close", {target_id: opened.target_id});
 }
@@ -82,44 +82,10 @@ For repeated calls use an open JAR target to avoid repeating input capture.
 Returned method coordinates remain file-scoped; use them only with that target
 or unchanged input bytes.
 
-ASAR child targets compose without caller-managed paths:
+Archive extraction is CLI-only: `rxd unpack ARCHIVE -o DIR` writes a directory, so
+it is not an MCP artifact tool. Extract first, then open the resulting file target.
 
-```js
-const parent = await call("rxd_open", {path: "/workspace/app.zip", backend: "zip"});
-const extracted = await call("zip_extract", {
-  input: {target_id: parent.target_id}, at: "core.wasm", include_bytes: true
-});
-const child = extracted.child_target;
-await call("rxd_close", {target_id: parent.target_id});
-try {
-  const functions = await call("wasm_functions", {input: {target_id: child.target_id}});
-  // extracted.bytes_base64 is the exact entry; child.source_id is its identity digest.
-} finally {
-  await call("rxd_close", {target_id: child.target_id});
-}
-```
-
-ZIP uses the same child-target contract. For example, extract a JAR from an AAR
-and analyze its immutable bytes without a caller-managed output file:
-
-```js
-const parent = await call("rxd_open", {path: "/workspace/sdk.aar", backend: "zip"});
-let child;
-try {
-  const files = await call("zip_entries", {input: {target_id: parent.target_id}, filter: "classes.jar"});
-  const entry = files.records.find(row => row.detail.path === "classes.jar");
-  const extracted = await call("zip_extract", {input: {target_id: parent.target_id}, at: entry.at});
-  child = extracted.child_target;
-  const classes = await call("jar_classes", {input: {target_id: child.target_id}});
-} finally {
-  if (child) await call("rxd_close", {target_id: child.target_id});
-  await call("rxd_close", {target_id: parent.target_id});
-}
-```
-
-CLI `--entry` is not an MCP argument; use extraction and the returned child target.
-
-Directory targets require `backend: "js"`. A complete ambiguous candidate result is a
+A complete ambiguous candidate result is a
 domain error, not one arbitrarily chosen definition. EVM always requires explicit
 `encoding: "raw"` or `"hex"`. Kuna functions/decompile are available only in linked builds.
 No result creates new DEX/EVM entity IDs or guarantees decompiled semantic equivalence.

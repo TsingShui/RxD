@@ -89,7 +89,7 @@ and whether full packaging is required; it does not run tests or cache success.
 Review the plan: it is a CI routing aid, not a proof that every semantic dependency
 was identified. Widen checks when a change crosses the listed consumers.
 Unknown paths fall back to shared checks. RadGuard selects both DEX and JVM.
-JS/ASAR still have unnamespaced root CLI scenarios and conservatively use the
+ASAR unpack still has an unnamespaced root CLI scenario and conservatively uses the
 shared suite; do not invent a substring filter that silently omits them.
 Embedded `src/skills/rxd/SKILL.md` is product source, unlike project `.agents/`.
 
