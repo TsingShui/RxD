@@ -282,6 +282,59 @@ fn mcp_strings_and_composition_use_captured_bytes_and_cli_parity() {
     );
 }
 
+#[cfg(feature = "backend-js")]
+#[test]
+fn mcp_strings_scope_and_provenance_filters_preserve_captured_primitive_facts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scoped.js");
+    let source = "function t(){const a=['/api','/login'];return a;}function d(i){return t()[i];}function work(){const x=[d(0),d(1)].join('');const ch=String.fromCharCode('a'.charCodeAt(0));return x;}work();";
+    std::fs::write(&path, source).unwrap();
+    let mut client = Client::start(&["--allow-path", dir.path().to_str().unwrap()]);
+    client.initialize();
+    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
+    let functions = checked(
+        &mut client,
+        &tools,
+        "js_functions",
+        json!({"input":{"path":path},"name":"work"}),
+    );
+    let within = functions["records"][0]["at"].clone();
+    let expected = checked(
+        &mut client,
+        &tools,
+        "js_strings",
+        json!({"input":{"path":path},"within":within,"resolution":"decoder","resolve_static":true}),
+    );
+    assert_eq!(expected["records"].as_array().unwrap().len(), 3);
+    let opened = client.tool("rxd_open", json!({"path":path}));
+    assert_ne!(opened["isError"], true, "{opened}");
+    let input = json!({"target_id":opened["structuredContent"]["target_id"]});
+    std::fs::write(&path, "invalid {{ {").unwrap();
+    let result = client.tool(
+        "js_strings",
+        json!({"input":input,"within":within,"resolution":"decoder","resolve_static":true}),
+    );
+    assert_ne!(result["isError"], true, "{result}");
+    assert_eq!(result["structuredContent"]["records"], expected["records"]);
+    let values = client.tool(
+        "js_values",
+        json!({"input":input,"name":"ch","resolve_static":true}),
+    );
+    assert_ne!(values["isError"], true, "{values}");
+    assert_eq!(
+        values["structuredContent"]["records"][0]["detail"]["value"]["value"],
+        "a"
+    );
+    let invalid = client.tool(
+        "js_strings",
+        json!({"input":{"path":"missing.js"},"resolution":"unknown"}),
+    );
+    assert_eq!(
+        invalid["structuredContent"]["error"]["code"],
+        "INVALID_QUERY"
+    );
+}
+
 #[cfg(feature = "backend-dotnet")]
 #[test]
 fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {

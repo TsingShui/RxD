@@ -202,7 +202,7 @@ pub(crate) enum Command {
     },
     /// Enumerate string occurrences and optional proven expressions (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js strings bundle.js\nrxd js strings src/ --resolve-static\nOptional -f/--filter searches values; occurrences are not deduplicated.\nOutput: the same match JSONL as find, in original byte order; use context_at with slice.\n--resolve-static includes bounded expressions composed from proven decoder calls, not a complete decrypted table."
+        after_long_help = "Examples:\nrxd js strings bundle.js\nrxd js strings src/ --resolve-static\nOptional -f/--filter searches values; occurrences are not deduplicated.\n--resolution literal|static|decoder filters provenance; computed results still need --resolve-static.\n--within selects a real structure/fragment/binding declaration; filtering does not narrow input safety validation.\nOutput: the same match JSONL as find, in original byte order; use context_at with slice.\n--resolve-static includes bounded expressions composed from proven decoder calls, not a complete decrypted table."
     )]
     Strings {
         #[command(flatten)]
@@ -217,6 +217,12 @@ pub(crate) enum Command {
         /// Also enumerate bounded closed expressions and proven decoder values.
         #[arg(long)]
         resolve_static: bool,
+        /// Filter provenance without implicitly enabling --resolve-static; literal includes template parts.
+        #[arg(long,value_parser=["literal","static","decoder"])]
+        resolution: Option<String>,
+        /// Select an actual structure, fragment or binding declaration; single file only.
+        #[arg(long)]
+        within: Option<String>,
     },
     /// Find substrings in decoded JS literals (JSONL).
     #[command(
@@ -479,11 +485,20 @@ impl Command {
                 filter,
                 case,
                 resolve_static,
+                resolution,
+                within,
                 ..
             } => Query::Strings {
                 filter,
                 case_sensitive: case.sensitive(),
                 resolve_static,
+                resolution: resolution.map(|r| match r.as_str() {
+                    "literal" => rxd_js::StringResolution::Literal,
+                    "static" => rxd_js::StringResolution::Static,
+                    "decoder" => rxd_js::StringResolution::Decoder,
+                    _ => unreachable!("validated resolution"),
+                }),
+                within,
             },
             Self::Resources {
                 kind,

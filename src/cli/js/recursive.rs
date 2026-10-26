@@ -140,7 +140,10 @@ pub(super) fn run(request: Request<'_>, perf: &mut Perf) -> Result<Vec<u8>> {
     }
     if matches!(
         &query,
-        Query::Outline {
+        Query::Strings {
+            within: Some(_),
+            ..
+        } | Query::Outline {
             within: Some(_),
             ..
         } | Query::Calls {

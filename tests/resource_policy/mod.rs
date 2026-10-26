@@ -27,6 +27,8 @@ fn js_strings_enumeration_enforces_explicit_metadata_and_output_admission() {
                 filter: None,
                 case_sensitive: false,
                 resolve_static: false,
+                resolution: None,
+                within: None,
             },
             limits,
             &mut perf,

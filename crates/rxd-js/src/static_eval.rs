@@ -16,6 +16,7 @@ pub enum Value {
     Number(f64),
     Bool(bool),
     Null,
+    Undefined,
     Array(Vec<Option<Value>>),
 }
 
@@ -25,6 +26,7 @@ impl Value {
             Self::Number(n) => Some(*n),
             Self::Bool(b) => Some(u8::from(*b) as f64),
             Self::Null => Some(0.0),
+            Self::Undefined => Some(f64::NAN),
             Self::String(s) => {
                 let text = s.to_utf8()?;
                 // Only the unambiguous ASCII decimal subset. Do not substitute Rust's
@@ -56,6 +58,7 @@ impl Value {
             Self::Number(n) => JsString::from(n.to_js_string().as_str()),
             Self::Bool(b) => JsString::from(if *b { "true" } else { "false" }),
             Self::Null => JsString::from("null"),
+            Self::Undefined => JsString::from("undefined"),
             Self::Array(_) => return None,
         })
     }
@@ -314,7 +317,7 @@ impl Evaluator<'_> {
             return Some(Value::String(value.value.clone()));
         }
         if !self.limits.allow_intrinsics
-            || !is_string_call_callee(call)
+            || !supported_call(call)
             || call.arguments.len() > self.limits.steps.saturating_sub(self.steps)
         {
             return None;
@@ -357,13 +360,75 @@ impl Evaluator<'_> {
         let Expression::StaticMemberExpression(m) = call.callee.get_inner_expression() else {
             return None;
         };
-        // A Number/Boolean/Array does not acquire String's prototype methods through
-        // ToString. Only a known primitive string is a supported receiver.
-        let Value::String(object) = self.expression(&m.object, depth + 1)? else {
+        // Receivers are closed primitive strings or fresh evaluated arrays, never user objects.
+        // Do not coerce arbitrary receivers through ToString to invent method support.
+        let receiver = self.expression(&m.object, depth + 1)?;
+        if m.property.name == "join" {
+            let Value::Array(elements) = receiver else {
+                return None;
+            };
+            if args.len() > 1 {
+                return None;
+            }
+            let separator = match args.first() {
+                None | Some(Value::Undefined) => JsString::from(","),
+                Some(value) => value.string()?,
+            };
+            let mut joined = JsString::from("");
+            for (i, element) in elements.iter().enumerate() {
+                self.step(depth + 1)?;
+                if i != 0 {
+                    joined.append_bounded(&separator, self.limits.value_bytes / 2)?;
+                }
+                if let Some(value) = element
+                    && !matches!(value, Value::Null | Value::Undefined)
+                {
+                    joined.append_bounded(&value.string()?, self.limits.value_bytes / 2)?;
+                }
+            }
+            return self.bounded(Value::String(joined));
+        }
+        let Value::String(object) = receiver else {
             return None;
         };
         let units = object.units();
         let len = units.len();
+        if matches!(m.property.name.as_str(), "charCodeAt" | "codePointAt") {
+            if args.len() > 1 {
+                return None;
+            }
+            let index = integer(
+                args.first()
+                    .map(Value::as_number)
+                    .transpose_option()?
+                    .unwrap_or(0.0),
+            );
+            let unit = if index >= 0.0 && index < len as f64 {
+                units.get(index as usize).copied()
+            } else {
+                None
+            };
+            let value = match (m.property.name.as_str(), unit) {
+                ("charCodeAt", unit) => Value::Number(unit.map_or(f64::NAN, f64::from)),
+                (_, None) => Value::Undefined,
+                (_, Some(first)) => {
+                    let second = units.get(index as usize + 1).copied();
+                    let point = match second {
+                        Some(second)
+                            if (0xd800..=0xdbff).contains(&first)
+                                && (0xdc00..=0xdfff).contains(&second) =>
+                        {
+                            0x10000
+                                + ((u32::from(first) - 0xd800) << 10)
+                                + (u32::from(second) - 0xdc00)
+                        }
+                        _ => u32::from(first),
+                    };
+                    Value::Number(f64::from(point))
+                }
+            };
+            return self.bounded(value);
+        }
         let result = match m.property.name.as_str() {
             "toUpperCase" | "toLowerCase" if args.is_empty() => {
                 // Unicode case tables and contextual casing are not approximated.
@@ -458,7 +523,7 @@ fn uint32(n: f64) -> u32 {
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Bool(b) => *b,
-        Value::Null => false,
+        Value::Null | Value::Undefined => false,
         Value::Number(n) => *n != 0.0 && !n.is_nan(),
         Value::String(s) => s.len_utf16() != 0,
         Value::Array(_) => true,
@@ -496,7 +561,7 @@ fn binary_operator_supported(op: BinaryOperator) -> bool {
             | BinaryOperator::ShiftRightZeroFill
     )
 }
-fn is_string_call_callee(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
+fn supported_call(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
     if c.optional || c.arguments.iter().any(Argument::is_spread) {
         return false;
     }
@@ -506,7 +571,7 @@ fn is_string_call_callee(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
     {
         return true;
     }
-    matches!(c.callee.get_inner_expression(), Expression::StaticMemberExpression(m) if matches!(m.property.name.as_str(), "toUpperCase" | "toLowerCase" | "charAt" | "slice" | "substring" | "substr"))
+    matches!(c.callee.get_inner_expression(), Expression::StaticMemberExpression(m) if matches!(m.property.name.as_str(), "toUpperCase" | "toLowerCase" | "charAt" | "slice" | "substring" | "substr" | "charCodeAt" | "codePointAt" | "join"))
 }
 /// Disable intrinsic assumptions under visible shadowing/dynamic scope.
 /// This does not prove external code preserves prototypes.
@@ -652,7 +717,11 @@ pub fn binary_can_yield_string(b: &BinaryExpression<'_>) -> bool {
     b.operator == BinaryOperator::Addition && is_foldable(&b.left) && is_foldable(&b.right)
 }
 pub fn call_can_yield_string(c: &oxc_ast::ast::CallExpression<'_>) -> bool {
-    if !is_string_call_callee(c)
+    if matches!(c.callee.get_inner_expression(),Expression::StaticMemberExpression(m) if matches!(m.property.name.as_str(),"charCodeAt"|"codePointAt"))
+    {
+        return false;
+    }
+    if !supported_call(c)
         || !c
             .arguments
             .iter()

@@ -86,7 +86,8 @@ offsets obtained from the preceding response. Keep each input fixed and use its 
 ```sh
 rxd js entities bundle.js -f login
 rxd js find bundle.js -f '/api/login'
-rxd js strings bundle.js --resolve-static
+rxd js strings bundle.js --resolve-static --resolution decoder
+rxd js strings bundle.js --within "$ENTITY_AT" --resolution literal
 rxd js slice bundle.js --at "$CONTEXT_AT" --json
 rxd js identifiers bundle.js --name 'AIS3' --role reference
 rxd js calls bundle.js --name 'fetch'
@@ -98,8 +99,13 @@ rxd js slice bundle.js --at "$SYMBOL_AT"
 ```
 
 `strings` enumerates the same match records as `find` without requiring a needle;
-optional `-f` filters values. It preserves occurrences, including duplicate/empty
-literals and dynamic template parts, rather than deduplicating a string pool or
+optional `-f` filters values. `--resolution literal|static|decoder` filters
+provenance without enabling recovery: use `--resolve-static` for computed rows.
+`literal` selects the existing null-resolution literals/template parts without
+changing their output fields. `--within` selects a real structure, fragment or
+binding declaration in one file; zero rows differs from a missing coordinate.
+Filters narrow returned occurrences, not whole-input parsing or safety proofs.
+It preserves occurrences, including duplicate/empty literals and dynamic template parts, rather than deduplicating a string pool or
 claiming a complete decrypted table. `--resolve-static` adds proved expressions.
 
 A find/strings match has no coordinate of its own: use its `context_at` for a local syntax
@@ -162,6 +168,10 @@ hits are `literal_kind: static_expression` with `detail.raw` and
 `resolution: static`, or `decoder` when composition uses proven decoder values.
 Existing bounded concatenation, template, indexing and string operations compose
 those values; this does not follow factory returns or interpret arbitrary calls.
+`charCodeAt` reads UTF-16 units; `codePointAt` combines valid surrogate pairs.
+Out-of-range results preserve NaN/undefined semantics in enclosing expressions.
+`join` accepts closed temporary arrays of primitive values/holes, not external
+mutable arrays, object elements or nested-array coercion.
 
 `--resolve-static` shares one decoder proof across `strings`, `find`, `calls`, `members`,
 `values`, `resources` and structure labels. Supported shapes use a closed string

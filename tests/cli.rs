@@ -12,6 +12,8 @@ mod html;
 mod js_literals;
 #[cfg(feature = "backend-js")]
 mod js_modules;
+#[cfg(feature = "backend-js")]
+mod js_primitives;
 #[path = "resource_policy/mod.rs"]
 mod resource_policy;
 #[cfg(feature = "backend-zip")]

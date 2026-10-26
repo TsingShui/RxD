@@ -71,6 +71,22 @@ pub enum RefsTarget {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum StringResolution {
+    Literal,
+    Static,
+    Decoder,
+}
+impl StringResolution {
+    pub(crate) fn matches(self, value: Option<&str>) -> bool {
+        match self {
+            Self::Literal => value.is_none(),
+            Self::Static => value == Some("static"),
+            Self::Decoder => value == Some("decoder"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum Query {
     Outline {
@@ -95,6 +111,8 @@ pub enum Query {
         filter: Option<String>,
         case_sensitive: bool,
         resolve_static: bool,
+        resolution: Option<StringResolution>,
+        within: Option<String>,
     },
     Resources(ResourcesQuery),
     Modules(ModuleQuery),
@@ -284,6 +302,45 @@ struct SourceDetail<'a, E, S, F> {
     origin: Option<&'a Origin>,
 }
 
+fn selected_region(
+    source: &Source,
+    program: &oxc_ast::ast::Program<'_>,
+    collector: &Collector<'_>,
+    within: Option<&str>,
+    limits: Limits,
+    perf: &mut Perf,
+) -> Result<oxc_span::Span> {
+    match within {
+        None => Ok(oxc_span::Span::new(0, source.text.len() as u32)),
+        Some(id) if id.starts_with("fragment.") => {
+            fragment::validate_id(source, id)?;
+            let f = collector
+                .contexts
+                .as_ref()
+                .and_then(|c| c.selected(collector, source))
+                .filter(|f| f.id == id)
+                .ok_or_else(|| {
+                    Error::new(
+                        "NOT_FOUND",
+                        "coordinate does not identify a source fragment",
+                    )
+                })?;
+            Ok(oxc_span::Span::new(f.start, f.end))
+        }
+        Some(id) if id.starts_with("symbol:") => {
+            let d = definition::run(program, source, collector, id, limits, perf)?;
+            Ok(oxc_span::Span::new(
+                d.declaration.range.start,
+                d.declaration.range.end,
+            ))
+        }
+        Some(id) => {
+            let e = &collector.entities[collector.by_id(id)?].entity;
+            Ok(oxc_span::Span::new(e.start, e.end))
+        }
+    }
+}
+
 pub fn run(
     path: &Path,
     mode: SourceMode,
@@ -369,21 +426,21 @@ pub fn run_source(
         None => (None, false),
     };
     let contexts = match &query {
+        Query::Values(ValuesQuery {
+            within: Some(id), ..
+        })
+        | Query::Strings {
+            within: Some(id), ..
+        }
+        | Query::Slice { id, .. }
+            if id.starts_with("fragment.") =>
+        {
+            Some(fragment::Contexts::new(fragment::Target::Id(id.clone())))
+        }
         Query::Find { .. } | Query::Strings { .. } | Query::Identifiers { .. } => {
             Some(fragment::Contexts::new(fragment::Target::Matches))
         }
         Query::Locate { byte } => Some(fragment::Contexts::new(fragment::Target::Byte(*byte))),
-        Query::Values(ValuesQuery {
-            within: Some(id), ..
-        })
-        | Query::Slice { id, .. }
-            if id
-                .split(':')
-                .next()
-                .is_some_and(|kind| kind.starts_with("fragment.")) =>
-        {
-            Some(fragment::Contexts::new(fragment::Target::Id(id.clone())))
-        }
         _ => None,
     };
     let resolve_static = match &query {
@@ -408,6 +465,9 @@ pub fn run_source(
         resolve_static,
         decoders.as_ref(),
     );
+    if let Query::Strings { resolution, .. } = &query {
+        collector.literal_resolution = *resolution;
+    }
     let visited = catch_unwind(AssertUnwindSafe(|| {
         if resolve_static {
             collector.static_limits.allow_intrinsics = static_eval::intrinsics_allowed(
@@ -428,6 +488,17 @@ pub fn run_source(
         }
     }
     let query_start = perf.start_stage();
+    let literal_region = match &query {
+        Query::Strings { within, .. } => Some(selected_region(
+            &source,
+            &parsed.program,
+            &collector,
+            within.as_deref(),
+            limits,
+            perf,
+        )?),
+        _ => None,
+    };
     let mut output = Output {
         bytes: Vec::new(),
         limit: if matches!(
@@ -536,6 +607,11 @@ pub fn run_source(
             })?;
         }
         Query::Find { .. } | Query::Strings { .. } => {
+            if let Some(region) = literal_region {
+                collector
+                    .matches
+                    .retain(|m| m.start >= region.start && m.end <= region.end);
+            }
             collector.matches.sort_by_key(|m| (m.start, m.end));
             perf.record("query", query_start);
             perf.counters.records = Some(collector.matches.len());
@@ -581,33 +657,14 @@ pub fn run_source(
         }
         Query::Values(values) => {
             perf.record("query", query_start);
-            let region = match values.within.as_deref() {
-                None => oxc_span::Span::new(0, source.text.len() as u32),
-                Some(id) if id.starts_with("fragment.") => {
-                    fragment::validate_id(&source, id)?;
-                    let f = collector
-                        .contexts
-                        .as_ref()
-                        .and_then(|c| c.selected(&collector, &source))
-                        .filter(|f| f.id == id)
-                        .ok_or_else(|| {
-                            Error::new(
-                                "NOT_FOUND",
-                                "coordinate does not identify a source fragment",
-                            )
-                        })?;
-                    oxc_span::Span::new(f.start, f.end)
-                }
-                Some(id) if id.starts_with("symbol:") => {
-                    let d =
-                        definition::run(&parsed.program, &source, &collector, id, limits, perf)?;
-                    oxc_span::Span::new(d.declaration.range.start, d.declaration.range.end)
-                }
-                Some(id) => {
-                    let e = &collector.entities[collector.by_id(id)?].entity;
-                    oxc_span::Span::new(e.start, e.end)
-                }
-            };
+            let region = selected_region(
+                &source,
+                &parsed.program,
+                &collector,
+                values.within.as_deref(),
+                limits,
+                perf,
+            )?;
             let result = values::run(&parsed.program, &source, &collector, &values, region, perf)?;
             perf.counters.records = Some(result.len());
             perf.measure("serialize", || -> Result<()> {

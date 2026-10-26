@@ -126,6 +126,7 @@ pub struct Collector<'s> {
     query_case_sensitive: bool,
     pub entities: Vec<EntityNode>,
     pub matches: Vec<Match>,
+    pub literal_resolution: Option<crate::StringResolution>,
     match_budget: crate::names::RecordBudget,
     pub contexts: Option<Contexts>,
     stack: Vec<usize>,
@@ -166,6 +167,7 @@ impl<'s> Collector<'s> {
             query_case_sensitive,
             entities: Vec::new(),
             matches: Vec::new(),
+            literal_resolution: None,
             match_budget: crate::names::RecordBudget::new(limits),
             contexts,
             stack: Vec::new(),
@@ -269,6 +271,12 @@ impl<'s> Collector<'s> {
         dynamic: bool,
         resolution: Option<&'static str>,
     ) {
+        if self
+            .literal_resolution
+            .is_some_and(|wanted| !wanted.matches(resolution))
+        {
+            return;
+        }
         if !self.query.as_ref().is_some_and(|query| {
             value.contains_prepared(query.as_slice(), self.query_case_sensitive)
         }) {
