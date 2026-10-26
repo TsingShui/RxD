@@ -724,6 +724,165 @@ fn completion_audit_rejects_overwritten_formal_bindings() {
 }
 
 #[test]
+fn registry_entry_requires_closed_value_and_dispatch_prefix() {
+    let table = "const t={7:function original(m,e,r){}};";
+    let runtime = "function r(id){const m={exports:{}};t[id](m,m.exports,r)}";
+    for effect in [
+        "t[7]=function replacement(){};",
+        "delete t[7];",
+        "const a=t;a[7]=function replacement(){};",
+        "const a=t;",
+        "Object.assign(t,{7:function replacement(){}});",
+        "Object.defineProperty(t,'7',{value:function replacement(){}});",
+        "function change(){t[7]=function replacement(){}}change();",
+        "publish(t);",
+        "opaque();",
+    ] {
+        let source = format!("{table}{runtime}{effect}r(7);");
+        let (_dir, path) = fixture(&source, "registry-state.js");
+        let rows = jsonl(&invoke("modules", &path, &["--source-type", "script"]));
+        assert_eq!(rows.len(), 2, "{effect}: {rows:?}");
+        assert!(
+            rows.iter().all(|r| r["detail"]["entry"].is_null()),
+            "{effect}: {rows:?}"
+        );
+        let original = rows
+            .iter()
+            .find(|r| r["detail"]["module_id"] == "7")
+            .unwrap();
+        let start = original["start"].as_u64().unwrap() as usize;
+        let end = original["end"].as_u64().unwrap() as usize;
+        assert_eq!(
+            invoke("slice", &path, &["--at", original["at"].as_str().unwrap()]).stdout,
+            source.as_bytes()[start..end]
+        );
+    }
+    for source in [
+        format!("var t={{7:function original(m,e,r){{}}}};{runtime}globalThis.t[7]=function replacement(){{}};r(7);"),
+        format!("{table}function r(id){{opaque();const m={{exports:{{}}}};t[id](m,m.exports,r)}}r(7);"),
+        format!("{table}function r(id){{const m={{exports:{{}}}};if(false)t[id](m,m.exports,r)}}r(7);"),
+        format!("{table}function* r(id){{const m={{exports:{{}}}};t[id](m,m.exports,r)}}r(7);"),
+        format!("{table}function r(id,x=opaque()){{const m={{exports:{{}}}};t[id](m,m.exports,r)}}r(7);"),
+        format!("{table}function r(id,m){{t[id](m,m.exports,r)}}r(7);"),
+        format!("{table}function r(id){{let m;t[id](m,m.exports,r)}}r(7);"),
+        format!("r(7);{table}{runtime}"),
+        "(function(t){function r(id){const m={exports:{}};t[id](m,m.exports,r)}arguments[0][7]=function replacement(){};r(7)})({7:function original(m,e,r){}});".to_owned(),
+    ] {
+        let (_dir,path)=fixture(source,"unproved-dispatch.js");
+        let rows=jsonl(&invoke("modules",&path,&["--source-type","script"]));
+        assert_eq!(rows.len(),2,"{rows:?}");
+        assert!(rows.iter().all(|r|r["detail"]["entry"].is_null()),"{rows:?}");
+    }
+    for source in [
+        format!("{table}{runtime}r(7);"),
+        format!("let t={{7:function original(m,e,r){{}}}};{runtime}r(7);"),
+        "(function(t){function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7)})({7:function original(m,e,r){}});".to_owned(),
+        "const t=[function original(m,e,r){}];function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(0);".to_owned(),
+        "const t={7:function original(m,e,r){}};function unused(id){const m={exports:{}};t[id](m,m.exports,unused)}function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7);".to_owned(),
+    ] {
+        let (_dir,path)=fixture(source,"closed-registry.js");
+        let rows=jsonl(&invoke("modules",&path,&["--source-type","script"]));
+        assert_eq!(rows.len(),2);
+        assert_eq!(rows.iter().filter(|r|r["detail"]["entry"]==true).count(),1,"{rows:?}");
+    }
+}
+
+#[test]
+fn registry_entry_proves_enclosing_activation_and_import_barriers() {
+    let table = "const t={7:function original(m,e,r){}};";
+    let runtime = "function r(id){const m={exports:{}};t[id](m,m.exports,r)}";
+    for source in [
+        format!("(function(x=null.x){{{table}{runtime}r(7)}})();"),
+        format!("throw 0;(function(){{{table}{runtime}r(7)}})();"),
+        format!("(function(){{throw 0;(function(){{{table}{runtime}r(7)}})()}})();"),
+        format!("(function(x){{{table}{runtime}r(7)}})(null.x);"),
+        "(function(t){function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7)})({7:function original(m,e,r){},8:null.x});".to_owned(),
+        "(function(t,...rest){function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7)})({7:function original(m,e,r){}});".to_owned(),
+    ] {
+        let (_dir,path)=fixture(source,"wrapper-activation.js");
+        let rows=jsonl(&invoke("modules",&path,&["--source-type","script"]));
+        assert_eq!(rows.len(),2,"{rows:?}");
+        assert!(rows.iter().all(|r|r["detail"]["entry"].is_null()),"{rows:?}");
+    }
+    let (_dir, path) = fixture(
+        "(function(x,t){function unused(id){const m={exports:{}};t[id](m,m.exports,unused)}function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7)})(...[0,{7:function replacement(m,e,r){}}],{7:function original(m,e,r){}});",
+        "spread-formal.js",
+    );
+    assert_eq!(
+        jsonl(&invoke("modules", &path, &["--source-type", "script"])).len(),
+        1
+    );
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("stop.mjs"), "throw 0;").unwrap();
+    for source in [
+        format!("import './stop.mjs';{table}{runtime}r(7);"),
+        format!("{table}{runtime}r(7);import './stop.mjs';"),
+        format!("export * from './stop.mjs';{table}{runtime}r(7);"),
+        format!("{table}{runtime}r(7);export {{stop}} from './stop.mjs';"),
+    ] {
+        let path = dir.path().join("entry.mjs");
+        fs::write(&path, source).unwrap();
+        let rows = jsonl(&invoke("modules", &path, &[]));
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows.iter().all(|r| r["detail"]["entry"].is_null()),
+            "{rows:?}"
+        );
+    }
+    let source = format!(
+        "(function(){{{table}{runtime}r(7)}})(function(){{const u={{8:function unused(m,e,q){{}}}};function q(id){{const m={{exports:{{}}}};u[id](m,m.exports,q)}}q(8)}});"
+    );
+    let (_dir, path) = fixture(source, "activation-identity.js");
+    let rows = jsonl(&invoke("modules", &path, &[]));
+    assert_eq!(rows.len(), 3);
+    assert!(
+        rows.iter()
+            .any(|r| r["detail"]["module_id"] == "7" && r["detail"]["entry"] == true)
+    );
+    assert!(
+        rows.iter()
+            .filter(|r| r["detail"]["module_id"] == "8")
+            .all(|r| r["detail"]["entry"].is_null())
+    );
+    let factories = (0..128)
+        .map(|id| format!("{id}:function(m,e,r){{}}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let loaders = (0..16)
+        .map(|id| {
+            format!("function r{id}(id){{const m={{exports:{{}}}};t[id](m,m.exports,r{id})}}")
+        })
+        .collect::<String>();
+    let calls = (0..16)
+        .map(|id| format!("r{id}({id});"))
+        .collect::<String>();
+    let (_dir, path) = fixture(
+        format!("(function(t){{{loaders}{calls}}})({{{factories}}});"),
+        "shared-activation.js",
+    );
+    let rows = jsonl(&invoke("modules", &path, &[]));
+    assert_eq!(rows.len(), 129);
+    assert_eq!(
+        rows.iter().filter(|r| r["detail"]["entry"] == true).count(),
+        1
+    );
+    for source in [
+        format!("(function(x){{{table}{runtime}r(7)}})({{value:1}});"),
+        format!("(function(){{(function(){{{table}{runtime}r(7)}})()}})();"),
+        format!("import type {{T}} from './types.mjs';{table}{runtime}r(7);"),
+    ] {
+        let (_dir, path) = fixture(source, "closed-startup.ts");
+        assert_eq!(
+            jsonl(&invoke("modules", &path, &[]))
+                .iter()
+                .filter(|r| r["detail"]["entry"] == true)
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
 fn review_project_relative_parent_paths_and_mutated_entry_selectors_are_not_guessed() {
     let source = "const t={7:(m,e,r)=>{},8:(m,e,r)=>{}};function r(id){id++;const m={exports:{}};t[id](m,m.exports,r)}r(7)";
     let (_dir, path) = fixture(source, "selector.js");

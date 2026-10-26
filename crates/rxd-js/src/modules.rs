@@ -118,6 +118,17 @@ struct Factory {
     index: usize,
     span: Span,
 }
+struct EntrySite<'a> {
+    runtime: SymbolId,
+    registry: SymbolId,
+    modules: std::ops::Range<usize>,
+    dispatch: &'a CallExpression<'a>,
+}
+#[derive(Default)]
+struct EntryPrefixes {
+    sites: HashMap<(u32, u32), Option<Span>>,
+    activations: HashMap<(u32, u32), bool>,
+}
 
 fn symbol(id: &IdentifierReference<'_>, semantic: &Semantic<'_>) -> Option<SymbolId> {
     semantic
@@ -254,7 +265,9 @@ impl Index {
         let mut budget = RecordBudget::new(limits);
         budget.charge(&JsString::from(""))?;
         let mut factories = Vec::new();
-        let mut runtimes: HashMap<SymbolId, Vec<usize>> = HashMap::new();
+        let mut entries = Vec::new();
+        let mut registered: HashMap<SymbolId, std::ops::Range<usize>> = HashMap::new();
+        let mut registry_reads = HashSet::new();
         if !dynamic {
             // A registry is linked to an actual indexed factory invocation, not just an object of functions.
             for node in semantic.nodes().iter() {
@@ -290,34 +303,42 @@ impl Index {
                 else {
                     continue;
                 };
-                if factories.iter().any(|f: &Factory| {
-                    index.modules[f.index].registry_at.as_deref()
-                        == Some(&source.entity_id(
-                            "fragment.variable_declarator",
-                            decl.span().start,
-                            decl.span().end,
-                        ))
-                }) {
-                    continue;
+                if let Expression::Identifier(id) = computed.object.get_inner_expression() {
+                    let key = (id.span.start, id.span.end);
+                    if !registry_reads.contains(&key) {
+                        budget.charge_bytes(32)?;
+                        registry_reads.insert(key);
+                    }
                 }
-                let registry_at = crate::fragment::key(decl.kind())
-                    .map(|k| k.id(source))
-                    .unwrap_or_else(|| root.clone());
-                let start = index.modules.len();
-                add_registry(
-                    table,
-                    &registry_at,
-                    &[],
-                    source,
-                    &mut index,
-                    &mut factories,
-                    &mut budget,
-                )?;
+                let modules = if let Some(range) = registered.get(&registry) {
+                    range.clone()
+                } else {
+                    let registry_at = crate::fragment::key(decl.kind())
+                        .map(|k| k.id(source))
+                        .unwrap_or_else(|| root.clone());
+                    let start = index.modules.len();
+                    add_registry(
+                        table,
+                        &registry_at,
+                        &[],
+                        source,
+                        &mut index,
+                        &mut factories,
+                        &mut budget,
+                    )?;
+                    let range = start..index.modules.len();
+                    budget.charge_bytes(64)?;
+                    registered.insert(registry, range.clone());
+                    range
+                };
                 if direct_selector {
-                    runtimes
-                        .entry(runtime)
-                        .or_default()
-                        .extend(start..index.modules.len());
+                    budget.charge_bytes(64)?;
+                    entries.push(EntrySite {
+                        runtime,
+                        registry,
+                        modules,
+                        dispatch: call,
+                    });
                 }
             }
             // Webpack async chunks retain a structurally distinct push registration.
@@ -395,8 +416,28 @@ impl Index {
         if let Some(error) = visitor.error {
             return Err(error);
         }
-        for (runtime, modules) in runtimes {
-            for reference in semantic.scoping().get_resolved_references(runtime) {
+        let dependencies_closed = closed_entry_dependencies(program);
+        let mut prefixes = EntryPrefixes::default();
+        let mut stable_registries: HashMap<SymbolId, Option<(Span, u32)>> = HashMap::new();
+        for entry in entries {
+            if !dependencies_closed {
+                break;
+            }
+            let scope = if let Some(scope) = stable_registries.get(&entry.registry) {
+                *scope
+            } else {
+                budget.charge_bytes(64)?;
+                let scope = entry_registry(entry.registry, &semantic, &registry_reads);
+                stable_registries.insert(entry.registry, scope);
+                scope
+            };
+            let Some((frame, ready)) = scope else {
+                continue;
+            };
+            if !entry_dispatch(entry.dispatch, &semantic, &mut prefixes, &mut budget)? {
+                continue;
+            }
+            for reference in semantic.scoping().get_resolved_references(entry.runtime) {
                 let AstKind::CallExpression(call) =
                     semantic.nodes().parent_kind(reference.node_id())
                 else {
@@ -404,8 +445,10 @@ impl Index {
                 };
                 if call.callee.span() != semantic.reference_span(reference)
                     || call.arguments.len() != 1
-                    || !eager_call(call, &semantic)
-                    || !runtime_ready(runtime, call.span, &semantic)
+                    || !runtime_ready(entry.runtime, call.span, &semantic)
+                    || call.span.start < ready
+                    || prefixes.call(call, &semantic, &mut budget)? != Some(frame)
+                    || !entry_activation(call, &semantic, &mut prefixes, &mut budget)?
                     || factories.iter().any(|f| contains(f.span, call.span))
                 {
                     continue;
@@ -413,8 +456,8 @@ impl Index {
                 let Some(id) = call.arguments[0].as_expression().and_then(literal) else {
                     continue;
                 };
-                for i in &modules {
-                    let m = &mut index.modules[*i];
+                for i in entry.modules.clone() {
+                    let m = &mut index.modules[i];
                     if m.module_id.as_ref() == Some(&id) {
                         m.entry = Some(true);
                     }
@@ -484,6 +527,13 @@ fn registry_argument<'a>(symbol: SymbolId, semantic: &Semantic<'a>) -> Option<&'
             AstKind::CallExpression(c)
                 if c.callee.get_inner_expression().span() == function.span =>
             {
+                if c.arguments
+                    .iter()
+                    .take(index + 1)
+                    .any(|a| matches!(a, Argument::SpreadElement(_)))
+                {
+                    return None;
+                }
                 c.arguments.get(index)?.as_expression()
             }
             _ => None,
@@ -543,6 +593,252 @@ fn registry_runtime(
             && parameter_symbols(params).first().copied().flatten() == Some(selector),
     ))
 }
+fn pure_entry_value(expression: &Expression<'_>, depth: usize) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match expression.get_inner_expression() {
+        Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::FunctionExpression(_)
+        | Expression::ArrowFunctionExpression(_) => true,
+        Expression::TemplateLiteral(t) => t.expressions.is_empty(),
+        Expression::ArrayExpression(a) => a.elements.iter().all(|e| {
+            matches!(e, ArrayExpressionElement::Elision(_))
+                || e.as_expression()
+                    .is_some_and(|e| pure_entry_value(e, depth + 1))
+        }),
+        Expression::ObjectExpression(o) => o.properties.iter().all(|p| {
+            let ObjectPropertyKind::ObjectProperty(p) = p else {
+                return false;
+            };
+            p.kind == PropertyKind::Init
+                && key_name(&p.key, p.computed).is_some_and(|name| !name.equals_str("__proto__"))
+                && pure_entry_value(&p.value, depth + 1)
+        }),
+        _ => false,
+    }
+}
+fn pure_entry_statement(statement: &Statement<'_>) -> bool {
+    match statement {
+        Statement::FunctionDeclaration(_) | Statement::EmptyStatement(_) => true,
+        Statement::ImportDeclaration(d) => d.import_kind == ImportOrExportKind::Type,
+        Statement::ExportAllDeclaration(d) => d.export_kind == ImportOrExportKind::Type,
+        Statement::ExportNamedDeclaration(d) => d.export_kind == ImportOrExportKind::Type,
+        Statement::ExportFromDeclaration(d) => d.export_kind == ImportOrExportKind::Type,
+        Statement::VariableDeclaration(d) => {
+            matches!(
+                d.kind,
+                VariableDeclarationKind::Var
+                    | VariableDeclarationKind::Let
+                    | VariableDeclarationKind::Const
+            ) && d.declarations.iter().all(|d| {
+                d.id.get_binding_identifier().is_some()
+                    && d.init.as_ref().is_none_or(|e| pure_entry_value(e, 0))
+            })
+        }
+        _ => false,
+    }
+}
+impl EntryPrefixes {
+    fn activation(
+        &mut self,
+        invocation: &CallExpression<'_>,
+        owner: Span,
+        params: &FormalParameters<'_>,
+        semantic: &Semantic<'_>,
+        budget: &mut RecordBudget,
+    ) -> Result<bool> {
+        let key = (owner.start, owner.end);
+        if let Some(valid) = self.activations.get(&key) {
+            return Ok(*valid);
+        }
+        let valid = simple_entry_parameters(params)
+            && !invocation.optional
+            && invocation.callee.get_inner_expression().span() == owner
+            && invocation
+                .arguments
+                .iter()
+                .all(|a| a.as_expression().is_some_and(|e| pure_entry_value(e, 0)))
+            && self.call(invocation, semantic, budget)?.is_some();
+        budget.charge_bytes(64)?;
+        self.activations.insert(key, valid);
+        Ok(valid)
+    }
+    fn call(
+        &mut self,
+        call: &CallExpression<'_>,
+        semantic: &Semantic<'_>,
+        budget: &mut RecordBudget,
+    ) -> Result<Option<Span>> {
+        let mut node = semantic.nodes().parent_node(call.node_id.get());
+        while matches!(node.kind(), AstKind::ParenthesizedExpression(_)) {
+            node = semantic.nodes().parent_node(node.id());
+        }
+        let statement = match node.kind() {
+            AstKind::ExpressionStatement(e)
+                if e.expression.get_inner_expression().span() == call.span =>
+            {
+                node
+            }
+            AstKind::ReturnStatement(r)
+                if r.argument
+                    .as_ref()
+                    .is_some_and(|e| e.get_inner_expression().span() == call.span) =>
+            {
+                node
+            }
+            AstKind::VariableDeclarator(d)
+                if d.id.get_binding_identifier().is_some()
+                    && d.init
+                        .as_ref()
+                        .is_some_and(|e| e.get_inner_expression().span() == call.span) =>
+            {
+                let parent = semantic.nodes().parent_node(node.id());
+                if !matches!(parent.kind(),AstKind::VariableDeclaration(v) if v.declarations.len()==1 && matches!(v.kind,VariableDeclarationKind::Var | VariableDeclarationKind::Let | VariableDeclarationKind::Const))
+                {
+                    return Ok(None);
+                }
+                parent
+            }
+            _ => return Ok(None),
+        };
+        let frame = semantic.nodes().parent_node(statement.id());
+        let body = match frame.kind() {
+            AstKind::Program(p) => p.body.as_slice(),
+            AstKind::FunctionBody(f) => f.statements.as_slice(),
+            _ => return Ok(None),
+        };
+        let span = frame.span();
+        let key = (span.start, span.end);
+        let first = if let Some(first) = self.sites.get(&key) {
+            *first
+        } else {
+            budget.charge_bytes(64)?;
+            let first = body
+                .iter()
+                .find(|s| !pure_entry_statement(s))
+                .map(GetSpan::span);
+            self.sites.insert(key, first);
+            first
+        };
+        Ok((first == Some(statement.span())).then_some(span))
+    }
+}
+fn simple_entry_parameters(params: &FormalParameters<'_>) -> bool {
+    params.rest.is_none()
+        && params
+            .items
+            .iter()
+            .all(|p| p.initializer.is_none() && p.pattern.get_binding_identifier().is_some())
+}
+fn entry_registry(
+    registry: SymbolId,
+    semantic: &Semantic<'_>,
+    reads: &HashSet<(u32, u32)>,
+) -> Option<(Span, u32)> {
+    if !unwritten(registry, semantic)
+        || !semantic
+            .scoping()
+            .get_resolved_references(registry)
+            .all(|r| {
+                let s = semantic.reference_span(r);
+                reads.contains(&(s.start, s.end))
+            })
+    {
+        return None;
+    }
+    let declaration = semantic.symbol_declaration(registry);
+    match declaration.kind() {
+        AstKind::VariableDeclarator(d) => {
+            let statement = semantic.nodes().parent_node(declaration.id());
+            let AstKind::VariableDeclaration(variable) = statement.kind() else {
+                return None;
+            };
+            let frame = semantic.nodes().parent_node(statement.id());
+            if !matches!(frame.kind(), AstKind::Program(_) | AstKind::FunctionBody(_))
+                || (matches!(frame.kind(), AstKind::Program(_))
+                    && semantic.source_type().is_script()
+                    && variable.kind == VariableDeclarationKind::Var)
+            {
+                return None;
+            }
+            Some((frame.span(), d.span.end))
+        }
+        AstKind::FormalParameter(_) => {
+            let f = semantic.nodes().ancestors(declaration.id()).find_map(|n| {
+                if let AstKind::Function(f) = n.kind() {
+                    Some(f)
+                } else {
+                    None
+                }
+            })?;
+            if f.r#async || f.generator || !simple_entry_parameters(&f.params) {
+                return None;
+            }
+            f.body.as_ref().map(|body| (body.span, body.span.start))
+        }
+        _ => None,
+    }
+}
+fn entry_dispatch(
+    call: &CallExpression<'_>,
+    semantic: &Semantic<'_>,
+    prefixes: &mut EntryPrefixes,
+    budget: &mut RecordBudget,
+) -> Result<bool> {
+    if !matches!(
+        call.callee.get_inner_expression(),
+        Expression::ComputedMemberExpression(_)
+    ) {
+        return Ok(false);
+    }
+    let Some(owner) = semantic.nodes().ancestors(call.node_id.get()).find(|n| {
+        matches!(
+            n.kind(),
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
+        )
+    }) else {
+        return Ok(false);
+    };
+    let valid = match owner.kind() {
+        AstKind::Function(f) => !f.r#async && !f.generator && simple_entry_parameters(&f.params),
+        AstKind::ArrowFunctionExpression(f) => !f.r#async && simple_entry_parameters(&f.params),
+        _ => false,
+    };
+    if !valid {
+        return Ok(false);
+    }
+    let Some(frame) = prefixes.call(call, semantic, budget)? else {
+        return Ok(false);
+    };
+    let Some(module) = call
+        .arguments
+        .first()
+        .and_then(Argument::as_expression)
+        .and_then(|e| id_symbol(e, semantic))
+    else {
+        return Ok(false);
+    };
+    if !unwritten(module, semantic) {
+        return Ok(false);
+    }
+    let declaration = semantic.symbol_declaration(module);
+    let AstKind::VariableDeclarator(d) = declaration.kind() else {
+        return Ok(false);
+    };
+    let statement = semantic.nodes().parent_node(declaration.id());
+    let parent = semantic.nodes().parent_node(statement.id());
+    let Some(Expression::ObjectExpression(object)) =
+        d.init.as_ref().map(Expression::get_inner_expression)
+    else {
+        return Ok(false);
+    };
+    Ok(parent.span()==frame && d.span.end<=call.span.start && object.properties.iter().any(|p|matches!(p,ObjectPropertyKind::ObjectProperty(p) if p.kind==PropertyKind::Init && key_name(&p.key,p.computed).is_some_and(|name|name.equals_str("exports")))))
+}
 fn runtime_ready(runtime: SymbolId, call: Span, semantic: &Semantic<'_>) -> bool {
     let declaration = semantic.symbol_declaration(runtime);
     match declaration.kind() {
@@ -557,12 +853,57 @@ fn runtime_ready(runtime: SymbolId, call: Span, semantic: &Semantic<'_>) -> bool
         _ => false,
     }
 }
-fn eager_call(call: &CallExpression<'_>, semantic: &Semantic<'_>) -> bool {
-    semantic.nodes().ancestors(call.node_id.get()).all(|node| {
-        if matches!(node.kind(),AstKind::IfStatement(_) | AstKind::ConditionalExpression(_) | AstKind::LogicalExpression(_) | AstKind::SwitchStatement(_) | AstKind::ForStatement(_) | AstKind::ForInStatement(_) | AstKind::ForOfStatement(_) | AstKind::WhileStatement(_) | AstKind::DoWhileStatement(_) | AstKind::TryStatement(_)) { return false; }
-        let span=match node.kind(){AstKind::Function(f)=>Some(f.span),AstKind::ArrowFunctionExpression(a)=>Some(a.span),_=>None};
-        span.is_none_or(|span|semantic.nodes().ancestors(node.id()).find(|n|!matches!(n.kind(),AstKind::ParenthesizedExpression(_))).is_some_and(|n|matches!(n.kind(),AstKind::CallExpression(c) if c.callee.get_inner_expression().span()==span && !c.optional)))
+fn closed_entry_dependencies(program: &Program<'_>) -> bool {
+    program.body.iter().all(|statement| match statement {
+        Statement::ImportDeclaration(d) => d.import_kind == ImportOrExportKind::Type,
+        Statement::ExportAllDeclaration(d) => d.export_kind == ImportOrExportKind::Type,
+        Statement::ExportFromDeclaration(d) => d.export_kind == ImportOrExportKind::Type,
+        _ => true,
     })
+}
+fn entry_activation(
+    call: &CallExpression<'_>,
+    semantic: &Semantic<'_>,
+    prefixes: &mut EntryPrefixes,
+    budget: &mut RecordBudget,
+) -> Result<bool> {
+    for node in semantic.nodes().ancestors(call.node_id.get()) {
+        if matches!(
+            node.kind(),
+            AstKind::IfStatement(_)
+                | AstKind::ConditionalExpression(_)
+                | AstKind::LogicalExpression(_)
+                | AstKind::SwitchStatement(_)
+                | AstKind::ForStatement(_)
+                | AstKind::ForInStatement(_)
+                | AstKind::ForOfStatement(_)
+                | AstKind::WhileStatement(_)
+                | AstKind::DoWhileStatement(_)
+                | AstKind::TryStatement(_)
+        ) {
+            return Ok(false);
+        }
+        let (span, params) = match node.kind() {
+            AstKind::Function(f) if !f.r#async && !f.generator => (f.span, &f.params),
+            AstKind::ArrowFunctionExpression(f) if !f.r#async => (f.span, &f.params),
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => return Ok(false),
+            _ => continue,
+        };
+        let Some(parent) = semantic
+            .nodes()
+            .ancestors(node.id())
+            .find(|n| !matches!(n.kind(), AstKind::ParenthesizedExpression(_)))
+        else {
+            return Ok(false);
+        };
+        let AstKind::CallExpression(invocation) = parent.kind() else {
+            return Ok(false);
+        };
+        if !prefixes.activation(invocation, span, params, semantic, budget)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 fn chunk_receiver(expression: &Expression<'_>, semantic: &Semantic<'_>) -> bool {
     let valid = |object: &Expression<'_>, name: &JsString| {

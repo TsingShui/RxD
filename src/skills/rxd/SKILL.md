@@ -120,7 +120,10 @@ rxd js xref src/ --file "$RELATIVE_FILE" --at "$SYMBOL_AT"
 `modules` reports the file plus retained webpack factory/registration boundaries;
 `module_id` (null for the file root), `registry_at`, `chunk_ids`, counts and direct initializer `entry`
 evidence describe the artifact, not a recovered original file tree. Its `at` is
-sliceable original syntax. `imports` exposes source/expression, imported/local
+sliceable original syntax. `entry` requires a nonescaping registry and a direct
+first dispatch after closed data initialization; writes, opaque effects, cached
+or indirect dispatch leave it absent without discarding retained boundaries.
+`imports` exposes source/expression, imported/local
 aliases and `type_only`; `--name`/`-f` match the imported name (source for side-effect
 imports). `exports` filters exported names and exposes definitions or re-export
 sites. Follow an available `at` to a local binding and `context_at` to the site.
