@@ -56,7 +56,9 @@ impl Decoders {
             let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get()) else {
                 continue;
             };
-            if !factory_shape(function, array, symbol, &semantic) {
+            if !semantic.scoping().symbol_redeclarations(symbol).is_empty()
+                || !factory_shape(function, array, symbol, &semantic)
+            {
                 continue;
             }
             retained = retained
@@ -349,10 +351,11 @@ fn symbol_ref(id: &IdentifierReference<'_>, semantic: &Semantic<'_>) -> Option<S
         .symbol_id()
 }
 fn written(semantic: &Semantic<'_>, symbol: SymbolId) -> bool {
-    semantic
-        .scoping()
-        .get_resolved_references(symbol)
-        .any(|r| r.is_write())
+    !semantic.scoping().symbol_redeclarations(symbol).is_empty()
+        || semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .any(|r| r.is_write())
 }
 fn ref_is(expression: &Expression<'_>, symbol: SymbolId, semantic: &Semantic<'_>) -> bool {
     matches!(expression.get_inner_expression(), Expression::Identifier(id) if symbol_ref(id, semantic) == Some(symbol))
@@ -720,7 +723,10 @@ fn factory_shape(
     let Statement::VariableDeclaration(decl) = &body.statements[0] else {
         return false;
     };
-    if decl.kind != VariableDeclarationKind::Const || exported(function, semantic) {
+    if decl.kind != VariableDeclarationKind::Const
+        || exported(function, semantic)
+        || !lexical::hoisted_function(function, semantic)
+    {
         return false;
     }
     let Some(id) = decl.declarations[0].id.get_binding_identifier() else {
@@ -796,6 +802,7 @@ fn decoder_shape(
     factories: &HashMap<SymbolId, Factory>,
 ) -> Option<Decoder> {
     if !function.is_declaration()
+        || !lexical::hoisted_function(function, semantic)
         || function.r#async
         || function.generator
         || function.params.rest.is_some()
@@ -810,12 +817,14 @@ fn decoder_shape(
         .get_binding_identifier()?
         .symbol_id
         .get()?;
-    if function
-        .params
-        .items
-        .iter()
-        .any(|p| p.initializer.is_some() || p.pattern.get_binding_identifier().is_none())
-    {
+    let mut parameters = HashSet::new();
+    if function.params.items.iter().any(|p| {
+        p.initializer.is_some()
+            || p.pattern
+                .get_binding_identifier()
+                .and_then(|id| id.symbol_id.get())
+                .is_none_or(|symbol| !parameters.insert(symbol))
+    }) {
         return None;
     }
     let mut env = HashMap::from([(
@@ -1213,6 +1222,9 @@ fn rotation<'a>(
         .get_binding_identifier()?
         .symbol_id
         .get()?;
+    if first == target_symbol {
+        return None;
+    }
     let target = integer(call.arguments[1].as_expression()?)? as f64;
     let body = function.body.as_ref()?;
     let (last, setup) = body.statements.split_last()?;

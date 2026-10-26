@@ -20,6 +20,16 @@ pub fn binding<'a>(node: &AstNode<'a>, semantic: &Semantic<'a>) -> Option<(Symbo
     }
 }
 
+pub(crate) fn hoisted_function(
+    function: &oxc_ast::ast::Function<'_>,
+    semantic: &Semantic<'_>,
+) -> bool {
+    matches!(
+        semantic.nodes().parent_kind(function.node_id.get()),
+        AstKind::Program(_) | AstKind::FunctionBody(_)
+    )
+}
+
 pub fn name(semantic: &Semantic<'_>, symbol: SymbolId) -> JsString {
     if let AstKind::TSEnumMember(member) = semantic.symbol_declaration(symbol).kind() {
         match &member.id {

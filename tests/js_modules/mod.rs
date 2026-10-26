@@ -535,6 +535,195 @@ fn review_closes_global_reentry_patterns_and_preserves_independent_tables() {
 }
 
 #[test]
+fn completion_audit_rejects_overwritten_formal_bindings() {
+    for source in [
+        "if(false)function t(){const a=['needle'];return a}function d(i){return t()[i]}d(0);",
+        "function t(){const a=['needle'];return a}if(false)function d(i){return t()[i]}d(0);",
+    ] {
+        let (_dir, path) = fixture(source, "conditional-bindings.js");
+        assert!(
+            jsonl(&invoke(
+                "find",
+                &path,
+                &[
+                    "-f",
+                    "needle",
+                    "--resolve-static",
+                    "--source-type",
+                    "script"
+                ]
+            ))
+            .iter()
+            .all(|r| r["detail"]["resolution"] != "decoder")
+        );
+    }
+    for (runtime, early) in [
+        (
+            "if(false)function r(id){const m={exports:{}};t[id](m,m.exports,r)}",
+            false,
+        ),
+        (
+            "const r=(id)=>{const m={exports:{}};t[id](m,m.exports,r)};",
+            true,
+        ),
+    ] {
+        let source = if early {
+            format!("const t={{7:function(m,e,r){{}}}};r(7);{runtime}")
+        } else {
+            format!("const t={{7:function(m,e,r){{}}}};{runtime}r(7);")
+        };
+        let (_dir, path) = fixture(source, "runtime-activation.js");
+        let rows = jsonl(&invoke("modules", &path, &["--source-type", "script"]));
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|r| r["detail"]["entry"].is_null()));
+    }
+    let (_dir, path) = fixture(
+        "const t={7:function(m,e,r){}};const r=(id)=>{const m={exports:{}};t[id](m,m.exports,r)};r(7);",
+        "ready-runtime.js",
+    );
+    assert!(
+        jsonl(&invoke("modules", &path, &["--source-type", "script"]))
+            .iter()
+            .any(|r| r["detail"]["entry"] == true)
+    );
+    for declaration in [
+        "function d(i){return 'WRONG'}",
+        "function t(){return ['WRONG']}",
+    ] {
+        let (_dir, path) = fixture(
+            format!(
+                "function t(){{const a=['needle'];return a}}function d(i){{return t()[i]}}{declaration}d(0);"
+            ),
+            "redeclared.js",
+        );
+        assert!(
+            jsonl(&invoke(
+                "find",
+                &path,
+                &[
+                    "-f",
+                    "needle",
+                    "--resolve-static",
+                    "--source-type",
+                    "script"
+                ]
+            ))
+            .iter()
+            .all(|r| r["detail"]["resolution"] != "decoder")
+        );
+    }
+    let (_dir, path) = fixture(
+        "(function(reg,reg){function r(id){const m={exports:{}};reg[id](m,m.exports,r)}r(7)})({7:function(m,e,r){}},{8:function(m,e,r){}});",
+        "registry-formals.js",
+    );
+    assert_eq!(
+        jsonl(&invoke("modules", &path, &["--source-type", "script"])).len(),
+        1
+    );
+    let (_dir, path) = fixture(
+        "const t={7:function(m,e,r){}};function r(id,id){const m={exports:{}};t[id](m,m.exports,r)}r(7);",
+        "selector-formals.js",
+    );
+    let modules = jsonl(&invoke("modules", &path, &["--source-type", "script"]));
+    assert_eq!(modules.len(), 2);
+    assert!(modules.iter().all(|r| r["detail"]["entry"].is_null()));
+    let (_dir, path) = fixture(
+        "const t={7:function(m,e,e){e.fake=1}};function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7);",
+        "factory-formals.js",
+    );
+    assert!(jsonl(&invoke("exports", &path, &["--source-type", "script"])).is_empty());
+    let (_dir, path) = fixture(
+        "const t={7:function(m,e,r){e={};e.fake=1;r=opaque;r(8)}};function r(id){const m={exports:{}};t[id](m,m.exports,r)}r(7);",
+        "written-factory-roles.js",
+    );
+    assert!(jsonl(&invoke("exports", &path, &["--source-type", "script"])).is_empty());
+    assert!(jsonl(&invoke("imports", &path, &["--source-type", "script"])).is_empty());
+    let (_dir, path) = fixture(
+        "const t={7:function(m,e,r){}};function r(id){const m={exports:{}};t[id](m,m.exports,r)}function r(){return 'WRONG'}r(7);",
+        "redeclared-runtime.js",
+    );
+    assert_eq!(
+        jsonl(&invoke("modules", &path, &["--source-type", "script"])).len(),
+        1
+    );
+    for suppression in ["function e(){}", "e={};"] {
+        let (_dir, path) = fixture(
+            format!(
+                "const t={{7:function(m,e,r){{{suppression}r.d({{}},{{fake:()=>1}})}}}};function r(id){{const m={{exports:{{}}}};t[id](m,m.exports,r)}}r.d=(object,definitions)=>{{object.fake=definitions.fake()}};r(7);"
+            ),
+            "absent-getter-role.js",
+        );
+        assert!(jsonl(&invoke("exports", &path, &["--source-type", "script"])).is_empty());
+    }
+    for parameters in ["i,i", "i,j,i", "\\u0069,i"] {
+        for (literal, lookup) in [("needle", "t()[i]"), ("bmVlZGxl", "atob(t()[i])")] {
+            let (_dir, path) = fixture(
+                format!(
+                    "function t(){{const a=['{literal}'];return a}}function d({parameters}){{return {lookup}}}d(0);"
+                ),
+                "formals.js",
+            );
+            let rows = jsonl(&invoke(
+                "find",
+                &path,
+                &[
+                    "-f",
+                    "needle",
+                    "--resolve-static",
+                    "--source-type",
+                    "script",
+                ],
+            ));
+            assert!(
+                rows.iter().all(|r| r["detail"]["resolution"] != "decoder"),
+                "{parameters}: {rows:?}"
+            );
+        }
+    }
+    let table = "function t(){const a=['2','1','needle'];t=function(){return a};return t()}function d(i){return t()[i]}";
+    let (_dir, path) = fixture(
+        format!(
+            "{table}(function(f,f){{const a=f();while(true){{try{{const v=parseInt(d(0));if(v===f)break;else a.push(a.shift())}}catch(e){{a.push(a.shift())}}}}}})(t,1);d(1);"
+        ),
+        "rotation-formals.js",
+    );
+    assert!(
+        jsonl(&invoke(
+            "find",
+            &path,
+            &[
+                "-f",
+                "needle",
+                "--resolve-static",
+                "--source-type",
+                "script"
+            ]
+        ))
+        .iter()
+        .all(|r| r["detail"]["resolution"] != "decoder")
+    );
+    let (_dir, path) = fixture(
+        "function t(){const a=['needle'];return a}function d(i,unused){return t()[i]}d(0);",
+        "distinct.js",
+    );
+    assert!(
+        jsonl(&invoke(
+            "find",
+            &path,
+            &[
+                "-f",
+                "needle",
+                "--resolve-static",
+                "--source-type",
+                "script"
+            ]
+        ))
+        .iter()
+        .any(|r| r["detail"]["resolution"] == "decoder")
+    );
+}
+
+#[test]
 fn review_project_relative_parent_paths_and_mutated_entry_selectors_are_not_guessed() {
     let source = "const t={7:(m,e,r)=>{},8:(m,e,r)=>{}};function r(id){id++;const m={exports:{}};t[id](m,m.exports,r)}r(7)";
     let (_dir, path) = fixture(source, "selector.js");

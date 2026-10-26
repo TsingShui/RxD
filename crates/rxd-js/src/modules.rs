@@ -12,7 +12,7 @@ use oxc_semantic::{Semantic, SymbolId};
 use oxc_span::{GetSpan, Span};
 use rxd_core::{Limits, Result, Source, perf::Perf};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy)]
 pub enum Listing {
@@ -132,10 +132,11 @@ fn id_symbol(expression: &Expression<'_>, semantic: &Semantic<'_>) -> Option<Sym
     }
 }
 fn unwritten(symbol: SymbolId, semantic: &Semantic<'_>) -> bool {
-    !semantic
-        .scoping()
-        .get_resolved_references(symbol)
-        .any(|r| r.is_write())
+    semantic.scoping().symbol_redeclarations(symbol).is_empty()
+        && !semantic
+            .scoping()
+            .get_resolved_references(symbol)
+            .any(|r| r.is_write())
 }
 fn literal(expression: &Expression<'_>) -> Option<JsString> {
     match expression.get_inner_expression() {
@@ -182,7 +183,8 @@ fn member<'a>(expression: &'a Expression<'a>) -> Option<(&'a Expression<'a>, JsS
     }
 }
 fn parameter_symbols(params: &FormalParameters<'_>) -> Vec<Option<SymbolId>> {
-    params
+    let mut bindings = HashSet::new();
+    let mut symbols: Vec<_> = params
         .items
         .iter()
         .map(|p| {
@@ -190,7 +192,15 @@ fn parameter_symbols(params: &FormalParameters<'_>) -> Vec<Option<SymbolId>> {
                 .get_binding_identifier()
                 .and_then(|id| id.symbol_id.get())
         })
-        .collect()
+        .collect();
+    if symbols
+        .iter()
+        .flatten()
+        .any(|symbol| !bindings.insert(*symbol))
+    {
+        symbols.fill(None);
+    }
+    symbols
 }
 fn coordinate(source: &Source, semantic: &Semantic<'_>, symbol: SymbolId) -> String {
     let s = semantic.scoping().symbol_span(symbol);
@@ -395,6 +405,7 @@ impl Index {
                 if call.callee.span() != semantic.reference_span(reference)
                     || call.arguments.len() != 1
                     || !eager_call(call, &semantic)
+                    || !runtime_ready(runtime, call.span, &semantic)
                     || factories.iter().any(|f| contains(f.span, call.span))
                 {
                     continue;
@@ -463,12 +474,9 @@ fn registry_argument<'a>(symbol: SymbolId, semantic: &Semantic<'a>) -> Option<&'
             AstKind::Function(f) => Some(f),
             _ => None,
         })?;
-    let index = function.params.items.iter().position(|p| {
-        p.pattern
-            .get_binding_identifier()
-            .and_then(|id| id.symbol_id.get())
-            == Some(symbol)
-    })?;
+    let index = parameter_symbols(&function.params)
+        .iter()
+        .position(|p| *p == Some(symbol))?;
     semantic
         .nodes()
         .ancestors(function.node_id.get())
@@ -529,7 +537,25 @@ fn registry_runtime(
         AstKind::VariableDeclarator(d) => d.init.as_ref()?.get_inner_expression().span(),
         _ => return None,
     };
-    (span == owner.span()).then_some((runtime, unwritten(selector, semantic)))
+    (span == owner.span()).then_some((
+        runtime,
+        unwritten(selector, semantic)
+            && parameter_symbols(params).first().copied().flatten() == Some(selector),
+    ))
+}
+fn runtime_ready(runtime: SymbolId, call: Span, semantic: &Semantic<'_>) -> bool {
+    let declaration = semantic.symbol_declaration(runtime);
+    match declaration.kind() {
+        AstKind::Function(function) => lexical::hoisted_function(function, semantic),
+        AstKind::VariableDeclarator(d) if call.start >= d.span.end => {
+            let statement = semantic.nodes().parent_node(declaration.id());
+            matches!(
+                semantic.nodes().parent_kind(statement.id()),
+                AstKind::Program(_) | AstKind::FunctionBody(_)
+            )
+        }
+        _ => false,
+    }
 }
 fn eager_call(call: &CallExpression<'_>, semantic: &Semantic<'_>) -> bool {
     semantic.nodes().ancestors(call.node_id.get()).all(|node| {
@@ -1015,10 +1041,14 @@ impl<'s> Visit<'s> for Visitor<'_, 's> {
                         .and_then(|f| f.symbol_require)
                         .is_some_and(|s| id_symbol(object, self.semantic) == Some(s))
                     && call.arguments.len() == 2
-                    && call.arguments[0]
-                        .as_expression()
-                        .and_then(|e| id_symbol(e, self.semantic))
-                        == factory.and_then(|f| f.symbol_exports)
+                    && factory
+                        .and_then(|f| f.symbol_exports)
+                        .is_some_and(|exports| {
+                            call.arguments[0]
+                                .as_expression()
+                                .and_then(|e| id_symbol(e, self.semantic))
+                                == Some(exports)
+                        })
                 {
                     let Some(Expression::ObjectExpression(exports)) = call.arguments[1]
                         .as_expression()
