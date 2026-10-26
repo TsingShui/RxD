@@ -55,7 +55,7 @@ def verify(stage, kuna):
                           if (path / '.complete').is_file())
         assert not (kuna_cache / 'kuna').exists() and not (kuna_cache / 'kuna.exe').exists()
         assert kuna_cache.name == kuna['bundle_sha256']
-        run('js', 'outline', ROOT / 'tests/fixtures/example.js')
+        run('html', 'entries', ROOT / 'tests/fixtures/html/catalog.html')
         sample = ROOT / 'tests/fixtures/dotnet/sugar/Sugar.dll'
         rows = [json.loads(line) for line in run('dotnet', 'outline', sample,
                 '--type', 'Rxd.Sugar.Probe', '--method', 'AsyncAwait').splitlines()]

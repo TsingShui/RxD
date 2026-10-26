@@ -3,14 +3,13 @@ name = "rxd"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
-description = "Agent-oriented JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML analysis CLI"
+description = "Agent-oriented JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML analysis CLI"
 license = "Apache-2.0"
 publish = false
 
 [workspace]
 members = [
     "crates/rxd-core",
-    "crates/rxd-js",
     "crates/rxd-asar",
     "crates/rxd-zip",
     "crates/rxd-html",
@@ -29,16 +28,7 @@ resolver = "3"
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
-oxc_allocator = "=0.153.0"
-oxc_ast = "=0.153.0"
-oxc_ast_visit = "=0.153.0"
-oxc_parser = "=0.153.0"
-oxc_semantic = { version = "=0.153.0", default-features = false }
-oxc_span = "=0.153.0"
-oxc_syntax = "=0.153.0"
-rquickjs = { version = "=0.14.0", default-features = false, features = ["std"] }
 rxd-core = { path = "crates/rxd-core" }
-rxd-js = { path = "crates/rxd-js" }
 rxd-asar = { path = "crates/rxd-asar" }
 rxd-zip = { path = "crates/rxd-zip" }
 rxd-html = { path = "crates/rxd-html" }
@@ -48,7 +38,6 @@ rxd-pyc = { path = "crates/rxd-pyc" }
 default = ["all-feature"]
 all-feature = ["all-backends", "mcp"]
 all-backends = [
-    "backend-js",
     "backend-asar",
     "backend-zip",
     "backend-html",
@@ -60,7 +49,6 @@ all-backends = [
     "backend-pyc",
     "backend-kuna",
 ]
-backend-js = ["dep:rxd-js", "dep:rayon"]
 backend-asar = ["dep:rxd-asar"]
 backend-zip = ["dep:rxd-zip"]
 backend-html = ["dep:rxd-html"]
@@ -96,7 +84,6 @@ serde.workspace = true
 serde_json.workspace = true
 tempfile = "3.27"
 rxd-core.workspace = true
-rxd-js = { workspace = true, optional = true }
 rxd-asar = { workspace = true, optional = true }
 rxd-zip = { workspace = true, optional = true }
 rxd-html = { workspace = true, optional = true }

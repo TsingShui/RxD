@@ -253,7 +253,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         .sum();
     assert_eq!(perf_row(&all)["counters"]["instructions"], units);
     for hit in &stream[..] {
-        assert_js_keys(
+        assert_record_keys(
             hit,
             &[
                 "record",
@@ -277,7 +277,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
         ] {
             assert!(hit["detail"][field].is_null());
         }
-        assert_js_keys(
+        assert_record_keys(
             &hit["detail"],
             &[
                 "code_index",
@@ -296,7 +296,7 @@ fn pyc_refs_validate_single_code_scope_ids_and_fixed_stream_schema() {
                 "relation",
             ],
         );
-        assert_js_keys(
+        assert_record_keys(
             &hit["detail"]["target"],
             &["table", "index", "id", "value_id"],
         );

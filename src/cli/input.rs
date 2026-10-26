@@ -11,14 +11,14 @@ pub(crate) struct EntryArgs {
     #[arg(
         long,
         value_name = "ENTRY",
-        long_help = "Analyze one container entry in memory. Use an ASAR path, ZIP entries.at, or a unique exact ZIP path. Coordinates remain entry-relative.\nExample: rxd js entities extension.vsix --entry extension/dist/main.ts"
+        long_help = "Analyze one container entry in memory. Use an ASAR path, ZIP entries.at, or a unique exact ZIP path. Coordinates remain entry-relative.\nExample: rxd html entries page.html --entry site/index.html"
     )]
     pub entry: Option<String>,
 }
 
 pub(super) struct Entry {
     pub bytes: Vec<u8>,
-    #[cfg(any(feature = "backend-js", feature = "backend-html"))]
+    #[cfg(feature = "backend-html")]
     pub path: String,
     pub budget: Budget,
     pub origin: Origin,
@@ -124,7 +124,7 @@ pub(super) fn entry(
     };
     Ok(Entry {
         bytes,
-        #[cfg(any(feature = "backend-js", feature = "backend-html"))]
+        #[cfg(feature = "backend-html")]
         path: _path,
         budget,
         origin: Origin {

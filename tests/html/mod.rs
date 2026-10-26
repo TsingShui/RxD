@@ -420,7 +420,7 @@ fn html_extract_enforces_combined_artifact_and_receipt_budget_before_commit() {
 }
 
 #[test]
-fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity() {
+fn html_extract_content_preserves_inline_script_bytes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("page.html");
     fs::write(
@@ -444,22 +444,6 @@ fn html_extract_content_feeds_known_js_to_the_js_backend_with_artifact_identity(
         fs::read(&destination).unwrap(),
         b"const answer = 40 + 2; function run(v){return v;}"
     );
-    let outlined = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["js", "entities"])
-        .arg(&destination)
-        .output()
-        .unwrap();
-    assert!(
-        outlined.status.success(),
-        "{}",
-        String::from_utf8_lossy(&outlined.stderr)
-    );
-    let rows: Vec<Value> = String::from_utf8(outlined.stdout)
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert!(rows.iter().any(|r| r["detail"]["name"] == "run"));
 }
 
 fn rows_file_success(output: &Output) -> bool {

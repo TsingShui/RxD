@@ -20,7 +20,6 @@ fn enabled_backend_features_define_the_cli_catalog() {
     success(&output);
     let help = String::from_utf8(output.stdout).unwrap();
     let expected = [
-        ("js", cfg!(feature = "backend-js")),
         ("asar", cfg!(feature = "backend-asar")),
         ("html", cfg!(feature = "backend-html")),
         ("dex", cfg!(feature = "backend-dex")),

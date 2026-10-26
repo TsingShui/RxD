@@ -67,7 +67,7 @@ fn pyc_final_versions_enumerate_the_independent_graph_in_every_header_mode() {
             {
                 assert_eq!(actual["at"], format!("code:{index}"));
                 assert_eq!(actual["detail"]["name"], code["name"]);
-                assert_js_keys(
+                assert_record_keys(
                     &actual["detail"]["fields"],
                     if matches!(minor, "3.8" | "3.9" | "3.10") {
                         &[

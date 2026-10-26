@@ -44,7 +44,7 @@ Listing does not parse entry contents; invalid packed ranges stay explicit."
   rxd asar extract app.asar --at 'main.js' -o extracted-main.js
 Required: --at and -o FILE. Use actual entries.at, not an absolute host path.
 Output: original entry bytes in FILE and a file receipt on stdout.
-Next: rxd js entities extracted-main.js.")]
+Next: inspect the extracted file with the backend that matches its bytes.")]
     Extract {
         #[command(flatten)]
         common: Common,

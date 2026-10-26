@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RxD 示例 — 从字符串到源码</title>
-<meta name="description" content="RxD 的 APK/DEX、JavaScript、.NET 等后端查询示例。返回的 ID 就是下一条命令的输入。">
+<meta name="description" content="RxD 的 APK/DEX、.NET 等后端查询示例。返回的 ID 就是下一条命令的输入。">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/zh/examples.html">
 <link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/examples.html">
@@ -43,7 +43,7 @@
   <section class="page-hero">
     <p class="kicker">示例</p>
     <h1>从字符串<br>到源码。</h1>
-    <p class="lede">覆盖 Android、JavaScript 与 .NET 的三条完整路径。命令只读；把 <code>&lt;id&gt;</code> 换成上一条输出里的真实值。</p>
+    <p class="lede">覆盖 Android 与 .NET 的两条完整路径。命令只读；把 <code>&lt;id&gt;</code> 换成上一条输出里的真实值。</p>
   </section>
 
   <section class="section">
@@ -53,16 +53,6 @@
 rxd dex xref app.apk -m Authorization --kind string
 rxd dex get-class app.apk --at '&lt;class_at&gt;'</code></pre>
     <p class="section-lede">从 <code>xref.context_at</code> 取调用方方法坐标，交给 <code>get-method --at</code>，或取其所属类交给 <code>get-class --at</code>。按目标内容找引用用 <code>-m PATTERN --kind KIND</code>。成功以 exit 0 表示；零结果就是空 stdout。</p>
-  </section>
-
-  <section class="section">
-    <h2>JavaScript：定位一个请求处理器</h2>
-    <p class="section-lede">看结构，搜解码字面量，再按 ID 取原始源码。</p>
-    <pre><code>rxd js entities bundle.js
-rxd js find bundle.js -f '/api/login'
-rxd js xref bundle.js --at '&lt;symbol_at&gt;'
-rxd js slice bundle.js --at '&lt;at&gt;'</code></pre>
-    <p class="section-lede"><code>slice</code> 默认返回精确原始字节；需要源码信封时加 <code>--json</code>。<code>entities</code> 提供输入内结构坐标；<code>find</code> 匹配解码字面量；<code>xref</code> 追踪词法绑定。</p>
   </section>
 
   <section class="section">

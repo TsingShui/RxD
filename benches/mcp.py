@@ -160,21 +160,6 @@ def verify_oracle(case, data):
 
 def builtin_cases(root, dotnet, csharp):
     cases = []
-    manifest = json.loads((root / 'tests/corpus/manifest.json').read_text())
-    for case in manifest['cases']:
-        if case['provenance']['kind'] != 'published-production':
-            continue
-        path = root / 'tests/corpus' / case['file']
-        cases.append({'name': case['name'], 'input': str(path), 'sha256': case['sha256'],
-                      'backend': 'js', 'synthetic': False, 'provenance': case['provenance'],
-                      'oracle': {'kind': 'js-find', 'matches': case['expected']['matches']},
-                      'query': {'tool': 'js_find', 'arguments': {'string': case['needle']},
-                                'cli': ['js', 'find', '${path}', '-f', case['needle']],
-                                'projection': 'jsonl'},
-                      'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'js_slice',
-                                    'arguments': {'at': '${q.records.0.context_at}'},
-                                    'cli': ['js', 'get', '${path}', '--at', '${q.records.0.context_at}', '--json'],
-                                    'projection': 'json'}]})
     for label, digest, owner, method in [
             ('gson-2.11.0', '57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b',
              'com/google/gson/GsonBuilder', 'serializeNulls'),

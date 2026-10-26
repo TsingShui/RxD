@@ -60,9 +60,6 @@ MIT License components
 
 - evmole 0.9.4: EVM bytecode analysis library (crates.io dependency).
 
-- Oxc (oxc_parser and related crates) 0.153.0: JavaScript/TypeScript parsing
-  (crates.io dependency).
-
 --------------------------------------------------------------------------------
 Dual-licensed components (MIT OR Apache-2.0)
 --------------------------------------------------------------------------------

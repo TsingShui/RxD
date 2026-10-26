@@ -56,7 +56,7 @@ pub(crate) enum Command {
     },
     /// List source-backed resources, inline code and unresolved references without fetching.
     #[command(
-        after_long_help = "Examples:\nrxd html resources page.html --base-url https://example.org/page\nrxd html resources page.html --kind script --location inline --include-content\nOutput: resource JSONL; at is the owning element, detail.content is original inline text.\n--base-url is the final captured page URL; resolves relative references without fetching.\nExternal candidates are not automatically downloaded; hint/data are not executable scripts.\nNext: extract --at '<resource.at>' --content -o inline.js, then rxd js entities inline.js."
+        after_long_help = "Examples:\nrxd html resources page.html --base-url https://example.org/page\nrxd html resources page.html --kind script --location inline --include-content\nOutput: resource JSONL; at is the owning element, detail.content is original inline text.\n--base-url is the final captured page URL; resolves relative references without fetching.\nExternal candidates are not automatically downloaded; hint/data are not executable scripts.\nNext: extract --at '<resource.at>' --content -o inline.html to keep the exact inline bytes."
     )]
     Resources {
         #[command(flatten)]

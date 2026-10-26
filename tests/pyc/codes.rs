@@ -251,7 +251,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
     let path = corpus("graph.timestamp.pyc");
     let output = codes(&path, &["--perf"]);
     let data = rows(&output);
-    assert_js_keys(
+    assert_record_keys(
         &data[0],
         &[
             "record",
@@ -264,7 +264,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
             "detail",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &data[0]["detail"],
         &[
             "index",
@@ -298,7 +298,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
             "ownership",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &data[0]["detail"]["fields"],
         &[
             "arg_count",
@@ -319,7 +319,7 @@ fn pyc_codes_schema_and_effective_budgets_are_exact_and_atomic() {
             "exception_table",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &data[0]["detail"]["fields"]["code"],
         &[
             "start",

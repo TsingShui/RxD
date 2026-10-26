@@ -335,7 +335,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
     let output = strings(&path, &["--perf"]);
     let all = rows(&output);
     for row in &all[..] {
-        assert_js_keys(
+        assert_record_keys(
             row,
             &[
                 "record",
@@ -348,7 +348,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
                 "detail",
             ],
         );
-        assert_js_keys(
+        assert_record_keys(
             &row["detail"],
             &[
                 "code_index",
@@ -369,7 +369,7 @@ fn pyc_strings_fixed_schema_budget_neighbors_identity_and_output_are_atomic() {
             ],
         );
         for alias in row["detail"]["aliases"].as_array().unwrap() {
-            assert_js_keys(alias, &["start", "end", "constant_path"]);
+            assert_record_keys(alias, &["start", "end", "constant_path"]);
         }
     }
     let reports: Vec<Value> = String::from_utf8(output.stderr)

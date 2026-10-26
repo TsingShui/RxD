@@ -138,7 +138,7 @@ All platforms run release CLI and real stdio MCP E2E. Linux x86_64 also checks f
 strict workspace Clippy, debug CLI/MCP tests and a no-MCP build. Packaging tests a
 relocated copy with no runtime path overrides: actual MCP initialization/discovery,
 immutable Unicode/CRLF snapshot and original FETCH, target closure, lazy engine caches,
-JavaScript, Kuna JSON decompilation, ILSpy async method/class recovery, lazy cache
+Kuna JSON decompilation, ILSpy async method/class recovery, lazy cache
 creation and rejection of a modified cached engine. These correctness checks do not
 establish cross-platform latency.
 

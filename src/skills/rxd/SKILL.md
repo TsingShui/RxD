@@ -1,6 +1,6 @@
 ---
 name: rxd
-description: Analyze JavaScript, ASAR, ZIP-family archives, HTML, APK/DEX, JVM class/JAR, .NET IL, EVM bytecode, WebAssembly and CPython bytecode with the rxd CLI. Select a backend, locate structures or literals, trace explicit references and fetch selected original code or reconstruction; use optional Kuna for native binaries and optional MCP for typed tools.
+description: Analyze ASAR, ZIP-family archives, HTML, APK/DEX, JVM class/JAR, .NET IL, EVM bytecode, WebAssembly and CPython bytecode with the rxd CLI. Select a backend, locate structures or literals, trace explicit references and fetch selected original code or reconstruction; use optional Kuna for native binaries and optional MCP for typed tools.
 ---
 
 # RxD
@@ -15,9 +15,8 @@ explicitly, then locate → associate
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| JS/JSX/TS/TSX | `rxd js` | `entities`/`functions`/`classes`/`methods` (with `-f`/`--kind`/`--name`), `strings`/`find`, `identifiers`, `calls`, `members`, `locate`, `symbols`, `modules`/`imports`/`exports` / lexical `xref --at` (or `--byte`) / byte-exact `slice --at` |
-| Electron ASAR | `rxd asar` | `entries` / JS, HTML and WASM queries accept `rxd BACKEND COMMAND app.asar --entry ENTRY_PATH`; other backends use `extract --at` first |
-| ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; JS/HTML/WASM also accept `--entry` with a printed `zip:N` coordinate or unique exact path |
+| Electron ASAR | `rxd asar` | `entries` / `extract --at`; HTML and WASM queries also accept `--entry ENTRY_PATH` |
+| ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; HTML and WASM also accept `--entry` with a printed `zip:N` coordinate or unique exact path |
 | Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
@@ -33,15 +32,13 @@ are containers: with the container and requested backend enabled, use
 `rxd BACKEND COMMAND ARCHIVE --entry ENTRY` with backend `js`, `html` or `wasm`
 to analyze one entry in memory. ASAR uses an exact path; ZIP accepts `zip entries.at`
 (`zip:N`, required for duplicate paths) or a unique exact path. `--at` and byte
-offsets select inside the entry; JS auto syntax uses the selected filename, not
-its coordinate. Other backends use explicit extraction. AAR code normally lives
+offsets select inside the entry. Other backends use explicit extraction. AAR code normally lives
 in `classes.jar` or `libs/*.jar`: extract the JAR, then use `rxd jar`. ZIP supports
 Stored/Deflate and ZIP64, not encrypted entries, links or automatic nested recursion.
 HTML resources are not automatically followed into other entries. Containers have no code-reference semantics. HTML is a lexical container
 (`lexical_naive_v1`, not a DOM or browser parse): `entries` enumerates
 `element`/`text`/`comment`/`doctype` records with copy-only coordinates, `extract`
-returns the exact original interval, and inline JS/TS is then handed to the code
-backend with artifact-side offsets. Unprefixed ZIP-based zipapps can be enumerated
+returns the exact original interval. Unprefixed ZIP-based zipapps can be enumerated
 with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling remain planned.
 
 ## Consume results and preserve identity
@@ -49,9 +46,7 @@ with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling re
 - stdout contains payload; diagnostics and the `--perf` record
   use stderr. Do not mix them. JSONL lists/searches/references are data rows
   only: no header and no summary. Require exit 0 and parse the rows; zero rows is
-  a complete empty result. JS directory scans open each file with a `file` data
-  record and are scanned in path order, using `--threads` workers by default.
-  Backend-specific completeness, inference and reconstruction flags still apply.
+  a complete empty result. Backend-specific completeness, inference and reconstruction flags still apply.
 - Schema v2 navigation (`at`, `parent_at`, `context_at`, `source_id`, `start`,
   `end`) is outside `detail`; format-specific fields are inside. `at` is the
   copy-only coordinate a row prints and the value `--at` accepts; a stream row
@@ -60,8 +55,7 @@ with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling re
 - A coordinate names a range in the input you are querying, not the file itself: reuse
   it only with the same bytes and interpretation options. A coordinate copied from
   another input is not checked; re-run the listing for the file you are fetching.
-  CLI inputs must remain fixed for the entire call. JS offsets are UTF-8 byte offsets, not characters or lines. Other offsets
-  retain their backend meaning: JVM instruction offsets, .NET metadata tokens,
+  CLI inputs must remain fixed for the entire call. Offsets retain their backend meaning: JVM instruction offsets, .NET metadata tokens,
   DEX member indices/code units, WASM code-body offsets, PYC code-relative bytes,
   EVM decoded PCs versus original raw/hex carrier ranges. Do not interchange them.
 - Narrow before FETCH with selectors (`-f`, `--kind`, `--class`, `--within`,
@@ -73,215 +67,12 @@ with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling re
   `--max-*` flags. Resource failure is not evidence of absence, and
   partial output is never discarded silently.
   Zero hits in a complete query are valid within that query's stated scope.
-- Default JS `slice` returns original bytes. Java/C#/C-like/Python reconstruction is
-  an analysis representation, not original source or a universal semantic proof.
+- Java/C#/C-like/Python reconstruction is an analysis representation, not original source or a universal semantic proof.
   Inspect reconstruction/fallback flags and original bytecode where available.
   Static references do not imply a complete runtime call graph.
 
 Examples below use local input placeholders and `at`/`context_at` coordinates or
 offsets obtained from the preceding response. Keep each input fixed and use its actual returned values.
-
-## JavaScript: choose a locator, fetch only missing evidence
-
-Read a short, readily understandable file directly when that already answers the
-question. Use RxD for missing structure, exact ranges, bindings or selected archive
-entries; do not require a listing/FETCH ceremony for every file. Consult the
-selected command's help only when its options are unknown, not at every step.
-
-Start from evidence already available, not an unfiltered function inventory:
-
-| Existing clue | First query |
-| --- | --- |
-| Function or assigned helper label | `functions bundle.js --name NAME` |
-| Named call or constructor | `calls bundle.js --name NAME` |
-| Property/key write | `members bundle.js --name KEY --access write` |
-| Literal text such as a path | `find bundle.js -f TEXT` |
-| Binding or constant name | `symbols bundle.js --name NAME` |
-| Existing UTF-8 byte position | `locate bundle.js --byte BYTE` |
-
-Prefix each query above with `rxd js`. Use `-f` for a substring when the exact
-name is unknown. If names repeat, distinguish their parent/scope rather than
-silently taking the first row. Full inventories remain appropriate when the task
-actually asks for all structures; filtering must not stand in for completeness.
-
-```sh
-rxd js calls bundle.js --name decrypt
-rxd js slice bundle.js --at "$CONTEXT_AT"
-rxd js calls bundle.js --within "$ENTITY_AT"
-rxd js symbols bundle.js --within "$ENTITY_AT"
-rxd js functions bundle.js --name "$HELPER_NAME"
-rxd js slice bundle.js --at "$HELPER_AT"
-rxd js values bundle.js --name key --kind initializer
-rxd js xref bundle.js --at "$SYMBOL_AT"
-rxd js slice bundle.js --at "$SYMBOL_AT"
-```
-
-Copy a hit's `context_at` for local syntax or `parent_at` for its owner;
-`ENTITY_AT` is a printed structure coordinate. Default `slice` already returns
-byte-exact code: omit `--json` when only reading source, and request it when range
-or representation metadata is needed. Preserve that evidence instead of fetching
-it again or rereading the whole file as confirmation.
-
-After FETCH, follow only missing dependencies: scope `calls`/`symbols`/`values`
-with `--within`, then locate a named helper/constant in its defining scope. A
-callee's definition can be outside its caller's containment range. Use named
-`values` slots for small constants; use symbol rows to establish a binding exists
-without fetching a huge literal initializer. Unresolved references do not supply
-a declaration coordinate. For assigned/property helpers, `functions --name`
-also matches context labels; member keys are not lexical bindings.
-
-A filtered locator and dependent FETCH can run in one shell/Python tool call:
-parse JSONL, select the intended row, then pass its printed coordinate as a
-separate argument. Keep ambiguity and errors explicit. This avoids a model
-round trip and exposing intermediate inventories without changing CLI results.
-
-`strings` enumerates the same match records as `find` without requiring a needle;
-optional `-f` filters values. `--resolution literal|static|decoder` filters
-provenance without enabling recovery: use `--resolve-static` for computed rows.
-`literal` selects the existing null-resolution literals/template parts without
-changing their output fields. `--within` selects a real structure, fragment or
-binding declaration in one file; zero rows differs from a missing coordinate.
-Filters narrow returned occurrences, not whole-input parsing or safety proofs.
-It preserves occurrences, including duplicate/empty literals and dynamic template parts, rather than deduplicating a string pool or
-claiming a complete decrypted table. `--resolve-static` adds proved expressions.
-A row's `detail.value` is the JavaScript string value: exactly one escape layer is
-decoded, so a nested `eval`/`Function` payload still contains its own escapes.
-A filter for the payload's decoded text then returns zero rows; that is a scope
-limit, not evidence of absence. Unescape the value mechanically, keep the derived
-bytes as a separate file, and analyze that file with its own coordinates.
-
-`rxd js deobfuscate file.js` rewrites only recognised string-array factories,
-rotators and decoder calls with literal arguments; unresolved calls keep their
-setup. Treat it as a source transform: write the result to a new file and use
-new coordinates. Decoder setup runs in a bounded QuickJS runtime inside the
-analysis worker with no host I/O; timeout or failure is an explicit error.
-
-A find/strings match has no coordinate of its own: use its `context_at` for a local syntax
-fragment, falling back to `parent_at` for the enclosing entity. `ENTITY_AT` is a
-row from `entities` or a match's `parent_at`; a fragment coordinate is not valid
-for `symbols --within`. A symbol row's `at` anchors `xref`; its `start` byte is the
-`--byte` spelling when the anchor is a raw position. `xref` resolves lexical bindings
-within a file; unresolved names and dynamic `with`/`eval` produce no reference rows.
-Directory searches (`calls`, `members`, `identifiers`, `symbols`, `xref --match`,
-`modules`, `imports`, `exports`, and the structure/literal listings) aggregate
-independent file-local results. Route each hit through the enclosing `file`
-record's `detail.path`; same names in different files are not a binding relation.
-`--within` requires a single file.
-
-```sh
-rxd js modules bundle.js
-rxd js imports bundle.js --within "$MODULE_AT"
-rxd js exports entry.mjs --name login
-rxd js calls src/ --name fetch
-rxd js xref src/ -m login --kind symbol
-rxd js xref src/ --file "$RELATIVE_FILE" --at "$SYMBOL_AT"
-```
-
-`modules` reports the file plus retained webpack factory/registration boundaries;
-`module_id` (null for the file root), `registry_at`, `chunk_ids`, counts and direct initializer `entry`
-evidence describe the artifact, not a recovered original file tree. Its `at` is
-sliceable original syntax. `entry` requires a nonescaping registry and a direct
-first dispatch after closed data initialization; writes, opaque effects, cached
-or indirect dispatch leave it absent without discarding retained boundaries.
-`imports` exposes source/expression, imported/local
-aliases and `type_only`; `--name`/`-f` match the imported name (source for side-effect
-imports). `exports` filters exported names and exposes definitions or re-export
-sites. Follow an available `at` to a local binding and `context_at` to the site.
-
-Directory `xref --file` anchors a symbol/identifier coordinate or `--byte` in the
-relative discovered file and joins only proven ESM bindings through exact `./`
-and `../` file paths. Aliases and named/star re-exports may link; ambiguity,
-missing targets and unsupported relationships stay unlinked. Default function/
-class declarations and live export specifiers can link; a default expression
-snapshot is not an alias of the identifier it reads. No package/extension guessing,
-namespace-property inference or URL-like specifier resolution is provided.
-`target_path` plus `detail.target` identifies the canonical binding; `link: esm`
-marks cross-file references. MCP can capture a JS directory snapshot; open it with
-`rxd_open` and `backend: js` to reuse identical files across project queries.
-
-The identifier/call/member queries are syntax-first locators. `identifiers`
-returns binding/reference occurrences of a full lexical name (so `obj.foo` never
-matches, but `obj[key]` matches `key`); each hit has `parent_at` and `context_at`
-for FETCH. `calls` reports call sites of a name with
-`call_kind: direct|member|new`, never a return value or call graph. `members`
-reports static member/property keys and JSX attribute names, plus computed keys
-whose key is a string literal or a constant expression the bounded evaluator can
-prove (`member_kind: computed_key` with `key_resolution: literal|static`); a
-dynamic `obj[expr]` key never matches. A member row's `receiver` gives the
-original object text and byte range (`{start, end, text}`) when the object path
-is an identifier, `this`, or a chain of static or string-literal keys; it is null
-for call results, variable keys and other dynamic objects. Compare receivers to
-distinguish `window.key` from `document.key`; this is the syntactic receiver, not
-runtime identity, and key-only rows (object/class/JSX) never carry one. `entities --kind` takes one kind or a
-comma-separated list, `--name` filters exactly, and `-f` is a substring over the
-name/label; `functions`, `classes` and `methods` are the same
-rows restricted to one kind group. `find
---resolve-static` additionally matches bounded AST constant evaluation; those
-hits are `literal_kind: static_expression` with `detail.raw` and
-`resolution: static`, or `decoder` when composition uses proven decoder values.
-Existing bounded concatenation, template, indexing and string operations compose
-those values; this does not follow factory returns or interpret arbitrary calls.
-`charCodeAt` reads UTF-16 units; `codePointAt` combines valid surrogate pairs.
-Out-of-range results preserve NaN/undefined semantics in enclosing expressions.
-`join` accepts closed temporary arrays of primitive values/holes, not external
-mutable arrays, object elements or nested-array coercion.
-
-`--resolve-static` shares one decoder proof across `strings`, `find`, `calls`, `members`,
-`values`, `resources` and structure labels. Supported shapes use a closed string
-array factory, a lexical decoder with a bounded integral numeric index and at
-most one numeric offset, and optionally one uniquely solved cached-table rotation.
-Unwritten initialized `const` aliases are followed only after their activation/order
-is proven; captured declarations must not be read or escape before initialization. Plain tables and direct
-standard `atob` table decoding are supported; `atob` yields Latin-1 code units,
-not UTF-8. RC4 and arbitrary custom decoder bodies are unsupported. Rotation bootstrap is
-restricted to pure declarations/closed values and known decoder calls; opaque
-bootstrap effects, runtime imports and evaluator/reflection/constructor escapes
-leave intrinsic-dependent recovery unresolved. Computed reads outside the proven
-decoder/initializer need closed or recovered keys; opaque reads remain unsupported.
-
-Recovered find hits have `literal_kind: decoded`, `resolution: decoder` and the
-original call in `raw`; calls/members expose the proven key. Values use
-`detail.value.resolution: decoder` for values and `key_resolution: decoder` for
-computed keys; resources use `resolution: decoder`. Opt-in entity
-labels use `label_origin: decoder` without changing declared `name`, coordinates
-or source bytes. Mutated/escaping tables or decoders, unsafe initialization,
-string/fractional or opaque indices, exported/ambient table escapes, prototype or
-intrinsic mutation, ambiguous rotations and partially
-invalid encoded tables stay unresolved. These are syntax/semantic proofs, not
-sample fingerprints or runtime execution.
-
-```sh
-rxd asar entries app.asar -f main
-rxd asar extract app.asar --at main.js -o extracted-main.js
-rxd js entities extracted-main.js
-```
-
-ASAR extract requires an output file and returns a receipt; it does not extract
-the whole application implicitly.
-
-```sh
-rxd zip entries extension.vsix -f main
-rxd js entities extension.vsix --entry extension/dist/main.js
-rxd zip entries sdk.aar -f jar
-rxd zip extract sdk.aar --at classes.jar -o target/classes.jar
-rxd jar classes target/classes.jar
-```
-
-MCP uses `zip_extract` → child target → backend query, not CLI `--entry`.
-
-HTML is a lexical container: `entries` returns `element`/`text`/`comment`/`doctype`
-records with copy-only coordinates and decoded attribute values; `extract` copies
-the exact original interval and returns a receipt whose `source_id` identifies the
-artifact. Attribute values are decoded (not byte-exact), while extracted bytes
-stay byte-exact. Inline JS/TS is handed to the JS backend with artifact-side
-offsets — never apply container offsets to the extracted file.
-
-```sh
-rxd html entries page.html
-rxd html entries page.html --tag script --attr type=module
-rxd html extract page.html --at "$SCRIPT_AT" --content -o inline.js
-rxd js entities inline.js
-```
 
 ## Android and JVM: string → caller → selected Java
 

@@ -47,7 +47,7 @@
       <div class="hero-copy">
         <p class="kicker">RUST × DECOMPILER / 面向 AGENT 的分析 CLI</p>
         <h1>一个二进制。<br>完成大部分静态分析。</h1>
-        <p class="lede">Native、APK、JAR、JavaScript、.NET、WASM、PYC 与 EVM —— 定位线索、追踪引用、按需取回原始单元。内容绑定 ID、确定性记录。</p>
+        <p class="lede">Native、APK、JAR、.NET、WASM、PYC 与 EVM —— 定位线索、追踪引用、按需取回原始单元。内容绑定 ID、确定性记录。</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">立即上手 <span aria-hidden="true">→</span></a>
           <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD">GitHub 仓库 <span aria-hidden="true">↗</span></a>
@@ -62,8 +62,6 @@
         <pre><code><span class="prompt">$</span> rxd dex strings app.apk --filter Authorization
 <span class="prompt">$</span> rxd dex xref app.apk -m Authorization --kind string
 <span class="prompt">$</span> rxd dex get-class app.apk --at 'Lcom/example/Main;'
-<span class="prompt">$</span> rxd js find bundle.js -f '/api/login'
-<span class="prompt">$</span> rxd js slice bundle.js --at '&lt;at&gt;'
 <span class="prompt">$</span> rxd dotnet get-method app.dll --at '&lt;at&gt;' --raw
 <span class="prompt">$</span> rxd wasm get-function module.wasm --at '&lt;at&gt;'
 <span class="prompt">$</span> rxd pyc codes module.pyc</code></pre>
@@ -75,7 +73,7 @@
     <div class="wrap rail-inner">
       <span class="rail-label">格式</span>
       <span>Native</span><i>/</i><span>APK</span><i>/</i><span>JAR</span><i>/</i>
-      <span>JavaScript</span><i>/</i><span>.NET</span><i>/</i><span>WASM</span><i>/</i>
+      <span>.NET</span><i>/</i><span>WASM</span><i>/</i>
       <span>PYC</span><i>/</i><span>EVM</span><i>/</i><span>ASAR</span><i>/</i><span>HTML</span>
     </div>
   </div>
@@ -91,7 +89,7 @@
 cargo build --release
 target/release/rxd --version
 target/release/rxd skill</code></pre>
-      <p class="section-lede">精简构建需显式选择：<code>--no-default-features --features backend-js</code>。见 <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/install.md">安装指南</a>。</p>
+      <p class="section-lede">精简构建需显式选择：<code>--no-default-features --features backend-html</code>。见 <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/install.md">安装指南</a>。</p>
     </div>
   </section>
 
@@ -121,7 +119,6 @@ target/release/rxd skill</code></pre>
         <thead><tr><th>后端</th><th>入口</th><th>能力</th></tr></thead>
         <tbody>
           <tr><td>Native</td><td><code>rxd kuna</code></td><td>ELF/PE/Mach-O 函数、单函数与全项目反编译</td></tr>
-          <tr><td>JavaScript</td><td><code>rxd js</code></td><td>结构、解码字面量、词法引用、原始源码</td></tr>
           <tr><td>ASAR</td><td><code>rxd asar</code></td><td>归档条目与原始提取</td></tr>
           <tr><td>HTML</td><td><code>rxd html</code></td><td>词法容器记录与节点提取</td></tr>
           <tr><td>Android APK/DEX</td><td><code>rxd dex</code></td><td>类、字符串、引用、Manifest、字段布局</td></tr>

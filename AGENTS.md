@@ -3,8 +3,8 @@
 ## Project Structure & Module Organization
 
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
-JavaScript (Oxc), ASAR, HTML, Android APK/DEX, JVM class/JAR,
-.NET IL, WebAssembly, and native EVMole EVM bytecode analysis. CPython bytecode
+ASAR, HTML, Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native
+EVMole EVM bytecode analysis. CPython bytecode
 has bounded embedded source reconstruction and static navigation for CPython
 3.8–3.13. Kuna has an optional directly linked CLI adapter and bundled specs.
 PyInstaller/zipapp containers are planned.
@@ -19,18 +19,13 @@ The current layout is:
   `src/cli/output.rs`: explicit stdout/buffer output sink.
   `src/mcp/`: optional stdio protocol, immutable targets and
   disposable analysis-worker scheduling.
-- `src/cli/mod.rs`: top-level dispatch; `src/cli/js/`, `src/cli/asar/`,
-  `src/cli/dex/`, `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`,
-  `src/cli/evm/`, `src/cli/wasm/`, `src/cli/zip/`, and `src/cli/pyc/`: peer command adapters.
-  `src/cli/input.rs` shares ASAR/ZIP entry arguments and loading for JS/HTML/WASM.
-  JavaScript discovery is in `src/cli/js/recursive.rs`. DEX preserves streaming
-  and exit-code contracts.
+- `src/cli/mod.rs`: top-level dispatch; `src/cli/asar/`, `src/cli/dex/`,
+  `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`, `src/cli/evm/`,
+  `src/cli/wasm/`, `src/cli/zip/`, and `src/cli/pyc/`: peer command adapters.
+  `src/cli/input.rs` shares ASAR/ZIP entry arguments and loading for HTML/WASM.
+  DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
-- `crates/rxd-js/`: parsing (`src/lib.rs`), structure extraction
-  (`src/structure.rs`), decoded literals (`src/strings.rs`), on-demand lexical
-  references (`src/refs.rs`), original source extraction, and bounded
-  obfuscator.io string-table recovery (`src/deobfuscate.rs`).
 - `crates/rxd-asar/`: ASAR index and on-demand raw file extraction.
 - `crates/rxd-zip/`: ZIP-family index, duplicate-safe coordinates and selected
   Stored/Deflate decoding with CRC/length validation.
@@ -277,19 +272,14 @@ Structured decompilation (DEX→Java, JVM→Java, IL→C#, WASM→language-neutr
 C-like) recovers existing structured control flow and expressions.
 Whole-function/whole-class decompilation follows the two decompilation exception
 grounds in Performance Requirements. Standard literal/immediate decoding
-(JS escapes; WASM LEB128, floats, memarg; etc.) is parsing. Obfuscated inputs
-remain useful for testing original structure queries and byte-exact extraction.
+(WASM LEB128, floats, memarg; etc.) is parsing. Obfuscated inputs remain useful
+for testing original structure queries and byte-exact extraction.
 
 ## Input Safety
 
-Treat analyzed files as untrusted data. Static backends parse and extract from
-one fixed source buffer, validate coordinates and byte ranges against that input,
-and enforce explicit resource budgets. JavaScript deobfuscation may execute
-input-derived code only inside the disposable analysis worker, under explicit
-memory and CPU limits, with no host bindings for filesystem, network, process or
-environment access. Keep one fixed input buffer, treat execution output as
-untrusted text, and fail the operation explicitly on timeout, budget exhaustion
-or worker crash.
+Treat analyzed files as untrusted data. Never execute input code or instantiate
+input modules. Parse and extract from one fixed source buffer, validate
+coordinates and byte ranges against that input, and enforce explicit resource budgets.
 
 Ordinary CLI metadata/index admission grows with input instead of fixed total
 quotas. Work, instruction count, individual expanded-entry bytes and serialization

@@ -283,7 +283,7 @@ fn assert_no_budget_flags(path: &Path, command: &str) {
 }
 
 fn assert_envelope(row: &Value) {
-    assert_js_keys(
+    assert_record_keys(
         row,
         &[
             "record",
@@ -306,7 +306,7 @@ fn assert_envelope(row: &Value) {
     for key in ["at", "parent_at", "context_at", "start", "end"] {
         assert!(row[key].is_null());
     }
-    assert_js_keys(
+    assert_record_keys(
         &row["detail"],
         &[
             "input_bytes",

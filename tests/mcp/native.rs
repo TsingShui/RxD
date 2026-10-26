@@ -138,11 +138,6 @@ fn mcp_native_worker_rss_limit_reaps_native_request_and_preserves_other_queries(
             .unwrap()
             .contains("RSS")
     );
-    let recovery = client.tool(
-        "js_entities",
-        json!({"input":{"path":root.join("tests/fixtures/example.js")}}),
-    );
-    assert_ne!(recovery["isError"], true, "{recovery}");
     client.disconnect();
     assert!(client.wait_exit().success());
 }
@@ -387,7 +382,7 @@ fn mcp_native_serial_thread_budget_overrides_inherited_decode_lanes() {
     );
     client.initialize();
     client.send(json!({"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"kuna_functions","arguments":{"input":{"path":fixture()}}}}));
-    let pid = super::runtime::child_worker(client.pid());
+    let pid = super::support::child_worker(client.pid());
     let mut observed = 0;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {

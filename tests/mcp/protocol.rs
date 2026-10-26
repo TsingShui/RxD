@@ -25,7 +25,6 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
     let response = client.request("tools/list", json!({}));
     let tools = response["result"]["tools"].as_array().unwrap();
     let expected: BTreeSet<_> = [
-        ("js", cfg!(feature = "backend-js")),
         ("asar", cfg!(feature = "backend-asar")),
         ("zip", cfg!(feature = "backend-zip")),
         ("html", cfg!(feature = "backend-html")),
@@ -67,15 +66,6 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
     client.disconnect();
     assert!(client.wait_exit().success());
-
-    let rejected = std::process::Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["mcp", "--backends", "js"])
-        .stdin(std::process::Stdio::null())
-        .output()
-        .unwrap();
-    assert_eq!(rejected.status.code(), Some(2));
-    assert!(rejected.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&rejected.stderr).contains("--backends"));
 }
 
 #[cfg(feature = "backend-asar")]
@@ -131,32 +121,5 @@ fn mcp_legacy_initialize_negotiates_a_supported_version() {
             .contains("without executing")
     );
     client.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
-    assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
-}
-#[cfg(feature = "backend-js")]
-#[test]
-fn mcp_protocol_request_admission_is_bounded_and_recovers_after_cancellation() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("slow.js");
-    std::fs::write(
-        &path,
-        format!("function slow(){{{}}}", "var item=1;".repeat(180_000)),
-    )
-    .unwrap();
-    let mut client = Client::start(&[
-        "--allow-path",
-        root.path().to_str().unwrap(),
-        "--max-active-requests",
-        "1",
-    ]);
-    client.initialize();
-    client.send(json!({"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"js_entities","arguments":{"input":{"path":path}}}}));
-    client.send(json!({"jsonrpc":"2.0","id":101,"method":"tools/list","params":{}}));
-    let denied = client.receive();
-    assert_eq!(denied["id"], 101, "{denied}");
-    assert_eq!(denied["error"]["code"], -32000, "{denied}");
-    client.send(
-        json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":100}}),
-    );
     assert!(client.request("tools/list", json!({}))["result"]["tools"].is_array());
 }

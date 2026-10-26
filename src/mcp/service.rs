@@ -549,7 +549,6 @@ impl ServerHandler for AnalysisService {
 }
 fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {
     match backend {
-        "js" => Ok(CaptureMode::JavaScriptDirectory),
         "asar" => Ok(CaptureMode::Asar),
         "dex" => Ok(CaptureMode::Bundle),
         "file" | "zip" | "html" | "jar" | "dotnet" | "wasm" | "pyc" | "evm" | "kuna" => {

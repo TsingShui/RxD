@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 mod output;
 pub(crate) use output::Output;
 #[cfg(any(
-    feature = "backend-js",
     feature = "backend-asar",
     feature = "backend-zip",
     feature = "backend-html",
@@ -16,7 +15,6 @@ pub(crate) use output::Output;
 use rxd_core::Error;
 use rxd_core::Result;
 #[cfg(any(
-    feature = "backend-js",
     feature = "backend-asar",
     feature = "backend-zip",
     feature = "backend-html",
@@ -27,7 +25,6 @@ use rxd_core::Result;
 ))]
 use rxd_core::perf::Perf;
 #[cfg(any(
-    feature = "backend-js",
     feature = "backend-asar",
     feature = "backend-zip",
     feature = "backend-html",
@@ -53,15 +50,9 @@ mod filter;
 mod html;
 #[cfg(all(
     any(feature = "backend-asar", feature = "backend-zip"),
-    any(
-        feature = "backend-js",
-        feature = "backend-html",
-        feature = "backend-wasm"
-    )
+    any(feature = "backend-html", feature = "backend-wasm")
 ))]
 mod input;
-#[cfg(feature = "backend-js")]
-mod js;
 #[cfg(feature = "backend-jvm")]
 mod jvm;
 #[cfg(feature = "backend-kuna")]
@@ -73,7 +64,6 @@ mod skill;
 mod wasm;
 /// Identity selectors are shared by FETCH as well as reference queries.
 #[cfg(any(
-    feature = "backend-js",
     feature = "backend-asar",
     feature = "backend-zip",
     feature = "backend-html",
@@ -91,12 +81,11 @@ mod zip;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze Native binaries, JavaScript, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML files",
+    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML files",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
   rxd dotnet --help    Managed DLL/EXE: metadata, IL, optional C#
-  rxd js --help        JS/TS/JSX/TSX: original structure and source
   rxd html --help      Local HTML: nodes, resource candidates, extraction
   rxd asar --help      Electron ASAR: entries and original file extraction
   rxd zip --help       ZIP/AAR/VSIX: entries and selected-entry extraction
@@ -161,36 +150,15 @@ EVM interfaces/storage/ownership are inferred candidates, not verified Solidity 
         #[command(subcommand)]
         command: evm::Command,
     },
-    #[cfg(feature = "backend-js")]
-    /// Analyze JavaScript files.
-    #[command(after_long_help = "Examples:
-  rxd js functions bundle.js --name login
-  rxd js calls bundle.js --name decrypt
-  rxd js members bundle.js --name token --access write
-  rxd js find bundle.js -f '/api/login'
-  rxd js slice bundle.js --at '<hit.context_at>'
-Start from a known name, call, property or literal; narrow before listing.
-For a short readable file, read it directly unless structure or binding evidence is missing.
-Copy context_at for local syntax, parent_at for its owner; --within scopes follow-up queries.
-Missing helper or constant: symbols --name NAME, then slice --at '<symbol.at>'.
-Do not reread the whole file after FETCH; follow only the missing dependencies.
-slice returns original bytes by default; use --json only when source metadata is needed.
-Structure/literal/name listings also scan directories; --within, values, slice and locate take one file.
-Use symbols.at for lexical xref; --byte is a UTF-8 byte offset, not a line number.")]
-    Js {
-        #[command(subcommand)]
-        command: js::Command,
-    },
     #[cfg(feature = "backend-html")]
     /// Enumerate lexical_naive_v1 HTML structure (not DOM/browser-complete).
     #[command(after_long_help = "Examples:
   rxd html entries page.html --tag script
   rxd html resources page.html --base-url https://example.org/page
-  rxd html extract page.html --at '<element.at>' --content -o inline.js
-  rxd js entities inline.js
+  rxd html extract page.html --at '<element.at>' --content -o inline.html
 Copy entries.at or resource.at into extract. -o is required for extracted bytes.
 HTML is a lexical approximation, not a DOM; external resources are not fetched.
-Offsets in inline.js belong to the extracted file, not the original page.")]
+Offsets in the extracted file belong to it, not the original page.")]
     Html {
         #[command(subcommand)]
         command: html::Command,
@@ -200,7 +168,6 @@ Offsets in inline.js belong to the extracted file, not the original page.")]
     #[command(after_long_help = "Examples:
   rxd asar entries app.asar -f main
   rxd asar extract app.asar --at 'main.js' -o extracted-main.js
-  rxd js entities extracted-main.js
 Copy entries.at (an archive-relative path) into extract. -o is required.
 Extraction returns original bytes and a receipt; analyze the extracted file separately.")]
     Asar {
@@ -210,7 +177,7 @@ Extraction returns original bytes and a receipt; analyze the extracted file sepa
     #[cfg(feature = "backend-zip")]
     /// List and extract ZIP-family archives (ZIP, AAR, VSIX, XPI, wheel, NuGet).
     #[command(
-        after_long_help = "Examples:\n  rxd zip entries sdk.aar\n  rxd zip extract sdk.aar --at classes.jar -o target/classes.jar\n  rxd js entities extension.vsix --entry extension/dist/main.js\nCopy entries.at to select duplicates unambiguously. Stored/Deflate entries only; no automatic nested recursion."
+        after_long_help = "Examples:\n  rxd zip entries sdk.aar\n  rxd zip extract sdk.aar --at classes.jar -o target/classes.jar\n  rxd zip entries extension.vsix\nCopy entries.at to select duplicates unambiguously. Stored/Deflate entries only; no automatic nested recursion."
     )]
     Zip {
         #[command(subcommand)]
@@ -294,7 +261,6 @@ impl Cli {
             #[cfg(feature = "mcp")]
             Backend::Mcp(_) => true,
             #[cfg(any(
-                feature = "backend-js",
                 feature = "backend-asar",
                 feature = "backend-zip",
                 feature = "backend-html",
@@ -316,8 +282,6 @@ impl Cli {
             Backend::Kuna { .. } => false,
             #[cfg(feature = "backend-dotnet")]
             Backend::Dotnet { command } => command.perf(),
-            #[cfg(feature = "backend-js")]
-            Backend::Js { command } => command.perf(),
             #[cfg(feature = "backend-asar")]
             Backend::Asar { command } => command.perf(),
             #[cfg(feature = "backend-zip")]
@@ -345,8 +309,6 @@ impl Cli {
             Backend::Kuna { .. } => "kuna",
             #[cfg(feature = "backend-dotnet")]
             Backend::Dotnet { .. } => "dotnet",
-            #[cfg(feature = "backend-js")]
-            Backend::Js { .. } => "js",
             #[cfg(feature = "backend-asar")]
             Backend::Asar { .. } => "asar",
             #[cfg(feature = "backend-zip")]
@@ -374,8 +336,6 @@ impl Cli {
             Backend::Kuna { .. } => "kuna",
             #[cfg(feature = "backend-dotnet")]
             Backend::Dotnet { command } => command.name(),
-            #[cfg(feature = "backend-js")]
-            Backend::Js { command } => command.name(),
             #[cfg(feature = "backend-asar")]
             Backend::Asar { command } => command.name(),
             #[cfg(feature = "backend-zip")]
@@ -438,8 +398,6 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::Kuna { args } => Ok(kuna::run(args)),
         #[cfg(feature = "backend-dotnet")]
         Backend::Dotnet { command } => dotnet::execute(command, policy, output).map(|()| 0),
-        #[cfg(feature = "backend-js")]
-        Backend::Js { command } => js::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-asar")]
         Backend::Asar { command } => asar::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-zip")]
@@ -459,22 +417,12 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
     }
 }
 /// One analysis worker per available logical CPU.
-#[cfg(any(feature = "backend-js", feature = "backend-dex"))]
+#[cfg(feature = "backend-dex")]
 pub(crate) fn default_threads() -> usize {
     std::thread::available_parallelism().map_or(8, std::num::NonZero::get)
 }
 
-#[cfg(any(
-    feature = "mcp",
-    feature = "backend-js",
-    feature = "backend-asar",
-    feature = "backend-html",
-    feature = "backend-jvm",
-    feature = "backend-dex",
-    feature = "backend-dotnet",
-    feature = "backend-evm",
-    feature = "backend-pyc"
-))]
+#[cfg(feature = "mcp")]
 pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     let n = value
         .parse::<usize>()
@@ -487,7 +435,6 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
 }
 
 #[cfg(any(
-    feature = "backend-js",
     feature = "backend-asar",
     feature = "backend-zip",
     feature = "backend-html",
@@ -505,7 +452,6 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
 }
 
 #[cfg(any(
-    feature = "backend-js",
     feature = "backend-asar",
     feature = "backend-zip",
     feature = "backend-html",

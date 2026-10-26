@@ -515,9 +515,9 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
     assert_eq!(rows[1]["detail"]["decoded_end"], 4);
     assert_eq!(rows[1]["start"], 3);
     assert_eq!(rows[1]["end"], 11);
-    assert_js_keys(&rows[0], &["record", "detail"]);
-    assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
-    assert_js_keys(
+    assert_record_keys(&rows[0], &["record", "detail"]);
+    assert_record_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
+    assert_record_keys(
         &rows[1],
         &[
             "record",
@@ -530,7 +530,7 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
             "detail",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &rows[1]["detail"],
         &[
             "unit_kind",
@@ -559,7 +559,7 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
             "decoded_offset":1,"decoded_end":4,"opcode":97,"operand_hex":"005b","text":"PUSH2 005b"
         })
     );
-    assert_js_keys(
+    assert_record_keys(
         &fetched,
         &[
             "record",
@@ -575,7 +575,7 @@ fn evm_final_push_block_fetch_includes_the_full_operand_and_fixed_schema() {
             "schema_version",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &fetched["detail"],
         &[
             "unit_kind",
@@ -1086,11 +1086,11 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
     ];
     let mut interface_keys = function_keys.to_vec();
     interface_keys.extend(["arguments", "stateMutability"]);
-    assert_js_keys(&function["detail"], &interface_keys);
+    assert_record_keys(&function["detail"], &interface_keys);
     let plain = run("get-function", &path, "hex", &["--at", id, "--raw"]);
     success(&plain);
     let fetched: Value = serde_json::from_slice(&plain.stdout).unwrap();
-    assert_js_keys(
+    assert_record_keys(
         &fetched,
         &[
             "record",
@@ -1116,8 +1116,8 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
         "reconstruction",
         "complete",
     ]);
-    assert_js_keys(&fetched["detail"], &fetch_keys);
-    assert_js_keys(
+    assert_record_keys(&fetched["detail"], &fetch_keys);
+    assert_record_keys(
         &fetched["detail"]["segments"][0],
         &[
             "decoded_start",
@@ -1128,7 +1128,7 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
         ],
     );
     let context = &fetched["detail"]["control_flow"][0];
-    assert_js_keys(
+    assert_record_keys(
         context,
         &[
             "context",
@@ -1139,8 +1139,8 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
             "problems",
         ],
     );
-    assert_js_keys(&context["entry_state"], &["stack", "memory_words"]);
-    assert_js_keys(
+    assert_record_keys(&context["entry_state"], &["stack", "memory_words"]);
+    assert_record_keys(
         &context["edges"][0],
         &[
             "instruction_offset",
@@ -1150,7 +1150,7 @@ fn evm_function_navigation_has_fixed_schema_atomic_output_and_separate_completen
             "resolution",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &fetched["detail"]["reconstruction"],
         &[
             "engine",
@@ -1704,9 +1704,9 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
     let id = target["at"].as_str().unwrap();
     let plain = run("xref", &path, "hex", &["--at", id]);
     let rows = jsonl(&plain);
-    assert_js_keys(&rows[0], &["record", "detail"]);
-    assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
-    assert_js_keys(
+    assert_record_keys(&rows[0], &["record", "detail"]);
+    assert_record_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
+    assert_record_keys(
         &rows[1],
         &[
             "record",
@@ -1719,7 +1719,7 @@ fn evm_code_refs_have_fixed_schema_atomic_budgets_and_separate_query_perf() {
             "detail",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &rows[1]["detail"],
         &[
             "target",
@@ -2215,8 +2215,8 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
     let id = literal["at"].as_str().unwrap();
     let references = run("xref", &path, "hex", &["--at", id]);
     let reference_rows = jsonl(&references);
-    assert_js_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
-    assert_js_keys(
+    assert_record_keys(&rows[0]["detail"], acceptance::HEADER_DETAIL_KEYS);
+    assert_record_keys(
         literal,
         &[
             "record",
@@ -2229,7 +2229,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
             "detail",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &literal["detail"],
         &[
             "value",
@@ -2256,7 +2256,7 @@ fn evm_immediate_ids_queries_budgets_and_fixed_envelopes_remain_atomic() {
             "matches",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &reference_rows[1]["detail"],
         &[
             "target",
@@ -2866,7 +2866,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
     let rows = jsonl(&plain);
     let data = rows.iter().find(|r| r["record"] == "data_literal").unwrap();
     let id = data["at"].as_str().unwrap();
-    assert_js_keys(
+    assert_record_keys(
         &data["detail"],
         &[
             "value",
@@ -2895,7 +2895,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
         .iter()
         .find(|r| r["record"] == "data_reference")
         .unwrap();
-    assert_js_keys(
+    assert_record_keys(
         &reference["detail"],
         &[
             "target",
@@ -2935,7 +2935,7 @@ fn evm_data_ids_fixed_schemas_and_budgets_remain_atomic_with_perf_sidecars() {
             .find(|r| r["record"] == "data_literal")
             .unwrap();
         assert_eq!(candidate["at"], id);
-        assert_js_keys(
+        assert_record_keys(
             &candidate["detail"],
             &data["detail"]
                 .as_object()

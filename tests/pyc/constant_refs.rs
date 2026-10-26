@@ -319,7 +319,7 @@ fn pyc_constant_refs_validate_occurrence_paths_selectors_scope_and_fixed_schema(
         &["--version", "3.12", "--at", id, "--within", owner_id],
     ));
     assert_eq!(all[..], scoped[..]);
-    assert_js_keys(
+    assert_record_keys(
         &all[0]["detail"],
         &[
             "code_index",

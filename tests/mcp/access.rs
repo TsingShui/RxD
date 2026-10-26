@@ -42,11 +42,6 @@ fn mcp_requires_absolute_inputs_and_defaults_to_unrestricted_paths() {
             "INVALID_QUERY",
         );
     }
-    #[cfg(feature = "backend-js")]
-    error(
-        &client.tool("js_entities", json!({"input":{"path":"source.js"}})),
-        "INVALID_QUERY",
-    );
     #[cfg(feature = "backend-dex")]
     error(
         &client.tool(
@@ -105,16 +100,6 @@ fn mcp_allow_paths_grant_only_named_files_and_directory_descendants() {
     for path in [&sibling, &outside] {
         error(
             &client.tool("rxd_open", json!({"path":path})),
-            "ACCESS_DENIED",
-        );
-    }
-    #[cfg(feature = "backend-js")]
-    {
-        fs::remove_file(&selected).unwrap();
-        fs::create_dir(&selected).unwrap();
-        fs::write(selected.join("source.js"), bytes).unwrap();
-        error(
-            &client.tool("rxd_open", json!({"path":selected,"backend":"js"})),
             "ACCESS_DENIED",
         );
     }

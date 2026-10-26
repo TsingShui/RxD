@@ -126,7 +126,7 @@ impl Client {
     pub fn disconnect(&mut self) {
         self.input.take();
     }
-    #[cfg(feature = "backend-js")]
+    #[cfg(feature = "bundled-kuna")]
     pub fn pid(&self) -> u32 {
         self.child.id()
     }
@@ -258,4 +258,33 @@ pub fn assert_schema(value: &Value, schema: &Value) {
         valid(value, schema, schema),
         "wire result does not match advertised outputSchema:\n{value}\n{schema}"
     );
+}
+
+/// Analysis workers are children of the service process; find one for RSS checks.
+#[cfg(feature = "bundled-kuna")]
+pub(super) fn child_worker(parent: u32) -> u32 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let output = std::process::Command::new("ps")
+            .args(["-axo", "pid=,ppid="])
+            .output()
+            .unwrap();
+        let child = String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .find_map(|line| {
+                let mut fields = line.split_whitespace();
+                let pid = fields.next()?.parse::<u32>().ok()?;
+                let ppid = fields.next()?.parse::<u32>().ok()?;
+                (ppid == parent).then_some(pid)
+            });
+        if let Some(pid) = child {
+            return pid;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "analysis worker did not appear"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
 }

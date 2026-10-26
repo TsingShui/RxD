@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, JavaScript, EVM, ASAR, ZIP, HTML, .NET, PYC and WASM |
+| 🧩 **Broad coverage** | Native, APK, JAR, EVM, ASAR, ZIP, HTML, .NET, PYC and WASM |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |
@@ -116,12 +116,8 @@ ordinary queries on 64–126 MB APKs take 1.9–62 ms.
 | `kuna` | `catalog` | — | 4.9 | 5.4 | 5.0 |
 | `dotnet` | `methods` | 4.1 KB | 5.4 | 5.7 | 5.4 |
 | `dotnet` | `get-method` | 4.1 KB | 5.4 | 5.6 | 5.4 |
-| `js` | `find` | 78.7 KB | 6.1 | 6.4 | 6.1 |
 | `dotnet` | `get-class` | 4.1 KB | 6.3 | 6.6 | 6.3 |
-| `js` | `entities` | 78.7 KB | 6.7 | 7.2 | 6.8 |
-| `js` | `entities` | 73.2 KB | 7.0 | 7.6 | 7.1 |
 | `jar` | `strings` | 298.4 KB | 10.2 | 10.6 | 10.3 |
-| `js` | `entities` | 168.3 KB | 10.5 | 10.9 | 10.6 |
 | `jar` | `get-method` | 298.4 KB | 11.0 | 11.4 | 11.1 |
 | `dex` | `xref` | 64 MB | 12.3 | 13.1 | 12.5 |
 | `asar` | `extract` | 9 MB | 12.5 | 14.0 | 12.8 |
@@ -176,9 +172,8 @@ supports the three Unix targets above.
 **Build from source**: initialize the Kuna submodule, then a normal Cargo build
 enables `all-feature` (all backend namespaces and MCP). Desktop ILSpy is not
 checked in and is not embedded by default; C# reconstruction is opt-in. Kuna is
-not built or embedded by default. Rust, system linker tools and a C compiler are
-required: the JS backend embeds QuickJS for bounded deobfuscation setup. The first
-dependency download needs network access. macOS is ARM64-only; Linux
+not built or embedded by default. Rust and system linker tools are required; the
+first dependency download needs network access. macOS is ARM64-only; Linux
 supports ARM64/x86_64; Windows x64 is supported.
 
 ```sh
@@ -186,7 +181,7 @@ git submodule update --init third_party/kuna
 cargo build --release
 target/release/rxd skill
 # Reduced builds remain explicit:
-cargo build --release --no-default-features --features backend-js
+cargo build --release --no-default-features --features backend-html
 # Backends and MCP, without a native C# engine:
 cargo build --release --no-default-features --features all-backends,mcp
 # C# reconstruction: produce the engine once on this OS, then embed it:
@@ -224,9 +219,8 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | Backend | Entry | Capability | Status |
 | --- | --- | --- | --- |
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
-| **JavaScript** | `rxd js` | JS/TS/JSX/TSX and recursive directories; structure, strings, byte locations, lexical references, original source extraction | ✅ |
-| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; JS/HTML/WASM queries read selected entries directly with `--entry` | ✅ |
-| **ZIP family** | `rxd zip` | ZIP/AAR/VSIX/XPI/wheel/NuGet metadata and selected Stored/Deflate extraction; shared JS/HTML/WASM `--entry`, ZIP64 and duplicate-name coordinates | ✅ |
+| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; HTML and WASM queries read selected entries directly with `--entry` | ✅ |
+| **ZIP family** | `rxd zip` | ZIP/AAR/VSIX/XPI/wheel/NuGet metadata and selected Stored/Deflate extraction; shared HTML/WASM `--entry`, ZIP64 and duplicate-name coordinates | ✅ |
 | **HTML** | `rxd html` | Local-page lexical catalog and node-level raw extraction (element/text/comment/doctype) | ✅ |
 | **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |

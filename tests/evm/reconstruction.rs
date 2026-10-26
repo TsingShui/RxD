@@ -465,7 +465,7 @@ fn evm_reconstruction_budgets_are_atomic_and_arena_growth_is_linear() {
     let raw: Value = serde_json::from_slice(&raw.stdout).unwrap();
     assert_eq!(raw["detail"]["reconstruction"]["work"], 0);
     assert_eq!(raw["detail"]["reconstruction"]["value_count"], 0);
-    assert_js_keys(
+    assert_record_keys(
         reconstruction,
         &[
             "engine",
@@ -489,7 +489,7 @@ fn evm_reconstruction_budgets_are_atomic_and_arena_growth_is_linear() {
             "work",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &raw["detail"]["reconstruction"],
         &[
             "engine",

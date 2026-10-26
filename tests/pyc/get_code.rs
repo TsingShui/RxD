@@ -445,7 +445,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
     let out = fetch(&path, ids[0]["at"].as_str().unwrap(), &[]);
     success(&out);
     let view: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_js_keys(
+    assert_record_keys(
         &view,
         &[
             "schema_version",
@@ -462,7 +462,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
         ],
     );
     let d = &view["detail"];
-    assert_js_keys(
+    assert_record_keys(
         d,
         &[
             "input_bytes",
@@ -481,8 +481,8 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "exceptions",
         ],
     );
-    assert_js_keys(&d["query"], &["code_id", "version"]);
-    assert_js_keys(
+    assert_record_keys(&d["query"], &["code_id", "version"]);
+    assert_record_keys(
         &d["tables"],
         &[
             "consts",
@@ -493,7 +493,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "cellvars",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &d["instructions"][0],
         &[
             "offset",
@@ -516,7 +516,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "line",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &d["tables"]["consts"],
         &[
             "present",
@@ -527,7 +527,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "entries",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &d["tables"]["consts"]["entries"][0],
         &[
             "index",
@@ -541,7 +541,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "kind",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &d["values"][0],
         &[
             "id",
@@ -557,7 +557,7 @@ fn pyc_get_code_has_fixed_schema_with_aliases_and_a_distinct_missing_body_error(
             "code_id",
         ],
     );
-    assert_js_keys(
+    assert_record_keys(
         &d["line_mapping"][0],
         &[
             "start",

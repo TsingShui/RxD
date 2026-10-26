@@ -171,11 +171,6 @@ site_asar = asar('site.asar','index.html',html)
 wasm_asar = asar('wasm.asar','core.wasm',wasm)
 measure('asar-acceptance/maintained-html','html','entries',site_asar,['--entry','index.html'],entry_bytes=len(html),provenance='Synthetic ASAR carrier; maintained site/index.html')
 measure('asar-acceptance/handwritten-wasm','wasm','functions',wasm_asar,['--entry','core.wasm'],entry_bytes=len(wasm),provenance='Synthetic ASAR carrier; handwritten fixture')
-case=json.loads((ROOT/'tests/corpus/manifest.json').read_text())['cases'][0]
-js_source = ROOT/'tests/corpus'/case['file']
-assert digest(js_source) == case['sha256']
-js_asar = asar('production-js.asar','bundle.js',js_source.read_bytes())
-measure('asar-acceptance/production-js','js','find',js_asar,['--entry','bundle.js','-f',case['needle']],entry_bytes=js_source.stat().st_size,provenance={'synthetic_container':True,'production_payload':case['file']})
 report.update(finished_unix_ns=time.time_ns(),load_end=os.getloadavg(),script_sha256=digest(Path(__file__)))
 (OUT/'results.json').write_text(json.dumps(report,indent=2)+'\n')
 for name in ['result.jsonl','artifact.bin','vsix-functions.jsonl']:

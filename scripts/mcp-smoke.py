@@ -9,8 +9,8 @@ from mcp_client import Client, structured
 
 
 def verify(binary, directory, env, expect_native=False):
-    source = directory / 'mcp-probe.js'
-    original = b'function probe() { return "MCP \xce\xbb"; }\r\n'
+    source = directory / 'mcp-probe.html'
+    original = b'<!doctype html><p id="probe">MCP \xce\xbb</p>\r\n'
     source.write_bytes(original)
     with (directory / 'mcp-smoke.stderr').open('wb') as stderr:
         client = Client(binary, [directory], stderr, env=env, cwd=directory)
@@ -18,30 +18,29 @@ def verify(binary, directory, env, expect_native=False):
             client.initialize()
             packet, _, _ = client.request('tools/list', {})
             names = {tool['name'] for tool in packet['result']['tools']}
-            assert {'rxd_open', 'rxd_close', 'js_find', 'js_slice', 'evm_analyze'} <= names
+            assert {'rxd_open', 'rxd_close', 'html_entries', 'html_extract', 'evm_analyze'} <= names
             assert ('kuna_functions' in names) == expect_native, names
-            opened = structured(client.tool('rxd_open', {'path': str(source)})[0])
+            opened = structured(client.tool('rxd_open', {
+                'path': str(source), 'backend': 'html'})[0])
             assert opened['source_id'] == hashlib.sha256(original).hexdigest()
             source.write_bytes(b'changed source')
-            selected = {'input': {'target_id': opened['target_id']}, 'filter': 'MCP'}
-            found = structured(client.tool('js_find', selected)[0])
-            assert len(found['records']) == 1, found
-            record = found['records'][0]
-            assert record['detail']['value'] == 'MCP \u03bb', record
-            fetched = structured(client.tool('js_slice', {
-                'input': selected['input'], 'at': record['context_at']})[0])
-            assert fetched['detail']['source'].encode() == original[fetched['start']:fetched['end']], fetched
-            outlined = structured(client.tool('js_entities', {'input': selected['input']})[0])
-            root = next(row['at'] for row in outlined['records'] if row['detail']['kind'] == 'program')
-            fetched = structured(client.tool('js_slice', {'input': selected['input'], 'at': root})[0])
-            assert fetched['detail']['source'].encode() == original, fetched
-            closed = structured(client.tool('rxd_close', {'target_id': opened['target_id']})[0])
+            selected = {'input': {'target_id': opened['target_id']}}
+            listed = structured(client.tool('html_entries', selected)[0])
+            record = next(row for row in listed['records']
+                          if row['detail'].get('value') == 'MCP \u03bb')
+            fetched = structured(client.tool('html_extract', {
+                'input': selected['input'], 'at': record['at'],
+                'include_bytes': True})[0])
+            assert fetched['bytes_base64']
+            from base64 import b64decode
+            assert b64decode(fetched['bytes_base64']) == original[record['start']:record['end']]
+            closed = structured(client.tool('rxd_close', {
+                'target_id': opened['target_id']})[0])
             assert closed['target_id'] == opened['target_id'], closed
-            failed = client.tool('js_find', selected)[0]['result']
+            failed = client.tool('html_entries', selected)[0]['result']
             assert failed['isError'] and failed['structuredContent']['error']['code'] == 'TARGET_INVALID', failed
         finally:
             client.close()
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -56,7 +55,7 @@ def main():
         verify(args.binary.resolve(), directory, env, args.expect_native)
         assert not (directory / 'cache/rxd-ilspy').exists()
         assert not (directory / 'cache/rxd-kuna').exists()
-    print('Relocated MCP stdio, snapshot/FETCH, closed target and lazy engines verified.')
+    print('Relocated MCP stdio, immutable snapshot extraction, closed target and lazy engines verified.')
 
 
 if __name__ == '__main__':

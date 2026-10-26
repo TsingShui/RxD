@@ -29,7 +29,7 @@ pub(super) const HEADER_DETAIL_KEYS: &[&str] = &[
 ];
 
 fn assert_stream_schema(rows: &[Value]) {
-    assert_js_keys(&rows[0]["detail"], HEADER_DETAIL_KEYS);
+    assert_record_keys(&rows[0]["detail"], HEADER_DETAIL_KEYS);
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn evm_function_fetch_has_a_distinct_fixed_record_for_raw_supported_and_fallback
                 let row: Value = serde_json::from_slice(&output.stdout).unwrap();
                 assert_eq!(row["record"], "function_code");
                 assert_eq!(row["at"], candidate["at"]);
-                assert_js_keys(&row["detail"], &detail_keys);
+                assert_record_keys(&row["detail"], &detail_keys);
                 assert_eq!(
                     row["detail"]["reconstruction"]["status"],
                     if raw { "not_requested" } else { expected }
@@ -187,13 +187,13 @@ fn evm_embedded_and_enumerated_basic_blocks_share_a_fixed_nullable_schema() {
         "shared",
     ];
     for row in rows.iter().filter(|r| r["record"] == "basic_block") {
-        assert_js_keys(&row["detail"], &keys);
+        assert_record_keys(&row["detail"], &keys);
         assert_eq!(row["detail"]["owner_ids"], Value::Null);
         assert_eq!(row["detail"]["shared"], Value::Null);
     }
     for row in rows.iter().filter(|r| r["record"] == "function") {
         for block in row["detail"]["blocks"].as_array().unwrap() {
-            assert_js_keys(&block["detail"], &keys);
+            assert_record_keys(&block["detail"], &keys);
             assert!(block["detail"]["owner_ids"].is_array());
             assert!(block["detail"]["shared"].is_boolean());
         }

@@ -40,7 +40,6 @@ pub enum InputRef {
 #[derive(Clone, Copy, Debug)]
 pub enum CaptureMode {
     File,
-    JavaScriptDirectory,
     Asar,
     Bundle,
 }
@@ -205,17 +204,15 @@ impl AllowedPath {
 struct CaptureLease {
     memory: Reservation,
     bytes: usize,
-    limits: TargetLimits,
     control: Option<CaptureCheck>,
 }
 
 impl CaptureLease {
-    fn new(usage: ByteBudget, limits: TargetLimits, control: CaptureCheck) -> Result<Self> {
+    fn new(usage: ByteBudget, _limits: TargetLimits, control: CaptureCheck) -> Result<Self> {
         control()?;
         Ok(Self {
             memory: usage.reserve(1024)?,
             bytes: 0,
-            limits,
             control: Some(control),
         })
     }
@@ -332,7 +329,6 @@ impl TargetStore {
                     .ok_or_else(target_invalid)?;
                 let compatible = match mode {
                     CaptureMode::File | CaptureMode::Asar => capture.input.kind == TargetKind::File,
-                    CaptureMode::JavaScriptDirectory => capture.input.kind != TargetKind::Bundle,
                     CaptureMode::Bundle => capture.input.kind != TargetKind::Directory,
                 };
                 if !compatible {
@@ -461,9 +457,6 @@ impl TargetStore {
             lease.check()?;
             let canonical = self.resolve(input)?;
             let original = input.clone();
-            if matches!(mode, CaptureMode::JavaScriptDirectory) && canonical.is_dir() {
-                return self.capture_directory(original, canonical, directory, lease);
-            }
             lease.metadata(
                 1024usize
                     .saturating_add(original.as_os_str().len().saturating_mul(8))
@@ -534,58 +527,6 @@ impl TargetStore {
         }))
     }
 
-    fn capture_directory(
-        &self,
-        original: PathBuf,
-        canonical: PathBuf,
-        directory: TempDir,
-        mut lease: CaptureLease,
-    ) -> Result<Arc<CapturedInput>> {
-        let source = self.open_allowed(&canonical, true)?;
-        let destination = directory.path().join("root");
-        fs::create_dir(&destination)?;
-        let mut files = Vec::new();
-        walk_directory(
-            &source,
-            Path::new(""),
-            1,
-            &mut WalkState {
-                files: &mut files,
-                lease: &mut lease,
-                original_root: &original,
-                canonical_root: &canonical,
-                destination_root: &destination,
-                excluded_root: &self.storage_canonical,
-            },
-        )?;
-        files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        lease.check()?;
-        let source_id = manifest_hash(&files);
-        lease.control = None;
-        let capture = CapturedInput {
-            input: WorkerInput {
-                paths: vec![destination],
-                original_paths: vec![original],
-                files,
-                source_id: source_id.clone(),
-                snapshot_id: source_id,
-                input_bytes: lease.bytes as u64,
-                captured_bytes: lease.bytes as u64,
-                kind: TargetKind::Directory,
-                origin: None,
-                asar_dependencies_captured: false,
-            },
-            requires_asar_plan: false,
-            canonical_paths: vec![canonical],
-            _directory: directory,
-            _lease: lease,
-            _storage: Arc::clone(&self.storage),
-        };
-        Ok(Arc::new(capture))
-    }
-
-    /// Complete a staged ASAR capture from a bounded plan produced by an isolated worker.
-    /// No archive/header parser runs in the protocol process.
     pub fn complete_asar(
         &self,
         mut capture: Arc<CapturedInput>,
@@ -744,351 +685,6 @@ impl TargetStore {
 
 // Directory discovery uses the held directory handle, including its entry enumeration.
 // Filesystem symlinks and special children retain the CLI's skip semantics.
-fn walk_directory(
-    source: &File,
-    relative: &Path,
-    depth: usize,
-    state: &mut WalkState<'_>,
-) -> Result<()> {
-    state.lease.check()?;
-    let before = source.metadata()?;
-    if depth > state.lease.limits.max_depth {
-        return Err(resource("snapshot directory depth budget exceeded"));
-    }
-    let names = directory_names(source, &state.canonical_root.join(relative), state.lease)?;
-    for (name, kind) in names {
-        state.lease.check()?;
-        if name.to_str().is_none() {
-            return Err(invalid_input("recursive input paths must be UTF-8"));
-        }
-        validate_snapshot_component(&name)?;
-        let relative_path = relative.join(&name);
-        let original_path = state.original_root.join(&relative_path);
-        let canonical_path = state.canonical_root.join(&relative_path);
-        if canonical_path.starts_with(state.excluded_root) {
-            continue; // Capturing a broad root must not recursively capture its own growing storage.
-        }
-        let destination_path = state.destination_root.join(&relative_path);
-        match kind {
-            LocalKind::Directory => {
-                let child = open_child_directory(source, &name, &canonical_path)?;
-                fs::create_dir(&destination_path)?;
-                walk_directory(&child, &relative_path, depth + 1, state)?;
-            }
-            LocalKind::File
-                if matches!(
-                    Path::new(&name)
-                        .extension()
-                        .and_then(|extension| extension.to_str()),
-                    Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx")
-                ) =>
-            {
-                let file = open_child_file(source, &name, &canonical_path)?;
-                state.files.push(copy_file(
-                    file,
-                    &destination_path,
-                    original_path,
-                    Some(relative_path),
-                    false,
-                    state.lease,
-                )?);
-            }
-            _ => {}
-        }
-    }
-    if source.metadata()?.modified().ok() != before.modified().ok() {
-        return Err(Error::new(
-            "INPUT_CHANGED",
-            "directory changed while its snapshot was captured",
-        ));
-    }
-    Ok(())
-}
-
-struct WalkState<'a> {
-    files: &'a mut Vec<InputInfo>,
-    lease: &'a mut CaptureLease,
-    original_root: &'a Path,
-    canonical_root: &'a Path,
-    destination_root: &'a Path,
-    excluded_root: &'a Path,
-}
-
-#[derive(Clone, Copy)]
-enum LocalKind {
-    File,
-    Directory,
-    Other,
-}
-
-#[cfg(unix)]
-fn directory_names(
-    source: &File,
-    _original: &Path,
-    lease: &mut CaptureLease,
-) -> Result<Vec<(std::ffi::OsString, LocalKind)>> {
-    use std::{
-        ffi::CStr,
-        os::{fd::AsRawFd, unix::ffi::OsStrExt},
-    };
-    // SAFETY: source is live; atomically duplicate ownership with CLOEXEC so a
-    // concurrently spawned analysis worker cannot inherit the temporary stream.
-    let fd = unsafe { libc::fcntl(source.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
-    if fd < 0 {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    // SAFETY: fd is a fresh descriptor and fdopendir takes ownership on success.
-    let stream = unsafe { libc::fdopendir(fd) };
-    if stream.is_null() {
-        // SAFETY: fdopendir failed, so the duplicated descriptor remains ours.
-        unsafe {
-            libc::close(fd);
-        }
-        return Err(std::io::Error::last_os_error().into());
-    }
-    struct DirectoryStream(*mut libc::DIR);
-    impl Drop for DirectoryStream {
-        fn drop(&mut self) {
-            // SAFETY: this stream is owned, non-null, and closed once.
-            unsafe {
-                libc::closedir(self.0);
-            }
-        }
-    }
-    let stream = DirectoryStream(stream);
-    let mut names = Vec::new();
-    loop {
-        lease.check()?;
-        set_errno(0);
-        // SAFETY: stream remains live; each returned record is used before the next call.
-        let item = unsafe { libc::readdir(stream.0) };
-        if item.is_null() {
-            let error = std::io::Error::last_os_error();
-            if error.raw_os_error() != Some(0) {
-                return Err(error.into());
-            }
-            break;
-        }
-        // SAFETY: readdir returned a record with a NUL-terminated d_name.
-        let name = unsafe { CStr::from_ptr((*item).d_name.as_ptr()) }.to_bytes();
-        if matches!(name, b"." | b"..") {
-            continue;
-        }
-        lease.metadata(256usize.saturating_add(name.len().saturating_mul(8)))?;
-        let name = std::ffi::OsStr::from_bytes(name).to_owned();
-        let kind = directory_kind(source, &name)?;
-        names.push((name, kind));
-    }
-    names.sort_by(|left, right| left.0.cmp(&right.0));
-    Ok(names)
-}
-
-#[cfg(unix)]
-fn set_errno(value: i32) {
-    #[cfg(target_os = "linux")]
-    // SAFETY: errno location points to writable thread-local storage.
-    unsafe {
-        *libc::__errno_location() = value;
-    }
-    // Bionic names the accessor __errno(), which the libc crate does not bind;
-    // declare only the NDK-provided symbol on Android.
-    #[cfg(target_os = "android")]
-    unsafe {
-        unsafe extern "C" {
-            fn __errno() -> *mut core::ffi::c_int;
-        }
-        *__errno() = value;
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    // SAFETY: errno location points to writable thread-local storage.
-    unsafe {
-        *libc::__error() = value;
-    }
-}
-
-#[cfg(unix)]
-fn directory_kind(source: &File, name: &std::ffi::OsStr) -> Result<LocalKind> {
-    use std::{
-        ffi::CString,
-        os::{fd::AsRawFd, unix::ffi::OsStrExt},
-    };
-    let name =
-        CString::new(name.as_bytes()).map_err(|_| invalid_input("NUL in directory entry"))?;
-    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-    // SAFETY: source and name remain live, stat is a writable output, and no symlink is followed.
-    if unsafe {
-        libc::fstatat(
-            source.as_raw_fd(),
-            name.as_ptr(),
-            stat.as_mut_ptr(),
-            libc::AT_SYMLINK_NOFOLLOW,
-        )
-    } != 0
-    {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    // SAFETY: fstatat initialized stat on success above.
-    let mode = unsafe { stat.assume_init() }.st_mode & libc::S_IFMT;
-    Ok(if mode == libc::S_IFREG {
-        LocalKind::File
-    } else if mode == libc::S_IFDIR {
-        LocalKind::Directory
-    } else {
-        LocalKind::Other
-    })
-}
-
-#[cfg(unix)]
-fn open_child_directory(source: &File, name: &std::ffi::OsStr, _original: &Path) -> Result<File> {
-    open_beneath(source, Path::new(name), true)
-}
-#[cfg(unix)]
-fn open_child_file(source: &File, name: &std::ffi::OsStr, _original: &Path) -> Result<File> {
-    open_beneath(source, Path::new(name), false)
-}
-
-#[cfg(windows)]
-fn directory_names(
-    source: &File,
-    _original: &Path,
-    lease: &mut CaptureLease,
-) -> Result<Vec<(std::ffi::OsString, LocalKind)>> {
-    use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
-    #[repr(C)]
-    struct DirectoryRecord {
-        next: u32,
-        index: u32,
-        times: [i64; 6],
-        attributes: u32,
-        name_bytes: u32,
-        ea_size: u32,
-        short_name_length: i8,
-        short_name: [u16; 12],
-        file_id: i64,
-        name: [u16; 1],
-    }
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetFileInformationByHandleEx(
-            handle: *mut std::ffi::c_void,
-            class: i32,
-            information: *mut std::ffi::c_void,
-            bytes: u32,
-        ) -> i32;
-    }
-    let mut buffer = vec![0u64; 8192]; // The Windows directory records require 8-byte alignment.
-    let mut names = Vec::new();
-    let mut class = 11; // FileIdBothDirectoryRestartInfo, followed by continuation class 10.
-    loop {
-        lease.check()?;
-        // SAFETY: source is an opened directory, buffer is aligned writable memory.
-        let status = unsafe {
-            GetFileInformationByHandleEx(
-                source.as_raw_handle(),
-                class,
-                buffer.as_mut_ptr().cast(),
-                (buffer.len() * 8) as u32,
-            )
-        };
-        class = 10;
-        if status == 0 {
-            let error = std::io::Error::last_os_error();
-            if error.raw_os_error() == Some(18) {
-                break;
-            } // ERROR_NO_MORE_FILES.
-            return Err(error.into());
-        }
-        let bytes = buffer.len() * 8;
-        let name_start = std::mem::offset_of!(DirectoryRecord, name);
-        let mut offset = 0usize;
-        loop {
-            lease.check()?;
-            if offset
-                .checked_add(std::mem::size_of::<DirectoryRecord>())
-                .is_none_or(|end| end > bytes)
-            {
-                return Err(invalid_input("invalid Windows directory record"));
-            }
-            // SAFETY: the aligned buffer contains an OS-written record prefix within bounds.
-            let record = unsafe {
-                &*buffer
-                    .as_ptr()
-                    .cast::<u8>()
-                    .add(offset)
-                    .cast::<DirectoryRecord>()
-            };
-            let name_bytes = record.name_bytes as usize;
-            if !name_bytes.is_multiple_of(2) || name_bytes > bytes - offset - name_start {
-                return Err(invalid_input("invalid Windows directory name range"));
-            }
-            // SAFETY: the UTF-16 name range is aligned and checked within the OS buffer.
-            let name = unsafe {
-                std::slice::from_raw_parts(
-                    buffer
-                        .as_ptr()
-                        .cast::<u8>()
-                        .add(offset + name_start)
-                        .cast::<u16>(),
-                    name_bytes / 2,
-                )
-            };
-            let name = std::ffi::OsString::from_wide(name);
-            if name != "." && name != ".." {
-                lease.metadata(256usize.saturating_add(name_bytes.saturating_mul(8)))?;
-                let kind = if record.attributes & (0x400 | 0x40) != 0 {
-                    LocalKind::Other
-                } else if record.attributes & 0x10 != 0 {
-                    LocalKind::Directory
-                } else {
-                    LocalKind::File
-                };
-                names.push((name, kind));
-            }
-            if record.next == 0 {
-                break;
-            }
-            let next = record.next as usize;
-            if !next.is_multiple_of(8) || next < name_start || next > bytes - offset {
-                return Err(invalid_input("invalid Windows directory continuation"));
-            }
-            offset += next;
-        }
-    }
-    names.sort_by(|left, right| left.0.cmp(&right.0));
-    Ok(names)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn directory_names(
-    _source: &File,
-    _original: &Path,
-    _lease: &mut CaptureLease,
-) -> Result<Vec<(std::ffi::OsString, LocalKind)>> {
-    Err(invalid_input(
-        "snapshot directory handles are unsupported on this platform",
-    ))
-}
-#[cfg(not(unix))]
-fn open_child_directory(_source: &File, _name: &std::ffi::OsStr, original: &Path) -> Result<File> {
-    open_checked(
-        original,
-        original
-            .parent()
-            .ok_or_else(|| invalid_input("directory has no parent"))?,
-        true,
-    )
-}
-#[cfg(not(unix))]
-fn open_child_file(_source: &File, _name: &std::ffi::OsStr, original: &Path) -> Result<File> {
-    open_checked(
-        original,
-        original
-            .parent()
-            .ok_or_else(|| invalid_input("file has no parent"))?,
-        false,
-    )
-}
-
 fn copy_file(
     mut source: File,
     destination: &Path,
