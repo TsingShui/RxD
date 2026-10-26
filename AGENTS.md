@@ -29,7 +29,8 @@ The current layout is:
   diagnostics, and phase timings (`src/perf.rs`).
 - `crates/rxd-js/`: parsing (`src/lib.rs`), structure extraction
   (`src/structure.rs`), decoded literals (`src/strings.rs`), on-demand lexical
-  references (`src/refs.rs`), and original source extraction.
+  references (`src/refs.rs`), original source extraction, and bounded
+  obfuscator.io string-table recovery (`src/deobfuscate.rs`).
 - `crates/rxd-asar/`: ASAR index and on-demand raw file extraction.
 - `crates/rxd-zip/`: ZIP-family index, duplicate-safe coordinates and selected
   Stored/Deflate decoding with CRC/length validation.
@@ -281,9 +282,14 @@ remain useful for testing original structure queries and byte-exact extraction.
 
 ## Input Safety
 
-Treat analyzed files as untrusted data. Never execute input code or instantiate
-input modules. Parse and extract from one fixed source buffer, validate
-coordinates and byte ranges against that input, and enforce explicit resource budgets.
+Treat analyzed files as untrusted data. Static backends parse and extract from
+one fixed source buffer, validate coordinates and byte ranges against that input,
+and enforce explicit resource budgets. JavaScript deobfuscation may execute
+input-derived code only inside the disposable analysis worker, under explicit
+memory and CPU limits, with no host bindings for filesystem, network, process or
+environment access. Keep one fixed input buffer, treat execution output as
+untrusted text, and fail the operation explicitly on timeout, budget exhaustion
+or worker crash.
 
 Ordinary CLI metadata/index admission grows with input instead of fixed total
 quotas. Work, instruction count, individual expanded-entry bytes and serialization
