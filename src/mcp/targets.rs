@@ -40,7 +40,6 @@ pub enum InputRef {
 #[derive(Clone, Copy, Debug)]
 pub enum CaptureMode {
     File,
-    Asar,
     Bundle,
 }
 
@@ -112,21 +111,10 @@ pub struct WorkerInput {
     pub captured_bytes: u64,
     pub kind: TargetKind,
     pub origin: Option<TargetOrigin>,
-    pub asar_dependencies_captured: bool,
-}
-
-/// Snapshot plan data from the isolated ASAR metadata worker, never caller-provided.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AsarDependency {
-    pub entry: String,
-    pub size: u64,
 }
 
 pub struct CapturedInput {
     input: WorkerInput,
-    requires_asar_plan: bool,
-    canonical_paths: Vec<PathBuf>,
     // Drop the private files before releasing their storage reservation.
     _directory: TempDir,
     _lease: CaptureLease,
@@ -328,7 +316,7 @@ impl TargetStore {
                     .map(|handle| Arc::clone(&handle.capture))
                     .ok_or_else(target_invalid)?;
                 let compatible = match mode {
-                    CaptureMode::File | CaptureMode::Asar => capture.input.kind == TargetKind::File,
+                    CaptureMode::File => capture.input.kind == TargetKind::File,
                     CaptureMode::Bundle => capture.input.kind != TargetKind::Directory,
                 };
                 if !compatible {
@@ -384,10 +372,7 @@ impl TargetStore {
                 captured_bytes: bytes.len() as u64,
                 kind: TargetKind::File,
                 origin: Some(origin),
-                asar_dependencies_captured: false,
             },
-            requires_asar_plan: false,
-            canonical_paths: Vec::new(),
             _directory: directory,
             _lease: lease,
             _storage: Arc::clone(&self.storage),
@@ -396,11 +381,6 @@ impl TargetStore {
     }
 
     pub fn publish(self: &Arc<Self>, capture: Arc<CapturedInput>) -> Result<PublishedTarget> {
-        if capture.requires_asar_plan && !capture.input.asar_dependencies_captured {
-            return Err(invalid_query(
-                "ASAR capture requires an isolated dependency plan before publication",
-            ));
-        }
         let mut registry = self.registry.lock().map_err(|_| poisoned())?;
         let memory = self.usage.reserve(512)?;
         registry.serial = registry
@@ -451,7 +431,6 @@ impl TargetStore {
         let mut files = Vec::new();
         let mut captured_paths = Vec::new();
         let mut original_paths = Vec::new();
-        let mut canonical_paths = Vec::new();
         let mut seen = HashMap::<PathBuf, (PathBuf, InputInfo)>::new();
         for (index, input) in paths.iter().enumerate() {
             lease.check()?;
@@ -463,7 +442,6 @@ impl TargetStore {
                     .saturating_add(canonical.as_os_str().len().saturating_mul(8)),
             )?;
             original_paths.push(original.clone());
-            canonical_paths.push(canonical.clone());
             if let Some((path, info)) = seen.get(&original) {
                 captured_paths.push(path.clone());
                 files.push(info.clone());
@@ -515,107 +493,13 @@ impl TargetStore {
             captured_bytes: lease.bytes as u64,
             kind,
             origin: None,
-            asar_dependencies_captured: false,
         };
         Ok(Arc::new(CapturedInput {
             input,
-            requires_asar_plan: matches!(mode, CaptureMode::Asar),
-            canonical_paths,
             _directory: directory,
             _lease: lease,
             _storage: Arc::clone(&self.storage),
         }))
-    }
-
-    pub fn complete_asar(
-        &self,
-        mut capture: Arc<CapturedInput>,
-        dependencies: &[AsarDependency],
-        check: CaptureCheck,
-    ) -> Result<Arc<CapturedInput>> {
-        check()?;
-        if capture.input.asar_dependencies_captured {
-            return Ok(capture);
-        }
-        let captured = Arc::get_mut(&mut capture).ok_or_else(|| {
-            invalid_query("ASAR capture must be finalized before it is published or acquired")
-        })?;
-        captured._lease.control = Some(check);
-        if captured.input.kind != TargetKind::File || captured.input.paths.len() != 1 {
-            return Err(invalid_query(
-                "ASAR dependency plan requires one archive input",
-            ));
-        }
-        if captured.input.origin.is_some() && !dependencies.is_empty() {
-            return Err(invalid_input(
-                "extracted ASAR requires unpacked dependencies absent from its captured origin",
-            ));
-        }
-        let original = &captured.input.files[0].original_path;
-        let mut original_unpacked = original.as_os_str().to_owned();
-        original_unpacked.push(".unpacked");
-        let mut canonical_unpacked = captured
-            .canonical_paths
-            .first()
-            .unwrap_or(original)
-            .as_os_str()
-            .to_owned();
-        canonical_unpacked.push(".unpacked");
-        let canonical_unpacked = PathBuf::from(canonical_unpacked);
-        let mut snapshot_unpacked = captured.input.paths[0].as_os_str().to_owned();
-        snapshot_unpacked.push(".unpacked");
-        let original_unpacked = PathBuf::from(original_unpacked);
-        let snapshot_unpacked = PathBuf::from(snapshot_unpacked);
-        let mut seen = std::collections::HashSet::new();
-        captured._lease.metadata(
-            dependencies
-                .len()
-                .checked_mul(128)
-                .ok_or_else(|| resource("dependency metadata overflows"))?,
-        )?;
-        for dependency in dependencies {
-            captured._lease.check()?;
-            validate_entry(&dependency.entry)?;
-            if dependency.entry.split('/').count() > self.limits.max_depth {
-                return Err(resource("snapshot dependency path depth budget exceeded"));
-            }
-            if !seen.insert(&dependency.entry) {
-                return Err(invalid_input("duplicate ASAR dependency in worker plan"));
-            }
-            let relative = PathBuf::from(&dependency.entry);
-            let original_path = original_unpacked.join(&relative);
-            // Open the declared path itself beneath the held root descriptor. ASAR's
-            // filesystem dependency semantics reject symlinks at every component.
-            let source = self.open_allowed(&canonical_unpacked.join(&relative), false)?;
-            let destination = snapshot_unpacked.join(&relative);
-            fs::create_dir_all(
-                destination
-                    .parent()
-                    .ok_or_else(|| invalid_input("ASAR dependency has no parent"))?,
-            )?;
-            let info = copy_file(
-                source,
-                &destination,
-                original_path,
-                Some(relative),
-                true,
-                &mut captured._lease,
-            )?;
-            if info.input_bytes != dependency.size {
-                return Err(invalid_input("unpacked file size differs from ASAR header"));
-            }
-            captured.input.files.push(info);
-        }
-        captured.input.captured_bytes = captured._lease.bytes as u64;
-        captured.input.snapshot_id = if dependencies.is_empty() {
-            captured.input.source_id.clone()
-        } else {
-            manifest_hash(&captured.input.files)
-        };
-        captured._lease.check()?;
-        captured.input.asar_dependencies_captured = true;
-        captured._lease.control = None;
-        Ok(capture)
     }
 
     fn resolve(&self, path: &Path) -> Result<PathBuf> {
@@ -763,27 +647,6 @@ fn manifest_hash(files: &[InputInfo]) -> String {
         hash.update([u8::from(file.dependency)]);
     }
     format!("{:x}", hash.finalize())
-}
-
-fn validate_entry(entry: &str) -> Result<()> {
-    if entry.len() > 4096 {
-        return Err(resource("container path byte budget exceeded"));
-    }
-    if entry.is_empty()
-        || entry.split('/').any(|component| {
-            component.is_empty()
-                || matches!(component, "." | "..")
-                || component.contains(['\\', ':', '\0'])
-        })
-    {
-        return Err(invalid_input(
-            "container dependency requires a safe relative entry path",
-        ));
-    }
-    for component in entry.split('/') {
-        validate_snapshot_component(std::ffi::OsStr::new(component))?;
-    }
-    Ok(())
 }
 
 fn safe_name(name: &str) -> Result<&str> {

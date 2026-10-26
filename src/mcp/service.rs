@@ -2,8 +2,7 @@
 use super::{
     Options,
     targets::{
-        CaptureCheck, CaptureMode, CapturedInput, InputRef, TargetInfo, TargetLimits, TargetOrigin,
-        TargetStore,
+        CaptureCheck, CaptureMode, InputRef, TargetInfo, TargetLimits, TargetOrigin, TargetStore,
     },
     worker::{self, WorkerPayload, WorkerRequest},
 };
@@ -80,11 +79,10 @@ impl AnalysisService {
         }
         let catalog = crate::query::catalog();
         let mut tools=vec![
-            Tool::new("rxd_open","Capture immutable local input from absolute paths; backend hint establishes recursive JS or ASAR dependency scope.",open_schema()).with_raw_output_schema(Arc::new(with_error(schema::<TargetInfo>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
+            Tool::new("rxd_open","Capture immutable local input from absolute paths; the backend hint selects file or bundle scope.",open_schema()).with_raw_output_schema(Arc::new(with_error(schema::<TargetInfo>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
             Tool::new("rxd_close","Invalidate a process-local target handle; acquired requests retain their immutable bytes.",schema::<CloseArgs>()).with_raw_output_schema(Arc::new(with_error(schema::<Closed>()))).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).open_world(false)),
         ];
         for definition in catalog {
-            let creates_target = matches!(definition.name.as_str(), "asar_extract" | "zip_extract");
             let mut tool = Tool::new(
                 definition.name,
                 definition.description,
@@ -103,9 +101,9 @@ impl AnalysisService {
             ))
             .with_annotations(
                 ToolAnnotations::new()
-                    .read_only(!creates_target)
+                    .read_only(true)
                     .destructive(false)
-                    .idempotent(!creates_target)
+                    .idempotent(true)
                     .open_world(false),
             );
             tool.meta = Some(rmcp::model::MetaObject(
@@ -188,7 +186,6 @@ impl AnalysisService {
                     .await
                     .map_err(join_error)?
                     .map_err(QueryError::from)?;
-            let capture = self.prepare(capture, mode, start, &cancellation).await?;
             self.check_live(start, &cancellation)?;
             let target = self.store.publish(capture).map_err(QueryError::from)?;
             let memory = json_envelope(&target.info, self.responses.bytes.limit())
@@ -209,11 +206,7 @@ impl AnalysisService {
             .split_once('_')
             .map(|p| p.0)
             .ok_or_else(|| QueryError::new("INVALID_QUERY", "tool has no backend"))?;
-        let mode = if name == "asar_entries" {
-            CaptureMode::File
-        } else {
-            capture_mode(backend)?
-        };
+        let mode = capture_mode(backend)?;
         let mut references = Vec::new();
         if let Some(inputs) = arguments.get("inputs").and_then(Value::as_array) {
             for input in inputs {
@@ -234,7 +227,7 @@ impl AnalysisService {
                     .await
                     .map_err(join_error)?
                     .map_err(QueryError::from)?;
-            captures.push(self.prepare(capture, mode, start, &cancellation).await?);
+            captures.push(capture);
         }
         self.check_live(start, &cancellation)?;
         let inputs = captures
@@ -255,12 +248,7 @@ impl AnalysisService {
             self.shutdown.clone(),
         )
         .await?;
-        let WorkerPayload::Query(mut result) = reply else {
-            return Err(QueryError::new(
-                "WORKER_ERROR",
-                "query worker returned an ASAR plan",
-            ));
-        };
+        let WorkerPayload::Query(mut result) = reply;
         self.check_live(start, &cancellation)?;
         let mut outbound = Outbound::new(memory);
         if let Some(artifact) = result.artifact {
@@ -321,52 +309,6 @@ impl AnalysisService {
         Ok((result.structured, outbound))
     }
 
-    async fn prepare(
-        &self,
-        capture: Arc<CapturedInput>,
-        mode: CaptureMode,
-        start: Instant,
-        cancellation: &CancellationToken,
-    ) -> std::result::Result<Arc<CapturedInput>, QueryError> {
-        self.check_live(start, cancellation)?;
-        if !matches!(mode, CaptureMode::Asar) || capture.worker_input().asar_dependencies_captured {
-            return Ok(capture);
-        }
-        let (reply, _memory) = worker::run(
-            WorkerRequest::AsarPlan {
-                input: capture.worker_input(),
-            },
-            self.responses.bytes.clone(),
-            self.native_rss_limit,
-            self.remaining(start)?,
-            cancellation.clone(),
-            self.shutdown.clone(),
-        )
-        .await?;
-        let WorkerPayload::AsarPlan(dependencies) = reply else {
-            return Err(QueryError::new(
-                "WORKER_ERROR",
-                "ASAR planner returned query output",
-            ));
-        };
-        self.check_live(start, cancellation)?;
-        // Generic targets/child artifacts already have immutable bytes; packed-only ASAR requires no additional capture.
-        if Arc::strong_count(&capture) > 1 {
-            if dependencies.is_empty() {
-                return Ok(capture);
-            }
-            return Err(QueryError::new(
-                "INVALID_QUERY",
-                "ASAR dependencies were not captured; open with backend asar",
-            ));
-        }
-        let store = self.store.clone();
-        let check = self.capture_check(start, cancellation);
-        tokio::task::spawn_blocking(move || store.complete_asar(capture, &dependencies, check))
-            .await
-            .map_err(join_error)?
-            .map_err(QueryError::from)
-    }
     fn capture_check(&self, start: Instant, cancellation: &CancellationToken) -> CaptureCheck {
         let cancellation = cancellation.clone();
         let shutdown = self.shutdown.clone();
@@ -546,11 +488,8 @@ impl ServerHandler for AnalysisService {
 }
 fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {
     match backend {
-        "asar" => Ok(CaptureMode::Asar),
         "dex" => Ok(CaptureMode::Bundle),
-        "file" | "zip" | "jar" | "dotnet" | "wasm" | "pyc" | "evm" | "kuna" => {
-            Ok(CaptureMode::File)
-        }
+        "file" | "jar" | "dotnet" | "wasm" | "pyc" | "evm" | "kuna" => Ok(CaptureMode::File),
         _ => Err(QueryError::new(
             "INVALID_QUERY",
             "unsupported capture backend",

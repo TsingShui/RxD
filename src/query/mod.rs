@@ -11,12 +11,8 @@ mod schema;
 pub use catalog::{catalog, validate};
 use clap::Parser;
 use rxd_core::Error;
-#[cfg(any(feature = "backend-asar", feature = "backend-zip",))]
-use rxd_core::perf::Perf;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-#[cfg(any(feature = "backend-asar", feature = "backend-zip",))]
-use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -93,28 +89,9 @@ pub fn execute(
             "worker thread and shared byte budgets must be positive",
         ));
     }
-    #[cfg(any(feature = "backend-asar", feature = "backend-zip",))]
-    let input = &inputs[0];
-    #[cfg(any(feature = "backend-asar", feature = "backend-zip",))]
-    let budget = if std::fs::metadata(&input.path)
-        .map_err(Error::from)?
-        .is_dir()
-    {
-        rxd_core::Budget::for_input_bytes(0)?
-    } else {
-        rxd_core::BudgetPolicy::InputScaled.for_file(&input.path)?
-    };
     #[cfg(feature = "bundled-kuna")]
     if name.starts_with("kuna_") {
         return kuna::execute(name, &arguments, &inputs[0], options.inflight_bytes);
-    }
-    #[cfg(feature = "backend-asar")]
-    if name == "asar_extract" {
-        return extract_asar(&arguments, inputs, budget);
-    }
-    #[cfg(feature = "backend-zip")]
-    if name == "zip_extract" {
-        return extract_zip(&arguments, inputs, budget);
     }
     let argv = catalog::argv(name, &arguments, inputs, options.threads)?;
     let cli = crate::cli::Cli::try_parse_from(argv)
@@ -142,119 +119,6 @@ pub fn execute(
     Ok(QueryResult {
         structured,
         artifact: None,
-    })
-}
-
-/// Use a distinct synthetic output path solely to build/normalize extract receipts.
-#[cfg(any(feature = "backend-asar", feature = "backend-zip",))]
-fn synthetic_extraction_destination(input: &Path) -> PathBuf {
-    let mut destination = input.with_file_name(".rxd-mcp-extracted");
-    if destination == input {
-        destination = input.with_file_name(".rxd-mcp-extracted-2");
-    }
-    destination
-}
-
-/// Blank synthetic extract destinations and restore captured original paths.
-#[cfg(any(feature = "backend-asar", feature = "backend-zip",))]
-fn project_extract_receipt(
-    receipt: &[u8],
-    inputs: &[CapturedInput],
-) -> Result<(Value, String), QueryError> {
-    let mut structured: Value = serde_json::from_slice(receipt)
-        .map_err(|error| QueryError::new("INTERNAL_ERROR", error.to_string()))?;
-    structured["detail"]["path"] = Value::Null;
-    restore_paths(&mut structured, inputs);
-    let source_id = structured["source_id"].as_str().unwrap().to_owned();
-    Ok((structured, source_id))
-}
-
-#[cfg(feature = "backend-asar")]
-fn extract_asar(
-    arguments: &Value,
-    inputs: &[CapturedInput],
-    budget: rxd_core::Budget,
-) -> Result<QueryResult, QueryError> {
-    let at = arguments["at"]
-        .as_str()
-        .ok_or_else(|| {
-            QueryError::new(
-                "INVALID_QUERY",
-                "asar_extract requires at from asar_entries.at",
-            )
-        })?
-        .to_owned();
-    let destination = synthetic_extraction_destination(&inputs[0].path);
-    let mut perf = Perf::new(false, "analysis", "asar", "extract");
-    let response = rxd_asar::run(
-        rxd_asar::Query::Extract { at: at.clone() },
-        rxd_asar::Options {
-            input: &inputs[0].path,
-            output: Some(&destination),
-            limits: rxd_core::Limits {
-                input_bytes: rxd_core::MAX_SPAN_BYTES,
-                ..budget.into()
-            },
-            max_entries: budget.entries,
-            max_header_bytes: budget.metadata_bytes,
-        },
-        &mut perf,
-    )?;
-    let rxd_asar::Response::Extract { bytes, receipt } = response else {
-        unreachable!()
-    };
-    let (structured, source_id) = project_extract_receipt(&receipt, inputs)?;
-    Ok(QueryResult {
-        structured,
-        artifact: Some(ExtractedArtifact {
-            bytes,
-            name: at,
-            source_id,
-        }),
-    })
-}
-
-#[cfg(feature = "backend-zip")]
-fn extract_zip(
-    arguments: &Value,
-    inputs: &[CapturedInput],
-    budget: rxd_core::Budget,
-) -> Result<QueryResult, QueryError> {
-    let at = arguments["at"]
-        .as_str()
-        .ok_or_else(|| {
-            QueryError::new(
-                "INVALID_QUERY",
-                "zip_extract requires at from zip_entries.at",
-            )
-        })?
-        .to_owned();
-    let destination = synthetic_extraction_destination(&inputs[0].path);
-    let mut perf = Perf::new(false, "analysis", "zip", "extract");
-    let response = rxd_zip::run(
-        rxd_zip::Query::Extract { at },
-        rxd_zip::Options {
-            input: &inputs[0].path,
-            output: Some(&destination),
-            budget,
-        },
-        &mut perf,
-    )?;
-    let rxd_zip::Response::Extract { bytes, receipt } = response else {
-        unreachable!()
-    };
-    let (structured, source_id) = project_extract_receipt(&receipt, inputs)?;
-    let name = structured["detail"]["entry_path"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    Ok(QueryResult {
-        structured,
-        artifact: Some(ExtractedArtifact {
-            bytes,
-            name,
-            source_id,
-        }),
     })
 }
 

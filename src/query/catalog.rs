@@ -29,18 +29,6 @@ fn capability(command: &str) -> &'static str {
     }
 }
 
-/// Synthetic overlays are limited to MCP-specific extraction handlers.
-fn input_schema(spec: &reflect::ToolSpec) -> Value {
-    let mut schema = reflect::input_schema(spec);
-    if matches!(spec.name.as_str(), "asar_extract" | "zip_extract") {
-        schema["properties"]["include_bytes"] = serde_json::json!({
-            "type": "boolean",
-            "description": "Return the extracted bytes beside the receipt."
-        });
-    }
-    schema
-}
-
 struct Entry {
     spec: reflect::ToolSpec,
     input_schema: Value,
@@ -55,7 +43,7 @@ fn reflected() -> &'static Catalog {
         let entries: Vec<_> = reflect::tools()
             .into_iter()
             .map(|spec| {
-                let input_schema = input_schema(&spec);
+                let input_schema = reflect::input_schema(&spec);
                 Entry { spec, input_schema }
             })
             .collect();

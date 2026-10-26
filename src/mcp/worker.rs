@@ -1,6 +1,6 @@
 //! Bounded one-shot analysis IPC. No parser is invoked in the protocol process.
 use super::resources::{ByteBudget, Reservation, json_envelope};
-use super::targets::{AsarDependency, WorkerInput};
+use super::targets::WorkerInput;
 use crate::query::{CapturedInput, QueryError, QueryOptions, QueryResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,75 +23,14 @@ pub enum WorkerRequest {
         inputs: Vec<WorkerInput>,
         options: QueryOptions,
     },
-    AsarPlan {
-        input: WorkerInput,
-    },
 }
 #[derive(Serialize, Deserialize)]
 pub enum WorkerPayload {
     Query(QueryResult),
-    AsarPlan(Vec<AsarDependency>),
 }
 #[derive(Serialize, Deserialize)]
 struct WorkerReply {
     result: Result<WorkerPayload, QueryError>,
-}
-
-#[cfg(feature = "backend-asar")]
-fn plan_asar(input: WorkerInput) -> Result<WorkerPayload, QueryError> {
-    let path = input
-        .paths
-        .first()
-        .ok_or_else(|| QueryError::new("INVALID_QUERY", "ASAR capture has no input"))?;
-    let budget = rxd_core::BudgetPolicy::InputScaled.for_file(path)?;
-    let limits = budget.into();
-    let mut perf = rxd_core::perf::Perf::new(false, "analysis", "asar", "entries");
-    let rxd_asar::Response::List(bytes) = rxd_asar::run(
-        rxd_asar::Query::Entries {
-            contains: None,
-            case_sensitive: false,
-        },
-        rxd_asar::Options {
-            input: path,
-            output: None,
-            limits,
-            max_entries: budget.entries,
-            max_header_bytes: budget.metadata_bytes,
-        },
-        &mut perf,
-    )
-    .map_err(QueryError::from)?
-    else {
-        return Err(QueryError::new(
-            "WORKER_ERROR",
-            "ASAR planning returned an artifact",
-        ));
-    };
-    let mut dependencies = Vec::new();
-    for line in bytes.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
-        let record: Value = serde_json::from_slice(line)
-            .map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))?;
-        if record["record"] == "file" && record["detail"]["storage"] == "unpacked" {
-            dependencies.push(AsarDependency {
-                entry: record["detail"]["path"]
-                    .as_str()
-                    .ok_or_else(|| QueryError::new("WORKER_ERROR", "invalid ASAR path"))?
-                    .to_owned(),
-                size: record["detail"]["bytes"]
-                    .as_u64()
-                    .ok_or_else(|| QueryError::new("WORKER_ERROR", "invalid ASAR size"))?,
-            });
-        }
-    }
-    Ok(WorkerPayload::AsarPlan(dependencies))
-}
-
-#[cfg(not(feature = "backend-asar"))]
-fn plan_asar(_input: WorkerInput) -> Result<WorkerPayload, QueryError> {
-    Err(QueryError::new(
-        "INVALID_QUERY",
-        "ASAR backend is not enabled in this build",
-    ))
 }
 
 pub fn entry(limit: usize) -> ExitCode {
@@ -124,7 +63,6 @@ pub fn entry(limit: usize) -> ExitCode {
                     crate::query::execute(&name, arguments, &inputs, options)
                         .map(WorkerPayload::Query)
                 }
-                WorkerRequest::AsarPlan { input } => plan_asar(input),
             }
         })
         .map_err(|e| QueryError::new("WORKER_ERROR", e.to_string()))
