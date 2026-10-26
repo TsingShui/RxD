@@ -15,93 +15,6 @@ fn run(backend: &str, command: &str, input: &Path, entry: Option<&str>, args: &[
     query.args(args).output().unwrap()
 }
 
-#[cfg(feature = "backend-html")]
-#[test]
-fn html_asar_entry_queries_match_original_documents_and_preserve_nested_origin() {
-    let dir = tempfile::tempdir().unwrap();
-    let archive = dir.path().join("app.asar");
-    let entry = "pages/主页.html";
-    let original = dir.path().join(entry);
-    fs::create_dir(original.parent().unwrap()).unwrap();
-    let html = "\u{feff}<!doctype html>\r\n<main id='内容'><script src='missing.js'></script><script>const text='你好';\r\n</script><a href='/login'>入口</a></main>";
-    fs::write(&original, html).unwrap();
-    pack_asar(
-        &archive,
-        &[(entry, html.as_bytes()), ("pages/missing.js", b"\xff")],
-    );
-    for (command, args) in [
-        ("entries", vec![]),
-        ("entries", vec!["--tag", "script"]),
-        ("entries", vec!["--attr", "id=内容", "--depth", "0"]),
-        ("resources", vec![]),
-        ("resources", vec!["--kind", "script", "--include-content"]),
-        (
-            "resources",
-            vec![
-                "--base-url",
-                "https://example.org/app/index.html",
-                "--location",
-                "external",
-            ],
-        ),
-    ] {
-        let direct = run("html", command, &archive, Some(entry), &args);
-        let ordinary = run("html", command, &original, None, &args);
-        success(&direct);
-        success(&ordinary);
-        assert_eq!(direct.stdout, ordinary.stdout, "{command} {args:?}");
-    }
-    let catalog = jsonl(&run("html", "entries", &archive, Some(entry), &[]));
-    let script = catalog
-        .iter()
-        .find(|row| {
-            row["detail"]["tag"] == "script"
-                && row["detail"]["content_end"].as_u64() > row["detail"]["content_start"].as_u64()
-        })
-        .unwrap();
-    let at = script["at"].as_str().unwrap();
-    let destination = dir.path().join("script.js");
-    for extra in [vec![], vec!["--content"]] {
-        let mut args = vec!["--at", at, "-o", destination.to_str().unwrap()];
-        args.extend(extra);
-        let direct = run("html", "extract", &archive, Some(entry), &args);
-        success(&direct);
-        let artifact = fs::read(&destination).unwrap();
-        let mut receipt: Value = serde_json::from_slice(&direct.stdout).unwrap();
-        assert_eq!(receipt["detail"]["origin"]["container"], entry);
-        assert_eq!(
-            receipt["detail"]["container_origin"],
-            json!({
-                "container":archive, "format":"asar", "entry":entry
-            })
-        );
-        let ordinary = run("html", "extract", &original, None, &args);
-        success(&ordinary);
-        let expected: Value = serde_json::from_slice(&ordinary.stdout).unwrap();
-        assert_eq!(fs::read(&destination).unwrap(), artifact);
-        receipt["detail"]
-            .as_object_mut()
-            .unwrap()
-            .remove("container_origin");
-        receipt["detail"]["origin"]["container"] = json!(original);
-        assert_eq!(receipt, expected);
-    }
-    // A logical entry name is not a filesystem input: it may also name the output.
-    let replacement = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["html", "extract"])
-        .arg(&archive)
-        .args(["--entry", entry, "--at", at, "--content", "-o", entry])
-        .current_dir(dir.path())
-        .output()
-        .unwrap();
-    success(&replacement);
-    assert_eq!(
-        fs::read(&original).unwrap(),
-        "const text='你好';\r\n".as_bytes()
-    );
-}
-
-#[cfg(feature = "backend-wasm")]
 #[test]
 fn wasm_asar_entry_queries_preserve_all_module_views_and_function_offsets() {
     let dir = tempfile::tempdir().unwrap();
@@ -188,14 +101,6 @@ fn container_asar_entry_failures_and_unpacked_reads_preserve_original_inputs() {
     let unpacked = dir.path().join("app.asar.unpacked");
     fs::create_dir(&unpacked).unwrap();
     let cases = [
-        #[cfg(feature = "backend-html")]
-        (
-            "html",
-            "entries",
-            "view.html",
-            "<main>你好</main>".repeat(100).into_bytes(),
-            vec![0xff],
-        ),
         #[cfg(feature = "backend-wasm")]
         (
             "wasm",

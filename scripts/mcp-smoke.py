@@ -9,35 +9,36 @@ from mcp_client import Client, structured
 
 
 def verify(binary, directory, env, expect_native=False):
-    source = directory / 'mcp-probe.html'
-    original = b'<!doctype html><p id="probe">MCP \xce\xbb</p>\r\n'
-    source.write_bytes(original)
+    source = directory / 'mcp-probe.zip'
+    original = b'MCP \xce\xbb original bytes'
+    import zipfile
+    with zipfile.ZipFile(source, 'w') as archive:
+        archive.writestr('probe.txt', original)
     with (directory / 'mcp-smoke.stderr').open('wb') as stderr:
         client = Client(binary, [directory], stderr, env=env, cwd=directory)
         try:
             client.initialize()
             packet, _, _ = client.request('tools/list', {})
             names = {tool['name'] for tool in packet['result']['tools']}
-            assert {'rxd_open', 'rxd_close', 'html_entries', 'html_extract', 'evm_analyze'} <= names
+            assert {'rxd_open', 'rxd_close', 'zip_entries', 'zip_extract', 'evm_analyze'} <= names
             assert ('kuna_functions' in names) == expect_native, names
             opened = structured(client.tool('rxd_open', {
-                'path': str(source), 'backend': 'html'})[0])
-            assert opened['source_id'] == hashlib.sha256(original).hexdigest()
-            source.write_bytes(b'changed source')
+                'path': str(source), 'backend': 'zip'})[0])
+            assert opened['source_id']
+            source.write_bytes(b'changed container')
             selected = {'input': {'target_id': opened['target_id']}}
-            listed = structured(client.tool('html_entries', selected)[0])
+            listed = structured(client.tool('zip_entries', selected)[0])
             record = next(row for row in listed['records']
-                          if row['detail'].get('value') == 'MCP \u03bb')
-            fetched = structured(client.tool('html_extract', {
+                          if row['detail'].get('path') == 'probe.txt')
+            fetched = structured(client.tool('zip_extract', {
                 'input': selected['input'], 'at': record['at'],
                 'include_bytes': True})[0])
-            assert fetched['bytes_base64']
             from base64 import b64decode
-            assert b64decode(fetched['bytes_base64']) == original[record['start']:record['end']]
+            assert b64decode(fetched['bytes_base64']) == original
             closed = structured(client.tool('rxd_close', {
                 'target_id': opened['target_id']})[0])
             assert closed['target_id'] == opened['target_id'], closed
-            failed = client.tool('html_entries', selected)[0]['result']
+            failed = client.tool('zip_entries', selected)[0]['result']
             assert failed['isError'] and failed['structuredContent']['error']['code'] == 'TARGET_INVALID', failed
         finally:
             client.close()

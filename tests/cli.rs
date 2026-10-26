@@ -1,13 +1,7 @@
 //! End-to-end tests only: every assertion exercises the actual CLI process.
-#[cfg(all(
-    feature = "backend-asar",
-    any(feature = "backend-html", feature = "backend-wasm")
-))]
+#[cfg(all(feature = "backend-asar", feature = "backend-wasm"))]
 #[path = "container_entry/mod.rs"]
 mod container_entry;
-#[cfg(feature = "backend-html")]
-#[path = "html/mod.rs"]
-mod html;
 #[path = "resource_policy/mod.rs"]
 mod resource_policy;
 #[cfg(feature = "backend-zip")]
@@ -83,10 +77,9 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
     assert!(text.contains("COMMAND --help"));
     assert!(text.lines().next().unwrap().contains("Native binaries"));
     assert!(!text.contains("JavaScript"));
+    assert!(!text.contains("HTML"));
     assert_query_focused(&text);
     let routes: &[(&str, &str, &str)] = &[
-        #[cfg(feature = "backend-html")]
-        ("html", "extract", "entries.at"),
         #[cfg(feature = "backend-asar")]
         ("asar", "extract", "entries.at"),
         #[cfg(feature = "backend-zip")]

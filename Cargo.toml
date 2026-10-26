@@ -3,7 +3,7 @@ name = "rxd"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
-description = "Agent-oriented JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML analysis CLI"
+description = "Agent-oriented JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and ZIP analysis CLI"
 license = "Apache-2.0"
 publish = false
 
@@ -12,7 +12,6 @@ members = [
     "crates/rxd-core",
     "crates/rxd-asar",
     "crates/rxd-zip",
-    "crates/rxd-html",
     "crates/rxd-dex",
     "crates/rxd-jvm",
     "crates/rxd-dotnet",
@@ -31,7 +30,6 @@ serde_json = { version = "1.0", features = ["raw_value"] }
 rxd-core = { path = "crates/rxd-core" }
 rxd-asar = { path = "crates/rxd-asar" }
 rxd-zip = { path = "crates/rxd-zip" }
-rxd-html = { path = "crates/rxd-html" }
 rxd-pyc = { path = "crates/rxd-pyc" }
 
 [features]
@@ -40,7 +38,6 @@ all-feature = ["all-backends", "mcp"]
 all-backends = [
     "backend-asar",
     "backend-zip",
-    "backend-html",
     "backend-dex",
     "backend-jvm",
     "backend-dotnet",
@@ -51,7 +48,6 @@ all-backends = [
 ]
 backend-asar = ["dep:rxd-asar"]
 backend-zip = ["dep:rxd-zip"]
-backend-html = ["dep:rxd-html"]
 backend-dex = ["dep:rxd-dex", "dep:rayon", "dep:sha2"]
 backend-jvm = ["dep:rxd-jvm"]
 backend-dotnet = ["dep:rxd-dotnet"]
@@ -86,7 +82,6 @@ tempfile = "3.27"
 rxd-core.workspace = true
 rxd-asar = { workspace = true, optional = true }
 rxd-zip = { workspace = true, optional = true }
-rxd-html = { workspace = true, optional = true }
 rxd-pyc = { workspace = true, optional = true }
 
 [dev-dependencies]

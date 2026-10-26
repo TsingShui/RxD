@@ -1,6 +1,6 @@
 ---
 name: rxd
-description: Analyze ASAR, ZIP-family archives, HTML, APK/DEX, JVM class/JAR, .NET IL, EVM bytecode, WebAssembly and CPython bytecode with the rxd CLI. Select a backend, locate structures or literals, trace explicit references and fetch selected original code or reconstruction; use optional Kuna for native binaries and optional MCP for typed tools.
+description: Analyze ASAR, ZIP-family archives, APK/DEX, JVM class/JAR, .NET IL, EVM bytecode, WebAssembly and CPython bytecode with the rxd CLI. Select a backend, locate structures or literals, trace explicit references and fetch selected original code or reconstruction; use optional Kuna for native binaries and optional MCP for typed tools.
 ---
 
 # RxD
@@ -15,9 +15,8 @@ explicitly, then locate → associate
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| Electron ASAR | `rxd asar` | `entries` / `extract --at`; HTML and WASM queries also accept `--entry ENTRY_PATH` |
-| ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; HTML and WASM also accept `--entry` with a printed `zip:N` coordinate or unique exact path |
-| Local HTML document or fragment | `rxd html` | `entries` (with `-f`/`--kind`/`--tag`/`--attr`/`--within`/`--depth`) / `extract --at` a selected node, `--content` for inline content |
+| Electron ASAR | `rxd asar` | `entries` / `extract --at`; WASM queries also accept `--entry ENTRY_PATH` |
+| ZIP/AAR/VSIX/XPI/wheel/NuGet | `rxd zip` | `entries` / `extract --at`; WASM also accepts `--entry` with a printed `zip:N` coordinate or unique exact path |
 | Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
@@ -29,16 +28,13 @@ explicitly, then locate → associate
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
 conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR and ZIP
 are containers: with the container and requested backend enabled, use
-`rxd BACKEND COMMAND ARCHIVE --entry ENTRY` with backend `js`, `html` or `wasm`
+`rxd wasm COMMAND ARCHIVE --entry ENTRY`
 to analyze one entry in memory. ASAR uses an exact path; ZIP accepts `zip entries.at`
 (`zip:N`, required for duplicate paths) or a unique exact path. `--at` and byte
 offsets select inside the entry. Other backends use explicit extraction. AAR code normally lives
 in `classes.jar` or `libs/*.jar`: extract the JAR, then use `rxd jar`. ZIP supports
 Stored/Deflate and ZIP64, not encrypted entries, links or automatic nested recursion.
-HTML resources are not automatically followed into other entries. Containers have no code-reference semantics. HTML is a lexical container
-(`lexical_naive_v1`, not a DOM or browser parse): `entries` enumerates
-`element`/`text`/`comment`/`doctype` records with copy-only coordinates, `extract`
-returns the exact original interval. Unprefixed ZIP-based zipapps can be enumerated
+Containers have no code-reference semantics. Unprefixed ZIP-based zipapps can be enumerated
 with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling remain planned.
 
 ## Consume results and preserve identity

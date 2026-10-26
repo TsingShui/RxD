@@ -5,9 +5,7 @@ use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
 
 /// Built-in backends reflected from clap; Native tools use their own adapter.
-const BACKENDS: &[&str] = &[
-    "asar", "zip", "html", "dex", "jar", "dotnet", "evm", "wasm", "pyc",
-];
+const BACKENDS: &[&str] = &["asar", "zip", "dex", "jar", "dotnet", "evm", "wasm", "pyc"];
 
 /// CLI commands with no typed MCP projection: `dex_extract` writes caller paths and
 /// supports batch output, which the one-artifact tool contract cannot express.

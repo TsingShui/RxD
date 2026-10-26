@@ -12,7 +12,7 @@ never execute analyzed input.
 ## MCP and CLI runners
 
 `mcp.py` measures the typed MCP service against the same public CLI for the pinned
-JVM, PYC, DEX, .NET, WASM, ASAR and HTML fixtures. It checks independent facts
+JVM, PYC, DEX, .NET, WASM and ASAR fixtures. It checks independent facts
 before timing.
 
 ```sh
@@ -20,14 +20,7 @@ cargo build --release
 python3 benches/mcp.py
 ```
 
-`zip.py` measures ZIP-family extraction and shared container entry reads,
-including sparse large-entry cases.
-
-```sh
-python3 benches/zip.py
-```
-
-Both runners write under ignored `target/benchmarks/` by default and report each
+The runner writes under ignored `target/benchmarks/` by default and report each
 workload separately: input size, samples, median, P95, maximum and the count over
 150 ms. Do not pool unrelated commands or average away large inputs.
 

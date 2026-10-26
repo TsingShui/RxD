@@ -11,15 +11,13 @@ pub(crate) struct EntryArgs {
     #[arg(
         long,
         value_name = "ENTRY",
-        long_help = "Analyze one container entry in memory. Use an ASAR path, ZIP entries.at, or a unique exact ZIP path. Coordinates remain entry-relative.\nExample: rxd html entries page.html --entry site/index.html"
+        long_help = "Analyze one container entry in memory. Use an ASAR path, ZIP entries.at, or a unique exact ZIP path. Coordinates remain entry-relative.\nExample: rxd wasm functions module.wasm --entry assets/core.wasm"
     )]
     pub entry: Option<String>,
 }
 
 pub(super) struct Entry {
     pub bytes: Vec<u8>,
-    #[cfg(feature = "backend-html")]
-    pub path: String,
     pub budget: Budget,
     pub origin: Origin,
 }
@@ -64,7 +62,7 @@ pub(super) fn entry(
     perf: &mut Perf,
 ) -> Result<Entry> {
     let container_budget = policy.for_file(input)?;
-    let (bytes, _path, format, coordinate) = match magic(input)? {
+    let (bytes, format, coordinate) = match magic(input)? {
         [4, 0, 0, 0] => {
             #[cfg(feature = "backend-asar")]
             {
@@ -83,7 +81,7 @@ pub(super) fn entry(
                     },
                     perf,
                 )?;
-                (bytes, at.to_owned(), "asar", at.to_owned())
+                (bytes, "asar", at.to_owned())
             }
             #[cfg(not(feature = "backend-asar"))]
             return Err(Error::new(
@@ -103,7 +101,7 @@ pub(super) fn entry(
                     },
                     perf,
                 )?;
-                (selected.bytes, selected.path, "zip", selected.at)
+                (selected.bytes, "zip", selected.at)
             }
             #[cfg(not(feature = "backend-zip"))]
             return Err(Error::new(
@@ -124,8 +122,6 @@ pub(super) fn entry(
     };
     Ok(Entry {
         bytes,
-        #[cfg(feature = "backend-html")]
-        path: _path,
         budget,
         origin: Origin {
             container: input.to_string_lossy().into_owned(),

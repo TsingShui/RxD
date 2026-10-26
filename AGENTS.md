@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
-ASAR, HTML, Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native
+ASAR, Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native
 EVMole EVM bytecode analysis. CPython bytecode
 has bounded embedded source reconstruction and static navigation for CPython
 3.8–3.13. Kuna has an optional directly linked CLI adapter and bundled specs.
@@ -22,7 +22,7 @@ The current layout is:
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/asar/`, `src/cli/dex/`,
   `src/cli/jvm/`, `src/cli/dotnet/`, `src/cli/kuna/`, `src/cli/evm/`,
   `src/cli/wasm/`, `src/cli/zip/`, and `src/cli/pyc/`: peer command adapters.
-  `src/cli/input.rs` shares ASAR/ZIP entry arguments and loading for HTML/WASM.
+  `src/cli/input.rs` shares ASAR/ZIP entry arguments and loading for WASM.
   DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).

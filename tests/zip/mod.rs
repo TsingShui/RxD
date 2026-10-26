@@ -498,86 +498,37 @@ fn zip_aar_classes_jar_can_be_explicitly_extracted_then_analyzed() {
     assert_eq!(direct.stdout, expected.stdout);
 }
 
-#[cfg(all(feature = "backend-html", feature = "backend-wasm"))]
+#[cfg(feature = "backend-wasm")]
 #[test]
-fn zip_html_and_wasm_entry_queries_match_original_bytes_and_keep_container_origins() {
+fn zip_wasm_entry_queries_match_original_bytes_and_keep_container_origins() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("site.zip");
-    let html = "<!doctype html><script>const text='你好';</script><a href='never-fetched.js'>x</a>";
     let wasm =
         fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wasm/fixture.wasm"))
             .unwrap();
-    pack(
-        &input,
-        &[("page.html", html.as_bytes()), ("core.wasm", &wasm)],
-    );
-    for (backend, path, source, commands) in [
-        (
-            "html",
-            "page.html",
-            html.as_bytes(),
-            vec!["entries", "resources"],
-        ),
-        (
-            "wasm",
-            "core.wasm",
-            wasm.as_slice(),
-            vec![
-                "types",
-                "imports",
-                "exports",
-                "functions",
-                "tables",
-                "memories",
-                "globals",
-                "data",
-                "elements",
-                "strings",
-            ],
-        ),
+    pack(&input, &[("core.wasm", &wasm)]);
+    let original = dir.path().join("core.wasm");
+    fs::write(&original, &wasm).unwrap();
+    for command in [
+        "types",
+        "imports",
+        "exports",
+        "functions",
+        "tables",
+        "memories",
+        "globals",
+        "data",
+        "elements",
+        "strings",
     ] {
-        let original = dir.path().join(path);
-        fs::write(&original, source).unwrap();
-        for command in commands {
-            let direct = run(backend, command, &input, &["--entry", path]);
-            let expected = run(backend, command, &original, &[]);
-            success(&direct);
-            success(&expected);
-            assert_eq!(direct.stdout, expected.stdout, "{backend} {command}");
-        }
+        let direct = run("wasm", command, &input, &["--entry", "core.wasm"]);
+        let expected = run("wasm", command, &original, &[]);
+        success(&direct);
+        success(&expected);
+        assert_eq!(direct.stdout, expected.stdout, "wasm {command}");
     }
-    let rows = jsonl(&run(
-        "html",
-        "entries",
-        &input,
-        &["--entry", "page.html", "--tag", "script"],
-    ));
-    let at = rows[0]["at"].as_str().unwrap();
-    let output = dir.path().join("script.js");
-    let extracted = run(
-        "html",
-        "extract",
-        &input,
-        &[
-            "--entry",
-            "zip:0",
-            "--at",
-            at,
-            "--content",
-            "-o",
-            output.to_str().unwrap(),
-        ],
-    );
-    success(&extracted);
-    assert_eq!(fs::read(&output).unwrap(), "const text='你好';".as_bytes());
-    let receipt: Value = serde_json::from_slice(&extracted.stdout).unwrap();
-    assert_eq!(receipt["detail"]["origin"]["container"], "page.html");
-    assert_eq!(
-        receipt["detail"]["container_origin"],
-        json!({"container":input,"format":"zip","entry":"zip:0"})
-    );
     for raw in [false, true] {
-        let mut args = vec!["--entry", "zip:1", "--at", "func:1"];
+        let mut args = vec!["--entry", "zip:0", "--at", "func:1"];
         if raw {
             args.push("--raw");
         }
@@ -590,14 +541,14 @@ fn zip_html_and_wasm_entry_queries_match_original_bytes_and_keep_container_origi
                 .unwrap()
                 .remove("origin")
                 .unwrap(),
-            json!({"container":input,"format":"zip","entry":"zip:1"})
+            json!({"container":input,"format":"zip","entry":"zip:0"})
         );
         let args = if raw {
             vec!["--at", "func:1", "--raw"]
         } else {
             vec!["--at", "func:1"]
         };
-        let expected = run("wasm", "get-function", &dir.path().join("core.wasm"), &args);
+        let expected = run("wasm", "get-function", &original, &args);
         success(&expected);
         assert_eq!(
             receipt,

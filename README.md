@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, EVM, ASAR, ZIP, HTML, .NET, PYC and WASM |
+| 🧩 **Broad coverage** | Native, APK, JAR, EVM, ASAR, ZIP, .NET, PYC and WASM |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |
@@ -181,7 +181,7 @@ git submodule update --init third_party/kuna
 cargo build --release
 target/release/rxd skill
 # Reduced builds remain explicit:
-cargo build --release --no-default-features --features backend-html
+cargo build --release --no-default-features --features backend-wasm
 # Backends and MCP, without a native C# engine:
 cargo build --release --no-default-features --features all-backends,mcp
 # C# reconstruction: produce the engine once on this OS, then embed it:
@@ -219,9 +219,8 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | Backend | Entry | Capability | Status |
 | --- | --- | --- | --- |
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
-| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; HTML and WASM queries read selected entries directly with `--entry` | ✅ |
-| **ZIP family** | `rxd zip` | ZIP/AAR/VSIX/XPI/wheel/NuGet metadata and selected Stored/Deflate extraction; shared HTML/WASM `--entry`, ZIP64 and duplicate-name coordinates | ✅ |
-| **HTML** | `rxd html` | Local-page lexical catalog and node-level raw extraction (element/text/comment/doctype) | ✅ |
+| **ASAR** | `rxd asar` | Electron archive entry enumeration and raw extraction; WASM queries read selected entries directly with `--entry` | ✅ |
+| **ZIP family** | `rxd zip` | ZIP/AAR/VSIX/XPI/wheel/NuGet metadata and selected Stored/Deflate extraction; WASM `--entry`, ZIP64 and duplicate-name coordinates | ✅ |
 | **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |
 | **.NET IL** | `rxd dotnet` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |

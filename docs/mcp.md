@@ -52,14 +52,12 @@ async function call(name, args) {
   if (result.isError) throw result.structuredContent.error;
   return result.structuredContent;
 }
-const opened = await call("rxd_open", {path: "/workspace/page.html", backend: "html"});
+const opened = await call("rxd_open", {path: "/workspace/app.zip", backend: "zip"});
 try {
   const input = {target_id: opened.target_id};
-  const scripts = await call("html_entries", {input, tag: "script"});
+  const entries = await call("zip_entries", {input});
   // A stream is `{records: [...]}`; `at` identifies a row in this fixed snapshot.
-  const extracted = await Promise.all(scripts.records.map(record =>
-    call("html_extract", {input, at: record.at, include_bytes: true})));
-  const originals = extracted.map(item => item.bytes_base64);
+  const paths = entries.records.map(record => record.detail.path);
 } finally {
   await call("rxd_close", {target_id: opened.target_id});
 }
@@ -87,14 +85,14 @@ or unchanged input bytes.
 ASAR child targets compose without caller-managed paths:
 
 ```js
-const parent = await call("rxd_open", {path: "/workspace/app.asar", backend: "asar"});
-const extracted = await call("asar_extract", {
-  input: {target_id: parent.target_id}, at: "index.html", include_bytes: true
+const parent = await call("rxd_open", {path: "/workspace/app.zip", backend: "zip"});
+const extracted = await call("zip_extract", {
+  input: {target_id: parent.target_id}, at: "core.wasm", include_bytes: true
 });
 const child = extracted.child_target;
 await call("rxd_close", {target_id: parent.target_id});
 try {
-  const structure = await call("html_entries", {input: {target_id: child.target_id}});
+  const functions = await call("wasm_functions", {input: {target_id: child.target_id}});
   // extracted.bytes_base64 is the exact entry; child.source_id is its identity digest.
 } finally {
   await call("rxd_close", {target_id: child.target_id});

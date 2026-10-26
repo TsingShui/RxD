@@ -4,7 +4,6 @@ pub(crate) use output::Output;
 #[cfg(any(
     feature = "backend-asar",
     feature = "backend-zip",
-    feature = "backend-html",
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
@@ -17,7 +16,6 @@ use rxd_core::Result;
 #[cfg(any(
     feature = "backend-asar",
     feature = "backend-zip",
-    feature = "backend-html",
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
@@ -27,7 +25,6 @@ use rxd_core::perf::Perf;
 #[cfg(any(
     feature = "backend-asar",
     feature = "backend-zip",
-    feature = "backend-html",
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
@@ -46,11 +43,9 @@ mod dotnet;
 mod evm;
 /// `--case`, the one flag that governs case folding for every filter.
 mod filter;
-#[cfg(feature = "backend-html")]
-mod html;
 #[cfg(all(
     any(feature = "backend-asar", feature = "backend-zip"),
-    any(feature = "backend-html", feature = "backend-wasm")
+    feature = "backend-wasm"
 ))]
 mod input;
 #[cfg(feature = "backend-jvm")]
@@ -66,7 +61,6 @@ mod wasm;
 #[cfg(any(
     feature = "backend-asar",
     feature = "backend-zip",
-    feature = "backend-html",
     feature = "backend-dex",
     feature = "backend-jvm",
     feature = "backend-dotnet",
@@ -81,12 +75,11 @@ mod zip;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR, ZIP and HTML files",
+    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM, PYC, ASAR and ZIP files",
     after_long_help = "Start here:
   rxd dex --help       APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
   rxd dotnet --help    Managed DLL/EXE: metadata, IL, optional C#
-  rxd html --help      Local HTML: nodes, resource candidates, extraction
   rxd asar --help      Electron ASAR: entries and original file extraction
   rxd zip --help       ZIP/AAR/VSIX: entries and selected-entry extraction
   rxd wasm --help      Binary core WASM: functions and instructions/C-like
@@ -149,19 +142,6 @@ EVM interfaces/storage/ownership are inferred candidates, not verified Solidity 
     Evm {
         #[command(subcommand)]
         command: evm::Command,
-    },
-    #[cfg(feature = "backend-html")]
-    /// Enumerate lexical_naive_v1 HTML structure (not DOM/browser-complete).
-    #[command(after_long_help = "Examples:
-  rxd html entries page.html --tag script
-  rxd html resources page.html --base-url https://example.org/page
-  rxd html extract page.html --at '<element.at>' --content -o inline.html
-Copy entries.at or resource.at into extract. -o is required for extracted bytes.
-HTML is a lexical approximation, not a DOM; external resources are not fetched.
-Offsets in the extracted file belong to it, not the original page.")]
-    Html {
-        #[command(subcommand)]
-        command: html::Command,
     },
     #[cfg(feature = "backend-asar")]
     /// List and extract ASAR files.
@@ -263,7 +243,6 @@ impl Cli {
             #[cfg(any(
                 feature = "backend-asar",
                 feature = "backend-zip",
-                feature = "backend-html",
                 feature = "backend-jvm",
                 feature = "backend-dotnet",
                 feature = "backend-evm",
@@ -286,8 +265,6 @@ impl Cli {
             Backend::Asar { command } => command.perf(),
             #[cfg(feature = "backend-zip")]
             Backend::Zip { command } => command.perf(),
-            #[cfg(feature = "backend-html")]
-            Backend::Html { command } => command.perf(),
             #[cfg(feature = "backend-dex")]
             Backend::Dex { .. } => false,
             #[cfg(feature = "backend-jvm")]
@@ -313,8 +290,6 @@ impl Cli {
             Backend::Asar { .. } => "asar",
             #[cfg(feature = "backend-zip")]
             Backend::Zip { .. } => "zip",
-            #[cfg(feature = "backend-html")]
-            Backend::Html { .. } => "html",
             #[cfg(feature = "backend-dex")]
             Backend::Dex { .. } => "dex",
             #[cfg(feature = "backend-jvm")]
@@ -340,8 +315,6 @@ impl Cli {
             Backend::Asar { command } => command.name(),
             #[cfg(feature = "backend-zip")]
             Backend::Zip { command } => command.name(),
-            #[cfg(feature = "backend-html")]
-            Backend::Html { command } => command.name(),
             #[cfg(feature = "backend-dex")]
             Backend::Dex { command } => command.name(),
             #[cfg(feature = "backend-jvm")]
@@ -402,8 +375,6 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::Asar { command } => asar::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-zip")]
         Backend::Zip { command } => zip::execute(command, policy, output).map(|()| 0),
-        #[cfg(feature = "backend-html")]
-        Backend::Html { command } => html::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-dex")]
         Backend::Dex { command } => dex::execute(command, policy, output),
         #[cfg(feature = "backend-jvm")]
@@ -437,7 +408,6 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
 #[cfg(any(
     feature = "backend-asar",
     feature = "backend-zip",
-    feature = "backend-html",
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
@@ -454,7 +424,6 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
 #[cfg(any(
     feature = "backend-asar",
     feature = "backend-zip",
-    feature = "backend-html",
     feature = "backend-jvm",
     feature = "backend-dotnet",
     feature = "backend-evm",
