@@ -112,7 +112,7 @@ pub(crate) struct Outline {
 pub(crate) enum Command {
     /// List every structural entity, including the file root (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js entities bundle.js -f login\nOutput: entity JSONL, including program root; at/parent_at are file-scoped coordinates.\nNext: rxd js slice bundle.js --at '<entity.at>'.\n--kind accepts comma-separated structural kinds; --name is exact, -f a substring.\n--within/--depth select containment, not calls. Directories scan files in path order."
+        after_long_help = "Examples:\nrxd js entities bundle.js --name login\nrxd js entities bundle.js --within '<entity.at>' --depth 1\nOutput: entity JSONL, including program root; at/parent_at are file-scoped coordinates.\nNext: rxd js slice bundle.js --at '<entity.at>'.\nUse a known name/label or selected scope instead of a full-file inventory.\n--kind accepts comma-separated structural kinds; --name is exact, -f a substring.\n--within/--depth select containment, not calls. Directories scan files in path order."
     )]
     Entities {
         #[command(flatten)]
@@ -124,7 +124,7 @@ pub(crate) enum Command {
     },
     /// List function declarations, expressions, and arrows (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js functions bundle.js -f login\nOutput: entity JSONL restricted to functions/arrows. Copy at into slice.\nAnonymous functions may have detail.label rather than detail.name; -f matches that label.\nA directory is scanned recursively."
+        after_long_help = "Examples:\nrxd js functions bundle.js --name login\nrxd js functions bundle.js --within '<entity.at>' --depth 1\nOutput: entity JSONL restricted to functions/arrows. Copy at into slice.\n--name matches an exact name or context label; -f matches a substring of either.\nAnonymous helpers may have detail.label rather than detail.name.\nFollow a known helper by name instead of enumerating every function. A directory is scanned recursively."
     )]
     Functions {
         #[command(flatten)]
@@ -274,7 +274,7 @@ pub(crate) enum Command {
     },
     /// List source-backed object entries, array elements, initializers and arguments.
     #[command(
-        after_long_help = "Examples:\nrxd js values bundle.js --within '<entity.at>' --kind property\nOutput: value JSONL for syntax-backed slots; inspect detail.value/status, not runtime values.\n--within accepts a structure, fragment or symbol coordinate; use result context_at with slice."
+        after_long_help = "Examples:\nrxd js values bundle.js --within '<entity.at>' --kind property\nrxd js values bundle.js --name key --kind initializer\nOutput: value JSONL for syntax-backed slots; inspect detail.value/resolution, not runtime values.\nUse a named slot to inspect a constant without fetching unrelated declarations.\n--within accepts a structure, fragment or symbol coordinate; use result context_at with slice."
     )]
     Values {
         #[command(flatten)]
@@ -310,7 +310,7 @@ pub(crate) enum Command {
     },
     /// List statically named direct/member call and constructor sites (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js calls bundle.js --name fetch\nOutput: call JSONL, direct/member/new sites. Static syntax only, not return values or a call graph.\nUse context_at with slice for the exact local call; --within limits containment.\n--resolve-static also names computed callee keys a literal-table decoder proves."
+        after_long_help = "Examples:\nrxd js calls bundle.js --name fetch\nrxd js calls bundle.js --within '<entity.at>'\nOutput: call JSONL, direct/member/new sites. Static syntax only, not return values or a call graph.\nUse context_at with slice for the local call, parent_at for its enclosing structure.\nAfter FETCH, scope calls with --within and locate only the missing helper definitions.\n--resolve-static also names computed callee keys a literal-table decoder proves."
     )]
     Calls {
         #[command(flatten)]
@@ -386,7 +386,7 @@ pub(crate) enum Command {
     },
     /// Discover lexical bindings and unresolved references (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js symbols bundle.js -f token\nrxd js symbols bundle.js --within '<entity.at>'\nOutput: symbol and unresolved_reference JSONL; relation is declared or external.\nCopy symbol.at into xref for uses, or slice for its canonical declaration.\n--within requires an entity coordinate, not a fragment coordinate."
+        after_long_help = "Examples:\nrxd js symbols bundle.js --name token\nrxd js symbols bundle.js --within '<entity.at>'\nOutput: symbol and unresolved_reference JSONL; relation is declared or external.\nCopy symbol.at into xref for uses, or slice for its canonical declaration.\nUse this to follow a missing declaration rather than rereading the whole file.\nUnresolved references have no symbol.at; do not invent a binding for them.\n--within requires an entity coordinate, not a fragment coordinate."
     )]
     Symbols {
         #[command(flatten)]
@@ -401,7 +401,7 @@ pub(crate) enum Command {
     },
     /// Slice the original bytes at a coordinate: a structure body, a symbol's declaration,
     /// or an explicit range.
-    #[command(after_long_help = "Examples:\nrxd js entities bundle.js -f login\nrxd js slice bundle.js --at '<entity.at>'\nrxd js slice bundle.js --at '<match.context_at>' --json\nRequired: --at copied from this input. Structure: its body; fragment: local original syntax;\nsymbol: canonical declaration. Do not pass a raw byte offset, name or file hash.\nOutput: byte-exact source on stdout with no added newline. --json returns one source\nrecord; read detail.source. -o atomically writes instead of stdout.", mut_arg("at", |arg| arg.required(true).value_name("SOURCE_AT").help("Copy entity.at, syntax context_at or symbol.at from this same file")))]
+    #[command(after_long_help = "Examples:\nrxd js functions bundle.js --name login\nrxd js slice bundle.js --at '<entity.at>'\nrxd js slice bundle.js --at '<match.context_at>' --json\nRequired: --at copied from this input. Structure: its body; fragment: local original syntax;\nsymbol: canonical declaration. Do not pass a raw byte offset, name or file hash.\nOutput: byte-exact source on stdout with no added newline. Use this default for code reading;\n--json adds a source record when metadata is needed; read detail.source.\nFollow missing helpers with functions/symbols --name, not a whole-file reread.\n-o atomically writes instead of stdout.", mut_arg("at", |arg| arg.required(true).value_name("SOURCE_AT").help("Copy entity.at, syntax context_at or symbol.at from this same file")))]
     Slice {
         #[command(flatten)]
         common: Common,

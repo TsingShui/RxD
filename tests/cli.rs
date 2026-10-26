@@ -124,6 +124,21 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         assert!(missing.stdout.is_empty());
         assert!(String::from_utf8_lossy(&missing.stderr).contains("--at"));
     }
+    #[cfg(feature = "backend-js")]
+    {
+        let output = Command::new(binary)
+            .args(["js", "--help"])
+            .output()
+            .unwrap();
+        success(&output);
+        assert!(output.stderr.is_empty());
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("calls bundle.js --name decrypt"));
+        assert!(help.contains("members bundle.js --name token --access write"));
+        assert!(help.contains("read it directly"));
+        assert!(help.contains("--within, values, slice and locate take one file"));
+        assert_query_focused(&help);
+    }
 }
 
 #[test]

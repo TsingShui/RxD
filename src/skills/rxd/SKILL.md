@@ -81,22 +81,59 @@ with `rxd zip`; PyInstaller PYZ/CArchive and executable-prefixed ZIP handling re
 Examples below use local input placeholders and `at`/`context_at` coordinates or
 offsets obtained from the preceding response. Keep each input fixed and use its actual returned values.
 
-## JavaScript: literal → local source → lexical references
+## JavaScript: choose a locator, fetch only missing evidence
+
+Read a short, readily understandable file directly when that already answers the
+question. Use RxD for missing structure, exact ranges, bindings or selected archive
+entries; do not require a listing/FETCH ceremony for every file. Consult the
+selected command's help only when its options are unknown, not at every step.
+
+Start from evidence already available, not an unfiltered function inventory:
+
+| Existing clue | First query |
+| --- | --- |
+| Function or assigned helper label | `functions bundle.js --name NAME` |
+| Named call or constructor | `calls bundle.js --name NAME` |
+| Property/key write | `members bundle.js --name KEY --access write` |
+| Literal text such as a path | `find bundle.js -f TEXT` |
+| Binding or constant name | `symbols bundle.js --name NAME` |
+| Existing UTF-8 byte position | `locate bundle.js --byte BYTE` |
+
+Prefix each query above with `rxd js`. Use `-f` for a substring when the exact
+name is unknown. If names repeat, distinguish their parent/scope rather than
+silently taking the first row. Full inventories remain appropriate when the task
+actually asks for all structures; filtering must not stand in for completeness.
 
 ```sh
-rxd js entities bundle.js -f login
-rxd js find bundle.js -f '/api/login'
-rxd js strings bundle.js --resolve-static --resolution decoder
-rxd js strings bundle.js --within "$ENTITY_AT" --resolution literal
-rxd js slice bundle.js --at "$CONTEXT_AT" --json
-rxd js identifiers bundle.js --name 'AIS3' --role reference
-rxd js calls bundle.js --name 'fetch'
-rxd js members bundle.js --name 'flag_correct'
+rxd js calls bundle.js --name decrypt
+rxd js slice bundle.js --at "$CONTEXT_AT"
+rxd js calls bundle.js --within "$ENTITY_AT"
 rxd js symbols bundle.js --within "$ENTITY_AT"
+rxd js functions bundle.js --name "$HELPER_NAME"
+rxd js slice bundle.js --at "$HELPER_AT"
+rxd js values bundle.js --name key --kind initializer
 rxd js xref bundle.js --at "$SYMBOL_AT"
-rxd js xref bundle.js --byte "$SYMBOL_BYTE"   # a raw offset, e.g. inside a multi-byte name
 rxd js slice bundle.js --at "$SYMBOL_AT"
 ```
+
+Copy a hit's `context_at` for local syntax or `parent_at` for its owner;
+`ENTITY_AT` is a printed structure coordinate. Default `slice` already returns
+byte-exact code: omit `--json` when only reading source, and request it when range
+or representation metadata is needed. Preserve that evidence instead of fetching
+it again or rereading the whole file as confirmation.
+
+After FETCH, follow only missing dependencies: scope `calls`/`symbols`/`values`
+with `--within`, then locate a named helper/constant in its defining scope. A
+callee's definition can be outside its caller's containment range. Use named
+`values` slots for small constants; use symbol rows to establish a binding exists
+without fetching a huge literal initializer. Unresolved references do not supply
+a declaration coordinate. For assigned/property helpers, `functions --name`
+also matches context labels; member keys are not lexical bindings.
+
+A filtered locator and dependent FETCH can run in one shell/Python tool call:
+parse JSONL, select the intended row, then pass its printed coordinate as a
+separate argument. Keep ambiguity and errors explicit. This avoids a model
+round trip and exposing intermediate inventories without changing CLI results.
 
 `strings` enumerates the same match records as `find` without requiring a needle;
 optional `-f` filters values. `--resolution literal|static|decoder` filters

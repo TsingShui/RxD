@@ -164,15 +164,19 @@ EVM interfaces/storage/ownership are inferred candidates, not verified Solidity 
     #[cfg(feature = "backend-js")]
     /// Analyze JavaScript files.
     #[command(after_long_help = "Examples:
-  rxd js entities bundle.js -f login
+  rxd js functions bundle.js --name login
+  rxd js calls bundle.js --name decrypt
+  rxd js members bundle.js --name token --access write
   rxd js find bundle.js -f '/api/login'
-  rxd js slice bundle.js --at '<match.context_at>'
-  rxd js symbols bundle.js -f token
-  rxd js xref bundle.js --at '<symbol.at>'
-entities/find/resources also scan directories; other queries take one file.
-Copy find.context_at into slice for a local fragment, or parent_at for its owner.
-Use symbols.at for lexical xref; --byte uses a UTF-8 byte offset, not a line number.
-Source extraction is original bytes; references are file-local, not runtime call graphs.")]
+  rxd js slice bundle.js --at '<hit.context_at>'
+Start from a known name, call, property or literal; narrow before listing.
+For a short readable file, read it directly unless structure or binding evidence is missing.
+Copy context_at for local syntax, parent_at for its owner; --within scopes follow-up queries.
+Missing helper or constant: symbols --name NAME, then slice --at '<symbol.at>'.
+Do not reread the whole file after FETCH; follow only the missing dependencies.
+slice returns original bytes by default; use --json only when source metadata is needed.
+Structure/literal/name listings also scan directories; --within, values, slice and locate take one file.
+Use symbols.at for lexical xref; --byte is a UTF-8 byte offset, not a line number.")]
     Js {
         #[command(subcommand)]
         command: js::Command,
