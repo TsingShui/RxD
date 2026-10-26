@@ -328,7 +328,7 @@ pub(crate) enum Command {
     },
     /// Find static member names, property keys, and JSX attribute names (JSONL).
     #[command(
-        after_long_help = "Examples:\nrxd js members bundle.js --name token --access write\nOutput: member JSONL for known keys/access sites; dynamic computed keys stay unresolved.\n--access filters actual property reads/writes, not every declaration.\nNext: rxd js slice bundle.js --at '<member.context_at>'.\n--resolve-static also names computed keys a literal-table decoder proves."
+        after_long_help = "Examples:\nrxd js members bundle.js --name token --access write\nOutput: member JSONL for known keys/access sites; dynamic computed keys stay unresolved.\nreceiver is the original object text of a static path (window, this, a.b), else null.\n--access filters actual property reads/writes, not every declaration.\nNext: rxd js slice bundle.js --at '<member.context_at>'.\n--resolve-static also names computed keys a literal-table decoder proves."
     )]
     Members {
         #[command(flatten)]

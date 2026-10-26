@@ -242,7 +242,14 @@ fn assert_js_record(row: &Value) {
         "match" => &["literal_kind", "value", "dynamic", "resolution", "raw"],
         "identifier" => &["name", "role", "syntax_kind"],
         "call" => &["callee", "call_kind", "optional", "argument_count"],
-        "member" => &["name", "member_kind", "key_resolution", "read", "write"],
+        "member" => &[
+            "name",
+            "member_kind",
+            "key_resolution",
+            "receiver",
+            "read",
+            "write",
+        ],
         "resource" => &[
             "kind",
             "syntax_kind",
@@ -2822,6 +2829,80 @@ fn members_find_static_names_without_computed_dynamic_properties() {
     assert_eq!(computed.len(), 0);
     let numeric = jsonl(&invoke("members", &path, &["--name", "1"]));
     assert_eq!(numeric.len(), 0);
+}
+
+#[test]
+fn members_report_static_receivers_and_withhold_computed_objects() {
+    // Short property names are reused across objects; the receiver stays a syntactic fact.
+    let source = "window.f='charCo';document.f='charCodeAt';a['f'];a[i].f;go().f;(a,b).f;this.g;window.document.h;a['b'].c;obj?.f;";
+    let (_dir, path) = fixture(source, "receivers.js");
+    let receivers = |name: &str| {
+        jsonl(&invoke("members", &path, &["--name", name]))
+            .into_iter()
+            .map(|row| row["detail"]["receiver"].clone())
+            .collect::<Vec<_>>()
+    };
+    let receiver = |start: u32, end: u32, text: &str| serde_json::json!({"start": start, "end": end, "text": text});
+
+    // Same key on two globals, then a static key, then three dynamic object expressions.
+    assert_eq!(
+        receivers("f"),
+        [
+            receiver(0, 6, "window"),
+            receiver(18, 26, "document"),
+            receiver(42, 43, "a"),
+            Value::Null,
+            Value::Null,
+            Value::Null,
+            receiver(105, 108, "obj"),
+        ]
+    );
+    assert_eq!(receivers("g"), [receiver(71, 75, "this")]);
+    assert_eq!(receivers("h"), [receiver(78, 93, "window.document")]);
+    assert_eq!(receivers("c"), [receiver(96, 102, "a['b']")]);
+    // Optional chains keep the static root; the property key is not part of the receiver.
+    assert_eq!(receivers("f")[6], receiver(105, 108, "obj"));
+
+    // Keys with no object expression never guess a receiver.
+    let (_dir, keys) = fixture(
+        "const o={k:1, m(){}}; class C{ n=1 } const el=<A q=\"x\" />;",
+        "keys.jsx",
+    );
+    for name in ["k", "m", "n", "q"] {
+        let rows = jsonl(&invoke("members", &keys, &["--name", name]));
+        assert_eq!(rows.len(), 1, "{name}");
+        assert!(rows[0]["detail"]["receiver"].is_null(), "{name}");
+    }
+}
+
+#[test]
+fn strings_decode_one_escape_layer_and_keep_original_bytes() {
+    // A nested payload stays a string value: one JS decode, then the caller decides.
+    let source =
+        r#"document.f='charCo';var payload='window["\\x75\\x72\\x6c"]="\\x2fapi"';apply(payload);"#;
+    let (_dir, path) = fixture(source, "payload.js");
+
+    // The decoded needle only exists after a second decode, so the filter finds nothing.
+    assert!(jsonl(&invoke("strings", &path, &["-f", "url"])).is_empty());
+    assert!(jsonl(&invoke("find", &path, &["-f", "/api"])).is_empty());
+
+    let rows = jsonl(&invoke("strings", &path, &["-f", r"\x75"]));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0]["detail"]["value"],
+        r#"window["\x75\x72\x6c"]="\x2fapi""#
+    );
+    let context = invoke(
+        "slice",
+        &path,
+        &["--at", rows[0]["context_at"].as_str().unwrap()],
+    );
+    success(&context);
+    assert!(
+        String::from_utf8(context.stdout)
+            .unwrap()
+            .contains(r"\\x75")
+    );
 }
 
 #[test]

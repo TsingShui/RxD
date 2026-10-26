@@ -107,6 +107,11 @@ binding declaration in one file; zero rows differs from a missing coordinate.
 Filters narrow returned occurrences, not whole-input parsing or safety proofs.
 It preserves occurrences, including duplicate/empty literals and dynamic template parts, rather than deduplicating a string pool or
 claiming a complete decrypted table. `--resolve-static` adds proved expressions.
+A row's `detail.value` is the JavaScript string value: exactly one escape layer is
+decoded, so a nested `eval`/`Function` payload still contains its own escapes.
+A filter for the payload's decoded text then returns zero rows; that is a scope
+limit, not evidence of absence. Unescape the value mechanically, keep the derived
+bytes as a separate file, and analyze that file with its own coordinates.
 
 A find/strings match has no coordinate of its own: use its `context_at` for a local syntax
 fragment, falling back to `parent_at` for the enclosing entity. `ENTITY_AT` is a
@@ -159,7 +164,12 @@ for FETCH. `calls` reports call sites of a name with
 reports static member/property keys and JSX attribute names, plus computed keys
 whose key is a string literal or a constant expression the bounded evaluator can
 prove (`member_kind: computed_key` with `key_resolution: literal|static`); a
-dynamic `obj[expr]` key never matches. `entities --kind` takes one kind or a
+dynamic `obj[expr]` key never matches. A member row's `receiver` gives the
+original object text and byte range (`{start, end, text}`) when the object path
+is an identifier, `this`, or a chain of static or string-literal keys; it is null
+for call results, variable keys and other dynamic objects. Compare receivers to
+distinguish `window.key` from `document.key`; this is the syntactic receiver, not
+runtime identity, and key-only rows (object/class/JSX) never carry one. `entities --kind` takes one kind or a
 comma-separated list, `--name` filters exactly, and `-f` is a substring over the
 name/label; `functions`, `classes` and `methods` are the same
 rows restricted to one kind group. `find

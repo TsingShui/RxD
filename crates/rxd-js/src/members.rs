@@ -48,10 +48,18 @@ struct Access {
     write: bool,
 }
 
+/// Original receiver text of a member access whose object path is static.
+struct Receiver {
+    start: u32,
+    end: u32,
+    text: Box<str>,
+}
+
 pub struct Member {
     name: JsString,
     kind: &'static str,
     key_resolution: Option<&'static str>,
+    receiver: Option<Receiver>,
     start: u32,
     end: u32,
     entity_id: String,
@@ -62,10 +70,18 @@ pub struct Member {
 impl Member {
     pub fn envelope(&self) -> impl Serialize {
         #[derive(Serialize)]
+        struct ReceiverRef<'a> {
+            start: u32,
+            end: u32,
+            text: &'a str,
+        }
+
+        #[derive(Serialize)]
         struct Detail<'a> {
             name: &'a JsString,
             member_kind: &'a str,
             key_resolution: Option<&'a str>,
+            receiver: Option<ReceiverRef<'a>>,
             read: Option<bool>,
             write: Option<bool>,
         }
@@ -82,6 +98,11 @@ impl Member {
                 name: &self.name,
                 member_kind: self.kind,
                 key_resolution: self.key_resolution,
+                receiver: self.receiver.as_ref().map(|receiver| ReceiverRef {
+                    start: receiver.start,
+                    end: receiver.end,
+                    text: &receiver.text,
+                }),
                 read: self.access.map(|access| access.read),
                 write: self.access.map(|access| access.write),
             },
@@ -184,6 +205,36 @@ fn member_span(expression: &Expression<'_>) -> Option<Span> {
     }
 }
 
+/// A static path is an identifier or `this` extended by static or string-literal keys only.
+fn is_static_path(expression: &Expression<'_>) -> bool {
+    match expression.get_inner_expression() {
+        Expression::Identifier(_) | Expression::ThisExpression(_) => true,
+        Expression::StaticMemberExpression(member) => is_static_path(&member.object),
+        Expression::ComputedMemberExpression(member) => {
+            matches!(
+                member.expression.get_inner_expression(),
+                Expression::StringLiteral(_)
+            ) && is_static_path(&member.object)
+        }
+        Expression::ChainExpression(chain) => match &chain.expression {
+            ChainElement::StaticMemberExpression(member) => is_static_path(&member.object),
+            ChainElement::ComputedMemberExpression(member) => {
+                matches!(
+                    member.expression.get_inner_expression(),
+                    Expression::StringLiteral(_)
+                ) && is_static_path(&member.object)
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Report the syntactic receiver, never a computed or call-derived object value.
+fn static_receiver(expression: &Expression<'_>) -> Option<Span> {
+    is_static_path(expression).then_some(expression.span())
+}
+
 fn target_span(target: &SimpleAssignmentTarget<'_>) -> Option<Span> {
     match target {
         SimpleAssignmentTarget::StaticMemberExpression(member) => Some(member.span),
@@ -251,10 +302,18 @@ impl<'a, 's, 'd> Visit<'s> for Visitor<'a, 's, 'd> {
                 member.property.span,
                 "static_member",
                 None,
+                static_receiver(&member.object),
             )),
             AstKind::ComputedMemberExpression(member) => {
-                computed_key(&member.expression, self.decoders)
-                    .map(|(name, span, resolution)| (name, span, "computed_key", Some(resolution)))
+                computed_key(&member.expression, self.decoders).map(|(name, span, resolution)| {
+                    (
+                        name,
+                        span,
+                        "computed_key",
+                        Some(resolution),
+                        static_receiver(&member.object),
+                    )
+                })
             }
             AstKind::ObjectProperty(property) => {
                 static_key_name(&property.key, property.computed, self.decoders).map(
@@ -269,17 +328,20 @@ impl<'a, 's, 'd> Visit<'s> for Visitor<'a, 's, 'd> {
                                 "property_key"
                             },
                             resolution,
+                            None,
                         )
                     },
                 )
             }
             AstKind::PropertyDefinition(property) => {
-                static_key_name(&property.key, property.computed, self.decoders)
-                    .map(|(name, span, resolution)| (name, span, "class_field_key", resolution))
+                static_key_name(&property.key, property.computed, self.decoders).map(
+                    |(name, span, resolution)| (name, span, "class_field_key", resolution, None),
+                )
             }
             AstKind::MethodDefinition(method) => {
-                static_key_name(&method.key, method.computed, self.decoders)
-                    .map(|(name, span, resolution)| (name, span, "class_method_key", resolution))
+                static_key_name(&method.key, method.computed, self.decoders).map(
+                    |(name, span, resolution)| (name, span, "class_method_key", resolution, None),
+                )
             }
             AstKind::JSXAttribute(attribute) => match &attribute.name {
                 JSXAttributeName::Identifier(id) => Some((
@@ -287,12 +349,13 @@ impl<'a, 's, 'd> Visit<'s> for Visitor<'a, 's, 'd> {
                     id.span,
                     "jsx_attribute_name",
                     None,
+                    None,
                 )),
                 JSXAttributeName::NamespacedName(_) => None,
             },
             _ => return,
         };
-        let Some((name, span, kind, key_resolution)) = hit else {
+        let Some((name, span, kind, key_resolution, receiver)) = hit else {
             return;
         };
         if span.start < self.region.start || span.end > self.region.end {
@@ -305,11 +368,22 @@ impl<'a, 's, 'd> Visit<'s> for Visitor<'a, 's, 'd> {
             self.error = Some(error);
             return;
         }
+        let receiver = receiver.and_then(|span| {
+            self.source
+                .text
+                .get(span.start as usize..span.end as usize)
+                .map(|text| Receiver {
+                    start: span.start,
+                    end: span.end,
+                    text: text.into(),
+                })
+        });
         let location = self.locations.get(span);
         self.records.push(Member {
             name,
             kind,
             key_resolution,
+            receiver,
             start: span.start,
             end: span.end,
             entity_id: location.entity_id,
