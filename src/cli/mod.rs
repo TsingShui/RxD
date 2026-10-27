@@ -68,7 +68,7 @@ mod xref;
     after_long_help = "Coordinates: at and context_at chain the next fetch (kuna selects by address_hex).
 Output: one record per line; exit 0 required; zero rows means no matches.
 Filters: -f narrows listings; -m with --kind searches xref targets.
-Listings (rasc, jar, ilspy, wasm, pyc): TAB columns; text JSON-quoted; \\N absent.
+Listings: TAB columns per command help; text JSON-quoted; \\N absent.
 Raw: --raw selects original instructions where reconstruction exists.
 Details: rxd BACKEND COMMAND --help; typed tools through rxd mcp.
 Engines: source builds may omit Kuna/ILSpy."
@@ -128,15 +128,14 @@ C# requires ILSpy; missing/failed reconstruction returns original IL with a reas
     /// Analyze EVM bytecode.
     #[command(after_long_help = "Examples:
   rxd evm interface runtime.hex --encoding hex
-  rxd evm get-function runtime.hex --encoding hex --at '<interface.at>' --raw
+  rxd evm disassemble runtime.hex --encoding hex
   rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
-  rxd evm xref runtime.hex --encoding hex --at '<literal.at>'
+  rxd evm metadata runtime.hex --encoding hex
 --encoding raw means binary bytes; hex means ASCII hexadecimal. Never guessed.
-Use interface.at for functions, blocks.at for blocks, strings.at for literals.
-EVM interfaces/storage/ownership are inferred candidates, not verified Solidity or ABI.")]
+interface selectors/types/mutability are inferred candidates, not a verified ABI.")]
     #[command(
         display_order = 60,
-        long_about = "Analyze EVM bytecode: interface, storage, CFG, metadata"
+        long_about = "Analyze EVM bytecode: interface, disassembly, literals, compiler metadata"
     )]
     Evm {
         #[command(subcommand)]

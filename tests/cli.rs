@@ -41,7 +41,6 @@ use std::{
 };
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 #[test]
@@ -80,8 +79,6 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         ("wasm", "get-function", "functions.at"),
         #[cfg(feature = "backend-pyc")]
         ("pyc", "get-code", "codes.at"),
-        #[cfg(feature = "backend-evm")]
-        ("evm", "get-function", "interface.at"),
     ];
     for (backend, command, source) in routes {
         let output = Command::new(binary)
