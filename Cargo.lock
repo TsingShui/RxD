@@ -3134,7 +3134,9 @@ dependencies = [
 name = "rxd-flutter"
 version = "0.1.0"
 dependencies = [
+ "capstone",
  "dae-rs",
+ "rayon",
  "rxd-core",
  "serde",
  "serde_json",

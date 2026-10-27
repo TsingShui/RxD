@@ -197,7 +197,8 @@ a code entry offset with `library::class::method`; libraries use `$` separators,
 so `--lib` and `-f` match that spelling. `strings` lists the object pool, and its
 `at` is the pool offset `xref` consumes: `xref` decodes every function and reports
 each instruction that loads the string, with the containing function in
-`context_at`. That scan is a whole-snapshot pass, so it takes seconds. `decompile` renders machine-level
+`context_at`. Matches come from the ARM64 pool-load encoding, so only the hits
+are decoded. `decompile` renders machine-level
 pseudocode (registers, `mem()` access, raw PC comments) for whole libraries and
 costs seconds, not milliseconds.
 

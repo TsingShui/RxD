@@ -81,18 +81,8 @@ impl Snapshot {
         out: &mut String,
         filter: Option<&rxd_core::filter::Contains>,
     ) -> Result<usize> {
-        let times = std::env::var("DART_AOT_TIMINGS").is_ok();
-        let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
-        if times {
-            eprintln!("[rxd-xref] analyzer {:?}", mark.elapsed());
-            mark = std::time::Instant::now();
-        }
         let pool = dae::decompiler::PoolRefs::new(&analyzer);
-        if times {
-            eprintln!("[rxd-xref] pool {:?}", mark.elapsed());
-            mark = std::time::Instant::now();
-        }
         let mut entries: Vec<(u64, String)> = pool
             .values_containing("")
             .into_iter()
@@ -126,18 +116,8 @@ impl Snapshot {
     /// Only operands that name a pool offset count as evidence; a raw literal
     /// match in the code bytes would report unrelated immediates.
     pub fn xref(&self, target: Target<'_>) -> Result<Vec<Reference>> {
-        let times = std::env::var("DART_AOT_TIMINGS").is_ok();
-        let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
-        if times {
-            eprintln!("[rxd-xref] analyzer {:?}", mark.elapsed());
-            mark = std::time::Instant::now();
-        }
         let pool = dae::decompiler::PoolRefs::new(&analyzer);
-        if times {
-            eprintln!("[rxd-xref] pool {:?}", mark.elapsed());
-            mark = std::time::Instant::now();
-        }
         let text_mode = matches!(target, Target::Text(..));
         let targets: std::collections::BTreeMap<u64, String> = match target {
             // `strings` prints object refs from the snapshot heap; the pool is
@@ -177,33 +157,49 @@ impl Snapshot {
         }
         let libraries = analyzer.build_functions(true);
         let plan = dae::export::callgraph::plan_functions(&analyzer, &libraries);
-        if times {
-            eprintln!(
-                "[rxd-xref] plan {} functions {:?}",
-                plan.len(),
-                mark.elapsed()
-            );
-            mark = std::time::Instant::now();
-        }
-        let mut hits = dae::disasm::scan_instructions(&analyzer, &plan, |function, instruction| {
-            let operands = instruction.op_str()?;
-            let offset = pool.offset_in_operand(operands)?;
-            let value = targets.get(&offset)?;
-            Some(Reference {
-                at: format!("0x{:x}", instruction.address()),
-                context_at: format!("0x{:x}", function.ep),
-                instruction: format!(
-                    "{} {}",
-                    instruction.mnemonic().unwrap_or_default(),
-                    operands
-                ),
-                value: unquote_pool(value).unwrap_or_else(|| value.clone()),
-            })
-        })
-        .map_err(|error| Error::new("INVALID_QUERY", error))?;
-        if times {
-            eprintln!("[rxd-xref] scan {:?}", mark.elapsed());
-        }
+        // Pool loads are a fixed ARM64 encoding, so the scan reads instruction
+        // words instead of asking capstone to decode every instruction.
+        let data = analyzer.data;
+        let slice_off = analyzer.slice_off;
+        let mut hits: Vec<Reference> = {
+            use rayon::prelude::*;
+            let mut found: Vec<Vec<Reference>> =
+                plan.par_iter()
+                    .map(|(ep, payload, csize, _)| {
+                        let Some((_, code)) =
+                            dae::disasm::function_code(data, slice_off, *payload, *csize)
+                        else {
+                            return Vec::new();
+                        };
+                        let mut local = Vec::new();
+                        for index in 0..code.len() / 4 {
+                            let word = &code[index * 4..index * 4 + 4];
+                            let Ok(bytes) = <[u8; 4]>::try_from(word) else {
+                                continue;
+                            };
+                            let word = u32::from_le_bytes(bytes);
+                            let Some(offset) = pool_load_offset(word) else {
+                                continue;
+                            };
+                            let Some(value) = targets.get(&offset).or_else(|| {
+                                offset.checked_add(1).and_then(|next| targets.get(&next))
+                            }) else {
+                                continue;
+                            };
+                            local.push(Reference {
+                                at: format!("0x{:x}", payload + index as u64 * 4),
+                                context_at: format!("0x{ep:x}"),
+                                instruction: String::new(),
+                                value: unquote_pool(value).unwrap_or_else(|| value.clone()),
+                            });
+                        }
+                        local
+                    })
+                    .collect();
+            found.drain(..).flatten().collect()
+        };
+        // Only the hits need decoding; there are far fewer of them than functions.
+        render_instruction_text(&analyzer, &mut hits);
         hits.sort_by(|left, right| left.at.cmp(&right.at));
         hits.dedup_by(|left, right| left.at == right.at && left.value == right.value);
         Ok(hits)
@@ -317,6 +313,68 @@ fn push_atom(out: &mut String, value: &str) {
         out.push_str(&serde_json::to_string(value).unwrap_or_default());
     } else {
         out.push_str(value);
+    }
+}
+
+/// The pool offset a load instruction names, if it is a `[PP + #imm]` access.
+///
+/// Encodings: LDR (immediate, unsigned offset) scales imm12 by 8 for 64-bit and
+/// by 4 for 32-bit; LDUR (unscaled) holds a signed imm9. Pool base is x27.
+fn pool_load_offset(word: u32) -> Option<u64> {
+    const PP: u32 = 27;
+    let rn = (word >> 5) & 0x1F;
+    if rn != PP {
+        return None;
+    }
+    // Unsigned-offset loads: bits 31..22 fixed, imm12 in 21..10.
+    if word & 0xFFC00000 == 0xF9400000 {
+        return Some(u64::from((word >> 10) & 0xFFF) * 8);
+    }
+    if word & 0xFFC00000 == 0xB9400000 {
+        return Some(u64::from((word >> 10) & 0xFFF) * 4);
+    }
+    // Unscaled loads: imm9 in 20..12.
+    if word & 0xFFE00C00 == 0xF8400000 || word & 0xFFE00C00 == 0xB8400000 {
+        let imm9 = (word >> 12) & 0x1FF;
+        let signed = if imm9 & 0x100 != 0 {
+            (imm9 | !0x1FF) as i32
+        } else {
+            imm9 as i32
+        };
+        return u64::try_from(signed).ok();
+    }
+    None
+}
+
+/// Decode the matched instructions so a row still carries its original text.
+fn render_instruction_text(analyzer: &dae::analyzer::Analyzer<'_>, hits: &mut [Reference]) {
+    let Ok(cs) = dae::disasm::build_cs(analyzer.platform.arch == "arm64") else {
+        return;
+    };
+    let data = analyzer.data;
+    let slice_off = analyzer.slice_off;
+    for hit in hits.iter_mut() {
+        let Ok(address) = u64::from_str_radix(hit.at.trim_start_matches("0x"), 16) else {
+            continue;
+        };
+        let Some(foff) = address.checked_sub(slice_off) else {
+            continue;
+        };
+        let start = usize::try_from(foff).unwrap_or(usize::MAX);
+        if start + 4 > data.len() {
+            continue;
+        }
+        if let Ok(instructions) = cs.disasm_all(&data[start..start + 4], address)
+            && let Some(instruction) = instructions.iter().next()
+        {
+            hit.instruction = format!(
+                "{} {}",
+                instruction.mnemonic().unwrap_or_default(),
+                instruction.op_str().unwrap_or_default()
+            )
+            .trim_end()
+            .to_owned();
+        }
     }
 }
 

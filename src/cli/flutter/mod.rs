@@ -29,7 +29,7 @@ pub enum Command {
     Strings(StringsOptions),
     /// Search instructions that load a pool string.
     #[command(
-        after_long_help = "Examples:\nrxd dae xref libapp.so --at 'str:0x7f0123'\nrxd dae xref libapp.so -m Authorization\nRequired: exactly one of --at/--match; --match must resolve to one string.\nColumns: at, context_at, instruction, value. at is an instruction address,\ncontext_at the containing function entry; value is the loaded string.\nThis decodes every function, so it takes seconds, not milliseconds."
+        after_long_help = "Examples:\nrxd dae xref libapp.so --at 'str:0x7f0123'\nrxd dae xref libapp.so -m Authorization\nRequired: exactly one of --at/--match; --match must resolve to one string.\nColumns: at, context_at, instruction, value. at is an instruction address,\ncontext_at the containing function entry; value is the loaded string.\nOnly pool loads are matched, by instruction encoding; matches are then decoded."
     )]
     Xref(XrefOptions),
     /// Reconstruct Dart-like pseudocode for whole libraries.
