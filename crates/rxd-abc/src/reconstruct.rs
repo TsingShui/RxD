@@ -1,15 +1,15 @@
 use crate::{
     Abc, Coordinate, Decoded, EntityKind, Instruction, LiteralValue, Method, Module, Name, Operand,
+    class_plan::ClassPlan,
     reader::{invalid, resource},
     structure::{Graph, unsupported},
 };
 use rxd_core::{Error, Result, output::Output};
-use std::{collections::HashSet, io::Write, sync::Arc};
-
-struct SourceUnit<'a> {
-    method: Method,
-    decoded: Decoded<'a>,
-}
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+    sync::Arc,
+};
 
 #[derive(Clone, Copy)]
 struct Loop {
@@ -23,30 +23,74 @@ struct TryRegion {
     end: usize,
     handler: usize,
     join: usize,
-    bypass: Option<usize>,
     start_pc: u32,
-    end_pc: u32,
     handler_pc: u32,
     join_pc: u32,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Implicit {
+    func: Option<u32>,
+    new_target: Option<u32>,
+    this_reg: Option<u32>,
+    args: Option<u32>,
+    params: u32,
 }
 
 struct Writer<'a, 'b> {
     abc: &'a Abc<'b>,
     decoded: &'a Decoded<'b>,
-    graph: Graph,
+    graph: &'a Graph,
     visited: Vec<bool>,
-    ordinary_receivers: Vec<bool>,
-    arrow_plan: Option<crate::arrow_plan::ArrowPlan>,
-    async_plan: Option<crate::async_plan::AsyncPlan>,
-    try_regions: Vec<TryRegion>,
-    in_try: bool,
+    ordinary_receivers: &'a [bool],
+    async_plan: Option<&'a crate::async_plan::AsyncPlan>,
+    try_regions: &'a [TryRegion],
     uses_context: bool,
     module: Option<Arc<Module>>,
+    implicit: Implicit,
+    function_ref: Option<&'a str>,
+    func_unused: bool,
+    classes: &'a HashMap<u32, ClassUse>,
+    super_context: bool,
+    arrow: bool,
+    top_level_arrow: bool,
+    module_body: bool,
+    escape_serial: usize,
+    escapes: Vec<(u32, String)>,
     out: Output,
 }
 
+struct RenderContext<'a> {
+    module: Option<Arc<Module>>,
+    classes: &'a HashMap<u32, ClassUse>,
+}
+
+struct FunctionValueOptions<'a> {
+    inline: bool,
+    module: Option<Arc<Module>>,
+    classes: &'a HashMap<u32, ClassUse>,
+    top_level_arrow: bool,
+}
+
+struct BodyOptions<'a> {
+    function_ref: Option<&'a str>,
+    super_context: bool,
+    top_level_arrow: bool,
+    module: Option<Arc<Module>>,
+    classes: &'a HashMap<u32, ClassUse>,
+}
+
+#[derive(Clone, Copy)]
+struct ClassUse {
+    constructor: u32,
+    has_base: bool,
+}
+
 fn identifier(name: &Name) -> Option<&str> {
-    let text = name.scalar_text()?;
+    identifier_text(name.scalar_text()?)
+}
+
+fn identifier_text(text: &str) -> Option<&str> {
     let mut chars = text.bytes();
     let start = chars.next()?;
     if !(start.is_ascii_alphabetic() || matches!(start, b'_' | b'$'))
@@ -230,77 +274,13 @@ impl<'a, 'b> Writer<'a, 'b> {
             .ok_or_else(|| invalid("ABC import slot is outside module metadata"))
     }
 
-    fn local(&self, index: u32) -> Result<Arc<Name>> {
+    fn local(&self, index: u32) -> Result<String> {
         let entry = self
             .module()?
             .local_exports
             .get(index as usize)
             .ok_or_else(|| invalid("ABC local module slot is outside module metadata"))?;
-        Ok(Arc::clone(&entry.local_name))
-    }
-
-    fn imports<'c>(
-        &mut self,
-        instructions: impl IntoIterator<Item = &'c Instruction>,
-    ) -> Result<()> {
-        let mut imported = Vec::new();
-        let mut namespaces = Vec::new();
-        for instruction in instructions {
-            match instruction.opcode.name {
-                "ldexternalmodulevar" | "wide.ldexternalmodulevar" => {
-                    imported
-                        .try_reserve(1)
-                        .map_err(|_| resource("ABC import selection allocation failed"))?;
-                    imported.push(instruction.unsigned(0)?);
-                }
-                "getmodulenamespace" | "wide.getmodulenamespace" => {
-                    namespaces
-                        .try_reserve(1)
-                        .map_err(|_| resource("ABC namespace selection allocation failed"))?;
-                    namespaces.push(instruction.unsigned(0)?);
-                }
-                _ => {}
-            }
-        }
-        imported.sort_unstable();
-        imported.dedup();
-        namespaces.sort_unstable();
-        namespaces.dedup();
-        for index in imported {
-            let entry = self.import(index)?;
-            let request = Arc::clone(
-                self.module()?
-                    .requests
-                    .get(entry.request as usize)
-                    .ok_or_else(|| invalid("ABC import module request is out of range"))?,
-            );
-            let export = entry.import_name.clone();
-            match export {
-                None => write!(self.out, "import * as __abc_import_{index} from ")?,
-                Some(name) if name.text == "default" => {
-                    write!(self.out, "import __abc_import_{index} from ")?
-                }
-                Some(name) => {
-                    self.out.write_all(b"import { ")?;
-                    name.write_quoted(&mut self.out)?;
-                    write!(self.out, " as __abc_import_{index} }} from ")?;
-                }
-            }
-            request.write_quoted(&mut self.out)?;
-            self.out.write_all(b";\n")?;
-        }
-        for index in namespaces {
-            let request = Arc::clone(
-                self.module()?
-                    .requests
-                    .get(index as usize)
-                    .ok_or_else(|| invalid("ABC module namespace request is out of range"))?,
-            );
-            write!(self.out, "import * as __abc_namespace_{index} from ")?;
-            request.write_quoted(&mut self.out)?;
-            self.out.write_all(b";\n")?;
-        }
-        Ok(())
+        Ok(module_binding(&entry.local_name, index))
     }
 
     fn module_guard(&self, instruction: &Instruction) -> bool {
@@ -337,50 +317,90 @@ impl<'a, 'b> Writer<'a, 'b> {
         })
     }
 
-    fn ordinary_receiver(&self, instruction: &Instruction) -> Result<()> {
-        let index = self
-            .decoded
-            .instructions
-            .binary_search_by_key(&instruction.pc, |item| item.pc)
-            .map_err(|_| invalid("ABC instruction is outside decoded code"))?;
-        if !self.ordinary_receivers[index] {
-            return Err(unsupported(format!(
-                "own-property target at PC {:#x} is not proven to be an ordinary literal",
-                instruction.pc
-            )));
-        }
-        Ok(())
-    }
-
     fn args(&mut self, registers: impl Iterator<Item = u32>) -> Result<()> {
         for (index, register) in registers.enumerate() {
             if index > 0 {
                 self.out.write_all(b", ")?;
             }
-            write!(self.out, "v{register}")?;
+            let expression = self.register_text(register)?;
+            self.out.write_all(expression.as_bytes())?;
         }
         Ok(())
     }
 
+    fn new_target_expression(&self) -> &'static str {
+        if self.module_body {
+            "void 0"
+        } else if self.arrow {
+            if self.top_level_arrow {
+                "void 0"
+            } else {
+                "__abc_context.newTarget"
+            }
+        } else {
+            "new.target"
+        }
+    }
+
+    fn parameter_name(&self, register: u32) -> Option<String> {
+        let base = self.implicit.args?;
+        (register >= base && register < base + self.implicit.params)
+            .then(|| format!("p{}", register - base))
+    }
+
+    fn register_expression(&self, register: u32) -> Option<String> {
+        if Some(register) == self.implicit.this_reg {
+            Some("__abc_this".to_owned())
+        } else if Some(register) == self.implicit.new_target {
+            Some(self.new_target_expression().to_owned())
+        } else if let Some(base) = self.implicit.args
+            && register >= base
+            && register < base + self.implicit.params
+        {
+            Some(format!("p{}", register - base))
+        } else {
+            None
+        }
+    }
+
+    fn register_text(&self, register: u32) -> Result<String> {
+        if let Some(expression) = self.register_expression(register) {
+            Ok(expression)
+        } else if Some(register) == self.implicit.func {
+            Err(unsupported("method observes its own function object"))
+        } else {
+            Ok(format!("v{register}"))
+        }
+    }
+
     fn emit_instruction(&mut self, instruction: &Instruction, depth: usize) -> Result<()> {
         let name = instruction.opcode.name;
-        if self
-            .arrow_plan
-            .as_ref()
-            .is_some_and(|plan| plan.skips(instruction.pc))
-        {
-            return Ok(());
-        }
         if let Some(plan) = &self.async_plan {
             if instruction.pc == plan.enter
                 || instruction.pc == plan.save
                 || instruction.pc == plan.reject_return
                 || name == "asyncfunctionresolve"
+                || name == "suspendgenerator"
             {
                 return Ok(());
             }
             if name == "asyncfunctionreject" {
                 return self.line(depth, "throw acc;");
+            }
+            if name == "asyncfunctionawaituncaught" {
+                self.indent(depth)?;
+                self.out.write_all(b"__abc_await = await acc;\n")?;
+                return Ok(());
+            }
+            if name == "resumegenerator" {
+                self.indent(depth)?;
+                self.out.write_all(b"acc = __abc_await;\n")?;
+                return Ok(());
+            }
+            if name == "getresumemode" {
+                self.indent(depth)?;
+                self.out.write_all(b"acc = 0;\n")?;
+                return Ok(());
             }
         }
         if self.module_guard(instruction) {
@@ -388,6 +408,8 @@ impl<'a, 'b> Writer<'a, 'b> {
         }
         match name {
             "nop" => return Ok(()),
+            "return" if self.module_body => return self.line(depth, "void acc;"),
+            "returnundefined" if self.module_body => return self.line(depth, "void 0;"),
             "return" => return self.line(depth, "return acc;"),
             "returnundefined" => return self.line(depth, "return;"),
             "throw" => return self.line(depth, "throw acc;"),
@@ -395,14 +417,63 @@ impl<'a, 'b> Writer<'a, 'b> {
         }
         self.indent(depth)?;
         match name {
-            "lda" => write!(self.out, "acc = v{}", instruction.register(0)?)?,
-            "sta" => write!(self.out, "v{} = acc", instruction.register(0)?)?,
-            "mov" => write!(
-                self.out,
-                "v{} = v{}",
-                instruction.register(0)?,
-                instruction.register(1)?
-            )?,
+            "lda" => {
+                let source = instruction.register(0)?;
+                if let Some(expression) = self.register_expression(source) {
+                    write!(self.out, "acc = {expression}")?;
+                } else if Some(source) == self.implicit.func {
+                    if let Some(reference) = self.function_ref {
+                        write!(self.out, "acc = {reference}")?;
+                    } else if self.func_unused {
+                        self.out.write_all(b"void 0")?;
+                    } else {
+                        return Err(missing(instruction));
+                    }
+                } else {
+                    write!(self.out, "acc = v{source}")?;
+                }
+            }
+            "sta" => {
+                let dest = instruction.register(0)?;
+                if Some(dest) == self.implicit.this_reg {
+                    self.out.write_all(b"__abc_this = acc")?;
+                } else if let Some(parameter) = self.parameter_name(dest) {
+                    write!(self.out, "{parameter} = acc")?;
+                } else if dest == self.implicit.func.unwrap_or(u32::MAX)
+                    || dest == self.implicit.new_target.unwrap_or(u32::MAX)
+                    || self.register_expression(dest).is_some()
+                {
+                    return Err(missing(instruction));
+                } else {
+                    write!(self.out, "v{dest} = acc")?;
+                }
+            }
+            "mov" => {
+                let dest = instruction.register(0)?;
+                let source = instruction.register(1)?;
+                if Some(dest) == self.implicit.this_reg {
+                    write!(self.out, "__abc_this = v{source}")?;
+                } else if let Some(parameter) = self.parameter_name(dest) {
+                    write!(self.out, "{parameter} = v{source}")?;
+                } else if dest == self.implicit.func.unwrap_or(u32::MAX)
+                    || Some(dest) == self.implicit.new_target
+                    || self.register_expression(dest).is_some()
+                {
+                    return Err(missing(instruction));
+                } else if let Some(expression) = self.register_expression(source) {
+                    write!(self.out, "v{dest} = {expression}")?;
+                } else if Some(source) == self.implicit.func {
+                    if let Some(reference) = self.function_ref {
+                        write!(self.out, "v{dest} = {reference}")?;
+                    } else if self.func_unused {
+                        self.out.write_all(b"void 0")?;
+                    } else {
+                        return Err(missing(instruction));
+                    }
+                } else {
+                    write!(self.out, "v{dest} = v{source}")?;
+                }
+            }
             "ldai" => match instruction.operands.first() {
                 Some(Operand::Signed(value)) => write!(self.out, "acc = {value}")?,
                 _ => return Err(invalid("invalid ldai immediate")),
@@ -460,15 +531,23 @@ impl<'a, 'b> Writer<'a, 'b> {
             "ldnan" => self.out.write_all(b"acc = (0 / 0)")?,
             "ldinfinity" => self.out.write_all(b"acc = (1 / 0)")?,
             "ldglobal" => self.out.write_all(b"acc = globalThis")?,
-            "ldthis" => self.out.write_all(b"acc = this")?,
-            "ldnewtarget" if self.arrow_plan.is_some() => self.out.write_all(b"acc = void 0")?,
-            "ldnewtarget" => self.out.write_all(b"acc = new.target")?,
-            "ldfunction" => write!(self.out, "acc = _abc_{:x}", self.decoded.method)?,
+            "ldthis" => self.out.write_all(b"acc = __abc_this")?,
+            "ldnewtarget" => {
+                let expression = self.new_target_expression();
+                write!(self.out, "acc = {expression}")?;
+            }
+            "ldfunction" => {
+                let reference = self
+                    .function_ref
+                    .ok_or_else(|| unsupported("method observes its own function object"))?;
+                write!(self.out, "acc = {reference}")?;
+            }
             "definefunc" => {
                 let target = instruction.entity(1, EntityKind::Method)?;
+                let new_target = self.new_target_expression();
                 writeln!(
                     self.out,
-                    "acc = _abc_capture_{target:x}({{env: __abc_env, hole: __abc_context.hole}});"
+                    "acc = _abc_capture_{target:x}({{env: __abc_env, hole: __abc_context.hole, newTarget: {new_target}}});"
                 )?;
                 self.indent(depth)?;
                 write!(
@@ -476,6 +555,105 @@ impl<'a, 'b> Writer<'a, 'b> {
                     "Object.defineProperty(acc, \"length\", {{value: {}}})",
                     instruction.unsigned(2)?
                 )?;
+            }
+            "definemethod" => {
+                let target = instruction.entity(1, EntityKind::Method)?;
+                let new_target = self.new_target_expression();
+                write!(
+                    self.out,
+                    "acc = _abc_capture_{target:x}({{env: __abc_env, hole: __abc_context.hole, newTarget: {new_target}}})"
+                )?;
+            }
+            "defineclasswithbuffer" => {
+                let class = self
+                    .classes
+                    .get(&instruction.pc)
+                    .ok_or_else(|| invalid("ABC class definition was not planned"))?;
+                let constructor = class.constructor;
+                let new_target = self.new_target_expression();
+                write!(
+                    self.out,
+                    "acc = _abc_class_{constructor:x}({{env: __abc_env, hole: __abc_context.hole, newTarget: {new_target}}}"
+                )?;
+                if class.has_base {
+                    let proto = self.register_text(instruction.register(4)?)?;
+                    write!(self.out, ", {proto}")?;
+                }
+                self.out.write_all(b")")?;
+            }
+            "throw.ifsupernotcorrectcall" => {
+                match instruction.unsigned(0)? {
+                    0 => self.out.write_all(
+                        b"if (acc === void 0) { throw new ReferenceError(\"sub-class must call super before use 'this'\"); }",
+                    )?,
+                    1 => self.out.write_all(
+                        b"if (acc !== void 0) { throw new ReferenceError(\"super() forbidden re-bind 'this'\"); }",
+                    )?,
+                    _ => return Err(invalid("unknown ABC super initialization check")),
+                }
+            }
+            "supercallthisrange" | "supercallarrowrange" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                let count = instruction.unsigned(1)?;
+                let base = instruction.register(2)?;
+                self.out.write_all(b"acc = super(")?;
+                self.args(base..base + count)?;
+                self.out.write_all(b")")?;
+            }
+            "wide.supercallthisrange" | "wide.supercallarrowrange" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                let count = instruction.unsigned(0)?;
+                let base = instruction.register(1)?;
+                self.out.write_all(b"acc = super(")?;
+                self.args(base..base + count)?;
+                self.out.write_all(b")")?;
+            }
+            "supercallspread" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                let source = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "acc = super(...{source})")?;
+            }
+            "callruntime.supercallforwardallargs" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                self.out.write_all(b"acc = super(...arguments)")?;
+            }
+            "ldsuperbyname" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                self.out.write_all(b"acc = super[")?;
+                self.literal_string(instruction, 1)?;
+                self.out.write_all(b"]")?;
+            }
+            "stsuperbyname" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                self.out.write_all(b"super[")?;
+                self.literal_string(instruction, 1)?;
+                self.out.write_all(b"] = acc")?;
+            }
+            "ldsuperbyvalue" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                let key = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "acc = super[{key}]")?;
+            }
+            "stsuperbyvalue" => {
+                if !self.super_context {
+                    return Err(missing(instruction));
+                }
+                let key = self.register_text(instruction.register(2)?)?;
+                write!(self.out, "super[{key}] = acc")?;
             }
             "createemptyobject" => self.out.write_all(b"acc = {}")?,
             "createemptyarray" => self.out.write_all(b"acc = []")?,
@@ -489,16 +667,11 @@ impl<'a, 'b> Writer<'a, 'b> {
                 write!(self.out, "acc = __abc_import_{index}")?;
             }
             "ldlocalmodulevar" | "wide.ldlocalmodulevar" | "stmodulevar" | "wide.stmodulevar" => {
-                let local = self.local(instruction.unsigned(0)?)?;
-                let text = identifier(&local).ok_or_else(|| {
-                    unsupported(
-                        "local module binding cannot be expressed as an unshadowed JS identifier",
-                    )
-                })?;
+                let binding = self.local(instruction.unsigned(0)?)?;
                 if name.contains("stmodulevar") {
-                    write!(self.out, "{text} = acc")?;
+                    write!(self.out, "{binding} = acc")?;
                 } else {
-                    write!(self.out, "acc = {text}")?;
+                    write!(self.out, "acc = {binding}")?;
                 }
             }
             "getmodulenamespace" | "wide.getmodulenamespace" => {
@@ -552,11 +725,8 @@ impl<'a, 'b> Writer<'a, 'b> {
                     "isin" => "in",
                     _ => unreachable!(),
                 };
-                write!(
-                    self.out,
-                    "acc = v{} {operator} acc",
-                    instruction.register(1)?
-                )?;
+                let left = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "acc = {left} {operator} acc")?;
             }
             "ldobjbyname" => {
                 self.out.write_all(b"acc = acc[")?;
@@ -564,17 +734,20 @@ impl<'a, 'b> Writer<'a, 'b> {
                 self.out.write_all(b"]")?;
             }
             "stobjbyname" => {
-                write!(self.out, "v{}[", instruction.register(2)?)?;
+                let object = self.register_text(instruction.register(2)?)?;
+                write!(self.out, "{object}[")?;
                 self.literal_string(instruction, 1)?;
                 self.out.write_all(b"] = acc")?;
             }
-            "ldobjbyvalue" => write!(self.out, "acc = v{}[acc]", instruction.register(1)?)?,
-            "stobjbyvalue" => write!(
-                self.out,
-                "v{}[v{}] = acc",
-                instruction.register(1)?,
-                instruction.register(2)?
-            )?,
+            "ldobjbyvalue" => {
+                let object = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "acc = {object}[acc]")?;
+            }
+            "stobjbyvalue" => {
+                let object = self.register_text(instruction.register(1)?)?;
+                let key = self.register_text(instruction.register(2)?)?;
+                write!(self.out, "{object}[{key}] = acc")?;
+            }
             "ldobjbyindex" | "wide.ldobjbyindex" => {
                 write!(
                     self.out,
@@ -584,26 +757,22 @@ impl<'a, 'b> Writer<'a, 'b> {
             }
             "stobjbyindex" | "wide.stobjbyindex" => {
                 let wide = name.starts_with("wide.");
+                let object = self.register_text(instruction.register(usize::from(!wide))?)?;
                 write!(
                     self.out,
-                    "v{}[{}] = acc",
-                    instruction.register(usize::from(!wide))?,
+                    "{object}[{}] = acc",
                     instruction.unsigned(if wide { 1 } else { 2 })?
                 )?;
             }
             "definefieldbyname" | "definepropertybyname" => {
-                write!(
-                    self.out,
-                    "Object.defineProperty(v{}, ",
-                    instruction.register(2)?
-                )?;
+                let object = self.register_text(instruction.register(2)?)?;
+                write!(self.out, "Object.defineProperty({object}, ")?;
                 self.literal_string(instruction, 1)?;
                 self.out.write_all(
                     b", {value: acc, writable: true, enumerable: true, configurable: true})",
                 )?;
             }
             "stownbyname" | "stownbyvalue" | "stownbyindex" | "wide.stownbyindex" => {
-                self.ordinary_receiver(instruction)?;
                 let object = if name == "stownbyname" {
                     instruction.register(2)?
                 } else if name == "wide.stownbyindex" {
@@ -611,30 +780,52 @@ impl<'a, 'b> Writer<'a, 'b> {
                 } else {
                     instruction.register(1)?
                 };
-                write!(self.out, "Object.defineProperty(v{object}, ")?;
+                let object = self.register_text(object)?;
+                write!(self.out, "Object.defineProperty({object}, ")?;
                 match name {
                     "stownbyname" => self.literal_string(instruction, 1)?,
-                    "stownbyvalue" => write!(self.out, "v{}", instruction.register(2)?)?,
+                    "stownbyvalue" => {
+                        let key = self.register_text(instruction.register(2)?)?;
+                        self.out.write_all(key.as_bytes())?;
+                    }
                     "stownbyindex" => write!(self.out, "{}", instruction.unsigned(2)?)?,
                     _ => write!(self.out, "{}", instruction.unsigned(1)?)?,
                 }
-                self.out.write_all(
-                    b", {value: acc, writable: true, enumerable: true, configurable: true})",
-                )?;
+                let proven = self
+                    .decoded
+                    .instructions
+                    .binary_search_by_key(&instruction.pc, |item| item.pc)
+                    .ok()
+                    .and_then(|index| self.ordinary_receivers.get(index))
+                    .copied()
+                    .unwrap_or(false);
+                if proven {
+                    self.out.write_all(
+                        b", {value: acc, writable: true, enumerable: true, configurable: true})",
+                    )?;
+                } else {
+                    self.out.write_all(
+                        b", {value: acc, writable: true, configurable: true, enumerable: !(__abc_class_prototypes.has(",
+                    )?;
+                    self.out.write_all(object.as_bytes())?;
+                    self.out.write_all(b") || __abc_class_constructors.has(")?;
+                    self.out.write_all(object.as_bytes())?;
+                    self.out.write_all(b"))})")?;
+                }
             }
             "callruntime.definefieldbyvalue" => {
+                let object = self.register_text(instruction.register(2)?)?;
+                let key = self.register_text(instruction.register(1)?)?;
                 write!(
                     self.out,
-                    "Object.defineProperty(v{}, v{}, {{value: acc, writable: true, enumerable: true, configurable: true}})",
-                    instruction.register(2)?,
-                    instruction.register(1)?
+                    "Object.defineProperty({object}, {key}, {{value: acc, writable: true, enumerable: true, configurable: true}})"
                 )?;
             }
             "callruntime.definefieldbyindex" => {
+                let object = self.register_text(instruction.register(2)?)?;
                 write!(
                     self.out,
-                    "Object.defineProperty(v{}, {}, {{value: acc, writable: true, enumerable: true, configurable: true}})",
-                    instruction.register(2)?,
+                    "Object.defineProperty({object}, {}, {{value: acc, writable: true, enumerable: true, configurable: true}})",
                     instruction.unsigned(1)?
                 )?;
             }
@@ -658,11 +849,8 @@ impl<'a, 'b> Writer<'a, 'b> {
                 self.out.write_all(b")")?;
             }
             "callthis0" | "callthis1" | "callthis2" | "callthis3" => {
-                write!(
-                    self.out,
-                    "acc = Reflect.apply(acc, v{}, [",
-                    instruction.register(1)?
-                )?;
+                let receiver = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "acc = Reflect.apply(acc, {receiver}, [")?;
                 let mut registers = Vec::new();
                 registers
                     .try_reserve_exact(instruction.operands.len())
@@ -678,7 +866,8 @@ impl<'a, 'b> Writer<'a, 'b> {
                 let count = instruction.unsigned(if wide { 0 } else { 1 })?;
                 let base = instruction.register(if wide { 1 } else { 2 })?;
                 if name.contains("callthisrange") {
-                    write!(self.out, "acc = Reflect.apply(acc, v{base}, [")?;
+                    let receiver = self.register_text(base)?;
+                    write!(self.out, "acc = Reflect.apply(acc, {receiver}, [")?;
                     self.args((base + 1)..(base + 1 + count))?;
                     self.out.write_all(b"])")?;
                 } else {
@@ -694,9 +883,60 @@ impl<'a, 'b> Writer<'a, 'b> {
                 if count == 0 {
                     return Err(invalid("ABC constructor range has zero entries"));
                 }
-                write!(self.out, "acc = new v{base}(")?;
+                let constructor = self.register_text(base)?;
+                write!(self.out, "acc = new {constructor}(")?;
                 self.args((base + 1)..(base + count))?;
                 self.out.write_all(b")")?;
+            }
+            "tonumeric" => self
+                .out
+                .write_all(b"acc = (typeof acc === \"bigint\" ? acc : +acc)")?,
+            "delobjprop" => {
+                let object = self.register_text(instruction.register(0)?)?;
+                write!(self.out, "delete {object}[acc]")?;
+            }
+            "getpropiterator" => self
+                .out
+                .write_all(b"acc = Object.keys(acc)[Symbol.iterator]()")?,
+            "getiterator" => self.out.write_all(b"acc = acc[Symbol.iterator]()")?,
+            "getnextpropname" => {
+                let iterator = self.register_text(instruction.register(0)?)?;
+                write!(self.out, "acc = {iterator}.next().value")?;
+            }
+            "copydataproperties" => {
+                let target = self.register_text(instruction.register(0)?)?;
+                write!(self.out, "Object.assign({target}, acc)")?;
+            }
+            "starrayspread" => {
+                let target = self.register_text(instruction.register(0)?)?;
+                let index = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "{target}.splice({index}, 0, ...acc)")?;
+            }
+            "definegettersetterbyvalue" => {
+                let object = self.register_text(instruction.register(0)?)?;
+                let property = self.register_text(instruction.register(1)?)?;
+                let getter = self.register_text(instruction.register(2)?)?;
+                let setter = self.register_text(instruction.register(3)?)?;
+                write!(
+                    self.out,
+                    "Object.defineProperty({object}, {property}, {{get: {getter}, set: {setter}, enumerable: true, configurable: true}})"
+                )?;
+            }
+            "setobjectwithproto" => {
+                let proto = self.register_text(instruction.register(1)?)?;
+                write!(self.out, "Object.setPrototypeOf(acc, {proto})")?;
+            }
+            "apply" => {
+                let receiver = self.register_text(instruction.register(1)?)?;
+                let arguments = self.register_text(instruction.register(2)?)?;
+                write!(self.out, "acc = Reflect.apply(acc, {receiver}, {arguments})")?;
+            }
+            "throw.ifnotobject" => {
+                let value = self.register_text(instruction.register(0)?)?;
+                write!(
+                    self.out,
+                    "if ({value} === null || (typeof {value} !== \"object\" && typeof {value} !== \"function\")) {{ throw new TypeError(\"not an object\"); }}"
+                )?;
             }
             "dynamicimport" => self.out.write_all(b"acc = import(acc)")?,
             _ => return Err(missing(instruction)),
@@ -807,12 +1047,40 @@ impl<'a, 'b> Writer<'a, 'b> {
         Ok(())
     }
 
+    fn try_candidate(&self, cursor: usize, end: usize, entered: Option<usize>) -> Option<usize> {
+        let mut best: Option<usize> = None;
+        for (index, region) in self.try_regions.iter().enumerate() {
+            if region.start != cursor || Some(index) == entered || region.join > end {
+                continue;
+            }
+            best = match best {
+                None => Some(index),
+                Some(current) if entered.is_none() => {
+                    if region.join_pc > self.try_regions[current].join_pc {
+                        Some(index)
+                    } else {
+                        Some(current)
+                    }
+                }
+                Some(current) => {
+                    if region.join_pc < self.try_regions[current].join_pc {
+                        Some(index)
+                    } else {
+                        Some(current)
+                    }
+                }
+            };
+        }
+        best
+    }
+
     fn range(
         &mut self,
         start: usize,
         end: usize,
         leave: usize,
         context: Option<Loop>,
+        entered: Option<usize>,
         depth: usize,
     ) -> Result<()> {
         if depth > self.abc.budget.ast_depth {
@@ -820,36 +1088,54 @@ impl<'a, 'b> Writer<'a, 'b> {
         }
         let mut cursor = start;
         while cursor < end {
-            if let Ok(index) = self
-                .try_regions
-                .binary_search_by_key(&cursor, |region| region.start)
-                && !self.in_try
-            {
+            if let Some(index) = self.try_candidate(cursor, end, entered) {
                 let region = self.try_regions[index];
-                if region.join > end {
-                    return Err(unsupported("try/catch crosses a structured region"));
+                self.escape_serial += 1;
+                let label = format!("__abc_escape_{:x}_{}", region.join_pc, self.escape_serial);
+                self.escapes.push((region.join_pc, label.clone()));
+                self.indent(depth)?;
+                writeln!(self.out, "{label}: {{")?;
+                self.indent(depth + 1)?;
+                self.out.write_all(b"try {\n")?;
+                self.range(
+                    region.start,
+                    region.end,
+                    region.end,
+                    context,
+                    Some(index),
+                    depth + 2,
+                )?;
+                self.indent(depth + 1)?;
+                self.out.write_all(b"} catch (__abc_exception) {\n")?;
+                self.line(depth + 2, "acc = __abc_exception;")?;
+                self.range(
+                    region.handler,
+                    region.join,
+                    region.join,
+                    context,
+                    None,
+                    depth + 2,
+                )?;
+                self.indent(depth + 1)?;
+                self.out.write_all(b"}\n")?;
+                if region.end < region.handler {
+                    self.range(
+                        region.end,
+                        region.handler,
+                        region.handler,
+                        context,
+                        None,
+                        depth + 1,
+                    )?;
                 }
-                self.line(depth, "try {")?;
-                self.in_try = true;
-                self.range(region.start, region.end, region.end, context, depth + 1)?;
-                self.in_try = false;
-                if let Some(bypass) = region.bypass {
-                    if self.visited[bypass] {
-                        return Err(unsupported("exception bypass is shared"));
-                    }
-                    self.visited[bypass] = true;
-                }
-                self.line(depth, "} catch (__abc_exception) {")?;
-                self.line(depth + 1, "acc = __abc_exception;")?;
-                self.range(region.handler, region.join, region.join, context, depth + 1)?;
+                self.escapes.pop();
                 self.line(depth, "}")?;
                 cursor = region.join;
                 continue;
             }
             if !self.graph.reachable[cursor] {
-                return Err(unsupported(
-                    "unreachable basic block inside a source region",
-                ));
+                cursor += 1;
+                continue;
             }
             if self.visited[cursor] {
                 return Err(unsupported("overlapping ABC source regions"));
@@ -882,6 +1168,7 @@ impl<'a, 'b> Writer<'a, 'b> {
                                 header: cursor,
                                 exit: target,
                             }),
+                            None,
                             depth + 1,
                         )?;
                         self.line(depth, "}")?;
@@ -898,12 +1185,8 @@ impl<'a, 'b> Writer<'a, 'b> {
             }
             if last.opcode.is_return() || last.opcode.name == "throw" {
                 self.emit_instruction(last, depth)?;
-                if cursor + 1 < end {
-                    return Err(unsupported(
-                        "a terminal block precedes an unstructured region",
-                    ));
-                }
-                return Ok(());
+                cursor += 1;
+                continue;
             }
             if !last.opcode.is_jump() {
                 cursor += 1;
@@ -913,7 +1196,19 @@ impl<'a, 'b> Writer<'a, 'b> {
                 continue;
             }
             let target = self.jump_target(last)?;
+            let target_pc = self.decoded.instructions[self.graph.blocks[target].first].pc;
             if !last.opcode.is_conditional() {
+                if let Some(label) = self
+                    .escapes
+                    .iter()
+                    .rev()
+                    .find(|(escape, _)| *escape == target_pc)
+                    .map(|(_, label)| label.clone())
+                {
+                    self.indent(depth)?;
+                    writeln!(self.out, "break {label};")?;
+                    return Ok(());
+                }
                 if cursor + 1 != end && target != cursor + 1 {
                     return Err(unsupported("unstructured ABC jump within a region"));
                 }
@@ -955,10 +1250,25 @@ impl<'a, 'b> Writer<'a, 'b> {
                 cursor += 1;
                 continue;
             }
+            if let Some(label) = self
+                .escapes
+                .iter()
+                .rev()
+                .find(|(escape, _)| *escape == target_pc)
+                .map(|(_, label)| label.clone())
+            {
+                self.indent(depth)?;
+                self.out.write_all(b"if (")?;
+                self.condition(last)?;
+                writeln!(self.out, ") {{ break {label}; }}")?;
+                cursor += 1;
+                continue;
+            }
             if target > end || target == end && leave != end {
-                return Err(unsupported(
-                    "conditional branch exits its structured region",
-                ));
+                return Err(unsupported(format!(
+                    "conditional branch exits its structured region at PC {:#x} targeting {:#x}",
+                    last.pc, self.decoded.instructions[self.graph.blocks[target].first].pc
+                )));
             }
             let previous = self.graph.blocks[target - 1];
             let tail = &self.decoded.instructions[previous.end - 1];
@@ -968,35 +1278,44 @@ impl<'a, 'b> Writer<'a, 'b> {
             } else {
                 None
             };
+            let end_target = join.unwrap_or(target);
+            let end_pc = if end_target == self.graph.blocks.len() {
+                self.decoded.code.bytes.len() as u32
+            } else {
+                self.decoded.instructions[self.graph.blocks[end_target].first].pc
+            };
+            self.escape_serial += 1;
+            let label = format!("__abc_escape_{end_pc:x}_{}", self.escape_serial);
             self.indent(depth)?;
+            writeln!(self.out, "{label}: {{")?;
+            self.escapes.push((end_pc, label));
+            self.indent(depth + 1)?;
             self.out.write_all(b"if (!")?;
             self.condition(last)?;
             self.out.write_all(b") {\n")?;
-            self.range(
-                cursor + 1,
-                target,
-                join.unwrap_or(target),
-                context,
-                depth + 1,
-            )?;
+            self.range(cursor + 1, target, end_target, context, None, depth + 2)?;
             if let Some(join) = join {
-                self.line(depth, "} else {")?;
-                self.range(target, join, join, context, depth + 1)?;
-                self.line(depth, "}")?;
+                self.indent(depth + 1)?;
+                self.out.write_all(b"} else {\n")?;
+                self.range(target, join, join, context, None, depth + 2)?;
+                self.indent(depth + 1)?;
+                self.out.write_all(b"}\n")?;
                 cursor = join;
             } else {
-                self.line(depth, "}")?;
+                self.indent(depth + 1)?;
+                self.out.write_all(b"}\n")?;
                 cursor = target;
             }
+            self.escapes.pop();
+            self.line(depth, "}")?;
         }
         Ok(())
     }
 }
 
 fn simple_tries(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<TryRegion>> {
-    let mut regions = Vec::new();
-    regions
-        .try_reserve_exact(decoded.code.tries.len())
+    let mut raw = Vec::new();
+    raw.try_reserve_exact(decoded.code.tries.len())
         .map_err(|_| resource("ABC exception region allocation failed"))?;
     let block = |pc: u32| -> Result<usize> {
         if pc as usize == decoded.code.bytes.len() {
@@ -1016,224 +1335,628 @@ fn simple_tries(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<TryRegion>> 
                 "typed or unsized exception handler is not yet supported",
             ));
         }
-        let start = block(region.pc)?;
-        let end = block(region.pc + region.length)?;
-        let handler_start = block(handler.pc)?;
-        let join = block(handler.pc + handler.length)?;
-        if !(start < end && end <= handler_start && handler_start < join) {
+        let (start_pc, end_pc) = (region.pc, region.pc + region.length);
+        let (handler_pc, join_pc) = (handler.pc, handler.pc + handler.length);
+        if end_pc > handler_pc {
+            return Err(unsupported(
+                "exception handler overlaps its protected range",
+            ));
+        }
+        let start = block(start_pc)?;
+        let end = block(end_pc)?;
+        let handler_block = block(handler_pc)?;
+        let join = block(join_pc)?;
+        if !(start < end && end <= handler_block && handler_block < join) {
             return Err(unsupported(
                 "exception handler does not follow its protected range",
             ));
         }
-        let preceding = &decoded.instructions[graph.blocks[handler_start - 1].end - 1];
-        if !preceding.opcode.is_return()
-            && preceding.opcode.name != "throw"
-            && (!preceding.opcode.is_jump() || preceding.opcode.is_conditional())
-        {
-            return Err(unsupported("normal flow falls into an exception handler"));
-        }
-        let bypass = if end == handler_start {
-            None
-        } else {
-            if end + 1 != handler_start {
-                return Err(unsupported("exception bypass contains executable code"));
-            }
-            let bypass = graph.blocks[end];
-            let jump = &decoded.instructions[bypass.first];
-            if bypass.first + 1 != bypass.end
-                || !jump.opcode.is_jump()
-                || jump.opcode.is_conditional()
-                || jump.branch != Some(handler.pc + handler.length)
-            {
-                return Err(unsupported(
-                    "exception bypass is not a direct jump to the handler end",
-                ));
-            }
-            Some(end)
-        };
-        regions.push(TryRegion {
+        raw.push((
+            start_pc,
+            end_pc,
+            handler_pc,
+            join_pc,
             start,
             end,
-            handler: handler_start,
+            handler_block,
             join,
-            bypass,
-            start_pc: region.pc,
-            end_pc: region.pc + region.length,
-            handler_pc: handler.pc,
-            join_pc: handler.pc + handler.length,
-        });
-    }
-    regions.sort_unstable_by_key(|region| region.start);
-    if regions.windows(2).any(|pair| pair[0].join > pair[1].start) {
-        return Err(unsupported(
-            "overlapping exception handlers require nested region analysis",
         ));
     }
+    raw.sort_unstable_by_key(|item| (item.0, std::cmp::Reverse(item.1)));
+    for (index, outer) in raw.iter().enumerate() {
+        for inner in &raw[index + 1..] {
+            if inner.0 < outer.1 {
+                if inner.1 > outer.1 || inner.3 > outer.3 {
+                    return Err(unsupported(
+                        "partially overlapping exception regions need additional analysis",
+                    ));
+                }
+            } else {
+                break;
+            }
+        }
+    }
+    let mut regions = Vec::new();
+    regions
+        .try_reserve_exact(raw.len())
+        .map_err(|_| resource("ABC exception region allocation failed"))?;
+    for (start_pc, end_pc, handler_pc, join_pc, start, end, handler_block, join) in &raw {
+        if end_pc < handler_pc {
+            let last = decoded
+                .instructions
+                .iter()
+                .take_while(|instruction| instruction.end() <= *handler_pc)
+                .last()
+                .ok_or_else(|| invalid("ABC exception bypass is empty"))?;
+            if last.opcode.name != "jmp" || last.branch != Some(*join_pc) {
+                return Err(unsupported(
+                    "exception bypass does not jump to the handler end",
+                ));
+            }
+        }
+        if end_pc < handler_pc {
+            let bypass: Vec<_> = decoded
+                .instructions
+                .iter()
+                .filter(|instruction| *end_pc <= instruction.pc && instruction.pc < *handler_pc)
+                .collect();
+            let simple = bypass.len() == 1
+                && !bypass[0].opcode.is_conditional()
+                && bypass[0].opcode.is_jump()
+                && bypass[0].branch == Some(*join_pc);
+            let handler_tail = decoded
+                .instructions
+                .iter()
+                .take_while(|instruction| instruction.end() <= *join_pc)
+                .last()
+                .ok_or_else(|| invalid("ABC exception handler is empty"))?;
+            if !simple
+                && !handler_tail.opcode.is_return()
+                && handler_tail.opcode.name != "throw"
+                && !(handler_tail.opcode.is_jump()
+                    && !handler_tail.opcode.is_conditional()
+                    && handler_tail.branch == Some(*join_pc))
+            {
+                return Err(unsupported(
+                    "exception bypass is entered by a falling-through handler",
+                ));
+            }
+        }
+        regions.push(TryRegion {
+            start: *start,
+            end: *end,
+            handler: *handler_block,
+            join: *join,
+            start_pc: *start_pc,
+            handler_pc: *handler_pc,
+            join_pc: *join_pc,
+        });
+    }
+    regions.sort_unstable_by_key(|region| (region.start_pc, std::cmp::Reverse(region.join_pc)));
     for instruction in &decoded.instructions {
         let Some(target) = instruction.branch else {
             continue;
         };
-        let upper = regions.partition_point(|region| region.start_pc <= target);
-        let Some(region) = upper.checked_sub(1).and_then(|index| regions.get(index)) else {
-            continue;
-        };
-        if target >= region.handler_pc
-            && target < region.join_pc
-            && !(region.handler_pc..region.join_pc).contains(&instruction.pc)
-        {
-            return Err(unsupported(
-                "normal control flow enters an exception handler",
-            ));
-        }
-        if target > region.start_pc
-            && target < region.end_pc
-            && !(region.start_pc..region.end_pc).contains(&instruction.pc)
-        {
-            return Err(unsupported(
-                "control flow enters the middle of a protected range",
-            ));
+        for region in &regions {
+            if target >= region.handler_pc
+                && target < region.join_pc
+                && !(region.handler_pc..region.join_pc).contains(&instruction.pc)
+            {
+                return Err(unsupported(
+                    "normal control flow enters an exception handler",
+                ));
+            }
         }
     }
     Ok(regions)
 }
 
+#[derive(Default)]
+struct Scan {
+    functions: Vec<Method>,
+    classes: Vec<ClassPlan>,
+    uses: HashMap<u32, HashMap<u32, ClassUse>>,
+    imports: Vec<u32>,
+    namespaces: Vec<u32>,
+    uses_module: bool,
+    class_tracking: bool,
+}
+
+struct Plan<'a> {
+    method: Method,
+    decoded: Decoded<'a>,
+    kind: u8,
+    arrow: bool,
+    derived: bool,
+    uses_super: bool,
+    params: u32,
+    implicit: Implicit,
+    graph: Graph,
+    try_regions: Vec<TryRegion>,
+    async_plan: Option<crate::async_plan::AsyncPlan>,
+    ordinary_receivers: Vec<bool>,
+    uses_env: bool,
+    uses_context: bool,
+    uses_this: bool,
+    func_unused: bool,
+    registers: Vec<u32>,
+}
+
+fn indent(output: &mut Output, depth: usize) -> Result<()> {
+    for _ in 0..depth {
+        output.write_all(b"    ")?;
+    }
+    Ok(())
+}
+
+fn class_name(name: &Name) -> Option<String> {
+    let text = name.scalar_text()?;
+    let name = text.rsplit_once('#').map_or(text, |(_, tail)| tail);
+    identifier(&Name {
+        offset: 0,
+        end: 0,
+        units: name.encode_utf16().collect(),
+        text: name.to_owned(),
+    })
+    .map(str::to_owned)
+}
+
+fn element_name(name: &Name) -> String {
+    match identifier(name) {
+        Some(text) => text.to_owned(),
+        None => {
+            let mut quoted = Vec::new();
+            name.write_quoted(&mut quoted).ok();
+            format!("[{}]", String::from_utf8_lossy(&quoted))
+        }
+    }
+}
+
+fn export_name(name: &Name, output: &mut Output) -> Result<()> {
+    if name.text == "default" {
+        output.write_all(b"default")?;
+    } else if identifier(name).is_some() {
+        output.write_all(name.text.as_bytes())?;
+    } else {
+        name.write_quoted(output)?;
+    }
+    Ok(())
+}
+
+fn module_binding(name: &Name, index: u32) -> String {
+    identifier(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("__abc_export_{index}"))
+}
+
 impl<'a> Abc<'a> {
     pub fn decompile_target(&self, target: Coordinate) -> Result<Vec<u8>> {
-        let Coordinate::Method(offset) = target else {
-            return Err(unsupported(
-                "record-level source reconstruction is not yet available",
-            ));
-        };
-        let method = self.method(offset)?;
-        self.decompile_method(&method)
+        match target {
+            Coordinate::Method(offset) => {
+                let method = self.method(offset)?;
+                self.decompile_method(&method)
+            }
+            Coordinate::Record(offset) => {
+                let record = self.record(offset)?;
+                self.decompile_record(&record)
+            }
+        }
     }
 
-    pub fn decompile_method(&self, method: &Method) -> Result<Vec<u8>> {
-        let mut units = Vec::new();
-        let mut pending = Vec::new();
-        let mut seen = HashSet::new();
-        pending
-            .try_reserve(1)
-            .map_err(|_| resource("ABC definition queue allocation failed"))?;
-        seen.try_reserve(1)
-            .map_err(|_| resource("ABC definition set allocation failed"))?;
-        pending.push(method.clone());
-        seen.insert(method.offset);
-        while let Some(current) = pending.pop() {
-            let decoded = self.decode(&current)?;
-            for instruction in &decoded.instructions {
-                if instruction.opcode.name != "definefunc" {
-                    continue;
-                }
-                let target = instruction.entity(1, EntityKind::Method)?;
-                if seen.contains(&target) {
-                    continue;
-                }
-                let nested = self.method(target)?;
-                if nested.record != method.record {
-                    return Err(unsupported("function definition crosses ABC records"));
-                }
-                self.check_storage::<SourceUnit<'a>>(seen.len() + 1)?;
-                seen.try_reserve(1)
-                    .map_err(|_| resource("ABC definition set allocation failed"))?;
-                pending
-                    .try_reserve(1)
-                    .map_err(|_| resource("ABC definition queue allocation failed"))?;
-                seen.insert(target);
-                pending.push(nested);
-            }
-            units
-                .try_reserve(1)
-                .map_err(|_| resource("ABC definition list allocation failed"))?;
-            units.push(SourceUnit {
-                method: current,
-                decoded,
-            });
-        }
-        let uses_module = units
+    pub fn decompile_record(&self, record: &crate::Record) -> Result<Vec<u8>> {
+        let module = self
+            .module(record)?
+            .ok_or_else(|| invalid("record has no module metadata"))?;
+        let members = self.members(record)?;
+        let main = members
+            .methods
             .iter()
-            .flat_map(|unit| &unit.decoded.instructions)
-            .any(|instruction| {
-                matches!(
-                    instruction.opcode.name,
-                    "ldexternalmodulevar"
-                        | "wide.ldexternalmodulevar"
-                        | "ldlocalmodulevar"
-                        | "wide.ldlocalmodulevar"
-                        | "stmodulevar"
-                        | "wide.stmodulevar"
-                        | "getmodulenamespace"
-                        | "wide.getmodulenamespace"
-                )
-            });
-        let module = if uses_module {
-            self.module(&self.record(method.record)?)?
-        } else {
-            None
-        };
-        if uses_module && module.is_none() {
-            return Err(invalid("ABC method references missing module metadata"));
-        }
+            .find(|method| method.name.text == "func_main_0" && method.code_offset.is_some())
+            .ok_or_else(|| unsupported("record has no module initializer method"))?;
+        let scan = self.scan_units(main)?;
+        let plan = self.make_plan(main, false)?;
         let mut output = Output::new(self.budget.output_bytes);
-        for (index, unit) in units.iter().enumerate() {
-            let source = self
-                .render_unit(unit, &units, module.clone(), index == 0, index != 0)
-                .map_err(|mut error| {
-                    if index != 0 {
-                        error.message = format!(
-                            "{} (nested method:0x{:x})",
-                            error.message, unit.method.offset
-                        );
-                    }
-                    error
-                })?;
-            output.write_all(&source)?;
+        self.write_imports(&module, &scan, &mut output)?;
+        if scan.class_tracking {
+            output.write_all(
+                b"const __abc_class_prototypes = new WeakSet();\nconst __abc_class_constructors = new WeakSet();\n",
+            )?;
         }
+        output.write_all(
+            b"const __abc_hole = {};\nconst __abc_context = {env: null, hole: __abc_hole, newTarget: void 0};\n",
+        )?;
+        for (index, export) in module.local_exports.iter().enumerate() {
+            writeln!(
+                output,
+                "let {};",
+                module_binding(&export.local_name, index as u32)
+            )?;
+        }
+        self.write_units(&scan, Some(module.clone()), &mut output)?;
+        let classes = scan.uses.get(&main.offset).cloned().unwrap_or_default();
+        let body = self.module_body(&plan, Some(module.clone()), &classes)?;
+        output.write_all(&body)?;
+        self.write_exports(&module, &mut output)?;
         Ok(output.into_bytes())
     }
 
-    fn render_unit(
+    pub fn decompile_method(&self, method: &Method) -> Result<Vec<u8>> {
+        let scan = self.scan_units(method)?;
+        let module = self.module(&self.record(method.record)?)?;
+        if scan.uses_module && module.is_none() {
+            return Err(invalid("ABC method references missing module metadata"));
+        }
+        let mut output = Output::new(self.budget.output_bytes);
+        if let Some(module) = &module {
+            self.write_imports(module, &scan, &mut output)?;
+        }
+        if scan.class_tracking {
+            output.write_all(
+                b"const __abc_class_prototypes = new WeakSet();\nconst __abc_class_constructors = new WeakSet();\n",
+            )?;
+        }
+        self.write_units(&scan, module.clone(), &mut output)?;
+        self.render_root(method, &scan, module, &mut output)?;
+        Ok(output.into_bytes())
+    }
+
+    fn write_units(
         &self,
-        unit: &SourceUnit<'a>,
-        units: &[SourceUnit<'a>],
+        scan: &Scan,
         module: Option<Arc<Module>>,
-        imports: bool,
-        force_capture: bool,
+        output: &mut Output,
+    ) -> Result<()> {
+        for function in &scan.functions {
+            let plan = self.make_plan(function, true).map_err(|mut error| {
+                error.message =
+                    format!("{} (nested method:0x{:x})", error.message, function.offset);
+                error
+            })?;
+            let classes = scan.uses.get(&function.offset).cloned().unwrap_or_default();
+            write!(
+                output,
+                "function _abc_capture_{:x}(__abc_context) {{\n    const _abc_{:x} = ",
+                function.offset, function.offset
+            )?;
+            self.render_function_value(
+                &plan,
+                1,
+                output,
+                &FunctionValueOptions {
+                    inline: true,
+                    module: module.clone(),
+                    classes: &classes,
+                    top_level_arrow: false,
+                },
+            )?;
+            write!(output, ";\n    return _abc_{:x};\n}}\n", function.offset)?;
+        }
+        for class in &scan.classes {
+            self.render_class_unit(class, scan, module.clone(), output)
+                .map_err(|mut error| {
+                    error.message = format!(
+                        "{} (nested method:0x{:x})",
+                        error.message, class.constructor.offset
+                    );
+                    error
+                })?;
+        }
+        Ok(())
+    }
+
+    fn module_body(
+        &self,
+        plan: &Plan<'a>,
+        module: Option<Arc<Module>>,
+        classes: &HashMap<u32, ClassUse>,
     ) -> Result<Vec<u8>> {
-        let method = &unit.method;
-        let decoded = &unit.decoded;
+        let mut visited = Vec::new();
+        visited
+            .try_reserve_exact(plan.graph.blocks.len())
+            .map_err(|_| resource("ABC region allocation failed"))?;
+        visited.resize(plan.graph.blocks.len(), false);
+        let mut writer = Writer {
+            abc: self,
+            decoded: &plan.decoded,
+            graph: &plan.graph,
+            visited,
+            ordinary_receivers: &plan.ordinary_receivers,
+            async_plan: plan.async_plan.as_ref(),
+            try_regions: &plan.try_regions,
+            uses_context: true,
+            module,
+            implicit: plan.implicit,
+            function_ref: None,
+            func_unused: plan.func_unused,
+            classes,
+            super_context: false,
+            arrow: plan.arrow,
+            top_level_arrow: true,
+            module_body: true,
+            escape_serial: 0,
+            escapes: Vec::new(),
+            out: Output::new(self.budget.output_bytes),
+        };
+        writer.line(0, "let acc;")?;
+        if plan.uses_env {
+            writer.line(0, "let __abc_env = __abc_context.env;")?;
+        }
+        if plan.uses_this {
+            writer.line(0, "let __abc_this = this;")?;
+        }
+        for register in &plan.registers {
+            writeln!(writer.out, "let v{register};")?;
+        }
+        let end = writer.graph.blocks.len();
+        writer.range(0, end, end, None, None, 0)?;
+        Ok(writer.out.into_bytes())
+    }
+
+    fn write_exports(&self, module: &Module, output: &mut Output) -> Result<()> {
+        for (index, export) in module.local_exports.iter().enumerate() {
+            let binding = module_binding(&export.local_name, index as u32);
+            output.write_all(b"export { ")?;
+            output.write_all(binding.as_bytes())?;
+            output.write_all(b" as ")?;
+            export_name(&export.export_name, output)?;
+            output.write_all(b" };\n")?;
+        }
+        for export in &module.indirect_exports {
+            let Some(request) = export.request else {
+                return Err(invalid("ABC indirect export lacks its module request"));
+            };
+            let request = module
+                .requests
+                .get(request as usize)
+                .ok_or_else(|| invalid("ABC indirect export request is out of range"))?;
+            output.write_all(b"export { ")?;
+            export_name(&export.local_name, output)?;
+            output.write_all(b" as ")?;
+            export_name(&export.export_name, output)?;
+            output.write_all(b" } from ")?;
+            request.write_quoted(output)?;
+            output.write_all(b";\n")?;
+        }
+        for request in &module.star_exports {
+            let request = module
+                .requests
+                .get(*request as usize)
+                .ok_or_else(|| invalid("ABC star export request is out of range"))?;
+            output.write_all(b"export * from ")?;
+            request.write_quoted(output)?;
+            output.write_all(b";\n")?;
+        }
+        Ok(())
+    }
+
+    fn scan_units(&self, root: &Method) -> Result<Scan> {
+        let mut scan = Scan::default();
+        let mut queue = Vec::new();
+        queue
+            .try_reserve(1)
+            .map_err(|_| resource("ABC definition queue allocation failed"))?;
+        queue.push(root.clone());
+        let mut scanned = HashSet::new();
+        scanned
+            .try_reserve(1)
+            .map_err(|_| resource("ABC definition set allocation failed"))?;
+        while let Some(current) = queue.pop() {
+            if !scanned.insert(current.offset) {
+                continue;
+            }
+            let decoded = self.decode(&current)?;
+            for instruction in &decoded.instructions {
+                match instruction.opcode.name {
+                    "ldexternalmodulevar" | "wide.ldexternalmodulevar" => {
+                        scan.uses_module = true;
+                        scan.imports.push(instruction.unsigned(0)?);
+                    }
+                    "getmodulenamespace" | "wide.getmodulenamespace" => {
+                        scan.uses_module = true;
+                        scan.namespaces.push(instruction.unsigned(0)?);
+                    }
+                    "ldlocalmodulevar"
+                    | "wide.ldlocalmodulevar"
+                    | "stmodulevar"
+                    | "wide.stmodulevar" => scan.uses_module = true,
+                    "defineclasswithbuffer" => scan.class_tracking = true,
+                    _ if instruction.opcode.name.starts_with("stown") => scan.class_tracking = true,
+                    _ => {}
+                }
+            }
+            let graph = Graph::build(&decoded, self.budget)?;
+            let mut requests = Vec::new();
+            for instruction in &decoded.instructions {
+                if instruction.opcode.name == "defineclasswithbuffer" {
+                    requests.push((instruction.pc, instruction.register(4)?));
+                }
+            }
+            let proven = crate::provenance::proven_hole(self, &decoded, &graph, &requests)?;
+            let mut uses = HashMap::new();
+            let mut class_index = 0usize;
+            for instruction in &decoded.instructions {
+                match instruction.opcode.name {
+                    "definefunc" | "definemethod" => {
+                        let target = instruction.entity(1, EntityKind::Method)?;
+                        let child = self.method(target)?;
+                        if child.record != current.record {
+                            return Err(invalid(
+                                "ABC function definition belongs to another record",
+                            ));
+                        }
+                        if target != root.offset
+                            && !scan.functions.iter().any(|item| item.offset == target)
+                        {
+                            self.check_storage::<Method>(scan.functions.len() + 1)?;
+                            scan.functions.push(child.clone());
+                        }
+                        queue.push(child);
+                    }
+                    "defineclasswithbuffer" => {
+                        let class = ClassPlan::parse(
+                            self,
+                            &current,
+                            instruction,
+                            *proven
+                                .get(class_index)
+                                .ok_or_else(|| invalid("ABC class proof is missing its request"))?,
+                        )?;
+                        class_index += 1;
+                        uses.insert(
+                            instruction.pc,
+                            ClassUse {
+                                constructor: class.constructor.offset,
+                                has_base: matches!(
+                                    class.base,
+                                    crate::class_plan::ClassBase::Register
+                                ),
+                            },
+                        );
+                        if !scan
+                            .classes
+                            .iter()
+                            .any(|item| item.constructor.offset == class.constructor.offset)
+                        {
+                            self.check_storage::<ClassPlan>(scan.classes.len() + 1)?;
+                            scan.classes.push(class.clone());
+                        }
+                        queue.push(class.constructor.clone());
+                        for member in &class.members {
+                            queue.push(member.method.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            scan.uses.insert(current.offset, uses);
+        }
+        scan.imports.sort_unstable();
+        scan.imports.dedup();
+        scan.namespaces.sort_unstable();
+        scan.namespaces.dedup();
+        Ok(scan)
+    }
+
+    fn write_imports(&self, module: &Module, scan: &Scan, output: &mut Output) -> Result<()> {
+        for index in &scan.imports {
+            let entry = module
+                .regular_imports
+                .get(*index as usize)
+                .or_else(|| {
+                    (*index as usize)
+                        .checked_sub(module.regular_imports.len())
+                        .and_then(|index| module.namespace_imports.get(index))
+                })
+                .ok_or_else(|| invalid("ABC import slot is outside module metadata"))?;
+            let request = module
+                .requests
+                .get(entry.request as usize)
+                .ok_or_else(|| invalid("ABC import module request is out of range"))?;
+            match &entry.import_name {
+                None => write!(output, "import * as __abc_import_{index} from ")?,
+                Some(name) if name.text == "default" => {
+                    write!(output, "import __abc_import_{index} from ")?
+                }
+                Some(name) => {
+                    output.write_all(b"import { ")?;
+                    name.write_quoted(output)?;
+                    write!(output, " as __abc_import_{index} }} from ")?;
+                }
+            }
+            request.write_quoted(output)?;
+            output.write_all(b";\n")?;
+        }
+        for index in &scan.namespaces {
+            let request = module
+                .requests
+                .get(*index as usize)
+                .ok_or_else(|| invalid("ABC module namespace request is out of range"))?;
+            write!(output, "import * as __abc_namespace_{index} from ")?;
+            request.write_quoted(output)?;
+            output.write_all(b";\n")?;
+        }
+        Ok(())
+    }
+
+    fn make_plan(&self, method: &Method, force_context: bool) -> Result<Plan<'a>> {
+        let decoded = self.decode(method)?;
         let call_type = self.method_call_type(method)?;
         let have_func = call_type & 8 != 0;
         let have_new_target = call_type & 2 != 0;
         let have_this = call_type & 1 != 0;
-        let implicit = u32::from(have_func) + u32::from(have_new_target) + u32::from(have_this);
-        let count = decoded
+        let implicit = Implicit {
+            args: None,
+            params: 0,
+            func: have_func.then_some(decoded.code.vregs),
+            new_target: have_new_target.then_some(decoded.code.vregs + u32::from(have_func)),
+            this_reg: have_this
+                .then_some(decoded.code.vregs + u32::from(have_func) + u32::from(have_new_target)),
+        };
+        let implicit_count =
+            u32::from(have_func) + u32::from(have_new_target) + u32::from(have_this);
+        let params = decoded
             .code
             .args
-            .checked_sub(implicit)
+            .checked_sub(implicit_count)
             .ok_or_else(|| invalid("ABC call type exceeds the argument frame"))?;
-        self.check_storage::<u32>(count as usize)?;
-        let kind = (method.flags >> 8) & 0xff;
+        self.check_storage::<u32>(params as usize)?;
+        let implicit = Implicit {
+            args: (params > 0).then_some(decoded.code.vregs + implicit_count),
+            params,
+            ..implicit
+        };
+        let kind = ((method.flags >> 8) & 0xff) as u8;
         if !matches!(kind, 0 | 1 | 2 | 4 | 6) {
             return Err(unsupported(format!(
                 "ABC function kind {kind:#x} needs additional reconstruction"
             )));
         }
         let arrow = matches!(kind, 2 | 6);
-        let graph = Graph::build(decoded, self.budget)?;
-        let try_regions = simple_tries(decoded, &graph)?;
-        let async_plan = crate::async_plan::simple_async(self, decoded)?;
+        let mut derived = false;
+        let mut uses_super = false;
+        for instruction in &decoded.instructions {
+            let name = instruction.opcode.name;
+            if matches!(
+                name,
+                "supercallthisrange"
+                    | "wide.supercallthisrange"
+                    | "supercallarrowrange"
+                    | "wide.supercallarrowrange"
+                    | "supercallspread"
+                    | "callruntime.supercallforwardallargs"
+            ) {
+                derived = true;
+                uses_super = true;
+            } else if name.starts_with("ldsuper") || name.starts_with("stsuper") {
+                uses_super = true;
+            }
+            if let Some(range) = crate::instructions::register_range(instruction)? {
+                for implicit in [implicit.func, implicit.new_target, implicit.this_reg]
+                    .into_iter()
+                    .flatten()
+                {
+                    if range.contains(&u64::from(implicit)) {
+                        return Err(unsupported(
+                            "implicit argument escapes through an argument range",
+                        ));
+                    }
+                }
+            }
+        }
+        if arrow && derived {
+            return Err(unsupported(
+                "lexical function performs a super constructor call",
+            ));
+        }
+        let graph = Graph::build(&decoded, self.budget)?;
+        let try_regions = simple_tries(&decoded, &graph)?;
+        let async_plan = crate::async_plan::simple_async(self, &decoded)?;
         if async_plan.is_some() != matches!(kind, 4 | 6) {
             return Err(unsupported(
                 "async function kind and state machine require matching reconstruction",
             ));
         }
-        let arrow_plan = if arrow {
-            Some(crate::arrow_plan::arrow_plan(self, decoded, call_type)?)
-        } else {
-            None
-        };
-        let ordinary_receivers = crate::fresh::ordinary_receivers(self, decoded, &graph)?;
+        let ordinary_receivers = crate::fresh::ordinary_receivers(self, &decoded, &graph)?;
         let uses_env = decoded.instructions.iter().any(|instruction| {
             matches!(
                 instruction.opcode.name,
@@ -1247,32 +1970,34 @@ impl<'a> Abc<'a> {
                     | "wide.stlexvar"
                     | "poplexenv"
                     | "definefunc"
+                    | "definemethod"
+                    | "defineclasswithbuffer"
             )
         });
-        let uses_context = force_capture
+        let uses_context = force_context
             || uses_env
-            || decoded
-                .instructions
-                .iter()
-                .any(|instruction| instruction.opcode.name == "ldhole");
-        let mut visited = Vec::new();
-        visited
-            .try_reserve_exact(graph.blocks.len())
-            .map_err(|_| resource("ABC region allocation failed"))?;
-        visited.resize(graph.blocks.len(), false);
+            || decoded.instructions.iter().any(|instruction| {
+                matches!(
+                    instruction.opcode.name,
+                    "ldhole" | "throw.undefinedifholewithname"
+                )
+            });
+        let uses_this = decoded.instructions.iter().any(|instruction| {
+            let name = instruction.opcode.name;
+            if name == "ldthis" {
+                return true;
+            }
+            instruction.operands.iter().any(|operand| match operand {
+                Operand::Register(register) => Some(*register) == implicit.this_reg,
+                _ => false,
+            })
+        });
         let mut registers = Vec::new();
         for instruction in &decoded.instructions {
-            if arrow_plan
-                .as_ref()
-                .is_some_and(|plan| plan.skips(instruction.pc))
-            {
-                continue;
-            }
             for operand in &instruction.operands {
-                if let Operand::Register(register) = operand {
-                    registers
-                        .try_reserve(1)
-                        .map_err(|_| resource("ABC register set allocation failed"))?;
+                if let Operand::Register(register) = operand
+                    && *register < decoded.code.vregs
+                {
                     registers.push(*register);
                 }
             }
@@ -1280,124 +2005,93 @@ impl<'a> Abc<'a> {
                 let count = usize::try_from(range.end - range.start)
                     .map_err(|_| resource("ABC register range overflow"))?;
                 self.check_storage::<u32>(count)?;
-                registers
-                    .try_reserve(count)
-                    .map_err(|_| resource("ABC register range allocation failed"))?;
-                registers.extend(range.map(|register| register as u32));
+                registers.extend(
+                    range
+                        .map(|register| register as u32)
+                        .filter(|register| *register < decoded.code.vregs),
+                );
             }
         }
         registers.sort_unstable();
         registers.dedup();
+        let func_unused = crate::provenance::function_value_unused(&decoded)?;
+        Ok(Plan {
+            method: method.clone(),
+            decoded,
+            kind,
+            arrow,
+            derived,
+            uses_super,
+            params,
+            implicit,
+            graph,
+            try_regions,
+            async_plan,
+            ordinary_receivers,
+            uses_env,
+            uses_context,
+            uses_this,
+            func_unused,
+            registers,
+        })
+    }
+
+    fn params(&self, plan: &Plan<'a>) -> String {
+        (0..plan.params)
+            .map(|index| format!("p{index}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    fn body(&self, plan: &Plan<'a>, depth: usize, options: &BodyOptions<'_>) -> Result<Vec<u8>> {
+        let mut visited = Vec::new();
+        visited
+            .try_reserve_exact(plan.graph.blocks.len())
+            .map_err(|_| resource("ABC region allocation failed"))?;
+        visited.resize(plan.graph.blocks.len(), false);
         let mut writer = Writer {
             abc: self,
-            decoded,
-            graph,
+            decoded: &plan.decoded,
+            graph: &plan.graph,
             visited,
-            ordinary_receivers,
-            arrow_plan,
-            async_plan,
-            try_regions,
-            in_try: false,
-            uses_context,
-            module,
+            ordinary_receivers: &plan.ordinary_receivers,
+            async_plan: plan.async_plan.as_ref(),
+            try_regions: &plan.try_regions,
+            uses_context: plan.uses_context,
+            module: options.module.clone(),
+            implicit: plan.implicit,
+            function_ref: options.function_ref,
+            func_unused: plan.func_unused,
+            classes: options.classes,
+            super_context: options.super_context,
+            arrow: plan.arrow,
+            top_level_arrow: options.top_level_arrow,
+            module_body: false,
+            escape_serial: 0,
+            escapes: Vec::new(),
             out: Output::new(self.budget.output_bytes),
         };
-        if imports {
-            writer.imports(
-                units
-                    .iter()
-                    .flat_map(|unit| unit.decoded.instructions.iter()),
-            )?;
-        }
-        writer.uses_context |= writer.decoded.instructions.iter().any(|instruction| {
-            instruction.opcode.name == "throw.undefinedifholewithname"
-                && !writer.module_guard(instruction)
-        });
-        let uses_context = writer.uses_context;
-        let named_value = arrow || kind == 0;
-        let depth = if uses_context {
-            writeln!(
-                writer.out,
-                "function _abc_capture_{:x}(__abc_context) {{",
-                method.offset
-            )?;
-            writer.out.write_all(if named_value {
-                b"    const "
-            } else {
-                b"    return "
-            })?;
-            2
-        } else {
-            if named_value {
-                writer.out.write_all(b"const ")?;
-            }
-            1
-        };
-        if arrow {
-            write!(
-                writer.out,
-                "_abc_{:x} = {}(",
-                method.offset,
-                if kind == 6 { "async " } else { "" }
-            )?;
-        } else if kind == 0 {
-            write!(
-                writer.out,
-                "_abc_{:x} = ({{ _abc_{:x}(",
-                method.offset, method.offset
-            )?;
-        } else {
-            write!(
-                writer.out,
-                "{}function _abc_{:x}(",
-                if kind == 4 { "async " } else { "" },
-                method.offset
-            )?;
-        }
-        for index in 0..count {
-            if index > 0 {
-                writer.out.write_all(b", ")?;
-            }
-            write!(writer.out, "p{index}")?;
-        }
-        writer
-            .out
-            .write_all(if arrow { b") => {\n" } else { b") {\n" })?;
         writer.line(depth, "\"use strict\";")?;
         writer.line(depth, "let acc;")?;
-        if uses_env {
+        if plan.async_plan.as_ref().is_some_and(|plan| plan.awaits) {
+            writer.line(depth, "let __abc_await;")?;
+        }
+        if plan.uses_env {
             writer.line(depth, "let __abc_env = __abc_context.env;")?;
         }
-        for register in registers {
-            writer.indent(depth)?;
-            write!(writer.out, "let v{register}")?;
-            if register >= decoded.code.vregs {
-                let mut arg = register - decoded.code.vregs;
-                if have_func && arg == 0 {
-                    write!(writer.out, " = _abc_{:x}", method.offset)?;
+        if plan.uses_this {
+            writer.line(
+                depth,
+                if plan.derived {
+                    "let __abc_this = void 0;"
                 } else {
-                    arg -= u32::from(have_func);
-                    if have_new_target && arg == 0 {
-                        writer.out.write_all(if arrow {
-                            b" = void 0"
-                        } else {
-                            b" = new.target"
-                        })?;
-                    } else {
-                        arg -= u32::from(have_new_target);
-                        if have_this && arg == 0 {
-                            if arrow {
-                                return Err(unsupported("arrow invocation-frame this escapes"));
-                            }
-                            writer.out.write_all(b" = this")?;
-                        } else {
-                            arg -= u32::from(have_this);
-                            write!(writer.out, " = p{arg}")?;
-                        }
-                    }
-                }
-            }
-            writer.out.write_all(b";\n")?;
+                    "let __abc_this = this;"
+                },
+            )?;
+        }
+        for register in &plan.registers {
+            writer.indent(depth)?;
+            writeln!(writer.out, "let v{register};")?;
         }
         let mut prefix = Vec::new();
         prefix
@@ -1405,7 +2099,7 @@ impl<'a> Abc<'a> {
             .map_err(|_| resource("ABC source prefix allocation failed"))?;
         prefix.extend_from_slice(&writer.out);
         let end = writer.graph.blocks.len();
-        let structured = writer.range(0, end, end, None, depth).and_then(|()| {
+        let structured = writer.range(0, end, end, None, None, depth).and_then(|()| {
             if writer
                 .graph
                 .reachable
@@ -1426,28 +2120,228 @@ impl<'a> Abc<'a> {
             writer.visited.fill(false);
             writer.forward_labels(depth)?;
         }
-        if kind == 0 {
-            if uses_context {
-                writer.out.write_all(b"    } }).")?;
-            } else {
-                writer.out.write_all(b"} }).")?;
-            }
-            writeln!(writer.out, "_abc_{:x};", method.offset)?;
-        } else if arrow {
-            writer
-                .out
-                .write_all(if uses_context { b"    };\n" } else { b"};\n" })?;
-        } else {
-            writer
-                .out
-                .write_all(if uses_context { b"    };\n" } else { b"}\n" })?;
-        }
-        if uses_context {
-            if named_value {
-                writeln!(writer.out, "    return _abc_{:x};", method.offset)?;
-            }
-            writer.out.write_all(b"}\n")?;
-        }
         Ok(writer.out.into_bytes())
+    }
+
+    fn render_function_value(
+        &self,
+        plan: &Plan<'a>,
+        depth: usize,
+        output: &mut Output,
+        options: &FunctionValueOptions<'_>,
+    ) -> Result<()> {
+        let name = format!("_abc_{:x}", plan.method.offset);
+        let params = self.params(plan);
+        let head = match plan.kind {
+            2 => format!("({params}) => {{\n"),
+            6 => format!("async ({params}) => {{\n"),
+            4 => format!("async function {name}({params}) {{\n"),
+            _ => format!("function {name}({params}) {{\n"),
+        };
+        if !options.inline {
+            indent(output, depth)?;
+        }
+        output.write_all(head.as_bytes())?;
+        let body = self.body(
+            plan,
+            depth + 1,
+            &BodyOptions {
+                function_ref: Some(&name),
+                super_context: false,
+                top_level_arrow: options.top_level_arrow,
+                module: options.module.clone(),
+                classes: options.classes,
+            },
+        )?;
+        output.write_all(&body)?;
+        indent(output, depth)?;
+        output.write_all(b"}")?;
+        Ok(())
+    }
+
+    fn render_class_element(
+        &self,
+        plan: &Plan<'a>,
+        name: &str,
+        is_static: bool,
+        depth: usize,
+        output: &mut Output,
+        context: &RenderContext<'_>,
+    ) -> Result<()> {
+        indent(output, depth)?;
+        if is_static {
+            output.write_all(b"static ")?;
+        }
+        if matches!(plan.kind, 4 | 6) {
+            output.write_all(b"async ")?;
+        }
+        writeln!(output, "{name}({}) {{", self.params(plan))?;
+        let body = self.body(
+            plan,
+            depth + 1,
+            &BodyOptions {
+                function_ref: None,
+                super_context: true,
+                top_level_arrow: false,
+                module: context.module.clone(),
+                classes: context.classes,
+            },
+        )?;
+        output.write_all(&body)?;
+        indent(output, depth)?;
+        output.write_all(b"}\n")?;
+        Ok(())
+    }
+
+    fn render_class_unit(
+        &self,
+        class: &ClassPlan,
+        scan: &Scan,
+        module: Option<Arc<Module>>,
+        output: &mut Output,
+    ) -> Result<()> {
+        let has_base = matches!(class.base, crate::class_plan::ClassBase::Register);
+        write!(
+            output,
+            "function _abc_class_{:x}(__abc_context{}",
+            class.constructor.offset,
+            if has_base { ", __abc_super" } else { "" }
+        )?;
+        output.write_all(b") {\n    const __abc_class = class")?;
+        if let Some(name) = class_name(&class.constructor.name) {
+            write!(output, " {name}")?;
+        }
+        if has_base {
+            output.write_all(b" extends __abc_super")?;
+        }
+        output.write_all(b" {\n")?;
+        let empty = HashMap::new();
+        let constructor = self.make_plan(&class.constructor, true)?;
+        if !matches!(constructor.kind, 0 | 1) {
+            return Err(unsupported("class constructor has a lexical function kind"));
+        }
+        let constructor_context = RenderContext {
+            module: module.clone(),
+            classes: scan.uses.get(&class.constructor.offset).unwrap_or(&empty),
+        };
+        self.render_class_element(
+            &constructor,
+            "constructor",
+            false,
+            2,
+            output,
+            &constructor_context,
+        )
+        .map_err(|mut error| {
+            error.message = format!(
+                "{} (nested method:0x{:x})",
+                error.message, class.constructor.offset
+            );
+            error
+        })?;
+        for member in &class.members {
+            let plan = self.make_plan(&member.method, true)?;
+            let context = RenderContext {
+                module: module.clone(),
+                classes: scan.uses.get(&member.method.offset).unwrap_or(&empty),
+            };
+            self.render_class_element(
+                &plan,
+                &element_name(&member.name),
+                member.is_static,
+                2,
+                output,
+                &context,
+            )?;
+        }
+        output.write_all(b"    };\n    __abc_class_constructors.add(__abc_class);\n    __abc_class_prototypes.add(__abc_class.prototype);\n    return __abc_class;\n}\n")?;
+        Ok(())
+    }
+
+    fn render_root(
+        &self,
+        method: &Method,
+        scan: &Scan,
+        module: Option<Arc<Module>>,
+        output: &mut Output,
+    ) -> Result<()> {
+        let plan = self.make_plan(method, false)?;
+        let classes = scan.uses.get(&method.offset).cloned().unwrap_or_default();
+        let name = format!("_abc_{:x}", method.offset);
+        if plan.uses_super {
+            write!(
+                output,
+                "function _abc_capture_{:x}(__abc_context, __abc_super) {{\n    return class extends __abc_super {{\n",
+                method.offset
+            )?;
+            if plan.derived {
+                let context = RenderContext {
+                    module,
+                    classes: &classes,
+                };
+                self.render_class_element(&plan, "constructor", false, 2, output, &context)?;
+                output.write_all(b"    };\n}\n")?;
+            } else {
+                let element = element_name(&method.name);
+                let context = RenderContext {
+                    module,
+                    classes: &classes,
+                };
+                self.render_class_element(&plan, &element, false, 2, output, &context)?;
+                let accessor = if element.starts_with('[') {
+                    element.clone()
+                } else {
+                    format!(".{element}")
+                };
+                write!(output, "    }}.prototype{accessor};\n}}\n")?;
+            }
+            return Ok(());
+        }
+        if plan.uses_context {
+            write!(
+                output,
+                "function _abc_capture_{:x}(__abc_context) {{\n    const {name} = ",
+                method.offset
+            )?;
+            self.render_function_value(
+                &plan,
+                1,
+                output,
+                &FunctionValueOptions {
+                    inline: true,
+                    module,
+                    classes: &classes,
+                    top_level_arrow: false,
+                },
+            )?;
+            write!(output, ";\n    return {name};\n}}\n")?;
+            return Ok(());
+        }
+        let params = self.params(&plan);
+        match plan.kind {
+            2 | 6 => {
+                writeln!(
+                    output,
+                    "const {name} = {}({params}) => {{",
+                    if plan.kind == 6 { "async " } else { "" }
+                )?;
+            }
+            4 => writeln!(output, "async function {name}({params}) {{")?,
+            _ => writeln!(output, "function {name}({params}) {{")?,
+        }
+        let body = self.body(
+            &plan,
+            1,
+            &BodyOptions {
+                function_ref: Some(&name),
+                super_context: false,
+                top_level_arrow: plan.arrow && !plan.uses_context,
+                module,
+                classes: &classes,
+            },
+        )?;
+        output.write_all(&body)?;
+        output.write_all(if plan.arrow { b"};\n" } else { b"}\n" })?;
+        Ok(())
     }
 }

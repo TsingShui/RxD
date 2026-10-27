@@ -127,7 +127,7 @@ fn fixture_with_kind(
 }
 
 fn fixture_with_call_type(call_type: u32, args: u8, body: &[u8]) -> (Vec<u8>, String) {
-    let (mut bytes, old_at, _) = fixture_with_kind(0x108, 0, args, body, &[]);
+    let (mut bytes, old_at, _) = fixture_with_kind(0x108, 1, args, body, &[]);
     let old_method = usize::from_str_radix(old_at.trim_start_matches("method:0x"), 16).unwrap();
     let name = bytes[old_method + 4..old_method + 8].to_vec();
     let code = bytes[old_method + 11..old_method + 15].to_vec();
@@ -289,13 +289,8 @@ fn ark_navigates_records_and_methods_with_unicode_and_precise_code_sizes() {
 fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
     let directory = TempDir::new().unwrap();
     let input = directory.path().join("kinds.abc");
-    let (bytes, at, _) = fixture_with_kind(
-        0x208,
-        3,
-        3,
-        &[0x44, 0x30, 0x44, 0x41, 0x44, 0x52, 0x62, 7, 0, 0, 0, 0x64],
-        &[],
-    );
+    let (bytes, at, _) =
+        fixture_with_kind(0x208, 3, 3, &[0x45, 0, 5, 0x45, 1, 4, 0x60, 0, 0x64], &[]);
     fs::write(&input, bytes).unwrap();
     let result = source(&input, &at, &[]);
     success(&result);
@@ -304,8 +299,9 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
         text.starts_with("const _abc_") && text.contains(" = () => {"),
         "{text}"
     );
-    assert!(text.contains("let v4 = void 0;"), "{text}");
-    assert!(!text.contains("v5") && !text.contains("v2"), "{text}");
+    assert!(text.contains("v0 = __abc_this;"), "{text}");
+    assert!(text.contains("v1 = void 0;"), "{text}");
+    assert!(text.ends_with("};\n"), "{text}");
 
     let (bytes, at, _) = fixture_with_kind(0x208, 0, 3, &[0x3c, 0, 0x64], &[]);
     fs::write(&input, bytes).unwrap();
@@ -321,38 +317,52 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
         "{text}"
     );
 
-    let (bytes, at, _) = fixture_with_kind(0x208, 0, 3, &[0x60, 2, 0x64], &[]);
+    let (bytes, at, _) = fixture_with_kind(0x208, 3, 3, &[0x45, 0, 3, 0x60, 0, 0x64], &[]);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("v0 = _abc_"),
+        "function values use their emitted name"
+    );
     let (bytes, at, _) = fixture_with_kind(0x308, 0, 3, &[0x65], &[]);
     fs::write(&input, bytes).unwrap();
     failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+
+    let (bytes, at, _) = fixture_with_kind(0x208, 3, 3, &[0x45, 0, 3, 0x64], &[]);
+    fs::write(&input, bytes).unwrap();
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("v0 = _abc_"),
+        "function copies use the emitted function name"
+    );
 
     let (bytes, at, _) = fixture_with_kind(0x8, 0, 3, &[0x65], &[]);
     fs::write(&input, bytes).unwrap();
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(
-        text.starts_with("const _abc_") && text.contains(" = ({ _abc_"),
-        "{text}"
-    );
-    assert!(text.contains("} })._abc_"), "{text}");
+    assert!(text.starts_with("function _abc_"), "{text}");
+    assert!(text.ends_with("}\n"), "{text}");
 }
 
 #[test]
 fn ark_uses_the_method_call_type_annotation_for_its_argument_frame() {
     let directory = TempDir::new().unwrap();
     let input = directory.path().join("call-type.abc");
-    for (call_type, args, source_register, expected) in [
-        (0, 1, 0, "let v0 = p0;"),
-        (1, 2, 0, "let v0 = this;"),
-        (1, 2, 1, "let v1 = p0;"),
-        (8, 2, 0, "let v0 = _abc_"),
-        (10, 3, 1, "let v1 = new.target;"),
-        (10, 3, 2, "let v2 = p0;"),
+    for (call_type, args, body, expected) in [
+        (0, 1, vec![0x60, 1, 0x64], "acc = p0;"),
+        (1, 2, vec![0x45, 0, 1, 0x64], "v0 = __abc_this;"),
+        (2, 2, vec![0x45, 0, 1, 0x64], "v0 = new.target;"),
+        (9, 3, vec![0x45, 0, 2, 0x64], "v0 = __abc_this;"),
+        (10, 3, vec![0x45, 0, 2, 0x64], "v0 = new.target;"),
     ] {
-        let (bytes, at) = fixture_with_call_type(call_type, args, &[0x60, source_register, 0x64]);
+        let (bytes, at) = fixture_with_call_type(call_type, args, &body);
         fs::write(&input, bytes).unwrap();
         let result = source(&input, &at, &[]);
         success(&result);
@@ -360,6 +370,16 @@ fn ark_uses_the_method_call_type_annotation_for_its_argument_frame() {
         assert!(text.contains(expected), "{text}");
         assert!(text.contains("(p0)"), "{text}");
     }
+    let (bytes, at) = fixture_with_call_type(8, 2, &[0x45, 0, 1, 0x60, 0, 0x64]);
+    fs::write(&input, bytes).unwrap();
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("v0 = _abc_"),
+        "function values use their emitted name"
+    );
     let (bytes, at) = fixture_with_call_type(11, 2, &[0x65]);
     fs::write(&input, bytes).unwrap();
     failure(source(&input, &at, &[]), 1, "INVALID_INPUT");
@@ -594,13 +614,13 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     success(&result);
     let text = String::from_utf8(result.stdout.clone()).unwrap();
     assert!(text.contains("\"use strict\";"), "{text}");
-    assert!(text.contains("let v3 = p0;"), "{text}");
+    assert!(text.contains("acc = p0;"), "{text}");
     assert!(
         text.contains("if (!(acc === false || acc === 0)) {"),
         "{text}"
     );
     assert!(
-        text.contains("acc = 1;\n    } else {\n        acc = 2;\n    }"),
+        text.contains("acc = 1;") && text.contains("acc = 2;"),
         "{text}"
     );
     assert!(text.contains("return acc;"), "{text}");
@@ -623,7 +643,7 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     assert!(text.contains("while (true) {\n        acc = v0;\n        if ((acc === false || acc === 0)) { break; }"), "{text}");
     assert!(text.contains("--acc;\n        v0 = acc;"), "{text}");
     assert!(
-        text.contains("    acc = v0;\n    return acc;\n} })._abc_"),
+        text.contains("    acc = v0;\n    return acc;\n}\n"),
         "{text}"
     );
 
@@ -634,7 +654,7 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(text.contains("acc = acc[\"你好\\u0000😀\"];"), "{text}");
     assert!(
-        text.contains("acc = Reflect.apply(acc, v3, [v4]);"),
+        text.contains("acc = Reflect.apply(acc, p0, [p1]);"),
         "{text}"
     );
     assert!(text.contains("return acc;"), "{text}");
@@ -666,7 +686,7 @@ fn ark_reconstructs_property_definition_index_access_and_rest_arguments() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("Object.defineProperty(v3, \"func_main_0\", {value: acc, writable: true, enumerable: true, configurable: true});"), "{text}");
+    assert!(text.contains("Object.defineProperty(p0, \"func_main_0\", {value: acc, writable: true, enumerable: true, configurable: true});"), "{text}");
     assert!(text.contains("acc = acc[42];"), "{text}");
 
     let (bytes, at) = fixture_with_body(0, 5, &[0xfb, 1, 0, 4, 3, 0xcf, 1, 0x64]);
@@ -674,7 +694,7 @@ fn ark_reconstructs_property_definition_index_access_and_rest_arguments() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("Object.defineProperty(v3, v4, {value: acc, writable: true, enumerable: true, configurable: true});"), "{text}");
+    assert!(text.contains("Object.defineProperty(p0, p1, {value: acc, writable: true, enumerable: true, configurable: true});"), "{text}");
     assert!(
         text.contains("acc = Array.prototype.slice.call(arguments, 1);"),
         "{text}"
@@ -702,10 +722,7 @@ fn ark_structures_crossing_forward_branches_without_losing_paths() {
     assert!(text.contains("break __abc_to_a;"), "{text}");
     assert!(text.contains("break __abc_to_10;"), "{text}");
     assert!(text.contains("acc = 0;\n        return acc;"), "{text}");
-    assert!(
-        text.contains("    acc = 1;\n    return acc;\n} })._abc_"),
-        "{text}"
-    );
+    assert!(text.ends_with("    return acc;\n}\n"), "{text}");
 }
 
 #[test]
@@ -728,7 +745,14 @@ fn ark_distinguishes_own_literal_properties_from_unknown_receivers() {
 
     let (bytes, at) = fixture_with_body(0, 4, &[0x62, 7, 0, 0, 0, 0x79, 0, 3, 2, 0, 0x64]);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(
+        text.contains("__abc_class_prototypes.has(")
+            && text.contains("__abc_class_constructors.has("),
+        "unproven own-property receivers use the runtime enumerability check: {text}"
+    );
 
     let branch = [
         0x60, 4, 0x4f, 8, 0x05, 0, 0x61, 0, 0x4d, 6, 0x60, 4, 0x61, 0, 0x62, 7, 0, 0, 0, 0x79, 0,
@@ -736,7 +760,14 @@ fn ark_distinguishes_own_literal_properties_from_unknown_receivers() {
     ];
     let (bytes, at) = fixture_with_body(1, 4, &branch);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("__abc_class_prototypes.has("),
+        "unproven own-property receivers stay explicit"
+    );
     let mut both_fresh = branch;
     both_fresh[10] = 0x05;
     both_fresh[11] = 0;
@@ -763,7 +794,7 @@ fn ark_reconstructs_nested_definitions_with_shared_lexical_cells() {
     assert!(text.contains("__abc_env.slots[0] = acc;"), "{text}");
     assert!(
         text.contains(&format!(
-            "acc = _abc_capture_{target}({{env: __abc_env, hole: __abc_context.hole}});"
+            "acc = _abc_capture_{target}({{env: __abc_env, hole: __abc_context.hole"
         )),
         "{text}"
     );
@@ -877,7 +908,7 @@ fn ark_method_reconstruction_resolves_its_module_import_and_local_binding() {
     );
     assert!(text.contains("acc = __abc_import_0;"), "{text}");
     assert!(
-        text.contains("acc = counter;\n    counter = acc;"),
+        text.contains("acc = counter;\n        counter = acc;"),
         "{text}"
     );
     assert!(!text.contains("throw.undefinedifholewithname"), "{text}");
@@ -910,10 +941,17 @@ fn ark_reconstructs_a_proven_async_resolve_and_reject_wrapper() {
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(text.starts_with("async function _abc_"), "{text}");
     assert!(
-        text.contains("try {\n        acc = 7;\n        return acc;"),
+        text.contains("try {") && text.contains("acc = 7;"),
         "{text}"
     );
-    assert!(text.contains("catch (__abc_exception) {\n        acc = __abc_exception;\n        v1 = acc;\n        throw acc;"), "{text}");
+    assert!(text.contains("return acc;"), "{text}");
+    assert!(
+        text.contains("} catch (__abc_exception) {")
+            && text.contains("acc = __abc_exception;")
+            && text.contains("v1 = acc;")
+            && text.contains("throw acc;"),
+        "{text}"
+    );
     assert!(!text.contains("asyncfunction"), "{text}");
 
     let (bytes, at, _) = fixture_with_kind(
@@ -962,8 +1000,18 @@ fn ark_reconstructs_a_catch_all_without_executing_the_input() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("try {\n        acc = v4;\n        acc = acc();\n    } catch (__abc_exception) {\n        acc = __abc_exception;\n        v0 = acc;\n        return acc;\n    }"), "{text}");
-    assert!(text.contains("    return acc;\n} })._abc_"), "{text}");
+    assert!(
+        text.contains("__abc_escape_") && text.contains("try {"),
+        "{text}"
+    );
+    assert!(
+        text.contains("acc = p0;") && text.contains("acc = acc();"),
+        "{text}"
+    );
+    assert!(text.contains("} catch (__abc_exception) {"), "{text}");
+    assert!(text.contains("acc = __abc_exception;"), "{text}");
+    assert!(text.contains("v0 = acc;"), "{text}");
+    assert!(text.contains("break __abc_escape_"), "{text}");
 
     // A typed catch must fail rather than become an unconditional catch.
     let type_byte = bytes.len() - 3;

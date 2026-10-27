@@ -34,13 +34,13 @@ impl Graph {
             .try_reserve_exact(decoded.code.tries.len())
             .map_err(|_| resource("ABC exception index allocation failed"))?;
         regions.extend(decoded.code.tries.iter());
-        regions.sort_unstable_by_key(|region| region.pc);
-        if regions
-            .windows(2)
-            .any(|pair| pair[0].pc + pair[0].length > pair[1].pc)
-        {
+        regions.sort_unstable_by_key(|region| (region.pc, std::cmp::Reverse(region.length)));
+        if regions.windows(2).any(|pair| {
+            let (outer, inner) = (&pair[0], &pair[1]);
+            inner.pc < outer.pc + outer.length && outer.pc + outer.length < inner.pc + inner.length
+        }) {
             return Err(unsupported(
-                "overlapping or nested exception ranges need additional analysis",
+                "partially overlapping exception ranges need additional analysis",
             ));
         }
         let capacity = instructions
@@ -139,11 +139,9 @@ impl Graph {
             reachable[index] = true;
             let instruction = &instructions[blocks[index].end - 1];
             let pc = instructions[blocks[index].first].pc;
-            let region_index = regions.partition_point(|region| region.pc <= pc);
-            if let Some(region) = region_index
-                .checked_sub(1)
-                .and_then(|index| regions.get(index))
-                && pc < region.pc + region.length
+            for region in regions
+                .iter()
+                .filter(|region| region.pc <= pc && pc < region.pc + region.length)
             {
                 for handler in &region.catches {
                     let target = Self::block_at(&blocks, instructions, handler.pc)?;

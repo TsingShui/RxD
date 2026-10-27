@@ -46,6 +46,21 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   uninitialized sentinel). New environments initialize all slots to that sentinel;
   this represents captures without guessing variable names or decompiling callers.
 
+## Source reconstruction scope
+
+- Methods and records are reconstructed on demand from the selected coordinate;
+  a record composes its module initializer, imports, exports, nested functions
+  and classes. Selected methods also collect only their own nested definitions.
+- Accumulator/register flow, properties, calls, literals, scalar literal arrays,
+  module bindings, lexical environments, branches, loops, catch-all and nested
+  try ranges, class definitions with `extends`/`super`, and async resolve/reject
+  wrappers with await are covered. Own-property stores use the runtime
+  enumerability rule through emitted class-prototype/constructor WeakSets.
+- Unsupported constructs raise `DECOMPILE_FAILED`; there is no disassembly
+  fallback. Known gaps still under work: irreducible conditional/loop layouts,
+  generator state machines, some typed handlers, and a few object/array literal
+  shapes. These are explicit failures, not silently approximated output.
+
 ## Independent implementation reference
 
 - xpanda: <https://github.com/asmjmp0/xpanda>

@@ -1,9 +1,10 @@
 //! Dynamic ABC metadata and target-scoped code access over one immutable source.
-mod arrow_plan;
 mod async_plan;
+mod class_plan;
 mod data;
 mod fresh;
 mod instructions;
+mod provenance;
 mod reader;
 mod reconstruct;
 mod structure;

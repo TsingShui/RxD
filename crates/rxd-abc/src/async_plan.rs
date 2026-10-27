@@ -5,6 +5,7 @@ pub struct AsyncPlan {
     pub enter: u32,
     pub save: u32,
     pub reject_return: u32,
+    pub awaits: bool,
 }
 
 // Only accept a complete compiler-generated async wrapper without await or user catch code.
@@ -17,12 +18,27 @@ pub fn simple_async(abc: &Abc<'_>, decoded: &Decoded<'_>) -> Result<Option<Async
         return Ok(None);
     };
     let reject = || unsupported("async state machine requires additional analysis");
-    if instructions[..index]
+    if instructions[..index].iter().any(|instruction| {
+        !matches!(
+            instruction.opcode.name,
+            "mov"
+                | "nop"
+                | "lda"
+                | "sta"
+                | "newlexenv"
+                | "wide.newlexenv"
+                | "newlexenvwithname"
+                | "wide.newlexenvwithname"
+                | "ldlexvar"
+                | "wide.ldlexvar"
+                | "stlexvar"
+                | "wide.stlexvar"
+                | "ldundefined"
+                | "ldhole"
+        )
+    }) || instructions[index + 1..]
         .iter()
-        .any(|instruction| !matches!(instruction.opcode.name, "mov" | "nop"))
-        || instructions[index + 1..]
-            .iter()
-            .any(|instruction| instruction.opcode.name == "asyncfunctionenter")
+        .any(|instruction| instruction.opcode.name == "asyncfunctionenter")
     {
         return Err(reject());
     }
@@ -31,19 +47,18 @@ pub fn simple_async(abc: &Abc<'_>, decoded: &Decoded<'_>) -> Result<Option<Async
         return Err(reject());
     }
     let object = save.register(0)?;
-    let [region] = decoded.code.tries.as_slice() else {
+    let Some(region) = decoded.code.tries.iter().find(|region| {
+        region.catches.len() == 1
+            && region.catches[0].type_index == 0
+            && region.pc == save.end()
+            && region.pc + region.length == region.catches[0].pc
+            && region.catches[0].pc + region.catches[0].length == decoded.code.bytes.len() as u32
+    }) else {
         return Err(reject());
     };
     let [handler] = region.catches.as_slice() else {
         return Err(reject());
     };
-    if handler.type_index != 0
-        || region.pc != save.end()
-        || region.pc + region.length != handler.pc
-        || handler.pc + handler.length != decoded.code.bytes.len() as u32
-    {
-        return Err(reject());
-    }
     let handler_index = instructions
         .binary_search_by_key(&handler.pc, |instruction| instruction.pc)
         .map_err(|_| reject())?;
@@ -70,8 +85,35 @@ pub fn simple_async(abc: &Abc<'_>, decoded: &Decoded<'_>) -> Result<Option<Async
     if branches.first().is_some_and(|target| *target <= save.pc) {
         return Err(reject());
     }
+    let mut awaits = false;
     for (offset, instruction) in instructions.iter().enumerate().skip(index + 2) {
         let name = instruction.opcode.name;
+        let next = instructions.get(offset + 1).map(|item| item.opcode.name);
+        if name == "asyncfunctionawaituncaught" {
+            if instruction.register(0)? != object || next != Some("suspendgenerator") {
+                return Err(reject());
+            }
+            awaits = true;
+            continue;
+        }
+        if name == "suspendgenerator" {
+            if instruction.register(0)? != object
+                || offset == 0
+                || instructions[offset - 1].opcode.name != "asyncfunctionawaituncaught"
+            {
+                return Err(reject());
+            }
+            continue;
+        }
+        if name == "lda" && instruction.register(0)? == object {
+            if !matches!(next, Some("resumegenerator" | "getresumemode")) {
+                return Err(reject());
+            }
+            continue;
+        }
+        if matches!(name, "resumegenerator" | "getresumemode") {
+            continue;
+        }
         if crate::instructions::register_range(instruction)?
             .is_some_and(|range| range.contains(&u64::from(object)))
         {
@@ -115,5 +157,6 @@ pub fn simple_async(abc: &Abc<'_>, decoded: &Decoded<'_>) -> Result<Option<Async
         enter: instructions[index].pc,
         save: save.pc,
         reject_return: catch[2].pc,
+        awaits,
     }))
 }
