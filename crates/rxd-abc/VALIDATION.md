@@ -44,6 +44,15 @@ cargo run --release -p rxd-abc --example audit -- modules.abc \
   --source-out source.jsonl --record-source records --content-check
 ```
 
+## Fast verification
+
+`scripts/verify-ark.sh` runs the scoped completion gates in a few minutes and
+does not build release E2E suites: formatting, the 17 backend-scoped CLI tests,
+strict Clippy for the Ark crates, and the generated opcode-table check. Set
+`ARK_ABC=/path/modules.abc` to add the full-sample reconstruction/content
+audit. Release E2E and cross-platform packaging are pre-publication gates, not
+completion evidence.
+
 ## xpanda differential
 
 - Decode: all 14,082 methods, 796,370 instructions and 1,078,001 operands
