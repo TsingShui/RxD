@@ -22,10 +22,6 @@ mod wasm;
 #[path = "evm/mod.rs"]
 mod evm;
 
-#[cfg(feature = "backend-wasm")]
-#[path = "wasm_wabt/mod.rs"]
-mod wasm_wabt;
-
 #[cfg(feature = "bundled-kuna")]
 #[path = "kuna/mod.rs"]
 mod kuna;

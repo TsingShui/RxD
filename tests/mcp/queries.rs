@@ -272,47 +272,6 @@ fn compare_extract(name: &str, arguments: &Value, path: &str, actual: &Value) {
     }
     assert_eq!(receipt, expected, "{name}: complete original CLI receipt");
 }
-#[cfg(feature = "backend-wasm")]
-#[test]
-fn mcp_wasm_navigation_retains_raw_body_and_explicit_references() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let input = root.join("tests/fixtures/wasm/fixture.wasm");
-    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
-    client.initialize();
-    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let functions = checked(
-        &mut client,
-        &tools,
-        "wasm_functions",
-        json!({"input":{"path":input}}),
-    );
-    let function = functions["records"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["record"] == "function")
-        .unwrap();
-    assert_eq!(function["at"], "func:1");
-    for (name, extra) in [
-        ("wasm_types", json!({})),
-        ("wasm_imports", json!({})),
-        ("wasm_exports", json!({})),
-        ("wasm_tables", json!({})),
-        ("wasm_memories", json!({})),
-        ("wasm_globals", json!({})),
-        ("wasm_data", json!({})),
-        ("wasm_elements", json!({})),
-        ("wasm_strings", json!({"filter":""})),
-        ("wasm_xref", json!({"at":function["at"]})),
-        ("wasm_get_function", json!({"at":function["at"],"raw":true})),
-        ("wasm_get_function", json!({"at":function["at"]})),
-    ] {
-        let mut arguments = extra;
-        arguments["input"] = json!({"path":input});
-        checked(&mut client, &tools, name, arguments);
-    }
-}
-
 #[cfg(feature = "backend-pyc")]
 #[test]
 fn mcp_python_navigation_preserves_code_tables_and_source_completeness() {

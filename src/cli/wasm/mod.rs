@@ -869,6 +869,24 @@ fn string_rows(strings: &[rxd_wasm::StringRecord]) -> Vec<Row> {
         .collect()
 }
 
+/// One listing line: coordinate, TAB, label. Text is left bare because wasm labels
+/// are name-section strings or section kinds, never free-form literals.
+fn push_line(
+    output: &mut rxd_core::output::Output,
+    records: &mut usize,
+    at: Option<&str>,
+    label: &str,
+) -> anyhow::Result<()> {
+    use std::io::Write as _;
+    let line = match at {
+        Some(at) => format!("{at}\t{label}\n"),
+        None => format!("{label}\n"),
+    };
+    output.write_all(line.as_bytes())?;
+    *records += 1;
+    Ok(())
+}
+
 fn emit_rows(
     rows: Vec<Row>,
     filter: Option<&str>,
@@ -883,20 +901,8 @@ fn emit_rows(
         {
             continue;
         }
-        push_limited(
-            output,
-            records,
-            &record(
-                row.kind,
-                RecordMeta {
-                    at: row.at.as_deref(),
-                    start: row.start,
-                    end: row.end,
-                    ..RecordMeta::default()
-                },
-                row.detail,
-            ),
-        )?;
+        let _ = (&row.kind, row.start, row.end, &row.detail);
+        push_line(output, records, row.at.as_deref(), &row.label)?;
     }
     Ok(())
 }
