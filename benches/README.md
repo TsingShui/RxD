@@ -24,6 +24,21 @@ The runner writes under ignored `target/benchmarks/` by default and report each
 workload separately: input size, samples, median, P95, maximum and the count over
 150 ms. Do not pool unrelated commands or average away large inputs.
 
+## Ark backend
+
+`ark.py` measures the fixed dynamic-ABC sample and its HAP packaging with a
+release binary, cold process per sample, per workload:
+
+```sh
+cargo build --release
+python3 benches/ark.py --abc tests/.../modules.abc --hap app.hap --entry ets/modules.abc
+```
+
+It reports samples, median, P95, maximum, the count over 150 ms, and optional
+`--perf` phase records; output is written to `target/benchmarks/ark.json`.
+Small and large methods/records are separate workloads so large targets are not
+hidden by averaging.
+
 ## 150 ms design gate
 
 Ordinary representative backend queries should complete within 150 ms in release

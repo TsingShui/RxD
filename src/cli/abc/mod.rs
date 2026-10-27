@@ -19,7 +19,7 @@ pub enum Command {
     },
     #[command(
         about = "Reconstruct one method or fetch record/method instructions (--raw).",
-        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nMethods using lexical environments are returned as a capture factory accepting {env, hole}.\nUnsupported source constructs fail explicitly; record-level source reconstruction is not yet available."
+        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer with imports, exports, functions and classes.\nMethods using lexical environments are returned as a capture factory accepting {env, hole, newTarget}.\nUnsupported source constructs fail explicitly instead of falling back to disassembly."
     )]
     Decompile(DecompileOptions),
 }
