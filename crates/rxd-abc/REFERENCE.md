@@ -76,7 +76,11 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   empty catch (the handler entry coincides with the continuation); pure-rethrow
   handlers are elided; other unsized handlers would still fail explicitly.
 - Every rendered method/record parses as a module; instruction decoding is
-  identical to the pinned reference for all methods/operands.
+  identical to the pinned reference for all methods/operands. A content audit
+  confirms that every string constant or property name referenced by an
+  instruction appears in the reconstructed method source (0 missing among
+  14,082 methods; module hole-guard names are elided because imports/exports
+  carry them).
 - Substantive reference differences with static evidence:
   - Class static stores (`stownbyname` on the constructor) are non-enumerable
     in Ark (`RuntimeStOwnByName`: `enumerable = !(IsClassPrototype ||

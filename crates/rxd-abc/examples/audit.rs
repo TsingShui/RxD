@@ -8,6 +8,46 @@ use std::{
     path::PathBuf,
 };
 
+fn missing_strings(abc: &Abc<'_>, decoded: &Decoded<'_>, source: &[u8]) -> Result<Vec<String>> {
+    let text = std::str::from_utf8(source)
+        .map_err(|_| Error::new("INTERNAL_ERROR", "ABC source is not UTF-8"))?;
+    let mut seen = HashSet::new();
+    let mut missing = Vec::new();
+    for instruction in &decoded.instructions {
+        if instruction.opcode.name == "throw.undefinedifholewithname" {
+            continue;
+        }
+        for operand in &instruction.operands {
+            let Operand::Id {
+                kind: EntityKind::String,
+                offset,
+                ..
+            } = operand
+            else {
+                continue;
+            };
+            if !seen.insert(*offset) {
+                continue;
+            }
+            let name = abc.name(*offset)?;
+            let mut quoted = Vec::new();
+            name.write_quoted(&mut quoted)?;
+            let quoted = String::from_utf8(quoted).unwrap_or_default();
+            if text.contains(&quoted) {
+                continue;
+            }
+            if let Some(raw) = name.scalar_text()
+                && !raw.is_empty()
+                && text.contains(raw)
+            {
+                continue;
+            }
+            missing.push(name.text.clone());
+        }
+    }
+    Ok(missing)
+}
+
 fn trace(abc: &Abc<'_>, method: &Method, decoded: &Decoded<'_>) -> Result<Value> {
     let mut instructions = Vec::new();
     for instruction in &decoded.instructions {
@@ -79,10 +119,15 @@ fn main() -> Result<()> {
     let mut source_coverage = false;
     let mut source_path: Option<PathBuf> = None;
     let mut record_source: Option<PathBuf> = None;
+    let mut content_check = false;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--decode" => decode = true,
             "--source-coverage" => source_coverage = true,
+            "--content-check" => {
+                content_check = true;
+                source_coverage = true;
+            }
             "--record-source" => {
                 record_source = Some(PathBuf::from(arguments.next().ok_or_else(|| {
                     Error::new("INVALID_QUERY", "--record-source requires a new directory")
@@ -133,6 +178,8 @@ fn main() -> Result<()> {
     let mut coverage = BTreeMap::<String, usize>::new();
     let mut failures = Vec::new();
     let mut source_successes = 0usize;
+    let mut content_missing_methods = 0usize;
+    let mut content_missing = Vec::new();
     let mut source_output = source_path
         .map(|path| {
             fs::OpenOptions::new()
@@ -180,6 +227,21 @@ fn main() -> Result<()> {
                 match abc.decompile_method(method) {
                     Ok(source) => {
                         source_successes += 1;
+                        if content_check {
+                            let decoded = abc.decode(method)?;
+                            let missing = missing_strings(&abc, &decoded, &source)?;
+                            if !missing.is_empty() {
+                                content_missing_methods += 1;
+                                if content_missing.len() < 20 {
+                                    content_missing.push(json!({
+                                        "record": offset,
+                                        "method": method.offset,
+                                        "name": method.name.text,
+                                        "missing": missing
+                                    }));
+                                }
+                            }
+                        }
                         if let Some(output) = &mut source_output {
                             let source = String::from_utf8(source).map_err(|_| {
                                 Error::new("INTERNAL_ERROR", "ABC source is not UTF-8")
@@ -257,7 +319,8 @@ fn main() -> Result<()> {
         "code_bytes":code_bytes,"tries":try_count,"module_count":module_offsets.len(),"literal_entries":literals,
         "decoded":decode,"instruction_count":instruction_count,"opcode_histogram":histogram,
         "source_coverage":source_coverage,"source_successes":source_successes,"source_errors":coverage,
-        "source_failures":failures,"record_sources":record_sources,"record_failures":record_failures});
+        "source_failures":failures,"record_sources":record_sources,"record_failures":record_failures,
+        "content_missing_methods":content_missing_methods,"content_missing":content_missing});
     let mut output = serde_json::to_vec(&report)
         .map_err(|error| Error::new("INTERNAL_ERROR", error.to_string()))?;
     output.push(b'\n');
