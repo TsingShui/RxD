@@ -233,8 +233,13 @@ pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
     })
 }
 
-fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
-    writer.json_line(value)
+fn append_code(writer: &mut Output, analysis: &Analysis, index: usize) -> Result<()> {
+    use std::io::Write as _;
+    let at = analysis.code_id(index);
+    let qualname = analysis.text_field(index, "qualname").unwrap_or_default();
+    let line = format!("{at}\t{qualname}\n");
+    writer.write_all(line.as_bytes())?;
+    Ok(())
 }
 
 pub struct CodeQuery {
@@ -277,7 +282,7 @@ pub fn codes(
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
         let mut writer = Output::new(options.budget.output_bytes);
         for &index in &selected {
-            append(&mut writer, &record(&analysis, index)?)?;
+            append_code(&mut writer, &analysis, index)?;
         }
         Ok(writer.into_bytes())
     })?;

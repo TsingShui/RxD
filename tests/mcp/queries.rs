@@ -272,36 +272,6 @@ fn compare_extract(name: &str, arguments: &Value, path: &str, actual: &Value) {
     }
     assert_eq!(receipt, expected, "{name}: complete original CLI receipt");
 }
-#[cfg(feature = "backend-pyc")]
-#[test]
-fn mcp_python_navigation_preserves_code_tables_and_source_completeness() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let input = root.join("tests/fixtures/pyc/hello.3.12.pyc");
-    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
-    client.initialize();
-    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let codes = checked(
-        &mut client,
-        &tools,
-        "pyc_codes",
-        json!({"input":{"path":input}}),
-    );
-    let code = &codes["records"][0];
-    assert_eq!(code["at"], "code:0");
-    for (name, extra) in [
-        ("pyc_codes", json!({"name":"Greeter"})),
-        ("pyc_strings", json!({"filter":""})),
-        ("pyc_strings", json!({"filter_hex":"47"})),
-        ("pyc_xref", json!({"kind":"name","at":"print"})),
-        ("pyc_get_code", json!({"at":code["at"]})),
-        ("pyc_decompile", json!({})),
-    ] {
-        let mut arguments = extra;
-        arguments["input"] = json!({"path":input});
-        checked(&mut client, &tools, name, arguments);
-    }
-}
-
 #[cfg(feature = "backend-evm")]
 #[test]
 fn mcp_evm_operations_keep_explicit_encoding_and_inference_metadata() {

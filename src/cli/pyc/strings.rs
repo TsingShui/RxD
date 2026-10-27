@@ -97,8 +97,19 @@ fn record<'a>(analysis: &'a Analysis, literal: &'a Literal) -> Result<Record<'a>
         },
     })
 }
-fn append(writer: &mut Output, value: &impl Serialize) -> Result<()> {
-    writer.json_line(value)
+fn append(writer: &mut Output, row: &Record<'_>) -> Result<()> {
+    use std::io::Write as _;
+    let line = match row.detail.value {
+        Some(text) => format!(
+            "{}\t{}\n",
+            row.at,
+            serde_json::to_string(text)
+                .map_err(|error| { rxd_core::Error::new("INVALID_INPUT", error.to_string()) })?
+        ),
+        None => format!("{}\t\\N\n", row.at),
+    };
+    writer.write_all(line.as_bytes())?;
+    Ok(())
 }
 pub(super) fn valid_hex(value: &str) -> std::result::Result<String, String> {
     if !value.len().is_multiple_of(2) || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
