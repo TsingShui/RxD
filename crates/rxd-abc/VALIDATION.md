@@ -75,22 +75,27 @@ completion evidence.
 - The optional oracle and diff tools run offline against the pinned sample
   only; production execution never invokes Node/xpanda.
 
+## Semantic corrections
+
+- `copydataproperties` follows `RuntimeCopyDataProperties`: own enumerable
+  keys are read with `getOwnPropertyDescriptor`, accessors are copied, data
+  properties are defined writable/configurable/enumerable, failures are
+  ignored, and acc becomes the target. Target setters are not invoked and
+  accessors are not evaluated.
+- Class identity is shared through
+  `globalThis[Symbol.for("rxd.abc.class-registry")]`, so a class created by
+  another reconstructed record is recognized by `stownbyname`.
+
 ## Known semantic boundaries
 
 These are general code-shape boundaries, not observed reconstruction failures:
 
-- `copydataproperties` is emitted as `Object.assign(target, source)`. Ark's
-  CopyDataProperties creates own data properties; if the target has a setter
-  or a non-writable inherited property, `Object.assign` calls the setter or
-  throws in strict mode instead of defining a new own property. A fresh
-  object-literal target (the common spread shape) is equivalent.
 - Class prototype/constructor stores use `enumerable:
   !(__abc_class_prototypes.has(obj) || __abc_class_constructors.has(obj))`.
-  Both WeakSets are module-local and only register classes created by the
-  emitted factory in that record. An imported, native or global class is not
-  registered, so its store is emitted enumerable where `RuntimeStOwnByName`
-  would make it non-enumerable. Access is unchanged; enumeration and JSON
-  output can differ.
+  Classes from another reconstructed record share the registry. Native or
+  global classes are not registered, so a store to them is emitted enumerable
+  where `RuntimeStOwnByName` would make it non-enumerable. Access is
+  unchanged; enumeration and JSON output can differ.
 - `ldsuperbyname` takes its receiver from the incoming accumulator
   (`RuntimeLdSuperByValue` passes it to `GetProperty`). The emitter renders
   `super[key]`, which always uses the current `this`. This matches when the
@@ -100,9 +105,10 @@ These are general code-shape boundaries, not observed reconstruction failures:
   receiver would observe a different getter receiver.
 - Generator/async output uses native `yield`/`await` in place of the bytecode
   state machine; `getresumemode` is rendered as `acc = 0` (normal resume).
-  Recognized compiler patterns get native throw/return behavior at
-  `yield`/`await`; a residual site that branches on the resume mode would
-  take the normal path.
+  Generator plans accept the compiler dispatch shapes
+  (`resumegenerator; sta; lda; getresumemode; sta; ldai 0..2; eq` or
+  `...; jmp`); any other use fails with `DECOMPILE_FAILED` instead of
+  silently choosing normal resume.
 
 The source differential is a structural classification (records, classes,
 members, function/property keys) plus runtime-derived semantic review, not a
@@ -139,7 +145,10 @@ samples, no warm-up, pinned ABC/HAP:
 | HAP entry | 46.0 ms | 48.4 ms | 0 |
 
 ABC parse/checksum is ~16 ms fixed; target work is 0.1-5.5 ms and grows with
-the selected target, not the application. HAP adds ~1.1 ms inflate and ~14 ms
+the selected target, not the application. A post-fix release recheck with the
+same coordinates measured 30.0-44.5 ms medians (P95 <= 46.7 ms, 0/70 over
+150 ms) and 0.47-0.68 s for full-sample source records without the JSONL
+serialization. HAP adds ~1.1 ms inflate and ~14 ms
 read for the 108 MB archive (peak RSS 124 MB). Full-sample 376-record source
 generation takes 0.54-0.65 s in one process; xpanda's 109.2 s run includes AST
 construction, JSON serialization and simplify passes, so this is not a

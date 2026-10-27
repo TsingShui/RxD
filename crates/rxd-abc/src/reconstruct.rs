@@ -88,6 +88,60 @@ struct ClassUse {
     has_base: bool,
 }
 
+const CLASS_REGISTRY: &str = concat!(
+    "const __abc_class_registry = globalThis[Symbol.for(\"rxd.abc.class-registry\")] || ",
+    "(globalThis[Symbol.for(\"rxd.abc.class-registry\")] = {prototypes: new WeakSet(), constructors: new WeakSet()});\n",
+    "const __abc_class_prototypes = __abc_class_registry.prototypes;\n",
+    "const __abc_class_constructors = __abc_class_registry.constructors;\n",
+);
+
+const COPY_DATA_HEAD: &str = "acc = (() => { const __abc_dst = ";
+const COPY_DATA_TAIL: &str = concat!(
+    "; const __abc_src = acc; ",
+    "if (__abc_src !== null && __abc_src !== undefined) { ",
+    "const __abc_from = Object(__abc_src); ",
+    "for (const __abc_key of Reflect.ownKeys(__abc_from)) { ",
+    "const __abc_desc = Object.getOwnPropertyDescriptor(__abc_from, __abc_key); ",
+    "if (__abc_desc && __abc_desc.enumerable) { ",
+    "if (\"value\" in __abc_desc) { ",
+    "Reflect.defineProperty(__abc_dst, __abc_key, {value: __abc_desc.value, writable: true, enumerable: true, configurable: true}); ",
+    "} else { ",
+    "Reflect.defineProperty(__abc_dst, __abc_key, {get: __abc_desc.get, set: __abc_desc.set, enumerable: true, configurable: true}); ",
+    "} } } } return __abc_dst; })()",
+);
+
+fn validate_generator_resume(instructions: &[Instruction]) -> Result<()> {
+    for (index, instruction) in instructions.iter().enumerate() {
+        if instruction.opcode.name != "getresumemode" {
+            continue;
+        }
+        let dispatch = index >= 3
+            && instructions[index - 3].opcode.name == "resumegenerator"
+            && instructions[index - 2].opcode.name == "sta"
+            && instructions[index - 1].opcode.name == "lda"
+            && instructions
+                .get(index + 1)
+                .is_some_and(|next| next.opcode.name == "sta")
+            && match instructions.get(index + 2) {
+                Some(next) if next.opcode.name == "ldai" => {
+                    matches!(next.operands.first(), Some(Operand::Signed(0..=2)))
+                        && instructions
+                            .get(index + 3)
+                            .is_some_and(|next| next.opcode.name == "eq")
+                }
+                Some(next) if next.opcode.name == "jmp" => true,
+                _ => false,
+            };
+        if !dispatch {
+            return Err(unsupported(format!(
+                "generator resume mode at PC {:#x} is not a compiler dispatch",
+                instruction.pc
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn identifier(name: &Name) -> Option<&str> {
     identifier_text(name.scalar_text()?)
 }
@@ -978,7 +1032,9 @@ impl<'a, 'b> Writer<'a, 'b> {
             }
             "copydataproperties" => {
                 let target = self.register_text(instruction.register(0)?)?;
-                write!(self.out, "Object.assign({target}, acc)")?;
+                self.out.write_all(COPY_DATA_HEAD.as_bytes())?;
+                self.out.write_all(target.as_bytes())?;
+                self.out.write_all(COPY_DATA_TAIL.as_bytes())?;
             }
             "starrayspread" => {
                 let target = self.register_text(instruction.register(0)?)?;
@@ -2065,9 +2121,7 @@ impl<'a> Abc<'a> {
         let mut output = Output::new(self.budget.output_bytes);
         self.write_imports(&module, &scan, &mut output)?;
         if scan.class_tracking {
-            output.write_all(
-                b"const __abc_class_prototypes = new WeakSet();\nconst __abc_class_constructors = new WeakSet();\n",
-            )?;
+            output.write_all(CLASS_REGISTRY.as_bytes())?;
         }
         output.write_all(
             b"const __abc_hole = {};\nconst __abc_context = {env: null, hole: __abc_hole, newTarget: void 0};\n",
@@ -2098,9 +2152,7 @@ impl<'a> Abc<'a> {
             self.write_imports(module, &scan, &mut output)?;
         }
         if scan.class_tracking {
-            output.write_all(
-                b"const __abc_class_prototypes = new WeakSet();\nconst __abc_class_constructors = new WeakSet();\n",
-            )?;
+            output.write_all(CLASS_REGISTRY.as_bytes())?;
         }
         self.write_units(&scan, module.clone(), &mut output)?;
         self.render_root(method, &scan, module, &mut output)?;
@@ -2527,6 +2579,9 @@ impl<'a> Abc<'a> {
                     }
                 }
             }
+        }
+        if generator {
+            validate_generator_resume(&decoded.instructions)?;
         }
         if generator && arrow {
             return Err(unsupported("lexical function cannot be a generator"));
