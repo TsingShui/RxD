@@ -217,9 +217,9 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | --- | --- | --- | --- |
 | **Unpack** | `rxd unpack` | Detect ASAR, ZIP, PyInstaller or wxapkg by content and extract every regular file into a new directory; PyInstaller one-dir roots and V1MMWX wxapkg encryption are supported | ✅ |
 | **Native (Kuna)** | `rxd kuna` · `rxd bin` | ELF/PE/Mach-O function inventory, single-function and whole-project decompilation; embedded specs, direct CLI | ✅ engine opt-in (`bundled-kuna`) |
-| **Android APK/DEX** | `rxd dex` · `rxd apk` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
+| **Android APK/DEX** | `rxd rasc` | Classes, strings, references, whole-class decompilation, Manifest decoding, field layout | ✅ |
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |
-| **.NET IL** | `rxd dotnet` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |
+| **.NET IL** | `rxd ilspy` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |
 | **WebAssembly** | `rxd wasm` | Module structure, instruction decode, explicit reference scanning, structured C-like decompilation | ✅ |
 | **CPython bytecode** | `rxd pyc` | CPython 3.8–3.13 navigation and bounded whole-module source reconstruction | ✅ |
 | **EVM bytecode** | `rxd evm` | EVMole 0.9.4 native analysis; candidate/literal static navigation, on-demand raw evidence and declared pseudocode reconstruction | ✅ static workflow accepted |

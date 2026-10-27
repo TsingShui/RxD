@@ -79,11 +79,11 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
     assert_query_focused(&text);
     let routes: &[(&str, &str, &str)] = &[
         #[cfg(feature = "backend-dex")]
-        ("dex", "get-method", "methods.at"),
+        ("rasc", "get-method", "methods.at"),
         #[cfg(feature = "backend-jvm")]
         ("jar", "get-method", "methods.at"),
         #[cfg(feature = "backend-dotnet")]
-        ("dotnet", "get-method", "methods.at"),
+        ("ilspy", "get-method", "methods.at"),
         #[cfg(feature = "backend-wasm")]
         ("wasm", "get-function", "functions.at"),
         #[cfg(feature = "backend-pyc")]

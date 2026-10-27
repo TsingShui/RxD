@@ -74,7 +74,7 @@ git -C target/dotnet-research/references/dotscope checkout 3028b1ab92ec1b0ad15f0
 ```
 
 Build the native C# engine with [the ILSpy guide](../../../benches/ilspy/README.md).
-Current queries are in `rxd dotnet --help` and the embedded skill;
+Current queries are in `rxd ilspy --help` and the embedded skill;
 benchmark commands and fresh-process measurement rules are in
 [benches/README.md](../../../benches/README.md). Metadata regression success is
 not current C# reconstruction or latency evidence.

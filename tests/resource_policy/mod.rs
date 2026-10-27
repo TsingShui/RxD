@@ -9,7 +9,7 @@ fn cli_has_no_work_instruction_or_output_quota_and_keeps_atomic_file_parity() {
     let cases: &[(&[&str], &str, &[&str])] = &[
         #[cfg(feature = "backend-dotnet")]
         (
-            &["dotnet", "get-method"],
+            &["ilspy", "get-method"],
             "tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll",
             &["--at", "0x060000ee", "--raw"],
         ),
@@ -79,7 +79,7 @@ fn input_scaled_dotnet_xref_finishes_a_real_module_above_the_old_work_quota() {
     let destination = directory.path().join("xref.jsonl");
     fs::write(&destination, b"previous result").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "xref"])
+        .args(["ilspy", "xref"])
         .arg(&input)
         .args([
             "--kind",

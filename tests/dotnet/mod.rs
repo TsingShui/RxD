@@ -20,9 +20,9 @@ fn enabled_backend_features_define_the_cli_catalog() {
     success(&output);
     let help = String::from_utf8(output.stdout).unwrap();
     let expected = [
-        ("dex", cfg!(feature = "backend-dex")),
+        ("rasc", cfg!(feature = "backend-dex")),
         ("jar", cfg!(feature = "backend-jvm")),
-        ("dotnet", cfg!(feature = "backend-dotnet")),
+        ("ilspy", cfg!(feature = "backend-dotnet")),
         ("evm", cfg!(feature = "backend-evm")),
         ("wasm", cfg!(feature = "backend-wasm")),
         ("pyc", cfg!(feature = "backend-pyc")),
@@ -221,7 +221,7 @@ fn outline(path: &Path, args: &[&str]) -> Vec<Value> {
 
 fn run(command: &str, path: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", command])
+        .args(["ilspy", command])
         .arg(path)
         .args(args)
         .output()
@@ -392,7 +392,7 @@ fn dotnet_coordinates_are_bare_metadata_tokens() {
 fn dotnet_outline_ends_a_closed_pipe_quietly() {
     let path = input();
     let mut child = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "methods"])
+        .args(["ilspy", "methods"])
         .arg(&path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

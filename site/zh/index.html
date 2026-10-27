@@ -59,10 +59,10 @@
         </ul>
       </div>
       <figure class="console" aria-label="RxD 命令示例">
-        <pre><code><span class="prompt">$</span> rxd dex strings app.apk --filter Authorization
-<span class="prompt">$</span> rxd dex xref app.apk -m Authorization --kind string
-<span class="prompt">$</span> rxd dex get-class app.apk --at 'Lcom/example/Main;'
-<span class="prompt">$</span> rxd dotnet get-method app.dll --at '&lt;at&gt;' --raw
+        <pre><code><span class="prompt">$</span> rxd rasc strings app.apk --filter Authorization
+<span class="prompt">$</span> rxd rasc xref app.apk -m Authorization --kind string
+<span class="prompt">$</span> rxd rasc get-class app.apk --at 'Lcom/example/Main;'
+<span class="prompt">$</span> rxd ilspy get-method app.dll --at '&lt;at&gt;' --raw
 <span class="prompt">$</span> rxd wasm get-function module.wasm --at '&lt;at&gt;'
 <span class="prompt">$</span> rxd pyc codes module.pyc</code></pre>
       </figure>
@@ -120,9 +120,9 @@ target/release/rxd skill</code></pre>
         <tbody>
           <tr><td>Native</td><td><code>rxd kuna</code></td><td>ELF/PE/Mach-O 函数、单函数与全项目反编译</td></tr>
           <tr><td>Unpack</td><td><code>rxd unpack</code></td><td>ASAR/ZIP/PyInstaller/wxapkg 整包解压</td></tr>
-          <tr><td>Android APK/DEX</td><td><code>rxd dex</code></td><td>类、字符串、引用、Manifest、字段布局</td></tr>
+          <tr><td>Android APK/DEX</td><td><code>rxd rasc</code></td><td>类、字符串、引用、Manifest、字段布局</td></tr>
           <tr><td>JVM</td><td><code>rxd jar</code></td><td>类元数据、字符串、引用、Java 反编译</td></tr>
-          <tr><td>.NET IL</td><td><code>rxd dotnet</code></td><td>元数据、字符串、语义 XREF、原始 IL 或 C#</td></tr>
+          <tr><td>.NET IL</td><td><code>rxd ilspy</code></td><td>元数据、字符串、语义 XREF、原始 IL 或 C#</td></tr>
           <tr><td>WebAssembly</td><td><code>rxd wasm</code></td><td>模块结构、指令、引用、类 C 输出</td></tr>
           <tr><td>CPython 字节码</td><td><code>rxd pyc</code></td><td>3.8–3.13 导航、原始指令、源码恢复</td></tr>
           <tr><td>EVM 字节码</td><td><code>rxd evm</code></td><td>EVMole 分析、静态导航、有界伪代码</td></tr>

@@ -142,7 +142,7 @@ impl Input {
     fn checked_token(&self, token: u32, kind: &str, table: u32) -> Result<u32> {
         ensure!(
             token >> 24 == table,
-            "INVALID_QUERY: token 0x{token:08x} is in table 0x{:02x}, not the `{kind}` table 0x{table:02x}; copy the `at` of a `{kind}` record from `rxd dotnet outline`",
+            "INVALID_QUERY: token 0x{token:08x} is in table 0x{:02x}, not the `{kind}` table 0x{table:02x}; copy the `at` of a `{kind}` record from `rxd ilspy outline`",
             token >> 24,
         );
         // The token is well formed and names no row: that is absence, not a bad query.

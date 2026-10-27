@@ -46,7 +46,7 @@ fn mcp_requires_absolute_inputs_and_defaults_to_unrestricted_paths() {
     error(
         &client.tool(
             "rxd_open",
-            json!({"paths":[local,"source.js"],"backend":"dex"}),
+            json!({"paths":[local,"source.js"],"backend":"rasc"}),
         ),
         "INVALID_QUERY",
     );

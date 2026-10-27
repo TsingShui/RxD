@@ -49,21 +49,21 @@
   <section class="section">
     <h2>APK：找到 Authorization，再取回它的类</h2>
     <p class="section-lede">搜索字符串表，把命中路由到引用类，再按 descriptor 取 Java。</p>
-    <pre><code>rxd dex strings app.apk --filter Authorization --limit 20
-rxd dex xref app.apk -m Authorization --kind string
-rxd dex get-class app.apk --at '&lt;class_at&gt;'</code></pre>
+    <pre><code>rxd rasc strings app.apk --filter Authorization --limit 20
+rxd rasc xref app.apk -m Authorization --kind string
+rxd rasc get-class app.apk --at '&lt;class_at&gt;'</code></pre>
     <p class="section-lede">从 <code>xref.context_at</code> 取调用方方法坐标，交给 <code>get-method --at</code>，或取其所属类交给 <code>get-class --at</code>。按目标内容找引用用 <code>-m PATTERN --kind KIND</code>。成功以 exit 0 表示；零结果就是空 stdout。</p>
   </section>
 
   <section class="section">
     <h2>.NET：一个方法，两种视图</h2>
     <p class="section-lede">成员身份由模块与 metadata token 共同确定。具备 ILSpy 引擎时可恢复 C#；<code>--raw</code> 保留原始证据。</p>
-    <pre><code>rxd dotnet methods app.dll -f Add
-rxd dotnet get-method app.dll --at '&lt;at&gt;'
-rxd dotnet get-method app.dll --at '&lt;at&gt;' --raw
-rxd dotnet strings app.dll -f hello
-rxd dotnet xref app.dll --at '&lt;method_at&gt;'
-rxd dotnet xref app.dll -m Authorization --kind string</code></pre>
+    <pre><code>rxd ilspy methods app.dll -f Add
+rxd ilspy get-method app.dll --at '&lt;at&gt;'
+rxd ilspy get-method app.dll --at '&lt;at&gt;' --raw
+rxd ilspy strings app.dll -f hello
+rxd ilspy xref app.dll --at '&lt;method_at&gt;'
+rxd ilspy xref app.dll -m Authorization --kind string</code></pre>
     <p class="section-lede">async、迭代器、lambda 与 LINQ 语法糖由固定版本 ILSpy 恢复。无法完整重建时，保留完整原始 IL/EH 与明确原因。</p>
   </section>
 

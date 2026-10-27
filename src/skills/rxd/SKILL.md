@@ -16,16 +16,16 @@ explicitly, then locate → associate
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
 | ASAR, ZIP, PyInstaller or wxapkg input | `rxd unpack` | `rxd unpack ARCHIVE_OR_ONEDIR -o DIR`; extracts every regular file, PYZ modules and reconstructed `.pyc` files; for one-dir, finds the launcher; for V1MMWX wxapkg, pass `--appid` |
-| Android APK or DEX | `rxd dex` (alias `apk`) | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
+| Android APK or DEX | `rxd rasc` | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
-| Managed .NET assembly | `rxd dotnet` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
+| Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evm` | `blocks`, `interface`, `strings`, `storage` / `xref --at` or `-m … --kind KIND` (function, block or literal) / `get-function`/`get-block --at` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
-conversion. A ZIP containing root DEX entries belongs to `rxd dex`. ASAR, ZIP and
+conversion. A ZIP containing root DEX entries belongs to `rxd rasc`. ASAR, ZIP and
 PyInstaller are opaque containers: `rxd unpack ARCHIVE -o DIR` extracts every
 regular file into a new directory, then analyze those files with the matching
 backend. PyInstaller one-file inputs additionally emit `PYZ.pyz_extracted`
@@ -73,11 +73,11 @@ offsets obtained from the preceding response. Keep each input fixed and use its 
 ## Android and JVM: string → caller → selected Java
 
 ```sh
-rxd dex strings app.apk -f Authorization --limit 20
-rxd dex xref app.apk -m Authorization --kind string
-rxd dex xref app.apk --at "$METHOD_AT"
-rxd dex manifest app.apk
-rxd dex get-method app.apk --at "$METHOD_AT"
+rxd rasc strings app.apk -f Authorization --limit 20
+rxd rasc xref app.apk -m Authorization --kind string
+rxd rasc xref app.apk --at "$METHOD_AT"
+rxd rasc manifest app.apk
+rxd rasc get-method app.apk --at "$METHOD_AT"
 rxd jar strings library.jar -f Authorization
 rxd jar xref library.jar -m Authorization --kind string
 rxd jar xref library.jar --at "$METHOD_AT"
@@ -104,15 +104,15 @@ contain unsupported-method stubs; inspect bytecode when necessary.
 ## .NET: literal → owning method → IL/C#
 
 ```sh
-rxd dotnet strings library.dll -f Authorization
-rxd dotnet xref library.dll -m Authorization --kind string
-rxd dotnet xref library.dll --at "$METHOD_AT"
-rxd dotnet methods library.dll
-rxd dotnet get-method library.dll --at "$METHOD_AT" --raw
-rxd dotnet get-method library.dll --at "$METHOD_AT"
-rxd dotnet classes library.dll --class "$TYPE_NAME"
-rxd dotnet get-class library.dll --at "$TYPE_AT" --raw
-rxd dotnet xref library.dll --at "$TYPE_AT"
+rxd ilspy strings library.dll -f Authorization
+rxd ilspy xref library.dll -m Authorization --kind string
+rxd ilspy xref library.dll --at "$METHOD_AT"
+rxd ilspy methods library.dll
+rxd ilspy get-method library.dll --at "$METHOD_AT" --raw
+rxd ilspy get-method library.dll --at "$METHOD_AT"
+rxd ilspy classes library.dll --class "$TYPE_NAME"
+rxd ilspy get-class library.dll --at "$TYPE_AT" --raw
+rxd ilspy xref library.dll --at "$TYPE_AT"
 ```
 
 A `classes` row carries `record: class`; copy its `at` to class FETCH or type

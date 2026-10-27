@@ -108,7 +108,7 @@ fn dotnet_native_class_resource_failures_keep_the_previous_output_and_emit_no_su
     for reason in ["input_limit", "output_limit"] {
         fs::write(&destination, b"keep me").unwrap();
         let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-            .args(["dotnet", "get-class"])
+            .args(["ilspy", "get-class"])
             .arg(&path)
             .arg("--at")
             .arg(&id)
@@ -292,7 +292,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     let path = input();
     let method = method_id(&path, "Add");
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "get-method"])
+        .args(["ilspy", "get-method"])
         .arg(&path)
         .arg("--at")
         .arg(&method)
@@ -303,7 +303,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     let row: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(row["detail"]["decompiled"], true);
     let raw = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "get-method"])
+        .args(["ilspy", "get-method"])
         .arg(&path)
         .arg("--at")
         .arg(&method)
@@ -317,7 +317,7 @@ fn dotnet_legacy_method_engine_remains_usable_and_class_fetch_has_complete_abi_f
     let path = closure_input();
     let id = type_id(&path, "Rxd.Closure.Root`1");
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "get-class"])
+        .args(["ilspy", "get-class"])
         .arg(&path)
         .arg("--at")
         .arg(&id)
@@ -361,7 +361,7 @@ fn dotnet_unprovable_native_class_mappings_are_dropped_and_reported_not_fatal() 
         serde_json::json!([{"il_offset":0,"line":1}]),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-            .args(["dotnet", "get-class"]).arg(&path).arg("--at").arg(&id)
+            .args(["ilspy", "get-class"]).arg(&path).arg("--at").arg(&id)
             .env("RXD_DOTNET_NATIVE_LIBRARY", &library)
             .env("RXD_TEST_NATIVE_PAYLOAD", serde_json::json!({"ok":true,"reason":null,"code":"class Root<T> {}","mapping":mapping}).to_string())
             .output().unwrap();

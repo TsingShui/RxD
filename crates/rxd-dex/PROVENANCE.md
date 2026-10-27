@@ -5,7 +5,7 @@ The DEX analysis implementation and CLI were imported from the rasc repository a
 retained in this directory. Maintained dependency forks keep their own licenses, fork
 notes and patch notes under the top-level `third_party/`.
 
-`rxd dex` provides the non-MCP analysis CLI. The shared root `rxd skill` print entry
+`rxd rasc` provides the non-MCP analysis CLI. The shared root `rxd skill` print entry
 and generic skill replace the retired DEX-only skill. The old rasc MCP transport and
 persistent session implementation are not imported. The shipped analysis implementation
 lives here; `src/cli/dex/` owns the command-line adapter, and no standalone rasc binary is

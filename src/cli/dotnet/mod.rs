@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 pub enum Command {
     /// List the types an assembly defines as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd dotnet classes app.dll -f JsonReader\nOutput: class JSONL; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd dotnet get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
+        after_long_help = "Examples:\nrxd ilspy classes app.dll -f JsonReader\nOutput: class JSONL; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd ilspy get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
     )]
     Classes {
         /// One regular local managed PE DLL/EXE.
@@ -31,7 +31,7 @@ pub enum Command {
     },
     /// List the fields an assembly defines as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd dotnet fields app.dll --class Example.Client -f token\nOutput: field JSONL; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd dotnet xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
+        after_long_help = "Examples:\nrxd ilspy fields app.dll --class Example.Client -f token\nOutput: field JSONL; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd ilspy xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
     )]
     Fields {
         /// One regular local managed PE DLL/EXE.
@@ -52,7 +52,7 @@ pub enum Command {
     },
     /// List the methods an assembly defines as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd dotnet methods app.dll --class Example.Client -f Send\nOutput: method JSONL; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd dotnet get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
+        after_long_help = "Examples:\nrxd ilspy methods app.dll --class Example.Client -f Send\nOutput: method JSONL; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd ilspy get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
     )]
     Methods {
         /// One regular local managed PE DLL/EXE.
@@ -72,7 +72,7 @@ pub enum Command {
         options: Options,
     },
     /// Get one method as conservative code or original instructions.
-    #[command(name = "get-method", after_long_help = "Examples:\nrxd dotnet methods app.dll -f Read\nrxd dotnet get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context_at from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: one method_body JSON record. --raw preserves IL; C# needs ILSpy.\nInspect detail.representation/decompiled/reason; engine fallback IL is not C#.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context_at: eight-digit MethodDef token, e.g. 0x0600000b")))]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd ilspy methods app.dll -f Read\nrxd ilspy get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context_at from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: one method_body JSON record. --raw preserves IL; C# needs ILSpy.\nInspect detail.representation/decompiled/reason; engine fallback IL is not C#.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context_at: eight-digit MethodDef token, e.g. 0x0600000b")))]
     Get {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
@@ -85,7 +85,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch a selected type and every recursively owned nested type.
-    #[command(name = "get-class", after_long_help = "Examples:\nrxd dotnet classes app.dll -f Client\nrxd dotnet get-class app.dll --at '0x0200000b' --raw\nCopy classes.at or a member's parent_at. TypeDef token, not a class name.\nOutput: one class_body JSON record including recursively owned nested types.\n--raw keeps metadata/IL/EH; C# requires ILSpy and may explicitly fall back to IL.", mut_arg("at", |arg| arg.required(true).value_name("TYPE_TOKEN").help("Copy classes.at or member.parent_at: eight-digit TypeDef token, e.g. 0x0200000b")))]
+    #[command(name = "get-class", after_long_help = "Examples:\nrxd ilspy classes app.dll -f Client\nrxd ilspy get-class app.dll --at '0x0200000b' --raw\nCopy classes.at or a member's parent_at. TypeDef token, not a class name.\nOutput: one class_body JSON record including recursively owned nested types.\n--raw keeps metadata/IL/EH; C# requires ILSpy and may explicitly fall back to IL.", mut_arg("at", |arg| arg.required(true).value_name("TYPE_TOKEN").help("Copy classes.at or member.parent_at: eight-digit TypeDef token, e.g. 0x0200000b")))]
     GetClass {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
@@ -99,7 +99,7 @@ pub enum Command {
     },
     /// Query decoded user-string heap literals.
     #[command(
-        after_long_help = "Examples:\nrxd dotnet strings app.dll -f Authorization\nOutput: string JSONL; at is a #US token, context_at an owning method, parent_at a type.\nNext: rxd dotnet get-method app.dll --at '<string.context_at>' --raw,\nor rxd dotnet xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have null caller/owner; equal values may be separate heap entries."
+        after_long_help = "Examples:\nrxd ilspy strings app.dll -f Authorization\nOutput: string JSONL; at is a #US token, context_at an owning method, parent_at a type.\nNext: rxd ilspy get-method app.dll --at '<string.context_at>' --raw,\nor rxd ilspy xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have null caller/owner; equal values may be separate heap entries."
     )]
     Strings {
         /// One regular local managed PE DLL/EXE.
@@ -113,7 +113,7 @@ pub enum Command {
         options: Options,
     },
     /// Find exact/semantic member and type operands or decoded user-string loads.
-    #[command(after_long_help = "Examples:\nrxd dotnet xref app.dll --at '0x0600000b'\nrxd dotnet xref app.dll -m Authorization --kind string\nRequired: exactly one of --at/--match; --match supports only --kind string.\nCopy member/class/string at tokens; --at literal text requires --kind string.\nOutput: reference JSONL; context_at is caller, detail.target is referenced value/token.\nNext: rxd dotnet get-method app.dll --at '<reference.context_at>' --raw.\nReferences are explicit IL operands, not reflection or runtime dispatch.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
+    #[command(after_long_help = "Examples:\nrxd ilspy xref app.dll --at '0x0600000b'\nrxd ilspy xref app.dll -m Authorization --kind string\nRequired: exactly one of --at/--match; --match supports only --kind string.\nCopy member/class/string at tokens; --at literal text requires --kind string.\nOutput: reference JSONL; context_at is caller, detail.target is referenced value/token.\nNext: rxd ilspy get-method app.dll --at '<reference.context_at>' --raw.\nReferences are explicit IL operands, not reflection or runtime dispatch.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
     Xref {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,

@@ -19,7 +19,7 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
     ]);
     client.initialize();
     let rejected = client.tool(
-        "dotnet_methods",
+        "ilspy_methods",
         json!({
             "input": {"path": input}, "class": "Newtonsoft.Json.JsonReader", "name": "ReadAsInt32"
         }),
@@ -32,7 +32,7 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
 
     // The same query through the CLI is complete under its input-scaled envelope.
     let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dotnet", "methods"])
+        .args(["ilspy", "methods"])
         .arg(&input)
         .args([
             "--class",
@@ -56,7 +56,7 @@ fn mcp_input_scaled_dotnet_xref_finishes_above_the_old_fixed_work_budget() {
     let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
     let result = client.tool(
-        "dotnet_xref",
+        "ilspy_xref",
         json!({"input":{"path":input},"kind":"string","match":"__rxd_nonexistent_budget_probe__"}),
     );
     assert_ne!(result["isError"], true, "{result}");
@@ -85,15 +85,15 @@ fn checked(client: &mut Client, tools: &Value, name: &str, arguments: Value) -> 
 /// Public CLI command matrix for every built-in tool. No internal argv/lift code
 /// participates in the oracle; only complete stdout at the other public entry.
 const CLI_ROUTES: &[(&str, &str, &str)] = &[
-    ("dex_entries", "dex", "entries"),
-    ("dex_classes", "dex", "classes"),
-    ("dex_fields", "dex", "fields"),
-    ("dex_methods", "dex", "methods"),
-    ("dex_strings", "dex", "strings"),
-    ("dex_xref", "dex", "xref"),
-    ("dex_manifest", "dex", "manifest"),
-    ("dex_get_class", "dex", "get-class"),
-    ("dex_get_method", "dex", "get-method"),
+    ("rasc_entries", "rasc", "entries"),
+    ("rasc_classes", "rasc", "classes"),
+    ("rasc_fields", "rasc", "fields"),
+    ("rasc_methods", "rasc", "methods"),
+    ("rasc_strings", "rasc", "strings"),
+    ("rasc_xref", "rasc", "xref"),
+    ("rasc_manifest", "rasc", "manifest"),
+    ("rasc_get_class", "rasc", "get-class"),
+    ("rasc_get_method", "rasc", "get-method"),
     ("jar_classes", "jar", "classes"),
     ("jar_entries", "jar", "entries"),
     ("jar_fields", "jar", "fields"),
@@ -102,13 +102,13 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("jar_xref", "jar", "xref"),
     ("jar_get_method", "jar", "get-method"),
     ("jar_get_class", "jar", "get-class"),
-    ("dotnet_classes", "dotnet", "classes"),
-    ("dotnet_fields", "dotnet", "fields"),
-    ("dotnet_methods", "dotnet", "methods"),
-    ("dotnet_strings", "dotnet", "strings"),
-    ("dotnet_xref", "dotnet", "xref"),
-    ("dotnet_get_method", "dotnet", "get-method"),
-    ("dotnet_get_class", "dotnet", "get-class"),
+    ("ilspy_classes", "ilspy", "classes"),
+    ("ilspy_fields", "ilspy", "fields"),
+    ("ilspy_methods", "ilspy", "methods"),
+    ("ilspy_strings", "ilspy", "strings"),
+    ("ilspy_xref", "ilspy", "xref"),
+    ("ilspy_get_method", "ilspy", "get-method"),
+    ("ilspy_get_class", "ilspy", "get-class"),
     ("wasm_types", "wasm", "types"),
     ("wasm_imports", "wasm", "imports"),
     ("wasm_exports", "wasm", "exports"),
@@ -291,28 +291,31 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
     let methods = checked(
         &mut client,
         &tools,
-        "dex_methods",
+        "rasc_methods",
         json!({"input":{"path":archive},"class":"LFixture0;"}),
     );
     let method = methods["records"][0]["at"].clone();
     for (name, extra) in [
-        ("dex_entries", json!({})),
-        ("dex_classes", json!({"filter":"Fixture"})),
-        ("dex_fields", json!({"class":"LFixture0;","filter":"f"})),
+        ("rasc_entries", json!({})),
+        ("rasc_classes", json!({"filter":"Fixture"})),
+        ("rasc_fields", json!({"class":"LFixture0;","filter":"f"})),
         (
-            "dex_strings",
+            "rasc_strings",
             json!({"filter":"Authorization","limit":1,"offset":0}),
         ),
-        ("dex_xref", json!({"kind":"string","match":"Authorization"})),
-        ("dex_xref", json!({"kind":"type","match":"Fixture"})),
         (
-            "dex_xref",
+            "rasc_xref",
+            json!({"kind":"string","match":"Authorization"}),
+        ),
+        ("rasc_xref", json!({"kind":"type","match":"Fixture"})),
+        (
+            "rasc_xref",
             json!({"kind":"method","match":"m0","class":"Fixture0"}),
         ),
-        ("dex_xref", json!({"kind":"field","match":"missing"})),
-        ("dex_manifest", json!({})),
-        ("dex_get_class", json!({"at":"LFixture0;"})),
-        ("dex_get_method", json!({"at":method})),
+        ("rasc_xref", json!({"kind":"field","match":"missing"})),
+        ("rasc_manifest", json!({})),
+        ("rasc_get_class", json!({"at":"LFixture0;"})),
+        ("rasc_get_method", json!({"at":method})),
     ] {
         let mut arguments = extra;
         arguments["input"] = json!({"path":archive});
@@ -320,11 +323,11 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
     }
     let bundle = client.tool(
         "rxd_open",
-        json!({"paths":[archive,archive],"backend":"dex"}),
+        json!({"paths":[archive,archive],"backend":"rasc"}),
     );
     assert_ne!(bundle["isError"], true, "{bundle}");
     let wrong_scope = client.tool(
-        "dex_classes",
+        "rasc_classes",
         json!({"input":{"target_id":bundle["structuredContent"]["target_id"]}}),
     );
     assert_eq!(wrong_scope["isError"], true, "{wrong_scope}");
@@ -333,10 +336,10 @@ fn mcp_dex_preserves_typed_queries_and_missing_selectors() {
         "INVALID_QUERY"
     );
     let absent = json!({"input":{"path":archive},"at":"LMissing;"});
-    let missing = client.tool("dex_get_class", absent.clone());
+    let missing = client.tool("rasc_get_class", absent.clone());
     assert_eq!(missing["isError"], true, "{missing}");
     assert_eq!(missing["structuredContent"]["error"]["code"], "NOT_FOUND");
-    let cli = cli_query("dex_get_class", &absent, archive.to_str().unwrap(), None);
+    let cli = cli_query("rasc_get_class", &absent, archive.to_str().unwrap(), None);
     assert_eq!(cli.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&cli.stderr).contains("no class LMissing; in this input"),
@@ -352,7 +355,7 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
     let input = directory.path().join("classes.dex");
     std::fs::write(&input, dex_inputs::const_string_dex(9000)).unwrap();
     let cli = cli_query(
-        "dex_classes",
+        "rasc_classes",
         &json!({"threads":2}),
         input.to_str().unwrap(),
         None,
@@ -362,13 +365,13 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
         "{}",
         String::from_utf8_lossy(&cli.stderr)
     );
-    let expected = cli_projection("dex_classes", &cli.stdout);
+    let expected = cli_projection("rasc_classes", &cli.stdout);
     assert_eq!(expected["records"].as_array().unwrap().len(), 9000);
     let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     for threads in [1, 2] {
         let result = client.tool(
-            "dex_classes",
+            "rasc_classes",
             json!({"input":{"path":input},"threads":threads}),
         );
         assert_ne!(result["isError"], true, "DEX chunked output failed");
@@ -381,7 +384,7 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
         "131072",
     ]);
     bounded.initialize();
-    let rejected = bounded.tool("dex_classes", json!({"input":{"path":input},"threads":2}));
+    let rejected = bounded.tool("rasc_classes", json!({"input":{"path":input},"threads":2}));
     assert_eq!(rejected["isError"], true, "{rejected}");
     assert_eq!(
         rejected["structuredContent"]["error"]["code"],
@@ -389,7 +392,7 @@ fn mcp_dex_chunked_output_uses_the_explicit_sink_budget_and_recovers() {
     );
     assert!(rejected["structuredContent"].get("records").is_none());
     let recovered = bounded.tool(
-        "dex_classes",
+        "rasc_classes",
         json!({"input":{"path":input},"class":"LFixture0;"}),
     );
     assert_ne!(recovered["isError"], true, "{recovered}");
@@ -461,7 +464,7 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
     let classes = checked(
         &mut client,
         &tools,
-        "dotnet_classes",
+        "ilspy_classes",
         json!({"input":{"path":input}}),
     );
     assert!(
@@ -473,7 +476,7 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
     let methods = checked(
         &mut client,
         &tools,
-        "dotnet_methods",
+        "ilspy_methods",
         json!({"input":{"path":input}}),
     );
     let method = methods["records"]
@@ -484,12 +487,12 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
         .unwrap();
     let declaring_type = method["parent_at"].clone();
     for (name, extra) in [
-        ("dotnet_fields", json!({"filter":"Count"})),
-        ("dotnet_strings", json!({"filter":""})),
-        ("dotnet_xref", json!({"at":method["at"]})),
-        ("dotnet_xref", json!({"match":"missing","kind":"string"})),
-        ("dotnet_get_method", json!({"at":method["at"],"raw":true})),
-        ("dotnet_get_class", json!({"at":declaring_type,"raw":true})),
+        ("ilspy_fields", json!({"filter":"Count"})),
+        ("ilspy_strings", json!({"filter":""})),
+        ("ilspy_xref", json!({"at":method["at"]})),
+        ("ilspy_xref", json!({"match":"missing","kind":"string"})),
+        ("ilspy_get_method", json!({"at":method["at"],"raw":true})),
+        ("ilspy_get_class", json!({"at":declaring_type,"raw":true})),
     ] {
         let mut arguments = extra;
         arguments["input"] = json!({"path":input});
@@ -661,7 +664,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
     let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
-    let result=client.tool("dex_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","match":format!("--output={}",victim.display())}));
+    let result=client.tool("rasc_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","match":format!("--output={}",victim.display())}));
     assert!(
         !victim.exists(),
         "a typed filter was incorrectly interpreted as a host output destination: {result}"
@@ -669,7 +672,7 @@ fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
     checked(
         &mut client,
         &tools,
-        "dex_xref",
+        "rasc_xref",
         json!({"input":{"path":input},"kind":"string","match":"-needle"}),
     );
 }
@@ -686,7 +689,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
     std::fs::copy(env!("CARGO_BIN_EXE_rxd"), &binary).unwrap();
     let input = root.join("tests/fixtures/dotnet/sugar/Sugar.dll");
     let listing = Command::new(&binary)
-        .args(["dotnet", "methods", input.to_str().unwrap()])
+        .args(["ilspy", "methods", input.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(listing.status.success());
@@ -704,7 +707,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
     let cli_cache = scratch.path().join("fresh-cli-cache");
     let cli = Command::new(&binary)
         .args([
-            "dotnet",
+            "ilspy",
             "get-method",
             input.to_str().unwrap(),
             "--at",
@@ -732,7 +735,7 @@ fn mcp_cold_relocated_ilspy_matches_cli_after_complete_verified_publication() {
     );
     client.initialize();
     let result = client.tool(
-        "dotnet_get_method",
+        "ilspy_get_method",
         json!({"input":{"path":input},"at":method}),
     );
     assert_ne!(result["isError"], true, "{result}");

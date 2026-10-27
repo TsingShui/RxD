@@ -5,11 +5,11 @@ use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
 
 /// Built-in backends reflected from clap; Native tools use their own adapter.
-const BACKENDS: &[&str] = &["dex", "jar", "dotnet", "evm", "wasm", "pyc"];
+const BACKENDS: &[&str] = &["rasc", "jar", "ilspy", "evm", "wasm", "pyc"];
 
-/// CLI commands with no typed MCP projection: `dex_extract` writes caller paths and
+/// CLI commands with no typed MCP projection: `rasc_extract` writes caller paths and
 /// supports batch output, which the one-artifact tool contract cannot express.
-const CLI_ONLY: &[&str] = &["dex_extract"];
+const CLI_ONLY: &[&str] = &["rasc_extract"];
 
 /// Exclude output/process flags and CLI container selectors; MCP uses child targets.
 const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help", "entry"];
@@ -48,8 +48,6 @@ pub(super) struct ToolSpec {
     pub required_groups: Vec<Vec<String>>,
     pub machine_json: bool,
     pub output_required: bool,
-    /// Ordered input-list arguments.
-    pub multi_input: bool,
 }
 
 impl ToolSpec {
@@ -75,7 +73,7 @@ fn hidden(arg: &Arg, first_positional: bool) -> bool {
         return true;
     }
     match arg.get_long() {
-        Some(long) => HIDDEN_LONGS.contains(&long) || long.starts_with("max-") || long == "apk",
+        Some(long) => HIDDEN_LONGS.contains(&long) || long.starts_with("max-"),
         // The first positional is always the analyzed path; later ones are selectors.
         None => first_positional,
     }
@@ -152,9 +150,6 @@ fn args(command: &Command) -> Vec<ArgSpec> {
 
 fn tool(backend: &str, command: &Command) -> ToolSpec {
     let name = format!("{}_{}", backend, command.get_name().replace('-', "_"));
-    let multi_input = command
-        .get_arguments()
-        .any(|arg| arg.get_long() == Some("apk"));
     let args = args(command);
     let required_groups = command
         .get_groups()
@@ -207,7 +202,6 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
         output_required: command
             .get_arguments()
             .any(|arg| arg.get_long() == Some("output") && arg.is_required_set()),
-        multi_input,
     }
 }
 
@@ -259,16 +253,8 @@ fn input_reference() -> Value {
 pub(super) fn input_schema(spec: &ToolSpec) -> Value {
     let mut properties = Map::new();
     let mut required = Vec::new();
-    if spec.multi_input {
-        properties.insert(
-            "inputs".into(),
-            json!({"type":"array","minItems":1,"items":input_reference()}),
-        );
-        required.push("inputs");
-    } else {
-        properties.insert("input".into(), input_reference());
-        required.push("input");
-    }
+    properties.insert("input".into(), input_reference());
+    required.push("input");
     for arg in spec.exposed() {
         properties.insert(arg.key.clone(), property(arg));
         if arg.required {
@@ -323,20 +309,13 @@ pub(super) fn argv(
         spec.backend.clone().into(),
         spec.command.clone().into(),
     ];
-    if spec.multi_input {
-        for path in inputs {
-            argv.push("--apk".into());
-            argv.push(path.as_os_str().into());
-        }
-    } else {
-        let Some(path) = inputs.first() else {
-            return Err(super::QueryError::new(
-                "INVALID_QUERY",
-                "query requires a captured input",
-            ));
-        };
-        argv.push(path.as_os_str().into());
-    }
+    let Some(path) = inputs.first() else {
+        return Err(super::QueryError::new(
+            "INVALID_QUERY",
+            "query requires a captured input",
+        ));
+    };
+    argv.push(path.as_os_str().into());
     if spec.output_required {
         // Use a placeholder output only for shared extraction argument validation.
         argv.push("--output=.rxd-mcp-artifact".into());

@@ -25,9 +25,9 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
     let response = client.request("tools/list", json!({}));
     let tools = response["result"]["tools"].as_array().unwrap();
     let expected: BTreeSet<_> = [
-        ("dex", cfg!(feature = "backend-dex")),
+        ("rasc", cfg!(feature = "backend-dex")),
         ("jar", cfg!(feature = "backend-jvm")),
-        ("dotnet", cfg!(feature = "backend-dotnet")),
+        ("ilspy", cfg!(feature = "backend-dotnet")),
         ("evm", cfg!(feature = "backend-evm")),
         ("wasm", cfg!(feature = "backend-wasm")),
         ("pyc", cfg!(feature = "backend-pyc")),

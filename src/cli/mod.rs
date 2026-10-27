@@ -65,9 +65,9 @@ mod xref;
     version,
     about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM and PYC files; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
     after_long_help = "Start here:
-  rxd dex --help       APK or DEX: classes, strings, references, Java
+  rxd rasc --help      APK or DEX: classes, strings, references, Java
   rxd jar --help       JVM class/JAR: members, references, Java/bytecode
-  rxd dotnet --help    Managed DLL/EXE: metadata, IL, optional C#
+  rxd ilspy --help     Managed DLL/EXE: metadata, IL, optional C#
   rxd unpack --help    ASAR/ZIP/PyInstaller/wxapkg input: extract every file
   rxd wasm --help      Binary core WASM: functions and instructions/C-like
   rxd pyc --help       CPython bytecode: codes, constants, Python reconstruction
@@ -104,14 +104,17 @@ enum Backend {
     },
     #[cfg(feature = "backend-dotnet")]
     /// Analyze managed .NET assemblies.
-    #[command(after_long_help = "Examples:
-  rxd dotnet methods app.dll -f Read
-  rxd dotnet get-method app.dll --at '0x0600000b' --raw
-  rxd dotnet strings app.dll -f Authorization
-  rxd dotnet xref app.dll -m Authorization --kind string
+    #[command(
+        name = "ilspy",
+        after_long_help = "Examples:
+  rxd ilspy methods app.dll -f Read
+  rxd ilspy get-method app.dll --at '0x0600000b' --raw
+  rxd ilspy strings app.dll -f Authorization
+  rxd ilspy xref app.dll -m Authorization --kind string
 Copy methods.at into get-method; copy xref.context_at to fetch its caller.
 Tokens such as 0x0600000b are module-scoped; use actual returned values.
-C# requires ILSpy; missing/failed reconstruction returns original IL with a reason.")]
+C# requires ILSpy; missing/failed reconstruction returns original IL with a reason."
+    )]
     Dotnet {
         #[command(subcommand)]
         command: dotnet::Command,
@@ -155,13 +158,13 @@ No entry selection, nested extraction beyond PYZ, links, or encrypted ASAR/ZIP/P
     #[cfg(feature = "backend-dex")]
     /// Analyze APK archives and standalone DEX files.
     #[command(
-        visible_alias = "apk",
+        name = "rasc",
         after_long_help = "Examples:
-  rxd dex methods app.apk -f onCreate
-  rxd dex get-method app.apk --at 'Lx/y;->onCreate(Landroid/os/Bundle;)V'
-  rxd dex strings app.apk -f Authorization
-  rxd dex xref app.apk -m Authorization --kind string
-  rxd dex manifest app.apk
+  rxd rasc methods app.apk -f onCreate
+  rxd rasc get-method app.apk --at 'Lx/y;->onCreate(Landroid/os/Bundle;)V'
+  rxd rasc strings app.apk -f Authorization
+  rxd rasc xref app.apk -m Authorization --kind string
+  rxd rasc manifest app.apk
 Copy methods.at into get-method; copy xref.context_at to fetch its caller.
 Method coordinates include parameters AND return type after ). Use actual returned values.
 classes.at selects get-class; -f filters names, --class is one exact owner.

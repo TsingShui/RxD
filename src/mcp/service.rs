@@ -157,10 +157,10 @@ impl AnalysisService {
                 }
             };
             let mode = if paths.len() > 1 {
-                if args.backend.as_deref() != Some("dex") {
+                if args.backend.as_deref() != Some("rasc") {
                     return Err(QueryError::new(
                         "INVALID_QUERY",
-                        "multiple paths require backend dex",
+                        "multiple paths require backend rasc",
                     ));
                 }
                 CaptureMode::Bundle
@@ -207,33 +207,16 @@ impl AnalysisService {
             .map(|p| p.0)
             .ok_or_else(|| QueryError::new("INVALID_QUERY", "tool has no backend"))?;
         let mode = capture_mode(backend)?;
-        let mut references = Vec::new();
-        if let Some(inputs) = arguments.get("inputs").and_then(Value::as_array) {
-            for input in inputs {
-                references.push(decode::<InputRef>(input.clone())?);
-            }
-        } else {
-            references.push(decode::<InputRef>(
-                arguments.get("input").cloned().unwrap_or(Value::Null),
-            )?);
-        }
-        let mut captures = Vec::new();
-        for reference in references {
-            self.check_live(start, &cancellation)?;
-            let store = self.store.clone();
-            let check = self.capture_check(start, &cancellation);
-            let capture =
-                tokio::task::spawn_blocking(move || store.acquire(&reference, mode, check))
-                    .await
-                    .map_err(join_error)?
-                    .map_err(QueryError::from)?;
-            captures.push(capture);
-        }
+        let reference = decode::<InputRef>(arguments.get("input").cloned().unwrap_or(Value::Null))?;
         self.check_live(start, &cancellation)?;
-        let inputs = captures
-            .iter()
-            .map(|capture| capture.worker_input())
-            .collect();
+        let store = self.store.clone();
+        let check = self.capture_check(start, &cancellation);
+        let capture = tokio::task::spawn_blocking(move || store.acquire(&reference, mode, check))
+            .await
+            .map_err(join_error)?
+            .map_err(QueryError::from)?;
+        self.check_live(start, &cancellation)?;
+        let inputs = vec![capture.worker_input()];
         let (reply, memory) = worker::run(
             WorkerRequest::Query {
                 name,
@@ -262,10 +245,7 @@ impl AnalysisService {
                 result.structured["bytes_base64"] =
                     json!(base64::engine::general_purpose::STANDARD.encode(&artifact.bytes));
             }
-            let parent = captures
-                .first()
-                .ok_or_else(|| QueryError::new("WORKER_ERROR", "artifact has no parent input"))?
-                .worker_input();
+            let parent = capture.worker_input();
             let origin = TargetOrigin {
                 container_source_id: parent.source_id,
                 entry: artifact.name.clone(),
@@ -488,8 +468,8 @@ impl ServerHandler for AnalysisService {
 }
 fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {
     match backend {
-        "dex" => Ok(CaptureMode::Bundle),
-        "file" | "jar" | "dotnet" | "wasm" | "pyc" | "evm" | "kuna" => Ok(CaptureMode::File),
+        "rasc" => Ok(CaptureMode::Bundle),
+        "file" | "jar" | "ilspy" | "wasm" | "pyc" | "evm" | "kuna" => Ok(CaptureMode::File),
         _ => Err(QueryError::new(
             "INVALID_QUERY",
             "unsupported capture backend",

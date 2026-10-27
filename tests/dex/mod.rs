@@ -11,7 +11,7 @@ use support::{const_string_dex, deflated_zip, stored_zip};
 
 fn invoke(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .arg("dex")
+        .arg("rasc")
         .args(args)
         .env_remove("RASC_MAX_INFLATED_ENTRY")
         .output()
@@ -108,16 +108,6 @@ fn dex_classes_and_references_match_for_bare_stored_and_deflated_inputs() {
                 expected_classes
             );
             assert!(output.stderr.is_empty());
-            let alias = Command::new(env!("CARGO_BIN_EXE_rxd"))
-                .args(["apk", "classes"])
-                .arg(&path)
-                .args(["--threads", threads])
-                .env_remove("RASC_MAX_INFLATED_ENTRY")
-                .output()
-                .unwrap();
-            assert_eq!(alias.status.code(), output.status.code());
-            assert_eq!(alias.stdout, output.stdout);
-            assert_eq!(alias.stderr, output.stderr);
             let output = query(
                 "xref",
                 &path,
@@ -238,7 +228,7 @@ fn dex_inflation_has_no_default_quota_but_preserves_explicit_override() {
     let dest = dir.path().join("payload.bin");
     fs::write(&dest, b"preserved").unwrap();
     let failed = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dex", "extract"])
+        .args(["rasc", "extract"])
         .arg(&input)
         .args(["--name", "payload.bin", "-o"])
         .arg(&dest)
@@ -615,7 +605,7 @@ fn dex_inflate_budget_preserves_environment_defaults_and_error_bytes() {
     let (_dir, path) = fixture(deflated_zip(&[("AndroidManifest.xml", &xml)]), "budget.apk");
     for limit in ["1024", "0", "invalid", "", " 262144 "] {
         let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-            .args(["dex", "manifest"])
+            .args(["rasc", "manifest"])
             .arg(&path)
             .env("RASC_MAX_INFLATED_ENTRY", limit)
             .output()
@@ -637,26 +627,22 @@ fn dex_inflate_budget_preserves_environment_defaults_and_error_bytes() {
 #[test]
 fn dex_retires_skill_and_root_help_exposes_the_print_entry() {
     let home = tempfile::tempdir().unwrap();
-    for backend in ["dex", "apk"] {
-        let rejected = Command::new(env!("CARGO_BIN_EXE_rxd"))
-            .args([backend, "skill", "--print"])
-            .env("HOME", home.path())
-            .env("USERPROFILE", home.path())
-            .env_remove("CODEX_HOME")
-            .output()
-            .unwrap();
-        assert_eq!(rejected.status.code(), Some(2));
-        assert!(rejected.stdout.is_empty());
-        assert!(
-            String::from_utf8_lossy(&rejected.stderr).contains("unrecognized subcommand 'skill'")
-        );
-        let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
-            .args([backend, "--help"])
-            .output()
-            .unwrap();
-        success(&help);
-        assert!(!text(&help).contains("skill"));
-    }
+    let rejected = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["rasc", "skill", "--print"])
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env_remove("CODEX_HOME")
+        .output()
+        .unwrap();
+    assert_eq!(rejected.status.code(), Some(2));
+    assert!(rejected.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("unrecognized subcommand 'skill'"));
+    let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["rasc", "--help"])
+        .output()
+        .unwrap();
+    success(&help);
+    assert!(!text(&help).contains("skill"));
     let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .arg("--help")
         .output()
