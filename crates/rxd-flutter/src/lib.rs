@@ -19,6 +19,7 @@ pub struct Snapshot {
     platform: PlatformProfile,
     sdk: &'static SdkProfile,
     fallback: bool,
+    source_id: String,
 }
 
 impl Snapshot {
@@ -38,13 +39,23 @@ impl Snapshot {
             .map_err(|error| Error::new("INVALID_INPUT", error))?;
         let messages = locale::messages(locale::detect());
         let sdk = detect_or_default(&bytes, offsets, &messages);
+        let source_id = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(&bytes))
+        };
         Ok(Self {
             path: path.to_path_buf(),
             bytes,
             platform,
             sdk,
             fallback,
+            source_id,
         })
+    }
+
+    /// Content identity of the admitted snapshot, shared by every record.
+    pub fn source_id(&self) -> &str {
+        &self.source_id
     }
 
     pub fn input_bytes(&self) -> usize {
@@ -73,6 +84,57 @@ impl Snapshot {
             functions,
             platform_warning: self.platform_warning(),
         })
+    }
+
+    /// One row per class: coordinate, library-qualified name, member count.
+    ///
+    /// The superclass chain is not reported yet: `parent_of` holds the resolved
+    /// supertype's class id, and resolving that id back to a class name needs the
+    /// type-cluster mapping, which this backend does not read.
+    pub fn classes_into(
+        &self,
+        out: &mut String,
+        filter: Option<&rxd_core::filter::Contains>,
+    ) -> Result<usize> {
+        let analyzer = self.analyzer()?;
+        let functions = analyzer.build_functions(false);
+        let mut methods: std::collections::BTreeMap<&str, usize> =
+            std::collections::BTreeMap::new();
+        let mut library_of: std::collections::BTreeMap<&str, &str> =
+            std::collections::BTreeMap::new();
+        for (lib, classes) in &functions {
+            for (class, entries) in classes {
+                *methods.entry(class.as_str()).or_default() += entries.len();
+                library_of.insert(class.as_str(), lib.as_str());
+            }
+        }
+        let mut written = 0;
+        for (cid, name) in &analyzer.cname_by_cid {
+            if name.is_empty() {
+                continue;
+            }
+            let library = library_of.get(name.as_str()).copied().unwrap_or("");
+            let full = if library.is_empty() {
+                name.clone()
+            } else {
+                format!("{library}::{name}")
+            };
+            if let Some(filter) = filter
+                && !filter.matches(&full)
+                && !filter.matches(name)
+            {
+                continue;
+            }
+            out.push_str("class:0x");
+            push_hex(out, *cid as u64);
+            out.push('\t');
+            push_atom(out, &full);
+            out.push('\t');
+            out.push_str(&methods.get(name.as_str()).copied().unwrap_or(0).to_string());
+            out.push('\n');
+            written += 1;
+        }
+        Ok(written)
     }
 
     /// Every decoded string in the snapshot pool, addressed by object ref.
@@ -213,16 +275,20 @@ impl Snapshot {
         &self,
         out: &mut String,
         filter: Option<&rxd_core::filter::Contains>,
+        class: Option<&str>,
     ) -> Result<usize> {
         let analyzer = self.analyzer()?;
         let groups = analyzer.build_functions(false);
         let mut written = 0;
         for (lib, classes) in &groups {
-            for (class, entries) in classes {
+            for (cls, entries) in classes {
+                if class.is_some_and(|wanted| wanted != cls) {
+                    continue;
+                }
                 for entry in entries {
                     if let Some(filter) = filter
                         && !filter.matches(lib)
-                        && !filter.matches(class)
+                        && !filter.matches(cls)
                         && !filter.matches(&entry.mangled)
                     {
                         continue;
@@ -232,7 +298,7 @@ impl Snapshot {
                     out.push('\t');
                     push_atom(out, lib);
                     out.push_str("::");
-                    push_atom(out, class);
+                    push_atom(out, cls);
                     out.push_str("::");
                     push_atom(out, &entry.mangled);
                     out.push('\n');
@@ -243,11 +309,30 @@ impl Snapshot {
         Ok(written)
     }
 
+    /// Name of a class coordinate's class, or NOT_FOUND.
+    pub fn class_name(&self, cid: i64) -> Result<String> {
+        self.analyzer()?
+            .cname_by_cid
+            .get(&cid)
+            .cloned()
+            .ok_or_else(|| {
+                Error::failure(
+                    rxd_core::Failure::NotFound,
+                    format!("no class at class:0x{cid:x}"),
+                )
+            })
+    }
+
     /// Reconstruct Dart-like pseudocode, handing each library to `sink`.
     ///
     /// Streaming keeps a whole-application decompile from holding every file in
     /// memory at once; a single function still renders through the same pipeline.
-    pub fn decompile(&self, only: Option<&str>, at: Option<u64>) -> Result<Vec<Rendered>> {
+    pub fn decompile(
+        &self,
+        only: Option<&str>,
+        at: Option<u64>,
+        class: Option<i64>,
+    ) -> Result<Vec<Rendered>> {
         let times = std::env::var("DART_AOT_TIMINGS").is_ok();
         let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
@@ -262,6 +347,34 @@ impl Snapshot {
                 return Err(Error::new(
                     "INVALID_QUERY",
                     format!("no library matches {prefix:?}"),
+                ));
+            }
+        }
+        if let Some(cid) = class {
+            let name = self
+                .analyzer()?
+                .cname_by_cid
+                .get(&cid)
+                .cloned()
+                .ok_or_else(|| {
+                    Error::failure(
+                        rxd_core::Failure::NotFound,
+                        format!("no class at class:0x{cid:x}"),
+                    )
+                })?;
+            let mut found = false;
+            for (_, classes) in &mut groups {
+                classes.retain(|(cls, entries)| {
+                    let keep = cls == &name && !entries.is_empty();
+                    found |= keep;
+                    keep
+                });
+            }
+            groups.retain(|(_, classes)| !classes.is_empty());
+            if !found {
+                return Err(Error::failure(
+                    rxd_core::Failure::NotFound,
+                    format!("class {name} has no function table"),
                 ));
             }
         }

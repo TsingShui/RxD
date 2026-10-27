@@ -247,6 +247,7 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
     /// Analyze Dart/Flutter AOT.
     #[command(after_long_help = "Examples:
   rxd dae info libapp.so
+  rxd dae classes libapp.so -f ClashConfig
   rxd dae functions libapp.so -f fl_clash
   rxd dae strings libapp.so -f Authorization
   rxd dae xref libapp.so --at 'str:0x6590'
@@ -259,7 +260,7 @@ xref decodes every function to find pool loads, so it takes seconds.
 decompile renders one function (--at) or whole libraries (--lib).")]
     #[command(
         display_order = 56,
-        long_about = "Analyze Dart/Flutter AOT: info, functions, pool strings, references, pseudocode"
+        long_about = "Analyze Dart/Flutter AOT: info, classes, functions, pool strings, references, pseudocode"
     )]
     Dae {
         #[command(subcommand)]

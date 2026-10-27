@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use super::Output;
 use super::table::{self, Cell};
 use clap::{Args, Subcommand};
+use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Result};
 use rxd_flutter::Snapshot;
@@ -22,6 +23,11 @@ pub enum Command {
         after_long_help = "Examples:\nrxd dae functions libapp.so\nrxd dae functions libapp.so -f fl_clash\nOutput: one row per function; at is the code entry offset, label is library::class::method.\nNames come from the snapshot's library and class tables, not from source.\nNext: rxd dae decompile libapp.so --lib <library prefix>."
     )]
     Functions(FunctionsOptions),
+    /// List classes (columns: at, full_name, methods).
+    #[command(
+        after_long_help = "Examples:\nrxd dae classes libapp.so -f ClashConfig\nOutput: at is class:0x<class id>, full_name is library::Class.\nmethods counts the class's own function-table entries; inherited members are not included.\nThe superclass chain is not exposed yet. Next: functions --class or decompile --class."
+    )]
+    Classes(ClassesOptions),
     /// List pool strings (columns: at, value).
     #[command(
         after_long_help = "Examples:\nrxd dae strings libapp.so -f token\nOutput: one row per decoded pool string; at is str:0x<object ref>.\nUndecodable entries are skipped; use xref to see which code loads one."
@@ -56,6 +62,20 @@ pub struct FunctionsOptions {
     #[command(flatten)]
     options: Options,
     /// Substring over the label, folded unless `--case sensitive`.
+    #[arg(short = 'f', long)]
+    filter: Option<String>,
+    /// Copy classes.at: list only this class's own members.
+    #[arg(long)]
+    class: Option<String>,
+    #[command(flatten)]
+    case: super::filter::CaseArgs,
+}
+
+#[derive(Args)]
+pub struct ClassesOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Substring over the class name, folded unless `--case sensitive`.
     #[arg(short = 'f', long)]
     filter: Option<String>,
     #[command(flatten)]
@@ -96,8 +116,11 @@ pub struct DecompileOptions {
     #[arg(long, conflicts_with = "at")]
     lib: Option<String>,
     /// Copy functions.at: render this one function only.
-    #[arg(long, value_parser = parse_address, conflicts_with = "lib")]
+    #[arg(long, value_parser = parse_address, conflicts_with_all = ["lib", "class"])]
     at: Option<u64>,
+    /// Copy classes.at: render every method of this class.
+    #[arg(long, value_parser = parse_class, conflicts_with_all = ["lib", "at"])]
+    class: Option<i64>,
 }
 
 impl Command {
@@ -105,6 +128,7 @@ impl Command {
         match self {
             Self::Info(options) => options,
             Self::Functions(options) => &options.options,
+            Self::Classes(options) => &options.options,
             Self::Strings(options) => &options.options,
             Self::Xref(options) => &options.options,
             Self::Decompile(options) => &options.options,
@@ -119,6 +143,7 @@ impl Command {
         match self {
             Self::Info(_) => "info",
             Self::Functions(_) => "functions",
+            Self::Classes(_) => "classes",
             Self::Strings(_) => "strings",
             Self::Xref(_) => "xref",
             Self::Decompile(_) => "decompile",
@@ -138,6 +163,13 @@ fn parse_ref(at: &str) -> Result<u64> {
     let digits = digits.strip_prefix("0x").unwrap_or(digits);
     u64::from_str_radix(digits, 16)
         .map_err(|_| Error::new("INVALID_QUERY", format!("expected str:0x<ref>, got {at}")))
+}
+
+/// Class coordinate as printed by `classes`: class:0x<id>.
+fn parse_class(text: &str) -> std::result::Result<i64, String> {
+    let digits = text.strip_prefix("class:").unwrap_or(text);
+    let digits = digits.strip_prefix("0x").unwrap_or(digits);
+    i64::from_str_radix(digits, 16).map_err(|_| format!("expected class:0x<id>, got {text}"))
 }
 
 pub fn execute(
@@ -163,18 +195,27 @@ pub fn execute(
         let bytes = match command {
             Command::Info(_) => {
                 let info = perf.measure("analyze", || snapshot.info())?;
-                let mut record = serde_json::to_vec(&json!({
-                    "record": "dae_info",
-                    "backend": "flutter",
-                    "command": "info",
-                    "sdk": info.sdk,
-                    "profile_status": info.status,
-                    "compressed_pointers": info.compressed_pointers,
-                    "libraries": info.libraries,
-                    "functions": info.functions,
-                    "platform_warning": info.platform_warning,
-                }))
-                .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
+                let mut value = envelope::record(
+                    "dart_snapshot",
+                    RecordMeta {
+                        source_id: Some(snapshot.source_id()),
+                        ..RecordMeta::default()
+                    },
+                    json!({
+                        "sdk": info.sdk,
+                        "profile_status": info.status,
+                        "compressed_pointers": info.compressed_pointers,
+                        "libraries": info.libraries,
+                        "functions": info.functions,
+                        "platform_warning": info.platform_warning,
+                    })
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+                );
+                envelope::attach_protocol(&mut value, "flutter", "info");
+                let mut record = serde_json::to_vec(&value)
+                    .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
                 record.push(b'\n');
                 record
             }
@@ -182,9 +223,25 @@ pub fn execute(
                 let filter = functions.filter.as_deref().map(|needle| {
                     rxd_core::filter::Contains::new(needle, functions.case.sensitive())
                 });
+                let class = match &functions.class {
+                    Some(text) => Some(snapshot.class_name(
+                        parse_class(text).map_err(|error| Error::new("INVALID_QUERY", error))?,
+                    )?),
+                    None => None,
+                };
                 let mut out = String::with_capacity(1 << 21);
                 perf.measure("analyze", || {
-                    snapshot.functions_into(&mut out, filter.as_ref())
+                    snapshot.functions_into(&mut out, filter.as_ref(), class.as_deref())
+                })?;
+                out.into_bytes()
+            }
+            Command::Classes(classes) => {
+                let filter = classes.filter.as_deref().map(|needle| {
+                    rxd_core::filter::Contains::new(needle, classes.case.sensitive())
+                });
+                let mut out = String::with_capacity(1 << 16);
+                perf.measure("analyze", || {
+                    snapshot.classes_into(&mut out, filter.as_ref())
                 })?;
                 out.into_bytes()
             }
@@ -223,22 +280,37 @@ pub fn execute(
             }
             Command::Decompile(decompile) => {
                 let rendered = perf.measure("analyze", || {
-                    snapshot.decompile(decompile.lib.as_deref(), decompile.at)
+                    snapshot.decompile(decompile.lib.as_deref(), decompile.at, decompile.class)
                 })?;
                 // One record per library, like every other fetch: a library scope
                 // stops being a single unbounded object.
+                let scope = match (&decompile.class, decompile.at, &decompile.lib) {
+                    (Some(cid), _, _) => Some(format!("class:0x{cid:x}")),
+                    (_, Some(at), _) => Some(format!("0x{at:x}")),
+                    (_, _, Some(lib)) => Some(format!("lib:{lib}")),
+                    _ => None,
+                };
                 let mut out = String::with_capacity(1 << 16);
                 for file in rendered {
-                    let mut record = serde_json::to_vec(&json!({
-                        "record": "dart_library",
-                        "backend": "flutter",
-                        "command": "decompile",
-                        "source_id": null,
-                        "name": file.name,
-                        "complete": true,
-                        "source": file.source,
-                    }))
-                    .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
+                    let mut value = envelope::record(
+                        "dart_library",
+                        RecordMeta {
+                            at: scope.as_deref(),
+                            source_id: Some(snapshot.source_id()),
+                            ..RecordMeta::default()
+                        },
+                        json!({
+                            "name": file.name,
+                            "complete": true,
+                            "source": file.source,
+                        })
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                    );
+                    envelope::attach_protocol(&mut value, "flutter", "decompile");
+                    let mut record = serde_json::to_vec(&value)
+                        .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
                     record.push(b'\n');
                     out.push_str(&String::from_utf8_lossy(&record));
                 }

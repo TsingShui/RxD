@@ -22,7 +22,7 @@ explicitly, then locate → associate
 | Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
-| Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `functions`, `strings`, `xref --at str:0x...` / `decompile --lib PREFIX` |
+| Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `classes`, `functions --class`, `strings`, `xref --at str:0x...` / `decompile --at|--class|--lib` |
 | PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac-rs` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
@@ -183,6 +183,8 @@ plain source mode fails when recovery is incomplete.
 
 ```sh
 rxd dae info libapp.so
+rxd dae classes libapp.so -f ClashConfig
+rxd dae functions libapp.so --class 'class:0x8f5'
 rxd dae functions libapp.so -f fl_clash
 rxd dae strings libapp.so -f Authorization
 rxd dae xref libapp.so --at 'str:0x6590'
@@ -198,8 +200,9 @@ so `--lib` and `-f` match that spelling. `strings` lists the object pool, and it
 `at` is the pool offset `xref` consumes: `xref` decodes every function and reports
 each instruction that loads the string, with the containing function in
 `context_at`. Matches come from the ARM64 pool-load encoding, so only the hits
-are decoded. `decompile --lib PREFIX` renders whole libraries as one `dart_library` record
-each, and `--at <functions.at>` renders one function; the output is machine-level pseudocode (registers, `mem()`
+are decoded. `classes` names each type with `class:0x<id>` and its own method count;
+`decompile` renders a whole library (`--lib PREFIX`), one class (`--class`), or
+one function (`--at`), one `dart_library` record per rendered file; the output is machine-level pseudocode (registers, `mem()`
 access, raw PC comments), not source Dart.
 
 ## Lua: prototypes, constants, instructions, source
