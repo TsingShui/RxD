@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 pub enum Command {
     /// List types as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd ilspy classes app.dll -f JsonReader\nOutput: class JSONL; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd ilspy get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
+        after_long_help = "Columns: at, full_name.\nExamples:\nrxd ilspy classes app.dll -f JsonReader\nOutput: class JSONL; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd ilspy get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
     )]
     Classes {
         /// One regular local managed PE DLL/EXE.
@@ -31,7 +31,7 @@ pub enum Command {
     },
     /// List fields as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd ilspy fields app.dll --class Example.Client -f token\nOutput: field JSONL; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd ilspy xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
+        after_long_help = "Columns: at, full_name.\nExamples:\nrxd ilspy fields app.dll --class Example.Client -f token\nOutput: field JSONL; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd ilspy xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
     )]
     Fields {
         /// One regular local managed PE DLL/EXE.
@@ -52,7 +52,7 @@ pub enum Command {
     },
     /// List methods as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd ilspy methods app.dll --class Example.Client -f Send\nOutput: method JSONL; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd ilspy get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
+        after_long_help = "Columns: at, full_name.\nExamples:\nrxd ilspy methods app.dll --class Example.Client -f Send\nOutput: method JSONL; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd ilspy get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
     )]
     Methods {
         /// One regular local managed PE DLL/EXE.
@@ -99,7 +99,7 @@ pub enum Command {
     },
     /// List user-string heap literals as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd ilspy strings app.dll -f Authorization\nOutput: string JSONL; at is a #US token, context_at an owning method, parent_at a type.\nNext: rxd ilspy get-method app.dll --at '<string.context_at>' --raw,\nor rxd ilspy xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have null caller/owner; equal values may be separate heap entries."
+        after_long_help = "Columns: at, value, context_at.\nExamples:\nrxd ilspy strings app.dll -f Authorization\nOutput: string JSONL; at is a #US token, context_at an owning method, parent_at a type.\nNext: rxd ilspy get-method app.dll --at '<string.context_at>' --raw,\nor rxd ilspy xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have null caller/owner; equal values may be separate heap entries."
     )]
     Strings {
         /// One regular local managed PE DLL/EXE.

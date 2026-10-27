@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 pub enum Command {
     /// List type-section signatures as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm types module.wasm\nOutput: type JSONL with func signatures and type:N coordinates; these are not functions."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm types module.wasm\nOutput: type JSONL with func signatures and type:N coordinates; these are not functions."
     )]
     Types {
         /// The regular local `.wasm` file to read.
@@ -30,7 +30,7 @@ pub enum Command {
     },
     /// List imports as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm imports module.wasm -f env\nOutput: import JSONL; function imports have detail.target_at = func:N for xref.\nImports have no defined body to fetch."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm imports module.wasm -f env\nOutput: import JSONL; function imports have detail.target_at = func:N for xref.\nImports have no defined body to fetch."
     )]
     Imports {
         /// The regular local `.wasm` file to read.
@@ -45,7 +45,7 @@ pub enum Command {
     },
     /// List exports as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm exports module.wasm -f sum\nOutput: export JSONL; copy detail.target_at (func:N) for exported function FETCH/xref.\nExport names are aliases, not function identities."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm exports module.wasm -f sum\nOutput: export JSONL; copy detail.target_at (func:N) for exported function FETCH/xref.\nExport names are aliases, not function identities."
     )]
     Exports {
         /// The regular local `.wasm` file to read.
@@ -59,7 +59,7 @@ pub enum Command {
         options: Options,
     },
     /// List module-defined functions as JSONL.
-    #[command(after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nOutput: function JSONL; at is func:N in the combined imported/defined index space.\nNext: rxd wasm get-function module.wasm --at '<function.at>'.\n--name is exact, -f is a substring; --at optionally selects an existing function.", mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Optional existing functions.at coordinate, func:N; omit to list functions")))]
+    #[command(after_long_help = "Columns: at, label.\nExamples:\nrxd wasm functions module.wasm -f sum\nOutput: function JSONL; at is func:N in the combined imported/defined index space.\nNext: rxd wasm get-function module.wasm --at '<function.at>'.\n--name is exact, -f is a substring; --at optionally selects an existing function.", mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Optional existing functions.at coordinate, func:N; omit to list functions")))]
     Functions {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
@@ -80,7 +80,7 @@ pub enum Command {
     },
     /// List tables as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm tables module.wasm\nOutput: table JSONL with table:N, limits and element types; not func:N."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm tables module.wasm\nOutput: table JSONL with table:N, limits and element types; not func:N."
     )]
     Tables {
         /// The regular local `.wasm` file to read.
@@ -95,7 +95,7 @@ pub enum Command {
     },
     /// List memories as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm memories module.wasm\nOutput: memory JSONL with memory:N and page limits."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm memories module.wasm\nOutput: memory JSONL with memory:N and page limits."
     )]
     Memories {
         /// The regular local `.wasm` file to read.
@@ -110,7 +110,7 @@ pub enum Command {
     },
     /// List globals as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm globals module.wasm -f counter\nOutput: global JSONL with global:N, type, mutability and initializer evidence."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm globals module.wasm -f counter\nOutput: global JSONL with global:N, type, mutability and initializer evidence."
     )]
     Globals {
         /// The regular local `.wasm` file to read.
@@ -125,7 +125,7 @@ pub enum Command {
     },
     /// List data segments as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm data module.wasm\nOutput: data JSONL with data:N, original segment bytes/ranges and active/passive mode."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm data module.wasm\nOutput: data JSONL with data:N, original segment bytes/ranges and active/passive mode."
     )]
     Data {
         /// The regular local `.wasm` file to read.
@@ -140,7 +140,7 @@ pub enum Command {
     },
     /// List element segments as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm elements module.wasm\nOutput: element JSONL with element:N and explicit function indices/ref expressions.\nDo not infer resolved call_indirect targets from a table inventory."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm elements module.wasm\nOutput: element JSONL with element:N and explicit function indices/ref expressions.\nDo not infer resolved call_indirect targets from a table inventory."
     )]
     Elements {
         /// The regular local `.wasm` file to read.
@@ -155,7 +155,7 @@ pub enum Command {
     },
     /// List decodable UTF-8 strings as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd wasm strings module.wasm -f hello\nOutput: string JSONL from data/name sections. These are not proven string-to-code uses.\nTo navigate code, list functions first and use func:N with xref/get-function."
+        after_long_help = "Columns: at, label.\nExamples:\nrxd wasm strings module.wasm -f hello\nOutput: string JSONL from data/name sections. These are not proven string-to-code uses.\nTo navigate code, list functions first and use func:N with xref/get-function."
     )]
     Strings {
         /// The regular local `.wasm` file to read.

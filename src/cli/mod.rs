@@ -66,8 +66,9 @@ mod xref;
     version,
     about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
     after_long_help = "Coordinates: at and context_at select the next fetch on the same input.
-Output: data-row JSONL; exit 0 required; zero rows means no matches.
+Output: one record per line; exit 0 required; zero rows means no matches.
 Filters: -f narrows listings; -m with --kind searches xref targets.
+Listings: TAB-separated columns; text is JSON-quoted; \\N means absent.
 Raw: --raw selects original instructions where reconstruction exists.
 Details: rxd BACKEND COMMAND --help; typed tools through rxd mcp.
 Engines: source builds may omit Kuna/ILSpy."

@@ -13,7 +13,7 @@ use super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
 pub enum Command {
     /// List class metadata as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nOutput: class JSONL; at is Lx/y;. Copy at into get-class for Java.\n--class is an exact internal/dotted/descriptor name; -f is a substring."
+        after_long_help = "Columns: at.\nExamples:\nrxd jar classes library.jar -f Client\nOutput: class JSONL; at is Lx/y;. Copy at into get-class for Java.\n--class is an exact internal/dotted/descriptor name; -f is a substring."
     )]
     Classes {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -31,7 +31,7 @@ pub enum Command {
     },
     /// List JAR/ZIP entries in central-directory order.
     #[command(
-        after_long_help = "Examples:\nrxd jar entries library.jar -f META-INF\nOutput: entry JSONL with names, compression and sizes. Entries are archive metadata,\nnot member coordinates. --release N controls multi-release class selection."
+        after_long_help = "Columns: name, uncompressed_size, compression.\nExamples:\nrxd jar entries library.jar -f META-INF\nOutput: entry JSONL with names, compression and sizes. Entries are archive metadata,\nnot member coordinates. --release N controls multi-release class selection."
     )]
     Entries {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -46,7 +46,7 @@ pub enum Command {
     },
     /// List fields as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd jar fields library.jar --class x.y -f token\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f a substring.\nNext: rxd jar xref library.jar --at '<field.at>'."
+        after_long_help = "Columns: at.\nExamples:\nrxd jar fields library.jar --class x.y -f token\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f a substring.\nNext: rxd jar xref library.jar --at '<field.at>'."
     )]
     Fields {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -67,7 +67,7 @@ pub enum Command {
     },
     /// List methods as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd jar methods library.jar --class x.y -f run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads. Next: get-method --at '<method.at>'."
+        after_long_help = "Columns: at.\nExamples:\nrxd jar methods library.jar --class x.y -f run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads. Next: get-method --at '<method.at>'."
     )]
     Methods {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -111,7 +111,7 @@ pub enum Command {
     },
     /// List constant-pool string literals as JSONL.
     #[command(
-        after_long_help = "Examples:\nrxd jar strings library.jar -f Authorization\nrxd jar xref library.jar -m Authorization --kind string\nOutput: string JSONL from CONSTANT_String literals, not every constant-pool Utf8 name.\nPool indices are not methods. xref.context_at routes to get-method for the caller."
+        after_long_help = "Columns: at, value.\nExamples:\nrxd jar strings library.jar -f Authorization\nrxd jar xref library.jar -m Authorization --kind string\nOutput: string JSONL from CONSTANT_String literals, not every constant-pool Utf8 name.\nPool indices are not methods. xref.context_at routes to get-method for the caller."
     )]
     Strings {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
