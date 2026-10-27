@@ -199,6 +199,10 @@ pub fn function_value_unused(decoded: &Decoded<'_>) -> Result<bool> {
                 continue;
             }
             "ldfunction" => return Ok(false),
+            "supercallspread" | "callruntime.supercallforwardallargs" => {
+                acc = false;
+                continue;
+            }
             _ => {}
         }
         if instruction.opcode.reads_acc() && acc {

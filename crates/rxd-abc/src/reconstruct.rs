@@ -55,6 +55,7 @@ struct Writer<'a, 'b> {
     arrow: bool,
     top_level_arrow: bool,
     module_body: bool,
+    generator: bool,
     escape_serial: usize,
     escapes: Vec<(u32, String)>,
     out: Output,
@@ -221,15 +222,14 @@ impl<'a, 'b> Writer<'a, 'b> {
     fn buffer(&mut self, instruction: &Instruction, object: bool) -> Result<()> {
         let offset = instruction.entity(1, EntityKind::Literal)?;
         let literals = self.abc.literals(offset)?;
-        if object && !literals.len().is_multiple_of(2) {
-            return Err(unsupported("object literal contains non-pair entries"));
-        }
         self.out.write_all(if object { b"{" } else { b"[" })?;
         let mut index = 0;
+        let mut first = true;
         while index < literals.len() {
-            if index > 0 {
+            if !first {
                 self.out.write_all(b", ")?;
             }
+            first = false;
             if object {
                 let LiteralValue::String(key) = &literals[index].value else {
                     return Err(unsupported("object literal has a non-string key"));
@@ -238,19 +238,64 @@ impl<'a, 'b> Writer<'a, 'b> {
                 key.write_quoted(&mut self.out)?;
                 self.out.write_all(b"]: ")?;
                 index += 1;
-            }
-            match (&literals[index].tag, &literals[index].value) {
-                (1, LiteralValue::Byte(_)) | (2..=5, _) => self.literal(&literals[index].value)?,
-                (0xff, LiteralValue::Byte(_)) => self.out.write_all(b"null")?,
-                _ => {
-                    return Err(unsupported(
-                        "literal array value needs method, accessor or nested-literal reconstruction",
-                    ));
+                if index >= literals.len() {
+                    return Err(unsupported("object literal key has no value"));
                 }
+                if let LiteralValue::Method(target) = literals[index].value {
+                    let size = literals
+                        .get(index + 1)
+                        .and_then(|literal| match &literal.value {
+                            LiteralValue::Integer(size) => Some(*size),
+                            LiteralValue::Affiliate(size) => Some(u32::from(*size)),
+                            _ => None,
+                        });
+                    if let Some(size) = size {
+                        self.out.write_all(b"Object.defineProperty(")?;
+                        self.method_value(target)?;
+                        write!(self.out, ", \"length\", {{value: {size}}})")?;
+                        index += 2;
+                    } else {
+                        self.method_value(target)?;
+                        index += 1;
+                    }
+                } else {
+                    let literal = &literals[index];
+                    match (&literal.tag, &literal.value) {
+                        (1, LiteralValue::Byte(_)) | (2..=5, _) => self.literal(&literal.value)?,
+                        (0xff, LiteralValue::Byte(_)) => self.out.write_all(b"null")?,
+                        _ => {
+                            return Err(unsupported(
+                                "literal array value needs method, accessor or nested-literal reconstruction",
+                            ));
+                        }
+                    }
+                    index += 1;
+                }
+            } else {
+                let literal = &literals[index];
+                match (&literal.tag, &literal.value) {
+                    (_, LiteralValue::Method(target)) => self.method_value(*target)?,
+                    (0xff, LiteralValue::Byte(_)) => self.out.write_all(b"null")?,
+                    (1, LiteralValue::Byte(_)) | (2..=5, _) => self.literal(&literal.value)?,
+                    _ => {
+                        return Err(unsupported(
+                            "literal array value needs method or scalar reconstruction",
+                        ));
+                    }
+                }
+                index += 1;
             }
-            index += 1;
         }
         self.out.write_all(if object { b"}" } else { b"]" })?;
+        Ok(())
+    }
+
+    fn method_value(&mut self, target: u32) -> Result<()> {
+        let new_target = self.new_target_expression();
+        write!(
+            self.out,
+            "_abc_capture_{target:x}({{env: __abc_env, hole: __abc_context.hole, newTarget: {new_target}}})"
+        )?;
         Ok(())
     }
 
@@ -375,6 +420,21 @@ impl<'a, 'b> Writer<'a, 'b> {
 
     fn emit_instruction(&mut self, instruction: &Instruction, depth: usize) -> Result<()> {
         let name = instruction.opcode.name;
+        if self.generator {
+            match name {
+                "creategeneratorobj" => return self.line(depth, "acc = void 0;"),
+                "suspendgenerator" => return Ok(()),
+                "resumegenerator" => return self.line(depth, "acc = __abc_resume;"),
+                "getresumemode" => return self.line(depth, "acc = 0;"),
+                "createiterresultobj" => {
+                    let value = self.register_text(instruction.register(1)?)?;
+                    self.indent(depth)?;
+                    writeln!(self.out, "__abc_resume = yield {value};")?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
         if let Some(plan) = &self.async_plan {
             if instruction.pc == plan.enter
                 || instruction.pc == plan.save
@@ -413,6 +473,15 @@ impl<'a, 'b> Writer<'a, 'b> {
             "return" => return self.line(depth, "return acc;"),
             "returnundefined" => return self.line(depth, "return;"),
             "throw" => return self.line(depth, "throw acc;"),
+            "throw.notexists" => {
+                return self.line(
+                    depth,
+                    "throw new TypeError(\"Throw method is not defined\");",
+                );
+            }
+            "throw.patternnoncoercible" => {
+                return self.line(depth, "throw new TypeError(\"object is not coercible\");");
+            }
             _ => {}
         }
         self.indent(depth)?;
@@ -1074,6 +1143,63 @@ impl<'a, 'b> Writer<'a, 'b> {
         best
     }
 
+    fn condition_chain(
+        &self,
+        start: usize,
+        target: usize,
+        end: usize,
+    ) -> Option<(usize, usize, Vec<usize>)> {
+        if target >= end {
+            return None;
+        }
+        let mut conditions = Vec::new();
+        let mut block = start;
+        loop {
+            if block >= end {
+                return None;
+            }
+            let range = self.graph.blocks[block];
+            let last = &self.decoded.instructions[range.end - 1];
+            if !last.opcode.is_conditional() || self.jump_target(last).ok()? != target {
+                return None;
+            }
+            conditions.push(block);
+            let next = block + 1;
+            if next >= end {
+                return None;
+            }
+            if next == target {
+                return None;
+            }
+            block = next;
+            let next_last = &self.decoded.instructions[self.graph.blocks[block].end - 1];
+            if !next_last.opcode.is_conditional() || self.jump_target(next_last).ok()? != target {
+                break;
+            }
+        }
+        let tail_block = block;
+        let tail_last = &self.decoded.instructions[self.graph.blocks[tail_block].end - 1];
+        if tail_last.opcode.is_conditional() || !tail_last.opcode.is_jump() {
+            return None;
+        }
+        let then_start = self.jump_target(tail_last).ok()?;
+        if then_start <= target || then_start >= end {
+            return None;
+        }
+        if then_start < 2 {
+            return None;
+        }
+        let else_tail = &self.decoded.instructions[self.graph.blocks[then_start - 1].end - 1];
+        if else_tail.opcode.is_conditional() || !else_tail.opcode.is_jump() {
+            return None;
+        }
+        let join = self.jump_target(else_tail).ok()?;
+        if join <= then_start || join > end {
+            return None;
+        }
+        Some((then_start, join, conditions))
+    }
+
     fn range(
         &mut self,
         start: usize,
@@ -1145,6 +1271,49 @@ impl<'a, 'b> Writer<'a, 'b> {
             let last = &self.decoded.instructions[block.end - 1];
             if last.opcode.is_conditional() {
                 let target = self.jump_target(last)?;
+                if target > cursor + 1
+                    && let Some(chain) = self.condition_chain(cursor, target, end)
+                {
+                    let (then_start, join, conditions) = chain;
+                    self.escape_serial += 1;
+                    let flag = format!("__abc_taken_{}", self.escape_serial);
+                    self.indent(depth)?;
+                    writeln!(self.out, "let {flag} = false;")?;
+                    for (index, block_index) in conditions.iter().enumerate() {
+                        if index > 0 {
+                            self.indent(depth)?;
+                            writeln!(self.out, "if (!{flag}) {{")?;
+                        }
+                        let block = self.graph.blocks[*block_index];
+                        self.visited[*block_index] = true;
+                        let block_depth = depth + usize::from(index > 0);
+                        for instruction in &self.decoded.instructions[block.first..block.end - 1] {
+                            self.emit_instruction(instruction, block_depth)?;
+                        }
+                        let terminator = &self.decoded.instructions[block.end - 1];
+                        self.indent(block_depth)?;
+                        self.out.write_all(b"if (")?;
+                        self.condition(terminator)?;
+                        writeln!(self.out, ") {{ {flag} = true; }}")?;
+                    }
+                    for _ in 1..conditions.len() {
+                        self.line(depth, "}")?;
+                    }
+                    let tail = conditions
+                        .last()
+                        .copied()
+                        .ok_or_else(|| invalid("empty ABC condition chain"))?
+                        + 1;
+                    self.visited[tail] = true;
+                    self.indent(depth)?;
+                    writeln!(self.out, "if ({flag}) {{")?;
+                    self.range(target, then_start, join, context, None, depth + 1)?;
+                    self.line(depth, "} else {")?;
+                    self.range(then_start, join, join, context, None, depth + 1)?;
+                    self.line(depth, "}")?;
+                    cursor = join;
+                    continue;
+                }
                 if target <= end && target > cursor + 1 {
                     let previous = self.graph.blocks[target - 1];
                     let tail = &self.decoded.instructions[previous.end - 1];
@@ -1177,13 +1346,12 @@ impl<'a, 'b> Writer<'a, 'b> {
                     }
                 }
             }
-            let terminator =
-                last.opcode.is_jump() || last.opcode.is_return() || last.opcode.name == "throw";
+            let terminator = last.opcode.is_jump() || crate::instructions::is_terminator(last);
             let body_end = if terminator { block.end - 1 } else { block.end };
             for instruction in &self.decoded.instructions[block.first..body_end] {
                 self.emit_instruction(instruction, depth)?;
             }
-            if last.opcode.is_return() || last.opcode.name == "throw" {
+            if crate::instructions::is_terminator(last) {
                 self.emit_instruction(last, depth)?;
                 cursor += 1;
                 continue;
@@ -1229,7 +1397,10 @@ impl<'a, 'b> Writer<'a, 'b> {
                     cursor += 1;
                     continue;
                 }
-                return Err(unsupported("unstructured ABC jump target"));
+                return Err(unsupported(format!(
+                    "unstructured ABC jump target at PC {:#x} targeting {:#x}",
+                    last.pc, self.decoded.instructions[self.graph.blocks[target].first].pc
+                )));
             }
             if target == cursor + 1 {
                 cursor += 1;
@@ -1479,6 +1650,7 @@ struct Plan<'a> {
     uses_context: bool,
     uses_this: bool,
     func_unused: bool,
+    generator: bool,
     registers: Vec<u32>,
 }
 
@@ -1673,6 +1845,7 @@ impl<'a> Abc<'a> {
             arrow: plan.arrow,
             top_level_arrow: true,
             module_body: true,
+            generator: plan.generator,
             escape_serial: 0,
             escapes: Vec::new(),
             out: Output::new(self.budget.output_bytes),
@@ -1792,6 +1965,27 @@ impl<'a> Abc<'a> {
                         }
                         queue.push(child);
                     }
+                    "createobjectwithbuffer" | "createarraywithbuffer" => {
+                        let offset = instruction.entity(1, EntityKind::Literal)?;
+                        for literal in self.literals(offset)?.iter() {
+                            let LiteralValue::Method(target) = literal.value else {
+                                continue;
+                            };
+                            let child = self.method(target)?;
+                            if child.record != current.record {
+                                return Err(invalid(
+                                    "ABC literal method belongs to another record",
+                                ));
+                            }
+                            if target != root.offset
+                                && !scan.functions.iter().any(|item| item.offset == target)
+                            {
+                                self.check_storage::<Method>(scan.functions.len() + 1)?;
+                                scan.functions.push(child.clone());
+                            }
+                            queue.push(child);
+                        }
+                    }
                     "defineclasswithbuffer" => {
                         let class = ClassPlan::parse(
                             self,
@@ -1906,12 +2100,65 @@ impl<'a> Abc<'a> {
             ..implicit
         };
         let kind = ((method.flags >> 8) & 0xff) as u8;
-        if !matches!(kind, 0 | 1 | 2 | 4 | 6) {
+        if !matches!(kind, 0 | 1 | 2 | 4 | 6 | 7) {
             return Err(unsupported(format!(
                 "ABC function kind {kind:#x} needs additional reconstruction"
             )));
         }
         let arrow = matches!(kind, 2 | 6);
+        let mut generator = false;
+        let mut generator_register = None;
+        let mut generator_save = 0usize;
+        for (index, instruction) in decoded.instructions.iter().enumerate() {
+            if instruction.opcode.name != "creategeneratorobj" {
+                continue;
+            }
+            if generator {
+                return Err(unsupported("method contains several generator objects"));
+            }
+            let save = decoded
+                .instructions
+                .get(index + 1)
+                .filter(|next| next.opcode.name == "sta")
+                .ok_or_else(|| unsupported("generator object is not saved to a register"))?;
+            generator = true;
+            generator_register = Some(save.register(0)?);
+            generator_save = index + 1;
+        }
+        if let Some(object) = generator_register {
+            for (index, instruction) in decoded.instructions.iter().enumerate().skip(generator_save)
+            {
+                if !instruction.operands.iter().any(
+                    |operand| matches!(operand, Operand::Register(register) if *register == object),
+                ) {
+                    continue;
+                }
+                match instruction.opcode.name {
+                    "creategeneratorobj" => {}
+                    "suspendgenerator" | "asyncgeneratorreject"
+                        if instruction.register(0)? == object => {}
+                    "sta" if instruction.register(0)? == object => {}
+                    "resumegenerator" => {}
+                    "lda" if instruction.register(0)? == object => {
+                        let next = decoded.instructions.get(index + 1);
+                        if next.is_none_or(|next| {
+                            !matches!(next.opcode.name, "resumegenerator" | "getresumemode")
+                        }) {
+                            return Err(unsupported("generator object escapes its state machine"));
+                        }
+                    }
+                    _ => {
+                        return Err(unsupported(format!(
+                            "generator object escapes its state machine at PC {:#x} ({})",
+                            instruction.pc, instruction.opcode.name
+                        )));
+                    }
+                }
+            }
+        }
+        if generator && arrow {
+            return Err(unsupported("lexical function cannot be a generator"));
+        }
         let mut derived = false;
         let mut uses_super = false;
         for instruction in &decoded.instructions {
@@ -1957,23 +2204,38 @@ impl<'a> Abc<'a> {
             ));
         }
         let ordinary_receivers = crate::fresh::ordinary_receivers(self, &decoded, &graph)?;
-        let uses_env = decoded.instructions.iter().any(|instruction| {
+        let buffer_methods = decoded.instructions.iter().any(|instruction| {
             matches!(
                 instruction.opcode.name,
-                "newlexenv"
-                    | "wide.newlexenv"
-                    | "newlexenvwithname"
-                    | "wide.newlexenvwithname"
-                    | "ldlexvar"
-                    | "wide.ldlexvar"
-                    | "stlexvar"
-                    | "wide.stlexvar"
-                    | "poplexenv"
-                    | "definefunc"
-                    | "definemethod"
-                    | "defineclasswithbuffer"
-            )
+                "createobjectwithbuffer" | "createarraywithbuffer"
+            ) && instruction
+                .entity(1, EntityKind::Literal)
+                .ok()
+                .and_then(|offset| self.literals(offset).ok())
+                .is_some_and(|literals| {
+                    literals
+                        .iter()
+                        .any(|literal| matches!(literal.value, LiteralValue::Method(_)))
+                })
         });
+        let uses_env = buffer_methods
+            || decoded.instructions.iter().any(|instruction| {
+                matches!(
+                    instruction.opcode.name,
+                    "newlexenv"
+                        | "wide.newlexenv"
+                        | "newlexenvwithname"
+                        | "wide.newlexenvwithname"
+                        | "ldlexvar"
+                        | "wide.ldlexvar"
+                        | "stlexvar"
+                        | "wide.stlexvar"
+                        | "poplexenv"
+                        | "definefunc"
+                        | "definemethod"
+                        | "defineclasswithbuffer"
+                )
+            });
         let uses_context = force_context
             || uses_env
             || decoded.instructions.iter().any(|instruction| {
@@ -2032,6 +2294,7 @@ impl<'a> Abc<'a> {
             uses_context,
             uses_this,
             func_unused,
+            generator,
             registers,
         })
     }
@@ -2067,6 +2330,7 @@ impl<'a> Abc<'a> {
             arrow: plan.arrow,
             top_level_arrow: options.top_level_arrow,
             module_body: false,
+            generator: plan.generator,
             escape_serial: 0,
             escapes: Vec::new(),
             out: Output::new(self.budget.output_bytes),
@@ -2075,6 +2339,9 @@ impl<'a> Abc<'a> {
         writer.line(depth, "let acc;")?;
         if plan.async_plan.as_ref().is_some_and(|plan| plan.awaits) {
             writer.line(depth, "let __abc_await;")?;
+        }
+        if plan.generator {
+            writer.line(depth, "let __abc_resume;")?;
         }
         if plan.uses_env {
             writer.line(depth, "let __abc_env = __abc_context.env;")?;
@@ -2100,14 +2367,17 @@ impl<'a> Abc<'a> {
         prefix.extend_from_slice(&writer.out);
         let end = writer.graph.blocks.len();
         let structured = writer.range(0, end, end, None, None, depth).and_then(|()| {
-            if writer
+            if let Some(index) = writer
                 .graph
                 .reachable
                 .iter()
                 .zip(&writer.visited)
-                .any(|(reachable, visited)| *reachable && !visited)
+                .position(|(reachable, visited)| *reachable && !visited)
             {
-                return Err(unsupported("reachable ABC blocks were not reconstructed"));
+                return Err(unsupported(format!(
+                    "reachable ABC block at PC {:#x} of method:0x{:x} was not reconstructed",
+                    writer.graph.blocks[index].first, writer.decoded.method
+                )));
             }
             Ok(())
         });
@@ -2136,6 +2406,7 @@ impl<'a> Abc<'a> {
             2 => format!("({params}) => {{\n"),
             6 => format!("async ({params}) => {{\n"),
             4 => format!("async function {name}({params}) {{\n"),
+            _ if plan.generator => format!("function* {name}({params}) {{\n"),
             _ => format!("function {name}({params}) {{\n"),
         };
         if !options.inline {
@@ -2174,6 +2445,9 @@ impl<'a> Abc<'a> {
         }
         if matches!(plan.kind, 4 | 6) {
             output.write_all(b"async ")?;
+        }
+        if plan.generator {
+            output.write_all(b"*")?;
         }
         writeln!(output, "{name}({}) {{", self.params(plan))?;
         let body = self.body(
@@ -2327,6 +2601,7 @@ impl<'a> Abc<'a> {
                 )?;
             }
             4 => writeln!(output, "async function {name}({params}) {{")?,
+            _ if plan.generator => writeln!(output, "function* {name}({params}) {{")?,
             _ => writeln!(output, "function {name}({params}) {{")?,
         }
         let body = self.body(

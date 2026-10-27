@@ -87,6 +87,14 @@ pub struct Instruction {
     pub branch: Option<u32>,
 }
 
+pub fn is_terminator(instruction: &Instruction) -> bool {
+    instruction.opcode.is_return()
+        || matches!(
+            instruction.opcode.name,
+            "throw" | "throw.notexists" | "throw.patternnoncoercible" | "throw.deletesuperproperty"
+        )
+}
+
 impl Instruction {
     pub fn end(&self) -> u32 {
         self.pc + u32::from(self.opcode.size)

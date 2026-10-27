@@ -85,9 +85,7 @@ impl Graph {
                         .map_err(|_| invalid("ABC branch target is not an instruction boundary"))?,
                 );
             }
-            if (instruction.branch.is_some()
-                || instruction.opcode.is_return()
-                || instruction.opcode.name == "throw")
+            if (instruction.branch.is_some() || crate::instructions::is_terminator(instruction))
                 && index + 1 < instructions.len()
             {
                 leaders.push(index + 1);
@@ -163,8 +161,7 @@ impl Graph {
                 }
             }
             if (!instruction.opcode.is_jump() || instruction.opcode.is_conditional())
-                && !instruction.opcode.is_return()
-                && instruction.opcode.name != "throw"
+                && !crate::instructions::is_terminator(instruction)
             {
                 if index + 1 >= blocks.len() {
                     return Err(invalid(
