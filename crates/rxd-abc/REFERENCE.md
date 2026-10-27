@@ -46,6 +46,11 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   uninitialized sentinel). New environments initialize all slots to that sentinel;
   this represents captures without guessing variable names or decompiling callers.
 
+## Validation
+
+See `VALIDATION.md` for pinned hashes, entity mapping, coverage, differential
+methodology, safety contracts, release measurements and reproduction commands.
+
 ## Source reconstruction scope
 
 - Methods and records are reconstructed on demand from the selected coordinate;
