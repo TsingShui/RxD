@@ -203,14 +203,6 @@ fn input() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wasm/fixture.wasm")
 }
 
-fn simd_input() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wasm/simd.wasm")
-}
-
-fn scale_input() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wasm/scale.wasm")
-}
-
 fn run(command: &str, path: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["wasm", command])
@@ -228,16 +220,6 @@ fn records_of(rows: &[Value], record: &str) -> Vec<Value> {
 }
 
 /// The `at` a `functions` row prints, which is exactly what `--at` accepts.
-fn func_at(path: &Path, index: u64) -> String {
-    wasm_jsonl(&run("functions", path, &["--at", &format!("func:{index}")]))
-        .into_iter()
-        .find(|row| row["record"] == "function")
-        .unwrap_or_else(|| panic!("missing function {index}"))["at"]
-        .as_str()
-        .unwrap()
-        .to_owned()
-}
-
 fn get(path: &Path, at: &str) -> Value {
     let out = run("get-function", path, &["--at", at]);
     success(&out);
