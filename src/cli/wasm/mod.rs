@@ -362,6 +362,17 @@ fn execute_inner(
         let at = selector.resolve()?;
         let position = module.defined_position_at(&at)?;
         let view = perf.measure("decode", || rxd_wasm::get_view(&module, position, *raw))?;
+        // A successful reconstruction is the answer; `--raw` or a fallback stays evidence.
+        if !*raw && view.decompiled {
+            let source = view.code.clone().unwrap_or_default();
+            perf.record("query", query_start);
+            perf.counters.records = Some(1);
+            perf.counters.output_bytes = Some(source.len());
+            perf.measure("write", || {
+                super::write_output(source.as_bytes(), options.output.as_deref(), sink)
+            })?;
+            return Ok(());
+        }
         let mut value = record(
             "function_view",
             RecordMeta {

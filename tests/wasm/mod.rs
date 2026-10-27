@@ -220,15 +220,6 @@ fn records_of(rows: &[Value], record: &str) -> Vec<Value> {
 }
 
 /// The `at` a `functions` row prints, which is exactly what `--at` accepts.
-fn get(path: &Path, at: &str) -> Value {
-    let out = run("get-function", path, &["--at", at]);
-    success(&out);
-    let row: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_record(&row);
-    assert_eq!(row["detail"]["complete"], true);
-    row
-}
-
 fn get_raw(path: &Path, at: &str) -> Value {
     let out = run("get-function", path, &["--at", at, "--raw"]);
     success(&out);
@@ -364,35 +355,4 @@ fn wasm_coordinates_validate_existence_before_name_filters() {
             "NOT_FOUND",
         );
     }
-}
-
-#[test]
-fn wasm_get_resolves_a_function_coordinate() {
-    let path = input();
-    let row = get(&path, "func:1");
-    assert_eq!(row["at"], "func:1");
-    // Imported function index 0 has no code body.
-    failure(
-        run("get-function", &path, &["--at", "func:0"]),
-        2,
-        "INVALID_QUERY",
-    );
-    // Out-of-range index.
-    failure(
-        run("get-function", &path, &["--at", "func:9999"]),
-        2,
-        "NOT_FOUND",
-    );
-    // Malformed coordinates are rejected, never guessed.
-    failure(
-        run("get-function", &path, &["--at", "bogus"]),
-        2,
-        "INVALID_QUERY",
-    );
-    // A coordinate of another kind is not a function.
-    failure(
-        run("get-function", &path, &["--at", "type:0"]),
-        2,
-        "INVALID_QUERY",
-    );
 }

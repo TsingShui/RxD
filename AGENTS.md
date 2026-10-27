@@ -225,8 +225,10 @@ envelope and no `columns`/`rows` document. The first cell selects the row, so a
 listing never needs a header to be parsed; text cells are JSON-quoted and `\N`
 marks an absent value. Each command's long help opens with its own `Columns:`
 line and the root help states the format once, so a shape change updates both.
-Fetch commands (`get-*`, `decompile`, `get-code`) still emit one full JSON
-record. Do not add presentation columns, padding or per-backend dialects.
+Source reconstruction (`decompile`) prints the reconstructed source itself, one
+labelled block per unit, and never wraps it in a record. Fetch commands (`get-*`,
+`get-code`) still emit one full JSON record. Do not add presentation columns,
+padding or per-backend dialects.
 
 `xref` is one command, not per-kind subcommands. Preserve argument errors for
 contradictory kinds and distinguish a missing coordinate from zero search hits.

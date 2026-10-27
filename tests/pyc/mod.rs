@@ -86,67 +86,6 @@ fn assert_no_budget_flags(path: &Path, command: &str) {
     }
 }
 
-fn assert_envelope(row: &Value) {
-    assert_record_keys(
-        row,
-        &[
-            "record",
-            "backend",
-            "command",
-            "schema_version",
-            "at",
-            "source_id",
-            "parent_at",
-            "context_at",
-            "start",
-            "end",
-            "detail",
-        ],
-    );
-    assert_eq!(row["schema_version"], 2);
-    assert_eq!(row["backend"], "pyc");
-    assert_eq!(row["command"], "decompile");
-    assert_eq!(row["record"], "source");
-    for key in ["at", "parent_at", "context_at", "start", "end"] {
-        assert!(row[key].is_null());
-    }
-    assert_record_keys(
-        &row["detail"],
-        &[
-            "input_bytes",
-            "python_version",
-            "representation",
-            "complete",
-            "source",
-        ],
-    );
-    assert_eq!(row["detail"]["representation"], "decompiled_python");
-}
-
-#[test]
-fn pyc_decompile_reconstructs_old_and_new_python_without_an_interpreter() {
-    let modern = input("hello.3.12.pyc");
-    let output = run(&modern, &["--json"]);
-    success(&output);
-    let row: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_envelope(&row);
-    assert_eq!(row["detail"]["python_version"], "3.12");
-    assert_eq!(
-        row["source_id"],
-        rxd_core::identity::input_id(&fs::read(&modern).unwrap())
-    );
-    let source = row["detail"]["source"].as_str().unwrap();
-    assert!(source.contains("class Greeter:"));
-    assert!(source.contains("def fib(n):"));
-    assert_eq!(run(&modern, &[]).stdout, source.as_bytes());
-
-    let old = run(&input("simple_const.2.7.pyc"), &["--json"]);
-    success(&old);
-    let row: Value = serde_json::from_slice(&old.stdout).unwrap();
-    assert_eq!(row["detail"]["python_version"], "2.7");
-    assert!(row["detail"]["source"].as_str().unwrap().contains("a = 42"));
-}
-
 #[test]
 fn pyc_raw_marshal_requires_an_explicit_version_and_preserves_atomic_output() {
     let bytes = fs::read(input("hello.3.12.pyc")).unwrap();

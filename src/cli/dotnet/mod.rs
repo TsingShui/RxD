@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, io::Write, path::PathBuf};
 
 use super::filter::CaseArgs;
 use super::xref::Selector;
@@ -302,6 +302,13 @@ fn execute_inner(
                 &unresolved_operands(&instructions),
             )
         });
+        if !*raw {
+            // A reconstruction is the answer: print the C# (or the engine's IL
+            // fallback) directly; the record stays for `--raw` evidence.
+            let source = decompilation.code.clone().unwrap_or_default();
+            output.write_all(source.as_bytes())?;
+            return Ok(());
+        }
         let value = fetch_record(
             "method_body",
             command.name(),
@@ -354,6 +361,12 @@ fn execute_inner(
                 rxd_dotnet::render_class(&input, &class, limits)
             })?
         };
+        if !*raw {
+            // A reconstruction is the answer: print it, keep the record for --raw.
+            let source = rendered.code.clone().unwrap_or_default();
+            output.write_all(source.as_bytes())?;
+            return Ok(());
+        }
         let mut payload = detail(
             json!({"work_used":class.work_used,"representation":rendered.representation,"decompiled":rendered.decompiled,"reason":rendered.reason,"reason_detail":rendered.reason.as_deref().map(|reason| describe_class_reason(reason, class.methods.len())),"warnings":rendered.warnings,"code":rendered.code,"mapping":rendered.mapping,"complete":true}),
         );

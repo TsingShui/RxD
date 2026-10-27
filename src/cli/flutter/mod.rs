@@ -40,7 +40,7 @@ pub enum Command {
     Xref(XrefOptions),
     /// Reconstruct Dart-like pseudocode for whole libraries.
     #[command(
-        after_long_help = "Examples:\nrxd dae functions libapp.so -f fl_clash\nrxd dae decompile libapp.so --at 0x532ad0\nrxd dae decompile libapp.so --lib fl_clash\nOutput: one dart_library record per rendered library, each with name and source.\n--at copies functions.at and renders that function alone; --lib widens to a package.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart.\nWhole-library rendering runs the upstream decompiler: expect seconds, not milliseconds."
+        after_long_help = "Examples:\nrxd dae decompile libapp.so --at 0x532ad0\nrxd dae decompile libapp.so --class 'class:0x8f5'\nrxd dae decompile libapp.so --lib fl_clash\nDefault stdout is Dart pseudocode, one `// ===== <file> =====` block per rendered library.\n--at copies functions.at (one function), --class copies classes.at, --lib widens to a package.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart."
     )]
     Decompile(DecompileOptions),
 }
@@ -282,37 +282,17 @@ pub fn execute(
                 let rendered = perf.measure("analyze", || {
                     snapshot.decompile(decompile.lib.as_deref(), decompile.at, decompile.class)
                 })?;
-                // One record per library, like every other fetch: a library scope
-                // stops being a single unbounded object.
-                let scope = match (&decompile.class, decompile.at, &decompile.lib) {
-                    (Some(cid), _, _) => Some(format!("class:0x{cid:x}")),
-                    (_, Some(at), _) => Some(format!("0x{at:x}")),
-                    (_, _, Some(lib)) => Some(format!("lib:{lib}")),
-                    _ => None,
-                };
+                // Plain pseudocode, one labelled block per rendered library: source
+                // is read directly, never unwrapped from a record.
                 let mut out = String::with_capacity(1 << 16);
                 for file in rendered {
-                    let mut value = envelope::record(
-                        "dart_library",
-                        RecordMeta {
-                            at: scope.as_deref(),
-                            source_id: Some(snapshot.source_id()),
-                            ..RecordMeta::default()
-                        },
-                        json!({
-                            "name": file.name,
-                            "complete": true,
-                            "source": file.source,
-                        })
-                        .as_object()
-                        .cloned()
-                        .unwrap_or_default(),
-                    );
-                    envelope::attach_protocol(&mut value, "flutter", "decompile");
-                    let mut record = serde_json::to_vec(&value)
-                        .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
-                    record.push(b'\n');
-                    out.push_str(&String::from_utf8_lossy(&record));
+                    out.push_str("// ===== ");
+                    out.push_str(&file.name);
+                    out.push_str(" =====\n");
+                    out.push_str(&file.source);
+                    if !file.source.ends_with('\n') {
+                        out.push('\n');
+                    }
                 }
                 out.into_bytes()
             }

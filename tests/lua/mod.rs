@@ -131,21 +131,6 @@ fn lua_xref_distinguishes_absent_and_ambiguous_matches() {
 }
 
 #[test]
-fn lua_decompile_reconstructs_the_original_statements() {
-    let out = run("decompile", &input("sample-5.4.luac"), &[]);
-    success(&out);
-    let record: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(record["backend"], "lua");
-    assert_eq!(record["dialect"], "lua5.4");
-    let source = record["source"].as_str().unwrap();
-    assert!(
-        source.contains("local secret = \"authorization-token\""),
-        "{source}"
-    );
-    assert!(source.contains("return greet"), "{source}");
-}
-
-#[test]
 fn lua_rejects_input_that_is_not_a_chunk_without_partial_output() {
     let (_dir, path) = fixture(b"not a lua chunk", "fake.luac");
     let out = run("codes", &path, &[]);

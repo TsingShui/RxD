@@ -166,7 +166,7 @@ rxd pyc xref module.pyc --at "$CONSTANT_AT"
 rxd pyc get-code module.pyc --at "$CODE_AT"
 rxd pyc xref module.pyc --kind name --at token --within "$CODE_AT"
 rxd pyc xref module.pyc --kind name -m token
-rxd pyc decompile module.pyc --json
+rxd pyc decompile module.pyc
 ```
 
 Static navigation accepts the supported final CPython 3.8–3.13 formats, not every
@@ -176,8 +176,8 @@ Constant occurrences remain distinct even when values/containers are shared.
 `codes`/`strings` do not imply that instructions have been scanned. `get-code`
 preserves instructions, caches, tables and location evidence; names are explicit
 bytecode facts, not resolved duck-typed calls. Whole-module source reconstruction
-is bounded and has independent completeness: inspect `detail.complete` in JSON;
-plain source mode fails when recovery is incomplete.
+is bounded: `decompile` prints Python source and fails when recovery is incomplete,
+so a partial module never reaches stdout.
 
 ## Dart AOT (Flutter): snapshot info, functions, pseudocode
 

@@ -8,12 +8,10 @@ use std::path::{Path, PathBuf};
 use super::filter::CaseArgs;
 use super::xref::Selector;
 use clap::{Args, Subcommand};
-use rxd_core::envelope::{self, RecordMeta};
 use rxd_core::output::Output;
 use rxd_core::perf::Perf;
 use rxd_core::{Budget, Error, Result};
 use rxd_pyc::Limits;
-use serde_json::json;
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -92,7 +90,7 @@ pub enum Command {
     },
     /// Reconstruct the whole module as Python.
     #[command(
-        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile module.pyc --json\nrxd pyc decompile raw.marshal --version 3.12 -o recovered.py\nReconstruct the whole module, not a selected code:N.\nDefault stdout is Python text; incomplete recovery fails without partial text.\n--json returns one source record with detail.source and detail.complete.\nFor original selected bytecode use codes -> get-code --at instead."
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile raw.marshal --version 3.12 -o recovered.py\nReconstruct the whole module, not a selected code:N.\nstdout is Python source; incomplete recovery fails without partial text.\nFor original selected bytecode use codes -> get-code --at instead."
     )]
     Decompile {
         /// One regular .pyc file, or raw marshal with explicit --version X.Y.
@@ -100,9 +98,6 @@ pub enum Command {
         /// Interpret input as raw marshal for the exact Python version X.Y.
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
-        /// Include source identity and an explicit completeness flag.
-        #[arg(long)]
-        json: bool,
         #[command(flatten)]
         options: Options,
     },
@@ -287,7 +282,6 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
     let Command::Decompile {
         input,
         version,
-        json,
         options,
     } = command
     else {
@@ -298,42 +292,15 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
     let result = rxd_pyc::run(&input, version, limits, perf)?;
     perf.source_id = Some(result.source_id.clone());
     perf.counters.input_bytes = Some(result.input_bytes);
-    if !json && !result.complete {
+    if !result.complete {
         return Err(Error::new(
             "INCOMPLETE_DECOMPILATION",
-            "source reconstruction is incomplete; rerun with --json to inspect the partial result",
+            "source reconstruction is incomplete; no partial source is written",
         ));
     }
-    let bytes = if json {
-        perf.measure("serialize", || -> Result<Vec<u8>> {
-            let mut row = envelope::record(
-                "source",
-                RecordMeta {
-                    source_id: Some(&result.source_id),
-                    ..RecordMeta::default()
-                },
-                json!({
-                    "input_bytes": result.input_bytes,
-                    "python_version": result.version,
-                    "representation": "decompiled_python",
-                    "complete": result.complete,
-                    "source": result.source,
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            );
-            let object = row.as_object_mut().unwrap();
-            object.insert("schema_version".into(), json!(envelope::SCHEMA_VERSION));
-            object.insert("backend".into(), json!("pyc"));
-            object.insert("command".into(), json!("decompile"));
-            let mut writer = Output::new(options.budget.output_bytes);
-            writer.json_line(&row)?;
-            Ok(writer.into_bytes())
-        })?
-    } else {
-        result.source.into_bytes()
-    };
+    let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
+        Ok(result.source.into_bytes())
+    })?;
     if options
         .budget
         .output_bytes

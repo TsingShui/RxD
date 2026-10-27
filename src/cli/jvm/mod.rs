@@ -330,31 +330,8 @@ fn execute_inner(
         };
         let coordinate = selector.resolve()?;
         let source = rxd_jvm::render_class(&input, &coordinate, limits)?;
-        // One FETCH is one record: the source is a field of it, not the whole answer, so a
-        // consumer parses the same envelope as every other command.
-        let mut body = record(
-            "class_body",
-            RecordMeta {
-                at: Some(coordinate.as_str()),
-                ..RecordMeta::default()
-            },
-            json!({
-                "representation": "java",
-                "decompiled": true,
-                "complete": true,
-                "code": source,
-            })
-            .as_object()
-            .unwrap()
-            .clone(),
-        );
-        body["backend"] = json!("jvm");
-        body["command"] = json!("get-class");
-        body["schema_version"] = json!(SCHEMA_VERSION);
-        body["source_id"] = json!(input.source_id);
-        let mut output = Vec::new();
-        append(&mut output, &body)?;
-        super::write_output(&output, options.output.as_deref(), sink)?;
+        // Reconstruction is the answer: print the source, never wrap it in a record.
+        super::write_output(source.as_bytes(), options.output.as_deref(), sink)?;
         return Ok(());
     }
     if let Command::Strings {
@@ -592,28 +569,7 @@ fn execute_inner(
             append(&mut output, &bytecode)?;
         } else {
             let source = rxd_jvm::render_method(&input, &at, limits)?;
-            let mut body = record(
-                "method_body",
-                RecordMeta {
-                    at: Some(at.as_str()),
-                    ..RecordMeta::default()
-                },
-                json!({
-                    "representation": "java",
-                    "decompiled": true,
-                    "complete": true,
-                    "code": source,
-                    "instructions": serde_json::Value::Null,
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            );
-            body["backend"] = json!("jvm");
-            body["command"] = json!("get-method");
-            body["schema_version"] = json!(SCHEMA_VERSION);
-            body["source_id"] = json!(input.source_id);
-            append(&mut output, &body)?;
+            super::write_output(source.as_bytes(), options.output.as_deref(), sink)?;
         }
     } else {
         let class_name = class_filter.as_deref().map(rxd_jvm::normalize_class_name);

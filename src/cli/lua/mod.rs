@@ -9,7 +9,6 @@ use clap::{Args, Subcommand};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Result};
 use rxd_lua::Chunk;
-use serde_json::json;
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -35,7 +34,7 @@ pub enum Command {
     Instructions(InstructionsOptions),
     /// Reconstruct Lua source for the whole chunk.
     #[command(
-        after_long_help = "Examples:\nrxd unluac-rs decompile module.luac\nOutput: one lua_decompile JSON record with source, dialect and completeness.\nReconstruction is a representation, not the original source file."
+        after_long_help = "Examples:\nrxd unluac-rs decompile module.luac\nstdout is reconstructed Lua source, not a record.\nReconstruction is a representation, not the original source file."
     )]
     Decompile(Options),
 }
@@ -253,21 +252,7 @@ pub fn execute(
                 }
                 out.into_bytes()
             }
-            Command::Decompile(_) => {
-                let source = chunk.decompile()?;
-                let mut record = serde_json::to_vec(&json!({
-                    "record": "lua_decompile",
-                    "backend": "lua",
-                    "command": "decompile",
-                    "source_id": null,
-                    "dialect": chunk.dialect(),
-                    "complete": true,
-                    "source": source,
-                }))
-                .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
-                record.push(b'\n');
-                record
-            }
+            Command::Decompile(_) => chunk.decompile()?.into_bytes(),
         };
         perf.counters.output_bytes = Some(bytes.len());
         perf.measure("write", || {

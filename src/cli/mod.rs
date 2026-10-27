@@ -477,7 +477,7 @@ pub(crate) fn default_threads() -> usize {
     std::thread::available_parallelism().map_or(8, std::num::NonZero::get)
 }
 
-#[cfg(feature = "mcp")]
+#[cfg(any(feature = "mcp", feature = "backend-dex"))]
 pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     let n = value
         .parse::<usize>()

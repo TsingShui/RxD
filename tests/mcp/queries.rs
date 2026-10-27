@@ -163,7 +163,7 @@ fn cli_query(
         }
     }
     // `reflect::argv` always requests the machine-readable switch when the CLI declares one.
-    if matches!(name, "pyc_decompile") || name.starts_with("evm_") {
+    if name.starts_with("evm_") {
         argv.push("--json".into());
     }
     if !tail.is_empty() {

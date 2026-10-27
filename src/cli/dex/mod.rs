@@ -254,18 +254,7 @@ fn run_command(
                 args.threads,
                 args.perf,
             )?;
-            let payload = fetch_record(
-                "get-method",
-                "method_body",
-                &at,
-                serde_json::json!({
-                    "representation": "java",
-                    "decompiled": true,
-                    "complete": true,
-                    "code": source,
-                }),
-            )?;
-            emit(&payload, args.output.as_deref(), sink)?;
+            emit(&source, args.output.as_deref(), sink)?;
             return Ok(());
         }
         Command::Fields(args) => {
@@ -448,18 +437,7 @@ fn run_command(
                 rxd_dex::diag::diagnose(format_args!("[DEBUG] Hit DEX: {dex_name}"));
                 rxd_dex::diag::diagnose(format_args!("{}", "-".repeat(50)));
             }
-            let payload = fetch_record(
-                "get-class",
-                "class_body",
-                &class_name,
-                serde_json::json!({
-                    "representation": "java",
-                    "decompiled": true,
-                    "complete": true,
-                    "code": source,
-                }),
-            )?;
-            emit(&payload, args.output.as_deref(), sink)?;
+            emit(&source, args.output.as_deref(), sink)?;
         }
     }
     Ok(())
@@ -467,25 +445,6 @@ fn run_command(
 
 /// One FETCH result: the source is a field of a record, never the whole answer, so a
 /// consumer parses the same envelope as every other command.
-fn fetch_record(
-    command: &str,
-    kind: &str,
-    at: &str,
-    detail: serde_json::Value,
-) -> anyhow::Result<String> {
-    let mut record = serde_json::Map::new();
-    record.insert("record".into(), serde_json::json!(kind));
-    record.insert("at".into(), serde_json::json!(at));
-    record.insert("backend".into(), serde_json::json!("dex"));
-    record.insert("command".into(), serde_json::json!(command));
-    record.insert("schema_version".into(), serde_json::json!(2));
-    // Carrier size would change identical DEX records across bare/APK inputs.
-    record.insert("detail".into(), detail);
-    let mut line = serde_json::to_string(&serde_json::Value::Object(record))?;
-    line.push('\n');
-    Ok(line)
-}
-
 /// Append one caller/target reference row.
 fn push_reference(
     payload: &mut String,
