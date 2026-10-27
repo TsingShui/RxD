@@ -105,6 +105,27 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
     above) and synthetic checks. The structural report is reproducible with
     `tests/corpus/abc/source-diff.cjs`.
 
+## Performance evidence
+
+- Environment: macOS 26.5.1 arm64, 12 CPUs, release profile, fresh CLI process
+  per sample, 10 samples, pinned ClashBox ABC/HAP; no warm-up.
+- Medians (P95): list record 31.9 (34.5) ms, list method 32.2 (33.3) ms, small
+  method 32.3 (34.5) ms, largest method 33.5 (35.2) ms, small record 33.0
+  (34.2) ms, 690 KB record 39.6 (40.7) ms, 554-method record 42.4 (42.8) ms,
+  HAP entry 46.0 (48.4) ms. No sample exceeded the 150 ms gate.
+- Phase cost: ABC parse/checksum ~16 ms fixed; target work 0.1 ms (small
+  method) to 5.5 ms (690 KB record); HAP adds ~1.1 ms inflate and ~14 ms read
+  (108 MB archive), peak RSS 124 MB. The largest method (11,373 code bytes)
+  costs 0.8 ms of target work, so a small target does not pay whole-record or
+  whole-application cost.
+- Full sample: 376 source records in one process in 0.54-0.65 s. The pinned
+  xpanda full run took 109.2 s, but it includes AST construction, JSON
+  serialization and simplify passes; this is a scope note, not a like-for-like
+  decompiler comparison.
+- Optimizations: discovery skips CFG/hole analysis for methods without class
+  definitions; record members carry an O(1) method-offset index; nested
+  function/class discovery dedups through hash sets.
+
 ## Independent implementation reference
 
 - xpanda: <https://github.com/asmjmp0/xpanda>
