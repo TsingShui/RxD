@@ -50,8 +50,9 @@ The current layout is:
   reference scanning, and self-built structured C-like decompilation; uses a
   pinned wasmparser (`REFERENCE.md`).
 - `crates/rxd-flutter/`: Dart AOT snapshot navigation and pseudocode through the
-  vendored `dae-rs` analyzer (`third_party/dae/`); listings read library and
-  function tables, `decompile` runs the upstream renderer.
+  vendored `dae-rs` analyzer (`third_party/dae/`); listings read the library,
+  function and pool tables, `xref` decodes instructions to find pool loads, and
+  `decompile` runs the upstream renderer.
 - `crates/rxd-lua/`: bounded Lua/LuaJIT/Luau chunk parsing and whole-chunk
   reconstruction through the pinned `unluac` crate (`unluac-rs`); listings read the proto tree
   without running the decompiler.

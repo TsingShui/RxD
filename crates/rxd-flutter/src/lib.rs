@@ -75,6 +75,109 @@ impl Snapshot {
         })
     }
 
+    /// Every decoded string in the snapshot pool, addressed by object ref.
+    pub fn strings_into(
+        &self,
+        out: &mut String,
+        filter: Option<&rxd_core::filter::Contains>,
+    ) -> Result<usize> {
+        let analyzer = self.analyzer()?;
+        let pool = dae::decompiler::PoolRefs::new(&analyzer);
+        let mut entries: Vec<(u64, String)> = pool
+            .values_containing("")
+            .into_iter()
+            .filter(|(_, _, is_string)| *is_string)
+            .filter_map(|(offset, text, _)| unquote_pool(&text).map(|value| (offset, value)))
+            .collect();
+        entries.sort_by_key(|(offset, _)| *offset);
+        entries.dedup_by_key(|(offset, _)| *offset);
+        let mut written = 0;
+        for (offset, value) in entries {
+            if let Some(filter) = filter
+                && !filter.matches(&value)
+            {
+                continue;
+            }
+            out.push_str("str:0x");
+            push_hex(out, offset);
+            out.push('\t');
+            out.push_str(
+                &serde_json::to_string(&value)
+                    .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
+            );
+            out.push('\n');
+            written += 1;
+        }
+        Ok(written)
+    }
+
+    /// Instructions that load a pool string, found by decoding each function.
+    ///
+    /// Only operands that name a pool offset count as evidence; a raw literal
+    /// match in the code bytes would report unrelated immediates.
+    pub fn xref(&self, target: Target<'_>) -> Result<Vec<Reference>> {
+        let analyzer = self.analyzer()?;
+        let pool = dae::decompiler::PoolRefs::new(&analyzer);
+        let text_mode = matches!(target, Target::Text(..));
+        let targets: std::collections::BTreeMap<u64, String> = match target {
+            // `strings` prints object refs from the snapshot heap; the pool is
+            // keyed by offset, so resolve the value first and then match the pool
+            // entries that hold exactly that literal.
+            Target::Ref(ref_) => pool
+                .value_at(ref_)
+                .and_then(unquote_pool)
+                .ok_or_else(|| {
+                    Error::failure(
+                        rxd_core::Failure::NotFound,
+                        format!("no pool string at str:0x{ref_:x}"),
+                    )
+                })
+                .map(|value| (ref_, value))
+                .into_iter()
+                .collect(),
+            Target::Text(needle, sensitive) => {
+                let filter = rxd_core::filter::Contains::new(needle, sensitive);
+                pool.values_containing(needle)
+                    .into_iter()
+                    .filter(|(_, value, is_string)| *is_string && filter.matches(value))
+                    .map(|(offset, value, _)| (offset, value))
+                    .collect()
+            }
+        };
+        if targets.is_empty() {
+            // A known string that no code loads is a complete empty result; only a
+            // content search that matched nothing is a query failure.
+            if text_mode {
+                return Err(Error::failure(
+                    rxd_core::Failure::NotFound,
+                    "no pool string matches the selector",
+                ));
+            }
+            return Ok(Vec::new());
+        }
+        let libraries = analyzer.build_functions(true);
+        let plan = dae::export::callgraph::plan_functions(&analyzer, &libraries);
+        let mut hits = dae::disasm::scan_instructions(&analyzer, &plan, |function, instruction| {
+            let operands = instruction.op_str()?;
+            let offset = pool.offset_in_operand(operands)?;
+            let value = targets.get(&offset)?;
+            Some(Reference {
+                at: format!("0x{:x}", instruction.address()),
+                context_at: format!("0x{:x}", function.ep),
+                instruction: format!(
+                    "{} {}",
+                    instruction.mnemonic().unwrap_or_default(),
+                    operands
+                ),
+                value: unquote_pool(value).unwrap_or_else(|| value.clone()),
+            })
+        })
+        .map_err(|error| Error::new("INVALID_QUERY", error))?;
+        hits.sort_by(|left, right| left.at.cmp(&right.at));
+        hits.dedup_by(|left, right| left.at == right.at && left.value == right.value);
+        Ok(hits)
+    }
+
     /// Append one TAB-separated row per function, in library then class order.
     ///
     /// Rows are written straight into `out`: the snapshot already holds the
@@ -184,6 +287,34 @@ fn push_atom(out: &mut String, value: &str) {
     } else {
         out.push_str(value);
     }
+}
+
+/// Pool text is `Kind: "literal"` for strings; recover the literal's value.
+fn unquote_pool(text: &str) -> Option<String> {
+    let literal = match text.split_once(": ") {
+        Some((_, rest)) => rest,
+        None => text,
+    };
+    serde_json::from_str::<String>(literal).ok().or_else(|| {
+        literal
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .map(str::to_owned)
+    })
+}
+
+/// Selector for `xref`: an object ref copied from `strings`, or unique text.
+pub enum Target<'a> {
+    Ref(u64),
+    Text(&'a str, bool),
+}
+
+/// One instruction that loads the selected pool string.
+pub struct Reference {
+    pub at: String,
+    pub context_at: String,
+    pub instruction: String,
+    pub value: String,
 }
 
 /// One reconstructed library file.

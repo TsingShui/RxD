@@ -22,7 +22,7 @@ explicitly, then locate → associate
 | Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
-| Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `functions` / `decompile --lib PREFIX` |
+| Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `functions`, `strings`, `xref --at str:0x...` / `decompile --lib PREFIX` |
 | PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac-rs` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
@@ -184,6 +184,8 @@ plain source mode fails when recovery is incomplete.
 ```sh
 rxd dae info libapp.so
 rxd dae functions libapp.so -f fl_clash
+rxd dae strings libapp.so -f Authorization
+rxd dae xref libapp.so --at 'str:0x6590'
 rxd dae decompile libapp.so --lib 'fl_clash$models'
 ```
 
@@ -192,7 +194,10 @@ no encoding flag and no SDK installation. `info` reports the fingerprint-detecte
 Dart profile and its verification status, which can be `unverified` — treat the
 symbols as strong evidence, not as a verified source model. `functions` rows pair
 a code entry offset with `library::class::method`; libraries use `$` separators,
-so `--lib` and `-f` match that spelling. `decompile` renders machine-level
+so `--lib` and `-f` match that spelling. `strings` lists the object pool, and its
+`at` is the pool offset `xref` consumes: `xref` decodes every function and reports
+each instruction that loads the string, with the containing function in
+`context_at`. That scan is a whole-snapshot pass, so it takes seconds. `decompile` renders machine-level
 pseudocode (registers, `mem()` access, raw PC comments) for whole libraries and
 costs seconds, not milliseconds.
 

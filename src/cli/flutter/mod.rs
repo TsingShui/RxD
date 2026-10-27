@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use super::Output;
+use super::table::{self, Cell};
 use clap::{Args, Subcommand};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Result};
@@ -21,6 +22,16 @@ pub enum Command {
         after_long_help = "Examples:\nrxd dae functions libapp.so\nrxd dae functions libapp.so -f fl_clash\nOutput: one row per function; at is the code entry offset, label is library::class::method.\nNames come from the snapshot's library and class tables, not from source.\nNext: rxd dae decompile libapp.so --lib <library prefix>."
     )]
     Functions(FunctionsOptions),
+    /// List pool strings (columns: at, value).
+    #[command(
+        after_long_help = "Examples:\nrxd dae strings libapp.so -f token\nOutput: one row per decoded pool string; at is str:0x<object ref>.\nUndecodable entries are skipped; use xref to see which code loads one."
+    )]
+    Strings(StringsOptions),
+    /// Search instructions that load a pool string.
+    #[command(
+        after_long_help = "Examples:\nrxd dae xref libapp.so --at 'str:0x7f0123'\nrxd dae xref libapp.so -m Authorization\nRequired: exactly one of --at/--match; --match must resolve to one string.\nColumns: at, context_at, instruction, value. at is an instruction address,\ncontext_at the containing function entry; value is the loaded string.\nThis decodes every function, so it takes seconds, not milliseconds."
+    )]
+    Xref(XrefOptions),
     /// Reconstruct Dart-like pseudocode for whole libraries.
     #[command(
         after_long_help = "Examples:\nrxd dae decompile libapp.so --lib fl_clash\nrxd dae decompile libapp.so\nOutput: one dae_decompile record with the rendered library files.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart.\nRendering runs the upstream decompiler: expect seconds, not milliseconds."
@@ -52,6 +63,32 @@ pub struct FunctionsOptions {
 }
 
 #[derive(Args)]
+pub struct StringsOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Substring over the string value, folded unless `--case sensitive`.
+    #[arg(short = 'f', long)]
+    filter: Option<String>,
+    #[command(flatten)]
+    case: super::filter::CaseArgs,
+}
+
+#[derive(Args)]
+#[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
+pub struct XrefOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Copy strings.at: str:0x<object ref>, or an object ref in hexadecimal.
+    #[arg(long, conflicts_with = "filter")]
+    at: Option<String>,
+    /// Substring over the string value; must resolve to exactly one pool string.
+    #[arg(short = 'm', long = "match", conflicts_with = "at")]
+    filter: Option<String>,
+    #[command(flatten)]
+    case: super::filter::CaseArgs,
+}
+
+#[derive(Args)]
 pub struct DecompileOptions {
     #[command(flatten)]
     options: Options,
@@ -65,6 +102,8 @@ impl Command {
         match self {
             Self::Info(options) => options,
             Self::Functions(options) => &options.options,
+            Self::Strings(options) => &options.options,
+            Self::Xref(options) => &options.options,
             Self::Decompile(options) => &options.options,
         }
     }
@@ -77,9 +116,19 @@ impl Command {
         match self {
             Self::Info(_) => "info",
             Self::Functions(_) => "functions",
+            Self::Strings(_) => "strings",
+            Self::Xref(_) => "xref",
             Self::Decompile(_) => "decompile",
         }
     }
+}
+
+/// Accept `str:0x…` (as printed by `strings`) or a bare object ref.
+fn parse_ref(at: &str) -> Result<u64> {
+    let digits = at.strip_prefix("str:").unwrap_or(at);
+    let digits = digits.strip_prefix("0x").unwrap_or(digits);
+    u64::from_str_radix(digits, 16)
+        .map_err(|_| Error::new("INVALID_QUERY", format!("expected str:0x<ref>, got {at}")))
 }
 
 pub fn execute(
@@ -128,6 +177,39 @@ pub fn execute(
                 perf.measure("analyze", || {
                     snapshot.functions_into(&mut out, filter.as_ref())
                 })?;
+                out.into_bytes()
+            }
+            Command::Strings(strings) => {
+                let filter = strings.filter.as_deref().map(|needle| {
+                    rxd_core::filter::Contains::new(needle, strings.case.sensitive())
+                });
+                let mut out = String::with_capacity(1 << 20);
+                perf.measure("analyze", || {
+                    snapshot.strings_into(&mut out, filter.as_ref())
+                })?;
+                out.into_bytes()
+            }
+            Command::Xref(references) => {
+                let target = match (&references.at, &references.filter) {
+                    (Some(at), None) => rxd_flutter::Target::Ref(parse_ref(at)?),
+                    (None, Some(text)) => {
+                        rxd_flutter::Target::Text(text, references.case.sensitive())
+                    }
+                    _ => unreachable!("clap enforces exactly one xref anchor"),
+                };
+                let hits = perf.measure("analyze", || snapshot.xref(target))?;
+                let mut out = String::with_capacity(1 << 12);
+                for hit in hits {
+                    out.push_str(
+                        &table::line(&[
+                            Cell::Atom(&hit.at),
+                            Cell::Atom(&hit.context_at),
+                            Cell::Text(&hit.instruction),
+                            Cell::Text(&hit.value),
+                        ])
+                        .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
+                    );
+                }
                 out.into_bytes()
             }
             Command::Decompile(decompile) => {

@@ -9,6 +9,7 @@ pub(crate) use output::Output;
     feature = "backend-wasm",
     feature = "backend-pyc",
     feature = "backend-lua",
+    feature = "backend-flutter",
     feature = "backend-dex"
 ))]
 use rxd_core::Error;
@@ -19,7 +20,8 @@ use rxd_core::Result;
     feature = "backend-evm",
     feature = "backend-wasm",
     feature = "backend-pyc",
-    feature = "backend-lua"
+    feature = "backend-lua",
+    feature = "backend-flutter"
 ))]
 use rxd_core::perf::Perf;
 #[cfg(any(
@@ -30,6 +32,7 @@ use rxd_core::perf::Perf;
     feature = "backend-wasm",
     feature = "backend-pyc",
     feature = "backend-lua",
+    feature = "backend-flutter",
     feature = "backend-dex"
 ))]
 use std::{io::Write, path::Path};
@@ -65,7 +68,8 @@ mod wasm;
     feature = "backend-evm",
     feature = "backend-wasm",
     feature = "backend-pyc",
-    feature = "backend-lua"
+    feature = "backend-lua",
+    feature = "backend-flutter"
 ))]
 mod xref;
 
@@ -244,13 +248,17 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
     #[command(after_long_help = "Examples:
   rxd dae info libapp.so
   rxd dae functions libapp.so -f fl_clash
+  rxd dae strings libapp.so -f Authorization
+  rxd dae xref libapp.so --at 'str:0x6590'
   rxd dae decompile libapp.so --lib fl_clash
 Input is an ELF ARM64 libapp.so from a Flutter Android release build; there is no encoding flag.
 The Dart SDK profile comes from the snapshot fingerprint and may be unverified.
-at is a code entry offset; decompile renders machine-level pseudocode per library.")]
+functions.at is a code entry offset; strings.at is a pool offset that xref consumes.
+xref decodes every function to find pool loads, so it takes seconds.
+decompile renders machine-level pseudocode per library.")]
     #[command(
         display_order = 56,
-        long_about = "Analyze Dart/Flutter AOT: snapshot info, functions, pseudocode"
+        long_about = "Analyze Dart/Flutter AOT: info, functions, pool strings, references, pseudocode"
     )]
     Dae {
         #[command(subcommand)]
@@ -312,7 +320,8 @@ impl Cli {
                 feature = "backend-evm",
                 feature = "backend-wasm",
                 feature = "backend-pyc",
-                feature = "backend-lua"
+                feature = "backend-lua",
+                feature = "backend-flutter"
             ))]
             _ => false,
         }
@@ -484,7 +493,8 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     feature = "backend-evm",
     feature = "backend-wasm",
     feature = "backend-pyc",
-    feature = "backend-lua"
+    feature = "backend-lua",
+    feature = "backend-flutter"
 ))]
 fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     perf.finish(result.as_ref().err().map(|error| error.code));
@@ -502,6 +512,7 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     feature = "backend-wasm",
     feature = "backend-pyc",
     feature = "backend-lua",
+    feature = "backend-flutter",
     feature = "backend-dex"
 ))]
 fn write_output(bytes: &[u8], destination: Option<&Path>, output: &mut Output<'_>) -> Result<()> {
