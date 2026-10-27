@@ -21,12 +21,6 @@ pub struct Snapshot {
     fallback: bool,
 }
 
-/// Function symbols recovered from the snapshot.
-pub struct FunctionRow {
-    pub at: String,
-    pub label: String,
-}
-
 impl Snapshot {
     pub fn read(path: &Path) -> Result<Self> {
         let bytes = std::fs::read(path)
@@ -81,22 +75,42 @@ impl Snapshot {
         })
     }
 
-    /// One row per function, in library then entry-point order.
-    pub fn functions(&self) -> Result<Vec<FunctionRow>> {
+    /// Append one TAB-separated row per function, in library then class order.
+    ///
+    /// Rows are written straight into `out`: the snapshot already holds the
+    /// names, so materializing a row struct per function only adds allocations.
+    pub fn functions_into(
+        &self,
+        out: &mut String,
+        filter: Option<&rxd_core::filter::Contains>,
+    ) -> Result<usize> {
         let analyzer = self.analyzer()?;
         let groups = analyzer.build_functions(false);
-        let mut rows = Vec::new();
+        let mut written = 0;
         for (lib, classes) in &groups {
             for (class, entries) in classes {
                 for entry in entries {
-                    rows.push(FunctionRow {
-                        at: format!("0x{:x}", entry.ep),
-                        label: format!("{lib}::{class}::{}", entry.mangled),
-                    });
+                    if let Some(filter) = filter
+                        && !filter.matches(lib)
+                        && !filter.matches(class)
+                        && !filter.matches(&entry.mangled)
+                    {
+                        continue;
+                    }
+                    out.push_str("0x");
+                    push_hex(out, entry.ep);
+                    out.push('\t');
+                    push_atom(out, lib);
+                    out.push_str("::");
+                    push_atom(out, class);
+                    out.push_str("::");
+                    push_atom(out, &entry.mangled);
+                    out.push('\n');
+                    written += 1;
                 }
             }
         }
-        Ok(rows)
+        Ok(written)
     }
 
     /// Reconstruct Dart-like pseudocode for the selected libraries.
@@ -143,6 +157,33 @@ pub struct Info {
     pub libraries: usize,
     pub functions: usize,
     pub platform_warning: Option<String>,
+}
+
+fn push_hex(out: &mut String, value: u64) {
+    let mut buffer = [0u8; 16];
+    let mut index = buffer.len();
+    let mut rest = value;
+    loop {
+        index -= 1;
+        buffer[index] = b"0123456789abcdef"[(rest & 0xF) as usize];
+        rest >>= 4;
+        if rest == 0 {
+            break;
+        }
+    }
+    out.push_str(std::str::from_utf8(&buffer[index..]).expect("hex is ASCII"));
+}
+
+/// Names come from the snapshot; quote them only when a cell would break the row.
+fn push_atom(out: &mut String, value: &str) {
+    if value
+        .bytes()
+        .any(|byte| byte == b'\t' || byte == b'\n' || byte == b'"' || byte == b'\\')
+    {
+        out.push_str(&serde_json::to_string(value).unwrap_or_default());
+    } else {
+        out.push_str(value);
+    }
 }
 
 /// One reconstructed library file.

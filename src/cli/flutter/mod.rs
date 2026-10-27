@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use super::Output;
-use super::table::{self, Cell};
 use clap::{Args, Subcommand};
 use rxd_core::perf::Perf;
 use rxd_core::{Error, Result};
@@ -96,7 +95,7 @@ pub fn execute(
     let budget = policy.for_file(&input)?;
     perf.resource_limits = Some([("input_bytes", budget.input_bytes)].into_iter().collect());
     let result = (|| {
-        let snapshot = Snapshot::read(&input)?;
+        let snapshot = perf.measure("read", || Snapshot::read(&input))?;
         if snapshot.input_bytes() > budget.input_bytes {
             return Err(Error::new(
                 "INPUT_TOO_LARGE",
@@ -105,7 +104,7 @@ pub fn execute(
         }
         let bytes = match command {
             Command::Info(_) => {
-                let info = snapshot.info()?;
+                let info = perf.measure("analyze", || snapshot.info())?;
                 let mut record = serde_json::to_vec(&json!({
                     "record": "dae_info",
                     "backend": "flutter",
@@ -125,23 +124,16 @@ pub fn execute(
                 let filter = functions.filter.as_deref().map(|needle| {
                     rxd_core::filter::Contains::new(needle, functions.case.sensitive())
                 });
-                let mut out = String::new();
-                for row in snapshot.functions()? {
-                    if let Some(filter) = &filter
-                        && !filter.matches(&row.label)
-                    {
-                        continue;
-                    }
-                    out.push_str(
-                        &table::line(&[Cell::Atom(&row.at), Cell::Atom(&row.label)])
-                            .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
-                    );
-                }
+                let mut out = String::with_capacity(1 << 21);
+                perf.measure("analyze", || {
+                    snapshot.functions_into(&mut out, filter.as_ref())
+                })?;
                 out.into_bytes()
             }
             Command::Decompile(decompile) => {
-                let files: Vec<_> = snapshot
-                    .decompile(decompile.lib.as_deref())?
+                let rendered =
+                    perf.measure("analyze", || snapshot.decompile(decompile.lib.as_deref()))?;
+                let files: Vec<_> = rendered
                     .into_iter()
                     .map(|file| json!({"name": file.name, "source": file.source}))
                     .collect();

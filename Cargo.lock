@@ -3136,6 +3136,7 @@ dependencies = [
  "dae-rs",
  "rxd-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
