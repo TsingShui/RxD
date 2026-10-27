@@ -245,7 +245,13 @@ impl Snapshot {
 
     /// Reconstruct Dart-like pseudocode for the selected libraries.
     pub fn decompile(&self, only: Option<&str>) -> Result<Vec<Rendered>> {
+        let times = std::env::var("DART_AOT_TIMINGS").is_ok();
+        let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
+        if times {
+            eprintln!("[rxd-dec] analyzer {:?}", mark.elapsed());
+            mark = std::time::Instant::now();
+        }
         let mut groups = analyzer.build_functions(false);
         if let Some(prefix) = only {
             groups.retain(|(lib, _)| lib.starts_with(prefix));
@@ -256,8 +262,15 @@ impl Snapshot {
                 ));
             }
         }
+        if times {
+            eprintln!("[rxd-dec] groups {:?}", mark.elapsed());
+            mark = std::time::Instant::now();
+        }
         let (files, _) = dae::decompiler::render(&analyzer, &groups)
             .map_err(|error| Error::new("DECOMPILE_FAILED", error))?;
+        if times {
+            eprintln!("[rxd-dec] render {:?}", mark.elapsed());
+        }
         Ok(files
             .into_iter()
             .map(|(name, source)| Rendered { name, source })
