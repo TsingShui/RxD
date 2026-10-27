@@ -4,8 +4,8 @@
 
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
 Android APK/DEX (`rxd rasc`), JVM class/JAR (`rxd jar`), .NET IL (`rxd ilspy`),
-WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`) and native EVMole EVM
-bytecode (`rxd evm`). Outer command names credit the engines a backend wraps;
+WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`), Lua/LuaJIT/Luau
+bytecode (`rxd lua`) and native EVMole EVM bytecode (`rxd evm`). Outer command names credit the engines a backend wraps;
 crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
 CLI adapter and bundled specs. ASAR, ZIP and PyInstaller archives are unpacked
@@ -23,7 +23,7 @@ The current layout is:
   disposable analysis-worker scheduling.
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/dex/` (`rasc`), `src/cli/jvm/`
   (`jar`), `src/cli/dotnet/` (`ilspy`), `src/cli/kuna/`, `src/cli/evm/`,
-  `src/cli/wasm/`, and `src/cli/pyc/`: peer command adapters.
+  `src/cli/wasm/`, `src/cli/lua/`, and `src/cli/pyc/`: peer command adapters.
   `src/cli/table.rs` renders the shared TAB-separated listing rows.
   `src/cli/unpack.rs` performs whole-archive ASAR/ZIP/PyInstaller extraction.
   DEX preserves streaming and exit-code contracts.
@@ -48,6 +48,9 @@ The current layout is:
 - `crates/rxd-wasm/`: WASM module structure, instruction decode, explicit
   reference scanning, and self-built structured C-like decompilation; uses a
   pinned wasmparser (`REFERENCE.md`).
+- `crates/rxd-lua/`: bounded Lua/LuaJIT/Luau chunk parsing and whole-chunk
+  reconstruction through the pinned `unluac` crate; listings read the proto tree
+  without running the decompiler.
 - `crates/rxd-pyc/`: bounded PYC/marshal parsing, code/constant identities,
   original instruction FETCH, explicit references and embedded pycdc source
   reconstruction; `third_party/pycdc/` retains provenance and local safety

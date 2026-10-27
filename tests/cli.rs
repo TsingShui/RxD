@@ -22,6 +22,10 @@ mod wasm;
 #[path = "evm/mod.rs"]
 mod evm;
 
+#[cfg(feature = "backend-lua")]
+#[path = "lua/mod.rs"]
+mod lua;
+
 #[cfg(feature = "bundled-kuna")]
 #[path = "kuna/mod.rs"]
 mod kuna;

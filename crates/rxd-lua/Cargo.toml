@@ -1,0 +1,11 @@
+[package]
+name = "rxd-lua"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+rxd-core.workspace = true
+serde.workspace = true
+unluac = { version = "=1.4.4", default-features = false }

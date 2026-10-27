@@ -5,7 +5,7 @@ use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
 
 /// Built-in backends reflected from clap; Native tools use their own adapter.
-const BACKENDS: &[&str] = &["rasc", "jar", "ilspy", "evm", "wasm", "pyc"];
+const BACKENDS: &[&str] = &["rasc", "jar", "ilspy", "evm", "wasm", "pyc", "lua"];
 
 /// CLI commands with no typed MCP projection: `rasc_extract` writes caller paths and
 /// supports batch output, which the one-artifact tool contract cannot express.

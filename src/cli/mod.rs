@@ -8,6 +8,7 @@ pub(crate) use output::Output;
     feature = "backend-evm",
     feature = "backend-wasm",
     feature = "backend-pyc",
+    feature = "backend-lua",
     feature = "backend-dex"
 ))]
 use rxd_core::Error;
@@ -17,7 +18,8 @@ use rxd_core::Result;
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
-    feature = "backend-pyc"
+    feature = "backend-pyc",
+    feature = "backend-lua"
 ))]
 use rxd_core::perf::Perf;
 #[cfg(any(
@@ -27,6 +29,7 @@ use rxd_core::perf::Perf;
     feature = "backend-evm",
     feature = "backend-wasm",
     feature = "backend-pyc",
+    feature = "backend-lua",
     feature = "backend-dex"
 ))]
 use std::{io::Write, path::Path};
@@ -42,6 +45,8 @@ mod filter;
 mod jvm;
 #[cfg(feature = "backend-kuna")]
 pub(crate) mod kuna;
+#[cfg(feature = "backend-lua")]
+mod lua;
 #[cfg(feature = "backend-pyc")]
 mod pyc;
 mod skill;
@@ -57,14 +62,15 @@ mod wasm;
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
-    feature = "backend-pyc"
+    feature = "backend-pyc",
+    feature = "backend-lua"
 ))]
 mod xref;
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
+    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, Lua bytecode, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
     after_long_help = "Coordinates: at and context_at chain the next fetch (kuna selects by address_hex).
 Output: one record per line; exit 0 required; zero rows means no matches.
 Filters: -f narrows listings; -m with --kind searches xref targets.
@@ -231,6 +237,24 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
         #[command(subcommand)]
         command: pyc::Command,
     },
+    #[cfg(feature = "backend-lua")]
+    /// Analyze Lua bytecode.
+    #[command(after_long_help = "Examples:
+  rxd lua codes module.luac
+  rxd lua strings module.luac -f token
+  rxd lua instructions module.luac --at 'proto:1'
+  rxd lua decompile module.luac
+Dialect (PUC Lua 5.1-5.5, LuaJIT 2.1, Luau) comes from the chunk header, never a flag.
+codes.at is proto:N; strings.at is proto:N:const:I and selects no fetch.
+Decompile reconstructs the whole chunk; listings never run the decompiler.")]
+    #[command(
+        display_order = 55,
+        long_about = "Analyze Lua bytecode: codes, constants, instructions, source reconstruction"
+    )]
+    Lua {
+        #[command(subcommand)]
+        command: lua::Command,
+    },
     #[cfg(feature = "backend-wasm")]
     /// Analyze WASM.
     #[command(after_long_help = "Examples:
@@ -267,7 +291,8 @@ impl Cli {
                 feature = "backend-dotnet",
                 feature = "backend-evm",
                 feature = "backend-wasm",
-                feature = "backend-pyc"
+                feature = "backend-pyc",
+                feature = "backend-lua"
             ))]
             _ => false,
         }
@@ -293,6 +318,8 @@ impl Cli {
             Backend::Evm { command } => command.perf(),
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { command } => command.perf(),
+            #[cfg(feature = "backend-lua")]
+            Backend::Lua { command } => command.perf(),
         }
     }
     pub fn backend_name(&self) -> &'static str {
@@ -316,6 +343,8 @@ impl Cli {
             Backend::Evm { .. } => "evm",
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { .. } => "pyc",
+            #[cfg(feature = "backend-lua")]
+            Backend::Lua { .. } => "lua",
         }
     }
     pub fn command_name(&self) -> &'static str {
@@ -339,6 +368,8 @@ impl Cli {
             Backend::Evm { command } => command.name(),
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { command } => command.name(),
+            #[cfg(feature = "backend-lua")]
+            Backend::Lua { command } => command.name(),
         }
     }
 }
@@ -397,6 +428,8 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::Evm { command } => evm::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-pyc")]
         Backend::Pyc { command } => pyc::execute(command, policy, output).map(|()| 0),
+        #[cfg(feature = "backend-lua")]
+        Backend::Lua { command } => lua::execute(command, policy, output).map(|()| 0),
     }
 }
 /// One analysis worker per available logical CPU.
@@ -422,7 +455,8 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     feature = "backend-dotnet",
     feature = "backend-evm",
     feature = "backend-wasm",
-    feature = "backend-pyc"
+    feature = "backend-pyc",
+    feature = "backend-lua"
 ))]
 fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     perf.finish(result.as_ref().err().map(|error| error.code));
@@ -439,6 +473,7 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     feature = "backend-evm",
     feature = "backend-wasm",
     feature = "backend-pyc",
+    feature = "backend-lua",
     feature = "backend-dex"
 ))]
 fn write_output(bytes: &[u8], destination: Option<&Path>, output: &mut Output<'_>) -> Result<()> {
