@@ -2281,6 +2281,14 @@ impl<'a> Abc<'a> {
         scanned
             .try_reserve(1)
             .map_err(|_| resource("ABC definition set allocation failed"))?;
+        let mut seen_functions = HashSet::new();
+        seen_functions
+            .try_reserve(1)
+            .map_err(|_| resource("ABC function set allocation failed"))?;
+        let mut seen_classes = HashSet::new();
+        seen_classes
+            .try_reserve(1)
+            .map_err(|_| resource("ABC class set allocation failed"))?;
         while let Some(current) = queue.pop() {
             if !scanned.insert(current.offset) {
                 continue;
@@ -2305,14 +2313,18 @@ impl<'a> Abc<'a> {
                     _ => {}
                 }
             }
-            let graph = Graph::build(&decoded, self.budget)?;
             let mut requests = Vec::new();
             for instruction in &decoded.instructions {
                 if instruction.opcode.name == "defineclasswithbuffer" {
                     requests.push((instruction.pc, instruction.register(4)?));
                 }
             }
-            let proven = crate::provenance::proven_hole(self, &decoded, &graph, &requests)?;
+            let proven = if requests.is_empty() {
+                Vec::new()
+            } else {
+                let graph = Graph::build(&decoded, self.budget)?;
+                crate::provenance::proven_hole(self, &decoded, &graph, &requests)?
+            };
             let mut uses = HashMap::new();
             let mut class_index = 0usize;
             for instruction in &decoded.instructions {
@@ -2325,9 +2337,7 @@ impl<'a> Abc<'a> {
                                 "ABC function definition belongs to another record",
                             ));
                         }
-                        if target != root.offset
-                            && !scan.functions.iter().any(|item| item.offset == target)
-                        {
+                        if target != root.offset && seen_functions.insert(target) {
                             self.check_storage::<Method>(scan.functions.len() + 1)?;
                             scan.functions.push(child.clone());
                         }
@@ -2345,9 +2355,7 @@ impl<'a> Abc<'a> {
                                     "ABC literal method belongs to another record",
                                 ));
                             }
-                            if target != root.offset
-                                && !scan.functions.iter().any(|item| item.offset == target)
-                            {
+                            if target != root.offset && seen_functions.insert(target) {
                                 self.check_storage::<Method>(scan.functions.len() + 1)?;
                                 scan.functions.push(child.clone());
                             }
@@ -2374,11 +2382,7 @@ impl<'a> Abc<'a> {
                                 ),
                             },
                         );
-                        if !scan
-                            .classes
-                            .iter()
-                            .any(|item| item.constructor.offset == class.constructor.offset)
-                        {
+                        if seen_classes.insert(class.constructor.offset) {
                             self.check_storage::<ClassPlan>(scan.classes.len() + 1)?;
                             scan.classes.push(class.clone());
                         }

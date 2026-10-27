@@ -182,6 +182,7 @@ impl Method {
 pub struct Members {
     pub fields: Vec<Field>,
     pub methods: Vec<Method>,
+    method_index: HashMap<u32, usize>,
 }
 
 #[derive(Debug)]
@@ -582,7 +583,24 @@ impl<'a> Abc<'a> {
         for _ in 0..record.methods {
             methods.push(self.method_at(&mut reader, record.offset)?);
         }
-        let members = Arc::new(Members { fields, methods });
+        let mut method_index = HashMap::new();
+        method_index
+            .try_reserve(methods.len())
+            .map_err(|_| resource("ABC method index allocation failed"))?;
+        for (index, method) in methods.iter().enumerate() {
+            method_index.insert(method.offset, index);
+        }
+        self.charge_bytes(
+            methods
+                .len()
+                .checked_mul(size_of::<u32>() + size_of::<usize>() + 16)
+                .ok_or_else(|| resource("ABC method index size overflow"))?,
+        )?;
+        let members = Arc::new(Members {
+            fields,
+            methods,
+            method_index,
+        });
         let mut cache = self.member_cache.borrow_mut();
         cache
             .try_reserve(1)
@@ -707,10 +725,11 @@ impl<'a> Abc<'a> {
             return Err(missing());
         }
         let record = self.record(owner)?;
-        self.members(&record)?
-            .methods
-            .iter()
-            .find(|method| method.offset == offset)
+        let members = self.members(&record)?;
+        members
+            .method_index
+            .get(&offset)
+            .and_then(|index| members.methods.get(*index))
             .cloned()
             .ok_or_else(missing)
     }
