@@ -75,6 +75,41 @@ completion evidence.
 - The optional oracle and diff tools run offline against the pinned sample
   only; production execution never invokes Node/xpanda.
 
+## Known semantic boundaries
+
+These are general code-shape boundaries, not observed reconstruction failures:
+
+- `copydataproperties` is emitted as `Object.assign(target, source)`. Ark's
+  CopyDataProperties creates own data properties; if the target has a setter
+  or a non-writable inherited property, `Object.assign` calls the setter or
+  throws in strict mode instead of defining a new own property. A fresh
+  object-literal target (the common spread shape) is equivalent.
+- Class prototype/constructor stores use `enumerable:
+  !(__abc_class_prototypes.has(obj) || __abc_class_constructors.has(obj))`.
+  Both WeakSets are module-local and only register classes created by the
+  emitted factory in that record. An imported, native or global class is not
+  registered, so its store is emitted enumerable where `RuntimeStOwnByName`
+  would make it non-enumerable. Access is unchanged; enumeration and JSON
+  output can differ.
+- `ldsuperbyname` takes its receiver from the incoming accumulator
+  (`RuntimeLdSuperByValue` passes it to `GetProperty`). The emitter renders
+  `super[key]`, which always uses the current `this`. This matches when the
+  compiler stored `this` in the accumulator; all five sample uses do
+  (`acc = __abc_this` before `super["toJSON"]`, `super["toString"]`,
+  `super["getTunFd"]`, `super["stopVpn"]`). A site passing another object as
+  receiver would observe a different getter receiver.
+- Generator/async output uses native `yield`/`await` in place of the bytecode
+  state machine; `getresumemode` is rendered as `acc = 0` (normal resume).
+  Recognized compiler patterns get native throw/return behavior at
+  `yield`/`await`; a residual site that branches on the resume mode would
+  take the normal path.
+
+The source differential is a structural classification (records, classes,
+members, function/property keys) plus runtime-derived semantic review, not a
+per-method formal equivalence proof. `Reflect.apply(callee, receiver, args)`
+and `__abc_env.slots[...]` are explicit representations of the accumulator/
+receiver call convention and lexical environment, not gaps themselves.
+
 ## Safety and CLI contracts
 
 - ABC checksum, size, region/index bounds, MUTF8, try/handler boundaries and
