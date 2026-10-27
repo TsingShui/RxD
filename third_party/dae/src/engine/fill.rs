@@ -33,7 +33,9 @@ pub fn fill_snapshot<'a>(
     // Instance cluster 的 bitmap（cluster 级，跨对象保留）
     let mut instance_bitmaps: HashMap<u64, u64> = HashMap::new();
 
+    let timings = std::env::var("DART_AOT_TIMINGS").is_ok();
     for (m_idx, meta) in clusters.iter().enumerate() {
+        let started = std::time::Instant::now();
         let cid = meta.cid;
         let count = meta.count;
         let start_ref = meta.start_ref;
@@ -240,6 +242,12 @@ pub fn fill_snapshot<'a>(
                     meta.lengths.len()
                 );
             }
+        }
+        if timings {
+            eprintln!(
+                "[fill] cluster #{m_idx} cid={cid} count={count}: {:?}",
+                started.elapsed()
+            );
         }
     }
 

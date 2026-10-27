@@ -144,7 +144,7 @@ impl Snapshot {
     }
 
     fn analyzer(&self) -> Result<Analyzer<'_>> {
-        Analyzer::new(&self.bytes, self.sdk, &self.platform)
+        Analyzer::new_without_names(&self.bytes, self.sdk, &self.platform)
             .map_err(|error| Error::new("INVALID_INPUT", error))
     }
 }

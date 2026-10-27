@@ -111,6 +111,17 @@ impl<'a> Analyzer<'a> {
         Self::new_located(data, profile, platform, offsets, used_fallback)
     }
 
+    /// rx-d: listings need `func_eps`, not the ep→name map, which costs a full
+    /// naming pass and is only read by the r2/ida/asm exporters.
+    pub fn new_without_names(
+        data: &'a [u8],
+        profile: &'a SdkProfile,
+        platform: &'a PlatformProfile,
+    ) -> Result<Analyzer<'a>, String> {
+        let (offsets, used_fallback) = locate_snapshots(data, platform)?;
+        Self::build(data, profile, platform, offsets, used_fallback, false)
+    }
+
     /// 快照偏移已由调用方定位（自动识别 probe 复用同一份定位结果）。
     pub fn new_located(
         data: &'a [u8],
@@ -118,6 +129,17 @@ impl<'a> Analyzer<'a> {
         platform: &'a PlatformProfile,
         offsets: (u64, u64, u64),
         used_fallback: bool,
+    ) -> Result<Analyzer<'a>, String> {
+        Self::build(data, profile, platform, offsets, used_fallback, true)
+    }
+
+    fn build(
+        data: &'a [u8],
+        profile: &'a SdkProfile,
+        platform: &'a PlatformProfile,
+        offsets: (u64, u64, u64),
+        used_fallback: bool,
+        names: bool,
     ) -> Result<Analyzer<'a>, String> {
         let mut since = std::time::Instant::now();
         let mut warnings: Vec<String> = Vec::new();
@@ -269,10 +291,13 @@ impl<'a> Analyzer<'a> {
         }
 
         t("payload_infos", &mut since);
-        a.build_name_by_ep();
+        a.build_func_eps();
+        if names {
+            a.build_name_by_ep();
+        }
         t("name_by_ep", &mut since);
         // ELF 符号回填：入口正确但解析名缺失/为空的过渡版（2.16/2.18 等）按地址补名。
-        if a.profile.format.elf_name_backfill {
+        if names && a.profile.format.elf_name_backfill {
             if std::env::var("DART_AOT_DEBUG_ELF").is_ok() {
                 eprintln!(
                     "[dbg-elf] elf_names={} has_9c2e0={} has_9c2e0addr={}",
@@ -495,6 +520,15 @@ impl<'a> Analyzer<'a> {
         Some((ep, idx))
     }
 
+    /// Entry point per function ref: needed by every listing, cheap to compute.
+    fn build_func_eps(&mut self) {
+        for (&ref_, f) in self.iso.functions.iter() {
+            if let Some(ep_idx) = self.entry_for(f.code_index) {
+                self.func_eps.insert(ref_, ep_idx);
+            }
+        }
+    }
+
     fn build_name_by_ep(&mut self) {
         // 诊断：Code 对象为什么没能映射到指令表条目（覆盖率缺口归因）
         if std::env::var("DART_AOT_VERBOSE").is_ok() {
@@ -529,12 +563,6 @@ impl<'a> Analyzer<'a> {
                 self.code_base_ref
             );
         }
-        for (&ref_, f) in self.iso.functions.iter() {
-            if let Some(ep_idx) = self.entry_for(f.code_index) {
-                self.func_eps.insert(ref_, ep_idx);
-            }
-        }
-
         // 分块并行：每块产出局部 BTreeMap（ep 首见），按块序 entry.or_insert 合并
         let funcs: Vec<(u64, (u64, usize))> = self
             .func_eps
