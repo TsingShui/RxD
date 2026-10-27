@@ -5,7 +5,15 @@ use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
 
 /// Built-in backends reflected from clap; Native tools use their own adapter.
-const BACKENDS: &[&str] = &["rasc", "jar", "ilspy", "evm", "wasm", "pyc", "lua"];
+const BACKENDS: &[&str] = &["rasc", "jar", "ilspy", "evm", "wasm", "pyc", "unluac"];
+
+/// The command credits the engine; the record label stays the neutral format name.
+fn label(backend: &str) -> &str {
+    match backend {
+        "unluac" => "lua",
+        other => other,
+    }
+}
 
 /// CLI commands with no typed MCP projection: `rasc_extract` writes caller paths and
 /// supports batch output, which the one-artifact tool contract cannot express.
@@ -41,6 +49,9 @@ pub(super) struct ArgSpec {
 
 pub(super) struct ToolSpec {
     pub name: String,
+    /// Backend record label, which prefixes the tool name.
+    pub label: String,
+    /// Clap subcommand spelling used to invoke the backend.
     pub backend: String,
     pub command: String,
     pub description: String,
@@ -149,7 +160,8 @@ fn args(command: &Command) -> Vec<ArgSpec> {
 }
 
 fn tool(backend: &str, command: &Command) -> ToolSpec {
-    let name = format!("{}_{}", backend, command.get_name().replace('-', "_"));
+    let label = label(backend);
+    let name = format!("{}_{}", label, command.get_name().replace('-', "_"));
     let args = args(command);
     let required_groups = command
         .get_groups()
@@ -191,6 +203,7 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
     description.push_str("\nMCP: input is {path: ABSOLUTE_PATH} or {target_id: ...}; CLI flags become snake_case fields without --. JSON output is automatic; omit json/output/perf.");
     ToolSpec {
         name,
+        label: label.to_owned(),
         backend: backend.to_owned(),
         command: command.get_name().to_owned(),
         description,

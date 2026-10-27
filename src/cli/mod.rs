@@ -240,18 +240,19 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
     #[cfg(feature = "backend-lua")]
     /// Analyze Lua bytecode.
     #[command(after_long_help = "Examples:
-  rxd lua codes module.luac
-  rxd lua strings module.luac -f token
-  rxd lua instructions module.luac --at 'proto:1'
-  rxd lua decompile module.luac
+  rxd unluac codes module.luac
+  rxd unluac strings module.luac -f token
+  rxd unluac xref module.luac --at 'proto:1:const:0'
+  rxd unluac instructions module.luac --at 'proto:1'
+  rxd unluac decompile module.luac
 Dialect (PUC Lua 5.1-5.5, LuaJIT 2.1, Luau) comes from the chunk header, never a flag.
-codes.at is proto:N; strings.at is proto:N:const:I and selects no fetch.
+codes.at is proto:N; strings.at is proto:N:const:I and selects xref, not a fetch.
 Decompile reconstructs the whole chunk; listings never run the decompiler.")]
     #[command(
         display_order = 55,
-        long_about = "Analyze Lua bytecode: codes, constants, instructions, source reconstruction"
+        long_about = "Analyze Lua bytecode: codes, constants, references, source reconstruction"
     )]
-    Lua {
+    Unluac {
         #[command(subcommand)]
         command: lua::Command,
     },
@@ -319,7 +320,7 @@ impl Cli {
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { command } => command.perf(),
             #[cfg(feature = "backend-lua")]
-            Backend::Lua { command } => command.perf(),
+            Backend::Unluac { command } => command.perf(),
         }
     }
     pub fn backend_name(&self) -> &'static str {
@@ -344,7 +345,7 @@ impl Cli {
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { .. } => "pyc",
             #[cfg(feature = "backend-lua")]
-            Backend::Lua { .. } => "lua",
+            Backend::Unluac { .. } => "lua",
         }
     }
     pub fn command_name(&self) -> &'static str {
@@ -369,7 +370,7 @@ impl Cli {
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { command } => command.name(),
             #[cfg(feature = "backend-lua")]
-            Backend::Lua { command } => command.name(),
+            Backend::Unluac { command } => command.name(),
         }
     }
 }
@@ -429,7 +430,7 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         #[cfg(feature = "backend-pyc")]
         Backend::Pyc { command } => pyc::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-lua")]
-        Backend::Lua { command } => lua::execute(command, policy, output).map(|()| 0),
+        Backend::Unluac { command } => lua::execute(command, policy, output).map(|()| 0),
     }
 }
 /// One analysis worker per available logical CPU.

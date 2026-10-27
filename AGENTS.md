@@ -5,7 +5,7 @@
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
 Android APK/DEX (`rxd rasc`), JVM class/JAR (`rxd jar`), .NET IL (`rxd ilspy`),
 WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`), Lua/LuaJIT/Luau
-bytecode (`rxd lua`) and native EVMole EVM bytecode (`rxd evm`). Outer command names credit the engines a backend wraps;
+bytecode (`rxd unluac`) and native EVMole EVM bytecode (`rxd evm`). Outer command names credit the engines a backend wraps;
 crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
 CLI adapter and bundled specs. ASAR, ZIP and PyInstaller archives are unpacked
@@ -238,6 +238,28 @@ UTF-8 spans, deterministic ordering, and each backend's tested output contracts.
 Write diagnostics to stderr.
 Keep each comment block at most two lines, including doc comments. Delete redundant
 comments; retain concise contracts, non-obvious invariants and safety conditions.
+
+### Command names, crate names and backend labels
+
+The user-facing command credits the engine that does the work; everything
+inside keeps the neutral format name. Naming a command after its engine keeps
+the attribution where a user sees it, and keeping the internal name format
+based stops a crate, feature or record label from changing when an engine is
+swapped or added.
+
+| Outer command | Engine or author | Crate / module / feature | `backend` label |
+|---|---|---|---|
+| `rxd rasc` | Rascal (APK/DEX) | `rxd-dex`, `src/cli/dex`, `backend-dex` | `dex` |
+| `rxd jar` | JAR format, no engine | `rxd-jvm`, `src/cli/jvm`, `backend-jvm` | `jvm` |
+| `rxd ilspy` | ILSpy | `rxd-dotnet`, `src/cli/dotnet`, `backend-dotnet` | `dotnet` |
+| `rxd unluac` | unluac | `rxd-lua`, `src/cli/lua`, `backend-lua` | `lua` |
+| `rxd pyc` | CPython format, no engine | `rxd-pyc`, `src/cli/pyc`, `backend-pyc` | `pyc` |
+| `rxd wasm` | WASM format, no engine | `rxd-wasm`, `src/cli/wasm`, `backend-wasm` | `wasm` |
+| `rxd evm` | EVM format, no engine | `rxd-evm`, `src/cli/evm`, `backend-evm` | `evm` |
+
+Apply the same rule to a new backend: pick the outer command from the engine
+when one exists, keep the crate/module/feature/label on the format, and never
+rename internals to match the command or add hidden aliases for the old name.
 
 ## Testing Guidelines
 

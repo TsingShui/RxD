@@ -68,7 +68,7 @@ pub fn catalog() -> Vec<ToolDefinition> {
         .iter()
         .map(|entry| ToolDefinition {
             name: entry.spec.name.clone(),
-            backend: entry.spec.backend.clone(),
+            backend: entry.spec.label.clone(),
             description: entry.spec.description.clone(),
             input_schema: entry.input_schema.clone(),
             output_schema: schema::output(),

@@ -9,7 +9,7 @@ fn input(name: &str) -> PathBuf {
 
 fn run(command: &str, path: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["lua", command])
+        .args(["unluac", command])
         .arg(path)
         .args(args)
         .env_remove("RXD_CACHE_DIR")
@@ -84,6 +84,49 @@ fn lua_instructions_preserve_compiler_order_and_byte_offsets() {
     assert!(
         offsets.windows(2).all(|pair| pair[0] < pair[1]),
         "{offsets:?}"
+    );
+}
+
+#[test]
+fn lua_xref_points_at_the_loading_instruction() {
+    let traced = rows(&run(
+        "xref",
+        &input("sample-5.4.luac"),
+        &["--at", "proto:1:const:0"],
+    ));
+    assert_eq!(
+        traced,
+        vec![vec![
+            "proto:1:ins:1".to_owned(),
+            "proto:1".to_owned(),
+            "LOADK 2 0".to_owned()
+        ]]
+    );
+    // `-m` resolves a unique constant text, then traces it like `--at`.
+    let matched = rows(&run("xref", &input("sample-5.4.luac"), &["-m", "token"]));
+    assert_eq!(matched.len(), 1, "{matched:?}");
+    assert_eq!(matched[0][1], "proto:0");
+}
+
+#[test]
+fn lua_xref_distinguishes_absent_and_ambiguous_matches() {
+    let absent = run(
+        "xref",
+        &input("sample-5.4.luac"),
+        &["-m", "no-such-constant"],
+    );
+    assert!(!absent.status.success());
+    assert!(
+        String::from_utf8_lossy(&absent.stderr).contains("NOT_FOUND"),
+        "{}",
+        String::from_utf8_lossy(&absent.stderr)
+    );
+    let ambiguous = run("xref", &input("sample-5.4.luac"), &["-m", ""]);
+    assert!(!ambiguous.status.success());
+    assert!(
+        String::from_utf8_lossy(&ambiguous.stderr).contains("AMBIGUOUS"),
+        "{}",
+        String::from_utf8_lossy(&ambiguous.stderr)
     );
 }
 

@@ -1,4 +1,4 @@
-//! `rxd lua`: Lua/LuaJIT/Luau bytecode navigation and reconstruction.
+//! `rxd unluac`: Lua/LuaJIT/Luau bytecode navigation and reconstruction.
 
 use std::path::PathBuf;
 
@@ -15,22 +15,27 @@ use serde_json::json;
 pub enum Command {
     /// List code objects (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd lua codes module.luac\nrxd lua codes module.luac -f vararg=true\nOutput: one row per function in compiler order; at is proto:N, parent_at is containment.\nLabels report params, vararg, source line range and instruction count.\nDialect comes from the chunk header; no encoding flag is needed."
+        after_long_help = "Examples:\nrxd unluac codes module.luac\nrxd unluac codes module.luac -f vararg=true\nOutput: one row per function in compiler order; at is proto:N, parent_at is containment.\nLabels report params, vararg, source line range and instruction count.\nDialect comes from the chunk header; no encoding flag is needed."
     )]
     Codes(CodesOptions),
     /// List string constants (columns: at, value).
     #[command(
-        after_long_help = "Examples:\nrxd lua strings module.luac -f token\nOutput: at is proto:N:const:I, the pool slot the owning prototype loads.\nNon-UTF-8 bytes appear as lossy text; use instructions for raw operand words."
+        after_long_help = "Examples:\nrxd unluac strings module.luac -f token\nOutput: at is proto:N:const:I, the pool slot the owning prototype loads.\nNon-UTF-8 bytes appear as lossy text; use instructions for raw operand words."
     )]
     Strings(StringsOptions),
+    /// Search references to a string constant.
+    #[command(
+        after_long_help = "Columns: at, context_at, instruction.\nExamples:\nrxd unluac xref module.luac --at 'proto:1:const:0'\nrxd unluac xref module.luac -m ':'\nRequired: exactly one of --at/--match; --match must resolve to one constant.\n--at copies strings.at; zero hits is NOT_FOUND, several are AMBIGUOUS.\nat is proto:N:ins:M; context_at is the owning prototype.\nOnly explicit constant operands (LOADK, GETTABUP/SETTABUP, GETGLOBAL/SETGLOBAL) count."
+    )]
+    Xref(XrefOptions),
     /// List original instructions (columns: offset, instruction).
     #[command(
-        after_long_help = "Examples:\nrxd lua codes module.luac\nrxd lua instructions module.luac --at 'proto:1'\nRequired: --at copied from codes.at. Offsets are chunk byte offsets, not instruction indices.\nNo reconstruction here; use decompile for reconstructed source."
+        after_long_help = "Examples:\nrxd unluac codes module.luac\nrxd unluac instructions module.luac --at 'proto:1'\nRequired: --at copied from codes.at. Offsets are chunk byte offsets, not instruction indices.\nNo reconstruction here; use decompile for reconstructed source."
     )]
     Instructions(InstructionsOptions),
     /// Reconstruct Lua source for the whole chunk.
     #[command(
-        after_long_help = "Examples:\nrxd lua decompile module.luac\nOutput: one lua_decompile JSON record with source, dialect and completeness.\nReconstruction is a representation, not the original source file."
+        after_long_help = "Examples:\nrxd unluac decompile module.luac\nOutput: one lua_decompile JSON record with source, dialect and completeness.\nReconstruction is a representation, not the original source file."
     )]
     Decompile(Options),
 }
@@ -73,6 +78,21 @@ pub struct StringsOptions {
 }
 
 #[derive(Args)]
+#[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
+pub struct XrefOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Copy strings.at: proto:N:const:I of the constant to trace.
+    #[arg(long, conflicts_with = "filter")]
+    at: Option<String>,
+    /// Substring over the constant text, folded unless `--case sensitive`.
+    #[arg(short = 'm', long = "match", conflicts_with = "at")]
+    filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
+}
+
+#[derive(Args)]
 pub struct InstructionsOptions {
     #[command(flatten)]
     options: Options,
@@ -86,6 +106,7 @@ impl Command {
         match self {
             Self::Codes(options) => &options.options,
             Self::Strings(options) => &options.options,
+            Self::Xref(options) => &options.options,
             Self::Instructions(options) => &options.options,
             Self::Decompile(options) => options,
         }
@@ -99,6 +120,7 @@ impl Command {
         match self {
             Self::Codes(_) => "codes",
             Self::Strings(_) => "strings",
+            Self::Xref(_) => "xref",
             Self::Instructions(_) => "instructions",
             Self::Decompile(_) => "decompile",
         }
@@ -168,6 +190,52 @@ pub fn execute(
                     out.push_str(
                         &table::line(&[Cell::Atom(&item.at), Cell::Text(&item.value)])
                             .map_err(table_error)?,
+                    );
+                }
+                out.into_bytes()
+            }
+            Command::Xref(references) => {
+                let at = match (&references.at, &references.filter) {
+                    (Some(at), None) => at.clone(),
+                    (None, Some(match_text)) => {
+                        let filter = rxd_core::filter::Contains::new(
+                            match_text,
+                            references.case.sensitive(),
+                        );
+                        let matches: Vec<_> = chunk
+                            .strings()
+                            .into_iter()
+                            .filter(|item| filter.matches(&item.value))
+                            .collect();
+                        match matches.len() {
+                            0 => {
+                                return Err(Error::failure(
+                                    rxd_core::Failure::NotFound,
+                                    format!("no string constant matches --match {match_text:?}"),
+                                ));
+                            }
+                            1 => matches[0].at.clone(),
+                            count => {
+                                return Err(Error::failure(
+                                    rxd_core::Failure::Ambiguous,
+                                    format!(
+                                        "--match {match_text:?} matches {count} constants; narrow it or use --at"
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    _ => unreachable!("clap enforces exactly one xref anchor"),
+                };
+                let mut out = String::new();
+                for reference in chunk.xref(&at)? {
+                    out.push_str(
+                        &table::line(&[
+                            Cell::Atom(&reference.at),
+                            Cell::Atom(&reference.context_at),
+                            Cell::Atom(&reference.instruction),
+                        ])
+                        .map_err(table_error)?,
                     );
                 }
                 out.into_bytes()

@@ -125,6 +125,38 @@ impl Chunk {
             .collect())
     }
 
+    /// Instructions that name one string constant through an explicit operand.
+    ///
+    /// Only opcodes whose operand *is* a constant index are reported; dialects
+    /// without a verified mapping fail instead of returning an empty result.
+    pub fn xref(&self, at: &str) -> Result<Vec<Reference>> {
+        let (code_at, slot) = parse_constant_coordinate(at)?;
+        let index = proto_index(&code_at).ok_or_else(|| {
+            Error::new(
+                "INVALID_QUERY",
+                format!("unknown code coordinate {code_at}"),
+            )
+        })?;
+        let protos = self.protos();
+        let proto = protos.get(index).ok_or_else(|| {
+            Error::new(
+                "INVALID_QUERY",
+                format!("unknown code coordinate {code_at}"),
+            )
+        })?;
+        let mut references = Vec::new();
+        for (position, instruction) in proto.common.instructions.iter().enumerate() {
+            if constant_operand(self.dialect, instruction)? == Some(slot) {
+                references.push(Reference {
+                    at: format!("{code_at}:ins:{position}"),
+                    context_at: code_at.clone(),
+                    instruction: format_raw_instr(instruction),
+                });
+            }
+        }
+        Ok(references)
+    }
+
     /// Reconstruct whole-chunk source through the unluac pipeline.
     pub fn decompile(&self) -> Result<String> {
         let options = DecompileOptions {
@@ -147,10 +179,114 @@ impl Chunk {
     }
 }
 
+/// A constant load: the instruction that names the constant, with its owner.
+pub struct Reference {
+    pub at: String,
+    pub context_at: String,
+    pub instruction: String,
+}
+
 /// One decoded instruction with its original byte offset.
 pub struct Instruction {
     pub offset: usize,
     pub text: String,
+}
+
+fn parse_constant_coordinate(at: &str) -> Result<(String, usize)> {
+    let (code_at, slot) = at.rsplit_once(":const:").ok_or_else(|| {
+        Error::new(
+            "INVALID_QUERY",
+            format!("expected proto:N:const:I, got {at}"),
+        )
+    })?;
+    let slot = slot.parse::<usize>().map_err(|_| {
+        Error::new(
+            "INVALID_QUERY",
+            format!("expected a constant index in {at}"),
+        )
+    })?;
+    Ok((code_at.to_owned(), slot))
+}
+
+fn proto_index(at: &str) -> Option<usize> {
+    at.strip_prefix("proto:")?.parse().ok()
+}
+
+/// The constant index an instruction explicitly names, if any.
+fn constant_operand(
+    dialect: DecompileDialect,
+    instruction: &unluac::parser::RawInstr,
+) -> Result<Option<usize>> {
+    use unluac::parser::{Lua51Opcode, Lua51Operands, RawInstrOpcode, RawInstrOperands};
+    let index = match (&instruction.opcode, &instruction.operands) {
+        // All supported PUC Lua versions load a pool constant by absolute index.
+        (
+            RawInstrOpcode::Lua51(Lua51Opcode::LoadK),
+            RawInstrOperands::Lua51(Lua51Operands::ABx { bx, .. }),
+        ) => Some(*bx),
+        (RawInstrOpcode::Lua52(op), RawInstrOperands::Lua52(operands)) => {
+            lua52_constant(op, operands)
+        }
+        (RawInstrOpcode::Lua53(op), RawInstrOperands::Lua53(operands)) => {
+            lua53_constant(op, operands)
+        }
+        (RawInstrOpcode::Lua54(op), RawInstrOperands::Lua54(operands)) => {
+            lua54_constant(op, operands)
+        }
+        (RawInstrOpcode::LuaJit(_), _) | (RawInstrOpcode::Luau(_), _) => {
+            return Err(Error::new(
+                "UNSUPPORTED_DIALECT",
+                format!(
+                    "constant references are not verified for {}",
+                    dialect_name(dialect)
+                ),
+            ));
+        }
+        _ => None,
+    };
+    Ok(index.map(|value| value as usize))
+}
+
+fn lua52_constant(
+    opcode: &unluac::parser::Lua52Opcode,
+    operands: &unluac::parser::Lua52Operands,
+) -> Option<u32> {
+    use unluac::parser::{Lua52Opcode as Op, Lua52Operands as Args};
+    match (opcode, operands) {
+        (Op::LoadK, Args::ABx { bx, .. }) => Some(*bx),
+        (Op::GetTabUp | Op::SetTabUp, Args::ABC { c, .. }) => rk_constant(*c),
+        _ => None,
+    }
+}
+
+fn lua53_constant(
+    opcode: &unluac::parser::Lua53Opcode,
+    operands: &unluac::parser::Lua53Operands,
+) -> Option<u32> {
+    use unluac::parser::{Lua53Opcode as Op, Lua53Operands as Args};
+    match (opcode, operands) {
+        (Op::LoadK, Args::ABx { bx, .. }) => Some(*bx),
+        (Op::GetTabUp | Op::SetTabUp, Args::ABC { c, .. }) => rk_constant(*c),
+        _ => None,
+    }
+}
+
+fn lua54_constant(
+    opcode: &unluac::parser::Lua54Opcode,
+    operands: &unluac::parser::Lua54Operands,
+) -> Option<u32> {
+    use unluac::parser::{Lua54Opcode as Op, Lua54Operands as Args};
+    match (opcode, operands) {
+        (Op::LoadK, Args::ABx { bx, .. }) => Some(*bx),
+        (Op::GetTabUp | Op::SetTabUp, Args::ABCk { c, k: true, .. }) => Some(u32::from(*c)),
+        (Op::GetTabUp | Op::SetTabUp, Args::ABk { b, k: true, .. }) => Some(u32::from(*b)),
+        _ => None,
+    }
+}
+
+/// Lua 5.2/5.3 RK operands hold a constant index when this bit is set.
+fn rk_constant(operand: u16) -> Option<u32> {
+    (operand & 0x100 != 0).then(|| u32::from(operand & 0xFF))
 }
 
 fn push<'a>(proto: &'a RawProto, protos: &mut Vec<&'a RawProto>) {

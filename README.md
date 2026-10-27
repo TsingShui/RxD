@@ -222,7 +222,7 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | **.NET IL** | `rxd ilspy` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |
 | **WebAssembly** | `rxd wasm` | Module structure, instruction decode, explicit reference scanning, structured C-like decompilation | ✅ |
 | **CPython bytecode** | `rxd pyc` | CPython 3.8–3.13 navigation and bounded whole-module source reconstruction | ✅ |
-| **Lua bytecode** | `rxd lua` | PUC Lua 5.1–5.5, LuaJIT 2.1 and Luau navigation plus whole-chunk reconstruction | ✅ |
+| **Lua bytecode** | `rxd unluac` | PUC Lua 5.1–5.5, LuaJIT 2.1 and Luau navigation, references and whole-chunk reconstruction | ✅ |
 | **EVM bytecode** | `rxd evm` | EVMole 0.9.4 native analysis; candidate/literal static navigation, on-demand raw evidence and declared pseudocode reconstruction | ✅ static workflow accepted |
 
 ## MCP

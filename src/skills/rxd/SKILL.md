@@ -22,7 +22,7 @@ explicitly, then locate → associate
 | Local EVM flat bytecode | `rxd evm` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
-| PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd lua` | `codes`, `strings` / `instructions --at proto:N`, whole-chunk `decompile` |
+| PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
@@ -181,16 +181,19 @@ plain source mode fails when recovery is incomplete.
 ## Lua: prototypes, constants, instructions, source
 
 ```sh
-rxd lua codes module.luac
-rxd lua strings module.luac -f token
-rxd lua instructions module.luac --at "$CODE_AT"
-rxd lua decompile module.luac
+rxd unluac codes module.luac
+rxd unluac strings module.luac -f token
+rxd unluac xref module.luac --at "$CONST_AT"
+rxd unluac instructions module.luac --at "$CODE_AT"
+rxd unluac decompile module.luac
 ```
 
 The dialect (PUC Lua 5.1-5.5, LuaJIT 2.1, Luau) comes from the chunk header, so
 there is no encoding flag. `codes.at` is `proto:N` in compiler order;
 `strings.at` is `proto:N:const:I`, the pool slot the owning prototype loads, and
-selects no fetch. `instructions` pairs chunk byte offsets with original opcodes.
+selects `xref`, which reports the instructions naming that slot as
+`proto:N:ins:M` with the owning prototype in `context_at`. `instructions` pairs
+chunk byte offsets with original opcodes.
 Decompilation reconstructs the whole chunk through the pinned unluac engine and
 is a representation, not the original source file.
 
