@@ -45,6 +45,7 @@ pub(crate) mod kuna;
 #[cfg(feature = "backend-pyc")]
 mod pyc;
 mod skill;
+mod table;
 #[cfg(feature = "unpack")]
 mod unpack;
 #[cfg(feature = "backend-wasm")]
