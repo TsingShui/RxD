@@ -986,10 +986,12 @@ fn self_str<'a>(vm: &'a Snapshot, iso: &'a Snapshot, num_base: u64, r: u64) -> O
 /// 口径其实完全相同。抄六份的代价不是行数，是**改不动**：真要调这个上限，
 /// 得先确认六处是不是本来就打算一样。
 pub(crate) fn n_threads() -> usize {
+    // rx-d: a whole-snapshot scan is CPU-bound across independent functions, so
+    // use the machine's cores instead of stopping at 8.
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .clamp(1, 8)
+        .clamp(1, 32)
 }
 
 /// 清洗 ELF 函数符号名 → 简单可读名。去除 Precompiled_ 前缀、尾随 _<数字>；

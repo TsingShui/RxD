@@ -81,8 +81,18 @@ impl Snapshot {
         out: &mut String,
         filter: Option<&rxd_core::filter::Contains>,
     ) -> Result<usize> {
+        let times = std::env::var("DART_AOT_TIMINGS").is_ok();
+        let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
+        if times {
+            eprintln!("[rxd-xref] analyzer {:?}", mark.elapsed());
+            mark = std::time::Instant::now();
+        }
         let pool = dae::decompiler::PoolRefs::new(&analyzer);
+        if times {
+            eprintln!("[rxd-xref] pool {:?}", mark.elapsed());
+            mark = std::time::Instant::now();
+        }
         let mut entries: Vec<(u64, String)> = pool
             .values_containing("")
             .into_iter()
@@ -116,8 +126,18 @@ impl Snapshot {
     /// Only operands that name a pool offset count as evidence; a raw literal
     /// match in the code bytes would report unrelated immediates.
     pub fn xref(&self, target: Target<'_>) -> Result<Vec<Reference>> {
+        let times = std::env::var("DART_AOT_TIMINGS").is_ok();
+        let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
+        if times {
+            eprintln!("[rxd-xref] analyzer {:?}", mark.elapsed());
+            mark = std::time::Instant::now();
+        }
         let pool = dae::decompiler::PoolRefs::new(&analyzer);
+        if times {
+            eprintln!("[rxd-xref] pool {:?}", mark.elapsed());
+            mark = std::time::Instant::now();
+        }
         let text_mode = matches!(target, Target::Text(..));
         let targets: std::collections::BTreeMap<u64, String> = match target {
             // `strings` prints object refs from the snapshot heap; the pool is
@@ -157,6 +177,14 @@ impl Snapshot {
         }
         let libraries = analyzer.build_functions(true);
         let plan = dae::export::callgraph::plan_functions(&analyzer, &libraries);
+        if times {
+            eprintln!(
+                "[rxd-xref] plan {} functions {:?}",
+                plan.len(),
+                mark.elapsed()
+            );
+            mark = std::time::Instant::now();
+        }
         let mut hits = dae::disasm::scan_instructions(&analyzer, &plan, |function, instruction| {
             let operands = instruction.op_str()?;
             let offset = pool.offset_in_operand(operands)?;
@@ -173,6 +201,9 @@ impl Snapshot {
             })
         })
         .map_err(|error| Error::new("INVALID_QUERY", error))?;
+        if times {
+            eprintln!("[rxd-xref] scan {:?}", mark.elapsed());
+        }
         hits.sort_by(|left, right| left.at.cmp(&right.at));
         hits.dedup_by(|left, right| left.at == right.at && left.value == right.value);
         Ok(hits)
