@@ -468,7 +468,7 @@ impl<'a, 'b> Writer<'a, 'b> {
             return Ok(());
         }
         match name {
-            "nop" => return Ok(()),
+            "nop" | "callruntime.notifyconcurrentresult" => return Ok(()),
             "return" if self.module_body => return self.line(depth, "void acc;"),
             "returnundefined" if self.module_body => return self.line(depth, "void 0;"),
             "return" => return self.line(depth, "return acc;"),
@@ -538,7 +538,10 @@ impl<'a, 'b> Writer<'a, 'b> {
                     } else if self.func_unused {
                         self.out.write_all(b"void 0")?;
                     } else {
-                        return Err(missing(instruction));
+                        return Err(unsupported(format!(
+                            "method observes its own function object at PC {:#x}",
+                            instruction.pc
+                        )));
                     }
                 } else {
                     write!(self.out, "v{dest} = v{source}")?;
@@ -1083,33 +1086,69 @@ impl<'a, 'b> Writer<'a, 'b> {
         Ok(loops)
     }
 
+    fn block_pc(&self, target: usize) -> u32 {
+        if target >= self.graph.blocks.len() {
+            self.decoded.code.bytes.len() as u32
+        } else {
+            self.decoded.instructions[self.graph.blocks[target].first].pc
+        }
+    }
+
+    fn label_name(&self, target: usize) -> String {
+        format!(
+            "__abc_goto_{:x}_{}",
+            self.block_pc(target),
+            self.escape_serial
+        )
+    }
+
     fn linear(&mut self, base_depth: usize) -> Result<()> {
         let successors = crate::structure::successors(self.decoded, self.graph)?;
         let dominance = crate::dominators::compute_for(self.abc, &successors, 0)?;
         self.dominance = dominance.idom;
         let loops = self.compute_loops()?;
         let end = self.graph.blocks.len();
-        self.linear_container(0, end, &loops, None, base_depth)
+        self.linear_region(0..end, &loops, None, None, &[], base_depth)
     }
 
-    fn linear_container(
+    fn linear_region(
         &mut self,
-        start: usize,
-        end: usize,
+        range: std::ops::Range<usize>,
         loops: &[(usize, usize)],
         active: Option<Loop>,
+        entered_try: Option<usize>,
+        escapes: &[(u32, String)],
         depth: usize,
     ) -> Result<()> {
+        let (start, end) = (range.start, range.end);
+        if depth > self.abc.budget.ast_depth {
+            return Err(resource("ABC source nesting exceeds depth guard"));
+        }
         let inner: Vec<(usize, usize)> = loops
             .iter()
             .copied()
             .filter(|(header, latch)| *header >= start && *latch < end)
             .filter(|(header, _)| active.is_none_or(|loop_| loop_.header != *header))
             .collect();
+        let tries: Vec<usize> = self
+            .try_regions
+            .iter()
+            .enumerate()
+            .filter(|(index, region)| {
+                region.start >= start && region.join <= end && Some(*index) != entered_try
+            })
+            .map(|(index, _)| index)
+            .collect();
         let inside_loop = |index: usize| {
             inner
                 .iter()
-                .any(|(header, latch)| *header <= index && index <= *latch)
+                .any(|(header, latch)| *header < index && index <= *latch)
+        };
+        let inside_try = |index: usize| {
+            tries.iter().any(|try_index| {
+                let region = self.try_regions[*try_index];
+                region.start < index && index < region.join
+            })
         };
         let mut targets = Vec::new();
         for index in start..end {
@@ -1119,7 +1158,7 @@ impl<'a, 'b> Writer<'a, 'b> {
             let last = &self.decoded.instructions[self.graph.blocks[index].end - 1];
             if last.branch.is_some() {
                 let target = self.jump_target(last)?;
-                if target >= start && target < end && !inside_loop(target) {
+                if target >= start && target < end && !inside_loop(target) && !inside_try(target) {
                     targets.push(target);
                 }
             }
@@ -1127,14 +1166,18 @@ impl<'a, 'b> Writer<'a, 'b> {
         targets.sort_unstable();
         targets.dedup();
         targets.retain(|target| Some(*target) != active.map(|loop_| loop_.header));
+        let label_names: Vec<String> = targets
+            .iter()
+            .map(|target| self.label_name(*target))
+            .collect();
+        let mut nested: Vec<(u32, String)> = escapes.to_vec();
+        for (index, target) in targets.iter().enumerate() {
+            nested.push((self.block_pc(*target), label_names[index].clone()));
+        }
         let mut level = depth;
-        for target in targets.iter().rev() {
+        for index in (0..targets.len()).rev() {
             self.indent(level)?;
-            writeln!(
-                self.out,
-                "__abc_goto_{:x}_{}: {{",
-                self.decoded.instructions[self.graph.blocks[*target].first].pc, self.escape_serial
-            )?;
+            writeln!(self.out, "{}: {{", label_names[index])?;
             level += 1;
         }
         let mut closing = 0usize;
@@ -1153,18 +1196,108 @@ impl<'a, 'b> Writer<'a, 'b> {
                 let latch = *latch;
                 self.line(level, "while (true) {")?;
                 let exit = latch + 1;
-                self.linear_container(
-                    cursor,
-                    exit,
+                self.linear_region(
+                    cursor..exit,
                     loops,
                     Some(Loop {
                         header: cursor,
                         exit,
                     }),
+                    None,
+                    &nested,
                     level + 1,
                 )?;
                 self.line(level, "}")?;
                 cursor = exit;
+                continue;
+            }
+            let try_index = tries
+                .iter()
+                .copied()
+                .filter(|index| self.try_regions[*index].start == cursor)
+                .max_by_key(|index| self.try_regions[*index].join_pc);
+            if let Some(index) = try_index {
+                let region = self.try_regions[index];
+                self.escape_serial += 1;
+                let join_label = format!("__abc_try_{:x}_{}", region.join_pc, self.escape_serial);
+                let end_pc = self.block_pc(region.end);
+                let extends_body = region.end < region.handler
+                    && self
+                        .decoded
+                        .instructions
+                        .iter()
+                        .filter(|instruction| {
+                            end_pc <= instruction.pc && instruction.pc < region.handler_pc
+                        })
+                        .all(|instruction| linear_safe(instruction.opcode.name));
+                let body_end = if extends_body {
+                    region.handler
+                } else {
+                    region.end
+                };
+                let has_bypass = region.end < region.handler && !extends_body;
+                let end_label = has_bypass.then(|| {
+                    format!(
+                        "__abc_try_end_{:x}_{}",
+                        self.block_pc(region.end),
+                        self.escape_serial
+                    )
+                });
+                let mut branch_escapes = nested.clone();
+                branch_escapes.push((region.join_pc, join_label.clone()));
+                if let Some(end_label) = &end_label {
+                    branch_escapes.push((self.block_pc(region.end), end_label.clone()));
+                }
+                self.indent(level)?;
+                writeln!(self.out, "{join_label}: {{")?;
+                let try_level = if let Some(end_label) = &end_label {
+                    self.indent(level + 1)?;
+                    writeln!(self.out, "{end_label}: {{")?;
+                    level + 2
+                } else {
+                    level + 1
+                };
+                self.indent(try_level)?;
+                self.out.write_all(b"try {\n")?;
+                self.linear_region(
+                    region.start..body_end,
+                    loops,
+                    active,
+                    Some(index),
+                    &branch_escapes,
+                    try_level + 1,
+                )?;
+                self.indent(try_level)?;
+                self.out.write_all(b"} catch (__abc_exception) {\n")?;
+                self.line(try_level + 1, "acc = __abc_exception;")?;
+                self.linear_region(
+                    region.handler..region.join,
+                    loops,
+                    active,
+                    None,
+                    &branch_escapes,
+                    try_level + 1,
+                )?;
+                self.indent(try_level + 1)?;
+                writeln!(self.out, "break {join_label};")?;
+                self.indent(try_level)?;
+                self.out.write_all(b"}\n")?;
+                if end_label.is_some() {
+                    self.indent(level + 1)?;
+                    self.out.write_all(b"}\n")?;
+                }
+                if has_bypass {
+                    self.linear_region(
+                        region.end..region.handler,
+                        loops,
+                        active,
+                        None,
+                        &branch_escapes,
+                        level + 1,
+                    )?;
+                }
+                self.line(level, "}")?;
+                cursor = region.join;
                 continue;
             }
             if self.visited[cursor] {
@@ -1189,42 +1322,44 @@ impl<'a, 'b> Writer<'a, 'b> {
                 continue;
             }
             let target = self.jump_target(last)?;
-            let target_pc = if target == self.graph.blocks.len() {
-                self.decoded.code.bytes.len() as u32
+            let target_pc = self.block_pc(target);
+            let label = if target_pc > last.pc {
+                targets
+                    .binary_search(&target)
+                    .ok()
+                    .map(|index| label_names[index].clone())
+                    .or_else(|| {
+                        escapes
+                            .iter()
+                            .rev()
+                            .find(|(escape, _)| *escape == target_pc)
+                            .map(|(_, label)| label.clone())
+                    })
             } else {
-                self.decoded.instructions[self.graph.blocks[target].first].pc
+                None
             };
-            let inside_outer_loop = active.is_some_and(|loop_| target == loop_.header);
-            let outside = active.is_some_and(|loop_| target == loop_.exit);
-            let label = targets.binary_search(&target).ok().map(|_| {
-                format!(
-                    "__abc_goto_{:x}_{}",
-                    self.decoded.instructions[self.graph.blocks[target].first].pc,
-                    self.escape_serial
-                )
-                .to_string()
-            });
             self.indent(level)?;
             if last.opcode.is_conditional() {
                 self.out.write_all(b"if (")?;
                 self.condition(last)?;
-                if inside_outer_loop {
+                if active.is_some_and(|loop_| target == loop_.header) {
                     self.out.write_all(b") { continue; }\n")?;
-                } else if outside {
+                } else if active.is_some_and(|loop_| target == loop_.exit) {
                     self.out.write_all(b") { break; }\n")?;
                 } else if let Some(label) = label {
                     writeln!(self.out, ") {{ break {label}; }}")?;
                 } else {
                     return Err(unsupported(format!(
-                        "unstructured conditional target {target_pc:#x} in linear fallback"
+                        "unstructured conditional target {target_pc:#x} from {:#x} in linear fallback",
+                        last.pc
                     )));
                 }
                 cursor += 1;
                 continue;
             }
-            if inside_outer_loop {
+            if active.is_some_and(|loop_| target == loop_.header) {
                 self.line(level, "continue;")?;
-            } else if outside {
+            } else if active.is_some_and(|loop_| target == loop_.exit) {
                 self.line(level, "break;")?;
             } else if let Some(label) = label {
                 self.line(level, &format!("break {label};"))?;
@@ -1369,6 +1504,8 @@ impl<'a, 'b> Writer<'a, 'b> {
                     None,
                     depth + 2,
                 )?;
+                self.indent(depth + 2)?;
+                writeln!(self.out, "break {label};")?;
                 self.indent(depth + 1)?;
                 self.out.write_all(b"}\n")?;
                 if region.end < region.handler {
@@ -1628,10 +1765,21 @@ fn simple_tries(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<TryRegion>> 
                 "typed or multiple exception handlers need additional analysis",
             ));
         };
-        if handler.type_index != 0 || region.length == 0 || handler.length == 0 {
+        if handler.type_index != 0 || region.length == 0 {
             return Err(unsupported(
                 "typed or unsized exception handler is not yet supported",
             ));
+        }
+        if handler.length == 0 {
+            if pure_rethrow(decoded, handler.pc, 0) {
+                continue;
+            }
+            return Err(unsupported(
+                "unsized exception handler needs region analysis",
+            ));
+        }
+        if pure_rethrow(decoded, handler.pc, handler.length) {
+            continue;
         }
         let (start_pc, end_pc) = (region.pc, region.pc + region.length);
         let (handler_pc, join_pc) = (handler.pc, handler.pc + handler.length);
@@ -1689,34 +1837,6 @@ fn simple_tries(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<TryRegion>> 
             if last.opcode.name != "jmp" || last.branch != Some(*join_pc) {
                 return Err(unsupported(
                     "exception bypass does not jump to the handler end",
-                ));
-            }
-        }
-        if end_pc < handler_pc {
-            let bypass: Vec<_> = decoded
-                .instructions
-                .iter()
-                .filter(|instruction| *end_pc <= instruction.pc && instruction.pc < *handler_pc)
-                .collect();
-            let simple = bypass.len() == 1
-                && !bypass[0].opcode.is_conditional()
-                && bypass[0].opcode.is_jump()
-                && bypass[0].branch == Some(*join_pc);
-            let handler_tail = decoded
-                .instructions
-                .iter()
-                .take_while(|instruction| instruction.end() <= *join_pc)
-                .last()
-                .ok_or_else(|| invalid("ABC exception handler is empty"))?;
-            if !simple
-                && !handler_tail.opcode.is_return()
-                && handler_tail.opcode.name != "throw"
-                && !(handler_tail.opcode.is_jump()
-                    && !handler_tail.opcode.is_conditional()
-                    && handler_tail.branch == Some(*join_pc))
-            {
-                return Err(unsupported(
-                    "exception bypass is entered by a falling-through handler",
                 ));
             }
         }
@@ -1822,6 +1942,82 @@ fn export_name(name: &Name, output: &mut Output) -> Result<()> {
     Ok(())
 }
 
+fn pure_rethrow(decoded: &Decoded<'_>, handler_pc: u32, handler_len: u32) -> bool {
+    let mut cursor = handler_pc;
+    let limit = if handler_len == 0 {
+        u32::MAX
+    } else {
+        handler_pc + handler_len
+    };
+    let mut saved = None;
+    let mut steps = 0usize;
+    while cursor < limit {
+        let Ok(index) = decoded
+            .instructions
+            .binary_search_by_key(&cursor, |instruction| instruction.pc)
+        else {
+            return false;
+        };
+        let instruction = &decoded.instructions[index];
+        match instruction.opcode.name {
+            "sta" => saved = instruction.register(0).ok(),
+            "lda" => {
+                if let Some(saved) = saved
+                    && instruction.register(0).ok() != Some(saved)
+                {
+                    return false;
+                }
+            }
+            "poplexenv" | "mov" | "nop" => {}
+            "throw" => return true,
+            _ => return false,
+        }
+        cursor = instruction.end();
+        steps += 1;
+        if steps > 8 {
+            return false;
+        }
+    }
+    false
+}
+
+fn linear_safe(name: &str) -> bool {
+    matches!(
+        name,
+        "mov"
+            | "lda"
+            | "sta"
+            | "ldai"
+            | "ldtrue"
+            | "ldfalse"
+            | "ldnull"
+            | "ldundefined"
+            | "ldhole"
+            | "ldnan"
+            | "ldinfinity"
+            | "lda.str"
+            | "poplexenv"
+            | "newlexenv"
+            | "wide.newlexenv"
+            | "newlexenvwithname"
+            | "wide.newlexenvwithname"
+            | "ldlexvar"
+            | "wide.ldlexvar"
+            | "stlexvar"
+            | "wide.stlexvar"
+            | "ldexternalmodulevar"
+            | "wide.ldexternalmodulevar"
+            | "ldlocalmodulevar"
+            | "wide.ldlocalmodulevar"
+            | "getmodulenamespace"
+            | "wide.getmodulenamespace"
+            | "jmp"
+            | "jeqz"
+            | "jnez"
+            | "nop"
+    )
+}
+
 fn module_binding(name: &Name, index: u32) -> String {
     identifier(name)
         .map(str::to_owned)
@@ -1906,29 +2102,34 @@ impl<'a> Abc<'a> {
         output: &mut Output,
     ) -> Result<()> {
         for function in &scan.functions {
-            let plan = self.make_plan(function, true).map_err(|mut error| {
+            let rendered = (|| {
+                let plan = self.make_plan(function, true)?;
+                let classes = scan.uses.get(&function.offset).cloned().unwrap_or_default();
+                write!(
+                    output,
+                    "function _abc_capture_{:x}(__abc_context) {{\n    const _abc_{:x} = ",
+                    function.offset, function.offset
+                )?;
+                self.render_function_value(
+                    &plan,
+                    1,
+                    output,
+                    &FunctionValueOptions {
+                        inline: true,
+                        module: module.clone(),
+                        classes: &classes,
+                        top_level_arrow: false,
+                    },
+                )?;
+                write!(output, ";\n    return _abc_{:x};\n}}\n", function.offset)?;
+                Ok(())
+            })()
+            .map_err(|mut error: rxd_core::Error| {
                 error.message =
                     format!("{} (nested method:0x{:x})", error.message, function.offset);
                 error
-            })?;
-            let classes = scan.uses.get(&function.offset).cloned().unwrap_or_default();
-            write!(
-                output,
-                "function _abc_capture_{:x}(__abc_context) {{\n    const _abc_{:x} = ",
-                function.offset, function.offset
-            )?;
-            self.render_function_value(
-                &plan,
-                1,
-                output,
-                &FunctionValueOptions {
-                    inline: true,
-                    module: module.clone(),
-                    classes: &classes,
-                    top_level_arrow: false,
-                },
-            )?;
-            write!(output, ";\n    return _abc_{:x};\n}}\n", function.offset)?;
+            });
+            rendered?;
         }
         for class in &scan.classes {
             self.render_class_unit(class, scan, module.clone(), output)
@@ -2511,7 +2712,7 @@ impl<'a> Abc<'a> {
             Ok(())
         });
         if let Err(error) = structured {
-            if error.code != "DECOMPILE_FAILED" || !writer.try_regions.is_empty() {
+            if error.code != "DECOMPILE_FAILED" {
                 return Err(error);
             }
             writer.out = Output::new(self.budget.output_bytes);
@@ -2643,19 +2844,30 @@ impl<'a> Abc<'a> {
             error
         })?;
         for member in &class.members {
-            let plan = self.make_plan(&member.method, true)?;
-            let context = RenderContext {
-                module: module.clone(),
-                classes: scan.uses.get(&member.method.offset).unwrap_or(&empty),
-            };
-            self.render_class_element(
-                &plan,
-                &element_name(&member.name),
-                member.is_static,
-                2,
-                output,
-                &context,
-            )?;
+            let rendered = self
+                .make_plan(&member.method, true)
+                .and_then(|plan| {
+                    let context = RenderContext {
+                        module: module.clone(),
+                        classes: scan.uses.get(&member.method.offset).unwrap_or(&empty),
+                    };
+                    self.render_class_element(
+                        &plan,
+                        &element_name(&member.name),
+                        member.is_static,
+                        2,
+                        output,
+                        &context,
+                    )
+                })
+                .map_err(|mut error| {
+                    error.message = format!(
+                        "{} (nested method:0x{:x})",
+                        error.message, member.method.offset
+                    );
+                    error
+                });
+            rendered?;
         }
         output.write_all(b"    };\n    __abc_class_constructors.add(__abc_class);\n    __abc_class_prototypes.add(__abc_class.prototype);\n    return __abc_class;\n}\n")?;
         Ok(())

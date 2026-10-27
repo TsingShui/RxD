@@ -199,7 +199,7 @@ pub fn function_value_unused(decoded: &Decoded<'_>) -> Result<bool> {
                 continue;
             }
             "ldfunction" => return Ok(false),
-            "supercallspread" | "callruntime.supercallforwardallargs" => {
+            "creategeneratorobj" | "supercallspread" | "callruntime.supercallforwardallargs" => {
                 acc = false;
                 continue;
             }

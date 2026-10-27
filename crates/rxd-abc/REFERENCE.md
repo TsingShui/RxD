@@ -57,9 +57,12 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   wrappers with await are covered. Own-property stores use the runtime
   enumerability rule through emitted class-prototype/constructor WeakSets.
 - Unsupported constructs raise `DECOMPILE_FAILED`; there is no disassembly
-  fallback. Known gaps still under work: irreducible conditional/loop layouts,
-  generator state machines, some typed handlers, and a few object/array literal
-  shapes. These are explicit failures, not silently approximated output.
+  fallback. Non-structured methods use a labeled form with `while (true)` plus
+  `break`/`continue`; dominators validate natural-loop back edges and loop
+  headers can be entered from outside. Pure-rethrow handlers are elided.
+- Known remaining gap: unsized exception handlers that implement shared
+  `finally` cleanups (2 ClashBox methods after the last audit) still fail
+  explicitly pending finally reconstruction; they are not approximated.
 
 ## Independent implementation reference
 
