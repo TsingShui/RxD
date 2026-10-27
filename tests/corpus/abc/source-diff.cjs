@@ -13,7 +13,14 @@ function summary(file) {
     const classes = [];
     const functions = [];
     const ops = new Map();
+    const props = new Map();
     const add = (key) => ops.set(key, (ops.get(key) || 0) + 1);
+    const prop = (name) => {
+        if (SYNTHETIC.has(name)) return;
+        if (/^local_\d+(_\d+)?$/.test(name) || name.startsWith("panda_jmp0_")) return;
+        if (/^[vp]\d+$/.test(name) || name.startsWith("__abc")) return;
+        props.set(name, (props.get(name) || 0) + 1);
+    };
     const visit = (node) => {
         if (!node || typeof node !== "object") return;
         if (Array.isArray(node)) { for (const item of node) visit(item); return; }
@@ -51,15 +58,20 @@ function summary(file) {
                         ? node.property.value
                         : "[]";
                 add("member:" + property);
+                if (property !== "[]") prop(property);
                 break;
             }
             case "ObjectProperty": {
-                if (node.key && node.key.type === "StringLiteral" && node.computed) {
-                    add("key:" + node.key.value);
-                    for (const value of [node.value]) visit(value);
-                    return;
+                if (node.key) {
+                    if (node.key.type === "StringLiteral") {
+                        add("key:" + node.key.value);
+                        prop(node.key.value);
+                    } else if (node.key.type === "Identifier") {
+                        prop(node.key.name);
+                    }
                 }
-                break;
+                visit(node.value);
+                return;
             }
             case "CallExpression": {
                 const callee = node.callee;
@@ -69,6 +81,7 @@ function summary(file) {
                         ? (!callee.computed && callee.property.type === "Identifier" ? callee.property.name : "[]")
                         : callee.type;
                 add("call:" + name);
+                if (typeof name === "string") prop(name);
                 break;
             }
             case "StringLiteral": add("str:" + node.value); break;
@@ -85,7 +98,7 @@ function summary(file) {
         }
     };
     visit(ast.program);
-    return { classes, functions, ops: [...ops.entries()].sort() };
+    return { classes, functions, ops: [...ops.entries()].sort(), props: [...props.entries()].sort() };
 }
 
 const SYNTHETIC = new Set([
@@ -126,15 +139,19 @@ for (const name of refFiles) {
         for (const value of rightSet) if (!leftSet.has(value)) structural.push({ kind: label + "-extra", value });
     }
     const refOps = new Map(ref.ops), actOps = new Map(act.ops);
+    const refProps = new Map(ref.props), actProps = new Map(act.props);
     const missingKeys = [];
     const extraKeys = [];
-    for (const key of new Set([...refOps.keys(), ...actOps.keys()])) {
-        if (isSynthetic(key)) continue;
-        const inRef = (refOps.get(key) || 0) > 0;
-        const inAct = (actOps.get(key) || 0) > 0;
-        if (inRef && !inAct) missingKeys.push(key);
-        if (!inRef && inAct) extraKeys.push(key);
+    for (const name of new Set([...refProps.keys(), ...actProps.keys()])) {
+        const inRef = (refProps.get(name) || 0) > 0;
+        const inAct = (actProps.get(name) || 0) > 0;
+        if (inRef && !inAct) missingKeys.push("prop:" + name);
+        if (!inRef && inAct) extraKeys.push("prop:" + name);
     }
+    const refStrings = new Set(ref.ops.filter(([key]) => key.startsWith("str:")).map(([key]) => key));
+    const actStrings = new Set(act.ops.filter(([key]) => key.startsWith("str:")).map(([key]) => key));
+    for (const key of refStrings) if (!actStrings.has(key)) missingKeys.push(key);
+    for (const key of actStrings) if (!refStrings.has(key) && !isSynthetic(key)) extraKeys.push(key);
     for (const key of missingKeys) report.missingKeys.set(key, (report.missingKeys.get(key) || 0) + 1);
     for (const key of extraKeys) report.extraKeys.set(key, (report.extraKeys.get(key) || 0) + 1);
     const deltas = [];

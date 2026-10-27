@@ -92,6 +92,14 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   - Dynamic calls use `Reflect.apply(callee, receiver, [...])` because Ark
     passes the callee in the accumulator and the receiver in a register; RxD
     does not infer a static callee name or build call edges.
+  - Source diff (376 records, pinned xpanda `8f27d3c`): no missing records and
+    no unexplained parse failures; the only reference parse failure is the
+    `=ens0` export. Remaining textual deltas are representation classes:
+    call fusion (`obj.m(...)` vs loading the callee and `Reflect.apply`),
+    object-key quoting (`{x: ...}` vs `{["x"]: ...}`), lexical environments
+    (`local_N` vs `__abc_env.slots`), class static fields (see enumerability
+    above) and synthetic checks. The structural report is reproducible with
+    `tests/corpus/abc/source-diff.cjs`.
 
 ## Independent implementation reference
 
