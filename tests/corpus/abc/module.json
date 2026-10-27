@@ -1,0 +1,7 @@
+{
+  "record": "record:0x7c",
+  "method": "method:0xa7",
+  "request": "@example/logger",
+  "import": "consoleLogger",
+  "export": "counter"
+}

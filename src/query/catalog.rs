@@ -20,7 +20,7 @@ fn capability(command: &str) -> &'static str {
         "entities" | "functions" | "classes" | "methods" | "fields" | "entries" | "resources"
         | "values" | "types" | "modules" | "imports" | "exports" | "tables" | "memories"
         | "globals" | "data" | "elements" | "codes" | "blocks" | "analyze" | "interface"
-        | "disassemble" | "metadata" | "manifest" => "ENUMERATE",
+        | "disassemble" | "metadata" | "manifest" | "list record" | "list method" => "ENUMERATE",
         "strings" | "find" | "identifiers" | "calls" | "members" | "locate" => "SEARCH",
         "xref" => "XREF",
         _ => "FETCH",

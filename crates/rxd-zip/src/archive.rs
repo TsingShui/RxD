@@ -1,6 +1,6 @@
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{self, Read, Seek, SeekFrom},
+    fs::{self, OpenOptions},
+    io::{self, Cursor, Read, Seek, SeekFrom},
     path::Path,
 };
 
@@ -32,9 +32,12 @@ fn u64_at(bytes: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
 }
 
+trait ReadSeek: Read + Seek + Send {}
+impl<T: Read + Seek + Send> ReadSeek for T {}
+
 // Keep reverse footer searches in a bounded cache instead of seeking once per comment byte.
 pub(super) struct Reader {
-    file: File,
+    file: Box<dyn ReadSeek>,
     tail: Vec<u8>,
     tail_start: u64,
     len: u64,
@@ -105,12 +108,25 @@ pub(super) fn open(input: &Path, budget: Budget) -> Result<(Reader, Directory)> 
         use std::os::windows::fs::OpenOptionsExt;
         options.custom_flags(0x00200000);
     }
-    let mut file = options.open(input)?;
+    let file = options.open(input)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(invalid("ZIP input must be a regular file"));
     }
     let len = metadata.len();
+    open_reader(Box::new(file), len, budget)
+}
+
+pub(super) fn open_bytes(bytes: Vec<u8>, budget: Budget) -> Result<(Reader, Directory)> {
+    let len = bytes.len() as u64;
+    open_reader(Box::new(Cursor::new(bytes)), len, budget)
+}
+
+fn open_reader(
+    mut file: Box<dyn ReadSeek>,
+    len: u64,
+    budget: Budget,
+) -> Result<(Reader, Directory)> {
     if len > budget.input_bytes as u64 {
         return Err(resource("ZIP input exceeds admitted byte length"));
     }

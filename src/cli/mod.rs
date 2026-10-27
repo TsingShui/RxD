@@ -10,7 +10,8 @@ pub(crate) use output::Output;
     feature = "backend-pyc",
     feature = "backend-lua",
     feature = "backend-flutter",
-    feature = "backend-dex"
+    feature = "backend-dex",
+    feature = "backend-abc"
 ))]
 use rxd_core::Error;
 use rxd_core::Result;
@@ -21,7 +22,8 @@ use rxd_core::Result;
     feature = "backend-wasm",
     feature = "backend-pyc",
     feature = "backend-lua",
-    feature = "backend-flutter"
+    feature = "backend-flutter",
+    feature = "backend-abc"
 ))]
 use rxd_core::perf::Perf;
 #[cfg(any(
@@ -33,9 +35,12 @@ use rxd_core::perf::Perf;
     feature = "backend-pyc",
     feature = "backend-lua",
     feature = "backend-flutter",
-    feature = "backend-dex"
+    feature = "backend-dex",
+    feature = "backend-abc"
 ))]
 use std::{io::Write, path::Path};
+#[cfg(feature = "backend-abc")]
+mod abc;
 #[cfg(feature = "backend-dex")]
 mod dex;
 #[cfg(feature = "backend-dotnet")]
@@ -76,7 +81,7 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, Lua, Dart/Flutter, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
+    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, Lua, Ark ABC/HAP, Dart/Flutter, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/HAP/PyInstaller/wxapkg archives",
     after_long_help = "Coordinates: at and context_at chain the next fetch (kuna selects by address_hex).
 Output: one record per line; exit 0 required; zero rows means no matches.
 Filters: -f narrows listings; -m with --kind searches xref targets.
@@ -245,6 +250,17 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
         #[command(subcommand)]
         command: pyc::Command,
     },
+    #[cfg(feature = "backend-abc")]
+    /// Analyze dynamic Ark ABC/HAP.
+    #[command(
+        display_order = 65,
+        long_about = "Analyze dynamic Ark ABC/HAP: records, methods and original instructions",
+        after_long_help = "Examples:\n  rxd ark list record app.hap\n  rxd ark list method modules.abc --at '<record.at>'\nHAP inputs with multiple ABC entries require --entry PATH. Coordinates belong to the selected ABC."
+    )]
+    Ark {
+        #[command(subcommand)]
+        command: abc::Command,
+    },
     #[cfg(feature = "backend-flutter")]
     /// Analyze Dart/Flutter AOT.
     #[command(after_long_help = "Examples:
@@ -325,7 +341,8 @@ impl Cli {
                 feature = "backend-wasm",
                 feature = "backend-pyc",
                 feature = "backend-lua",
-                feature = "backend-flutter"
+                feature = "backend-flutter",
+                feature = "backend-abc"
             ))]
             _ => false,
         }
@@ -355,6 +372,8 @@ impl Cli {
             Backend::UnluacRs { command } => command.perf(),
             #[cfg(feature = "backend-flutter")]
             Backend::Dae { command } => command.perf(),
+            #[cfg(feature = "backend-abc")]
+            Backend::Ark { command } => command.perf(),
         }
     }
     pub fn backend_name(&self) -> &'static str {
@@ -382,6 +401,8 @@ impl Cli {
             Backend::UnluacRs { .. } => "lua",
             #[cfg(feature = "backend-flutter")]
             Backend::Dae { .. } => "flutter",
+            #[cfg(feature = "backend-abc")]
+            Backend::Ark { .. } => "abc",
         }
     }
     pub fn command_name(&self) -> &'static str {
@@ -409,6 +430,8 @@ impl Cli {
             Backend::UnluacRs { command } => command.name(),
             #[cfg(feature = "backend-flutter")]
             Backend::Dae { command } => command.name(),
+            #[cfg(feature = "backend-abc")]
+            Backend::Ark { command } => command.name(),
         }
     }
 }
@@ -471,6 +494,8 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::UnluacRs { command } => lua::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-flutter")]
         Backend::Dae { command } => flutter::execute(command, policy, output).map(|()| 0),
+        #[cfg(feature = "backend-abc")]
+        Backend::Ark { command } => abc::execute(command, policy, output).map(|()| 0),
     }
 }
 /// One analysis worker per available logical CPU.
@@ -498,7 +523,8 @@ pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {
     feature = "backend-wasm",
     feature = "backend-pyc",
     feature = "backend-lua",
-    feature = "backend-flutter"
+    feature = "backend-flutter",
+    feature = "backend-abc"
 ))]
 fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     perf.finish(result.as_ref().err().map(|error| error.code));
@@ -517,7 +543,8 @@ fn finish(mut perf: Perf, emit_perf: bool, result: Result<()>) -> Result<()> {
     feature = "backend-pyc",
     feature = "backend-lua",
     feature = "backend-flutter",
-    feature = "backend-dex"
+    feature = "backend-dex",
+    feature = "backend-abc"
 ))]
 fn write_output(bytes: &[u8], destination: Option<&Path>, output: &mut Output<'_>) -> Result<()> {
     if let Some(path) = destination {

@@ -89,6 +89,15 @@ struct Archive {
 impl Archive {
     fn open(options: &Options<'_>) -> Result<Self> {
         let (reader, directory) = archive::open(options.input, options.budget)?;
+        Self::from_reader(reader, directory)
+    }
+
+    fn from_bytes(bytes: Vec<u8>, budget: Budget) -> Result<Self> {
+        let (reader, directory) = archive::open_bytes(bytes, budget)?;
+        Self::from_reader(reader, directory)
+    }
+
+    fn from_reader(reader: archive::Reader, directory: archive::Directory) -> Result<Self> {
         let mut zip = zip::ZipArchive::new(reader).map_err(zip_error)?;
         if zip.offset() != 0 {
             return Err(Error::new(
@@ -255,6 +264,62 @@ pub fn read_entry(at: &str, options: Options<'_>, perf: &mut Perf) -> Result<Sel
     let mut archive = perf.measure("container", || Archive::open(&options))?;
     let index = archive.select(at)?;
     let bytes = perf.measure("read", || archive.read(index, options.budget))?;
+    let entry = &archive.entries[index];
+    Ok(SelectedEntry {
+        bytes,
+        path: entry.path.clone(),
+        at: entry.at.clone(),
+    })
+}
+
+/// Select an exact path or the sole suffix match from one immutable archive buffer.
+pub fn read_unique_entry_from_bytes(
+    bytes: Vec<u8>,
+    exact: Option<&str>,
+    suffix: &str,
+    budget: Budget,
+    perf: &mut Perf,
+) -> Result<SelectedEntry> {
+    let mut archive = perf.measure("container", || Archive::from_bytes(bytes, budget))?;
+    let index = if let Some(path) = exact {
+        if !path.ends_with(suffix) {
+            return Err(Error::new(
+                "INVALID_QUERY",
+                format!("--entry must select a {suffix} path"),
+            ));
+        }
+        archive.select(path)?
+    } else {
+        let matches: Vec<_> = archive
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.kind == "file" && entry.path.ends_with(suffix))
+            .collect();
+        match matches.as_slice() {
+            [] => {
+                return Err(Error::new(
+                    "NOT_FOUND",
+                    format!("container has no {suffix} entry"),
+                ));
+            }
+            [(index, _)] => *index,
+            entries => {
+                let candidates = entries
+                    .iter()
+                    .map(|(_, entry)| format!("{:?}", entry.path))
+                    .collect::<Vec<_>>();
+                return Err(Error::new(
+                    "AMBIGUOUS",
+                    format!(
+                        "multiple {suffix} entries; select --entry from: {}",
+                        candidates.join(", ")
+                    ),
+                ));
+            }
+        }
+    };
+    let bytes = perf.measure("inflate", || archive.read(index, budget))?;
     let entry = &archive.entries[index];
     Ok(SelectedEntry {
         bytes,

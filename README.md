@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC, Lua, Flutter and WASM, plus ASAR/ZIP/HAP/PyInstaller/wxapkg unpacking |
+| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC, Lua, Ark ABC/HAP, Flutter and WASM, plus ASAR/ZIP/HAP/PyInstaller/wxapkg unpacking |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |

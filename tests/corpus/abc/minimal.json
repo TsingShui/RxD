@@ -1,0 +1,36 @@
+{
+  "version": "12.0.6.0",
+  "record": {
+    "at": "record:0x88",
+    "offset": 136,
+    "name": "L&fixture/Main你好&;",
+    "methods": [
+      {
+        "at": "method:0xa8",
+        "offset": 168,
+        "name": "func_main_0",
+        "code_offset": 268,
+        "code_size": 1,
+        "args": 3,
+        "vregs": 0
+      },
+      {
+        "at": "method:0xb7",
+        "offset": 183,
+        "name": "加法😀",
+        "code_offset": 273,
+        "code_size": 6,
+        "args": 3,
+        "vregs": 0
+      }
+    ]
+  },
+  "empty_record": {
+    "at": "record:0xc6",
+    "offset": 198,
+    "name": "L&fixture/Other&;"
+  },
+  "text_offset": 252,
+  "text": "你好\u0000😀",
+  "bytes": 283
+}

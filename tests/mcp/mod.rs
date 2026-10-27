@@ -1,3 +1,5 @@
+#[cfg(feature = "backend-abc")]
+mod abc;
 mod access;
 #[cfg(feature = "bundled-kuna")]
 mod native;

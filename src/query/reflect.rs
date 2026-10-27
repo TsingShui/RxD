@@ -14,6 +14,7 @@ const BACKENDS: &[&str] = &[
     "pyc",
     "unluac-rs",
     "dae",
+    "ark",
 ];
 
 /// The command credits the engine; the record label stays the neutral format name.
@@ -22,6 +23,7 @@ fn label(backend: &str) -> &str {
         "unluac-rs" => "lua",
         "evmole" => "evm",
         "dae" => "flutter",
+        "ark" => "abc",
         other => other,
     }
 }
@@ -64,6 +66,7 @@ pub(super) struct ToolSpec {
     pub label: String,
     /// Clap subcommand spelling used to invoke the backend.
     pub backend: String,
+    /// Trusted, space-separated clap subcommand path.
     pub command: String,
     pub description: String,
     pub args: Vec<ArgSpec>,
@@ -170,10 +173,17 @@ fn args(command: &Command) -> Vec<ArgSpec> {
         .collect()
 }
 
-fn tool(backend: &str, command: &Command) -> ToolSpec {
+fn tool(backend: &str, command: &Command, path: &[String]) -> ToolSpec {
     let label = label(backend);
-    let name = format!("{}_{}", label, command.get_name().replace('-', "_"));
-    let args = args(command);
+    let name = format!("{}_{}", label, path.join("_").replace('-', "_"));
+    let mut args = args(command);
+    if backend == "ark"
+        && let Some(entry) = command
+            .get_arguments()
+            .find(|arg| arg.get_long() == Some("entry"))
+    {
+        args.push(arg_spec(entry, command));
+    }
     let required_groups = command
         .get_groups()
         .filter(|group| group.is_required_set())
@@ -216,7 +226,7 @@ fn tool(backend: &str, command: &Command) -> ToolSpec {
         name,
         label: label.to_owned(),
         backend: backend.to_owned(),
-        command: command.get_name().to_owned(),
+        command: path.join(" "),
         description,
         args,
         required_groups,
@@ -237,18 +247,35 @@ pub(super) fn tools() -> Vec<ToolSpec> {
         if !BACKENDS.contains(&backend.get_name()) {
             continue;
         }
-        for command in backend.get_subcommands() {
-            if command.get_name() == "help" {
-                continue;
-            }
-            let spec = tool(backend.get_name(), command);
-            if CLI_ONLY.contains(&spec.name.as_str()) {
-                continue;
-            }
-            tools.push(spec);
-        }
+        collect_tools(backend.get_name(), backend, &mut Vec::new(), &mut tools);
     }
     tools
+}
+
+fn collect_tools(
+    backend: &str,
+    parent: &Command,
+    path: &mut Vec<String>,
+    tools: &mut Vec<ToolSpec>,
+) {
+    for command in parent
+        .get_subcommands()
+        .filter(|command| command.get_name() != "help")
+    {
+        path.push(command.get_name().to_owned());
+        if command
+            .get_subcommands()
+            .any(|child| child.get_name() != "help")
+        {
+            collect_tools(backend, command, path, tools);
+        } else {
+            let spec = tool(backend, command, path);
+            if !CLI_ONLY.contains(&spec.name.as_str()) {
+                tools.push(spec);
+            }
+        }
+        path.pop();
+    }
 }
 
 fn property(arg: &ArgSpec) -> Value {
@@ -328,11 +355,8 @@ pub(super) fn argv(
     inputs: &[std::path::PathBuf],
 ) -> Result<Vec<std::ffi::OsString>, super::QueryError> {
     use std::ffi::OsString;
-    let mut argv: Vec<OsString> = vec![
-        "rxd".into(),
-        spec.backend.clone().into(),
-        spec.command.clone().into(),
-    ];
+    let mut argv: Vec<OsString> = vec!["rxd".into(), spec.backend.clone().into()];
+    argv.extend(spec.command.split(' ').map(OsString::from));
     let Some(path) = inputs.first() else {
         return Err(super::QueryError::new(
             "INVALID_QUERY",

@@ -16,6 +16,7 @@ explicitly, then locate → associate
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
 | ASAR, ZIP/HAP, PyInstaller or wxapkg input | `rxd unpack` | `rxd unpack ARCHIVE_OR_ONEDIR -o DIR`; extracts every regular file, PYZ modules and reconstructed `.pyc` files; for one-dir, finds the launcher; for V1MMWX wxapkg, pass `--appid` |
+| Dynamic Ark ABC 12.0.6.0 or HAP | `rxd ark` | `list record`, then `list method --at record:0x...`; `decompile --at method:0x...` reconstructs supported JS-like code and fails explicitly for unsupported constructs; add `--raw` for original instructions, also available for record coordinates; HAP with multiple ABC files requires `--entry PATH` |
 | Android APK or DEX | `rxd rasc` | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
@@ -37,7 +38,8 @@ modules with reconstructed `.pyc` headers. A PyInstaller one-dir root is accepte
 its launcher's CArchive/PYZ is extracted; loose `_internal` dependencies stay in place.
 wxapkg is unpacked from its index; encrypted `V1MMWX` PC/Mac packages need
 `--appid` or a path component matching the appid. `unpack` has no entry selection or
-in-memory archive analysis. AAR code normally lives in
+in-memory archive analysis. `rxd ark` can instead read the selected ABC directly
+from a HAP without unpacking unrelated resources or native libraries. AAR code normally lives in
 `classes.jar` or `libs/*.jar`: unpack, then use `rxd jar`. Encrypted ASAR/ZIP/PyInstaller entries, links and automatic nested extraction
 beyond PYZ are unsupported.
 

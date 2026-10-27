@@ -9,7 +9,8 @@ bytecode (`rxd unluac-rs`) and native EVMole EVM bytecode (`rxd evmole`). Outer 
 crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
 CLI adapter and bundled specs. ASAR, ZIP (including HAP) and PyInstaller archives
-are unpacked into a directory; they are not analyzed in place.
+are unpacked into a directory. `rxd ark` can also read a selected dynamic ABC
+directly from HAP; it does not analyze the other archive payloads.
 
 The current layout is:
 
@@ -30,6 +31,8 @@ The current layout is:
   DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
+- `crates/rxd-abc/`: dynamic Ark ABC 12.0.6.0 metadata and target-scoped code
+  access; `rxd ark list record` / `list method` provide two-level navigation.
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
 - `crates/rxd-zip/`: ZIP-family (including HAP) index and whole-archive
   Stored/Deflate extraction with CRC, length, duplicate-path and path-safety validation.
@@ -263,6 +266,7 @@ swapped or added.
 | `rxd ilspy` | ILSpy | `rxd-dotnet`, `src/cli/dotnet`, `backend-dotnet` | `dotnet` |
 | `rxd unluac-rs` | unluac | `rxd-lua`, `src/cli/lua`, `backend-lua` | `lua` |
 | `rxd dae` | dae-rs | `rxd-flutter`, `src/cli/flutter`, `backend-flutter` | `flutter` |
+| `rxd ark` | RxD dynamic Ark ABC implementation | `rxd-abc`, `src/cli/abc`, `backend-abc` | `abc` |
 | `rxd pyc` | CPython format, no engine | `rxd-pyc`, `src/cli/pyc`, `backend-pyc` | `pyc` |
 | `rxd wasm` | WASM format, no engine | `rxd-wasm`, `src/cli/wasm`, `backend-wasm` | `wasm` |
 | `rxd evmole` | EVM format, no engine | `rxd-evm`, `src/cli/evm`, `backend-evm` | `evm` |

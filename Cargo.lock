@@ -3040,6 +3040,7 @@ dependencies = [
  "libc",
  "rayon",
  "rmcp",
+ "rxd-abc",
  "rxd-asar",
  "rxd-core",
  "rxd-dex",
@@ -3063,6 +3064,17 @@ dependencies = [
  "tokio-util",
  "windows-sys",
  "zip",
+]
+
+[[package]]
+name = "rxd-abc"
+version = "0.1.0"
+dependencies = [
+ "adler2",
+ "rxd-core",
+ "rxd-zip",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
