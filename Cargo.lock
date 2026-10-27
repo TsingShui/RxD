@@ -1094,6 +1094,7 @@ dependencies = [
  "capstone",
  "clap",
  "mimalloc",
+ "rayon",
  "serde",
  "serde_json",
 ]

@@ -103,6 +103,9 @@ version = "0.1"
 version = "1"
 features = ["derive"]
 
+[dependencies.rayon]
+version = "1"
+
 [dependencies.serde_json]
 version = "1"
 features = []

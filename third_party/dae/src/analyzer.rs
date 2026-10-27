@@ -8,9 +8,10 @@ use crate::engine::fill::fill_snapshot;
 use crate::engine::restore::{
     func_blutter_kind, get_function_name_4_ida, library_name, scrub_name,
 };
-use crate::engine::snapshot::{ClassRec, FieldRec, FieldVal, Snapshot};
+use crate::engine::snapshot::{ClassRec, FieldRec, FieldVal, FunctionRec, Snapshot};
 use crate::platform::{load_container, locate_snapshots, ContainerInfo};
 use crate::profile::{PlatformProfile, SdkProfile};
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 
 /// build_functions 的产物：library → class → 函数组（r2/asm 共享，一次构建）
@@ -660,36 +661,50 @@ impl<'a> Analyzer<'a> {
         let mut libs: Vec<(String, Lib)> = Vec::new();
         let mut lib_lookup: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
-        for (&ref_, f) in self.iso.functions.iter() {
-            let Some((ep, idx)) = self.func_eps.get(&ref_).copied() else { continue };
-            let owner = self.class_of(f.owner_ref);
-            let cls = owner
-                .map(|o| scrub_name(self.sref_str(o.name_ref)))
-                .unwrap_or_default();
-            let raw_url: &str = owner
-                .and_then(|o| self.lib_of(o.library_ref))
-                .and_then(|(_, url_ref)| self.sref_str(url_ref))
-                .unwrap_or("");
-            if !include_dart_libs && raw_url.starts_with("dart:") {
-                continue; // 默认跳过 SDK 内部库（供 asm 等聚焦产物使用）
-            }
-            let lib = if raw_url.is_empty() {
-                String::new()
-            } else {
-                library_name(raw_url)
-            };
-            let vk = f.kind_tag & 0x1F;
-            let st = (f.kind_tag >> 16) & 1 != 0;
-            let bkind = func_blutter_kind(vk);
-            let mut fn_ = scrub_name(self.sref_str(f.name_ref));
-            // 过渡版（2.16/2.18 等）函数名不在 fill：入口正确但 name_ref 为空时按地址回填 ELF 符号
-            if self.profile.format.elf_name_backfill && fn_.is_empty() {
-                if let Some(sym) = self.elf_names.get(&ep) {
-                    fn_ = clean_elf_fn(sym);
+        // rx-d: per-function work is string decoding and mangling, and a snapshot
+        // has tens of thousands of functions. Map it in parallel, then merge
+        // sequentially so library/class order stays the BTreeMap order.
+        let items: Vec<(u64, &FunctionRec)> = self
+            .iso
+            .functions
+            .iter()
+            .map(|(&ref_, f)| (ref_, f))
+            .collect();
+        let solved: Vec<Option<(u64, usize, String, String, String)>> = items
+            .par_iter()
+            .map(|(ref_, f)| {
+                let (ep, idx) = *self.func_eps.get(ref_)?;
+                let owner = self.class_of(f.owner_ref);
+                let cls = owner
+                    .map(|o| scrub_name(self.sref_str(o.name_ref)))
+                    .unwrap_or_default();
+                let raw_url: &str = owner
+                    .and_then(|o| self.lib_of(o.library_ref))
+                    .and_then(|(_, url_ref)| self.sref_str(url_ref))
+                    .unwrap_or("");
+                if !include_dart_libs && raw_url.starts_with("dart:") {
+                    return None;
                 }
-            }
-            let mangled = get_function_name_4_ida(&fn_, &cls, bkind, vk, st);
+                let lib = if raw_url.is_empty() {
+                    String::new()
+                } else {
+                    library_name(raw_url)
+                };
+                let vk = f.kind_tag & 0x1F;
+                let st = (f.kind_tag >> 16) & 1 != 0;
+                let bkind = func_blutter_kind(vk);
+                let mut fn_ = scrub_name(self.sref_str(f.name_ref));
+                if self.profile.format.elf_name_backfill && fn_.is_empty() {
+                    if let Some(sym) = self.elf_names.get(&ep) {
+                        fn_ = clean_elf_fn(sym);
+                    }
+                }
+                let mangled = get_function_name_4_ida(&fn_, &cls, bkind, vk, st);
+                Some((ep, idx, lib, cls, mangled))
+            })
+            .collect();
 
+        for (ep, idx, lib, cls, mangled) in solved.into_iter().flatten() {
             let li = match lib_lookup.get(&lib) {
                 Some(&i) => i,
                 None => {
