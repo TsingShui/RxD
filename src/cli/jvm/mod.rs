@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 use rxd_core::Result;
-use rxd_core::envelope::{RecordMeta, SCHEMA_VERSION, record};
+use rxd_core::envelope::RecordMeta;
 use rxd_jvm::{Input, Limits};
 use serde_json::json;
 
@@ -87,7 +87,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one method as Java or JVM instructions.
-    #[command(name = "get-method", after_long_help = "Examples:\nrxd jar methods library.jar -f run\nrxd jar get-method library.jar --at 'Lx/y;->run()V' --raw\nCopy methods.at or xref.context_at verbatim; include parameters AND return type.\nOutput: one method_body JSON record. Default detail.code is reconstructed Java;\n--raw returns original JVM instructions, byte offsets and exception handlers.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at: JVM descriptor including return type, e.g. Lx/y;->run()V")))]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd jar methods library.jar -f run\nrxd jar get-method library.jar --at 'Lx/y;->run()V' --raw\nCopy methods.at or xref.context_at verbatim; include parameters AND return type.\nOutput: reconstructed Java text; --raw prints the original JVM instructions,\nbyte offsets and exception handlers as text.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at: JVM descriptor including return type, e.g. Lx/y;->run()V")))]
     Get {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
@@ -100,7 +100,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one whole class as Java.
-    #[command(name = "get-class", after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nrxd jar get-class library.jar --at 'Lx/y;'\nCopy classes.at, not a method coordinate. Output: one class_body record, detail.code is Java.\nWhole-class rendering may contain unsupported-method stubs; inspect method --raw separately.", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; do not pass a method coordinate")))]
+    #[command(name = "get-class", after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nrxd jar get-class library.jar --at 'Lx/y;'\nCopy classes.at, not a method coordinate. Output: reconstructed Java text.\nWhole-class rendering may contain unsupported-method stubs; inspect method --raw separately.", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; do not pass a method coordinate")))]
     GetClass {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
@@ -539,34 +539,41 @@ fn execute_inner(
                 .code
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("INVALID_QUERY: method has no Code attribute"))?;
-            let mut bytecode = record(
-                "method_body",
-                RecordMeta {
-                    at: Some(Input::method_at(selected, index).as_str()),
-                    start: Some(code.range.start),
-                    end: Some(code.range.end),
-                    ..RecordMeta::default()
-                },
-                json!({
-                    "representation":"bytecode",
-                    "decompiled":false,
-                    "code":serde_json::Value::Null,
-                    "max_stack":code.max_stack,
-                    "max_locals":code.max_locals,
-                    "handlers":code.handlers,
-                    "instructions":rxd_jvm::bytecode(&selected.class, method)?,
-                    "complete":true,
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            );
-            // Single-record FETCH has no header; keep protocol identity outside detail.
-            bytecode["backend"] = json!("jvm");
-            bytecode["command"] = json!("get-method");
-            bytecode["schema_version"] = json!(SCHEMA_VERSION);
-            bytecode["source_id"] = json!(input.source_id);
-            append(&mut output, &bytecode)?;
+            // Original instructions are the answer: one line per instruction,
+            // with the code attributes as comment lines around them.
+            let mut text = String::new();
+            text.push_str(&format!(
+                "// max_stack={} max_locals={} handlers={}\n",
+                code.max_stack,
+                code.max_locals,
+                code.handlers.len()
+            ));
+            for instruction in rxd_jvm::bytecode(&selected.class, method)? {
+                text.push_str(&instruction.byte_offset.to_string());
+                text.push('\t');
+                text.push_str(instruction.mnemonic);
+                for operand in &instruction.operands {
+                    text.push(' ');
+                    text.push_str(&operand.to_string());
+                }
+                if !instruction.targets.is_empty() {
+                    text.push_str(" ->");
+                    for target in &instruction.targets {
+                        text.push_str(&format!(" {target}"));
+                    }
+                }
+                text.push('\n');
+            }
+            for handler in &code.handlers {
+                text.push_str(&format!(
+                    "// handler start={} end={} target={} catch={}\n",
+                    handler.start,
+                    handler.end,
+                    handler.target,
+                    handler.catch_type.as_deref().unwrap_or("any")
+                ));
+            }
+            super::write_output(text.as_bytes(), options.output.as_deref(), sink)?;
         } else {
             let source = rxd_jvm::render_method(&input, &at, limits)?;
             super::write_output(source.as_bytes(), options.output.as_deref(), sink)?;

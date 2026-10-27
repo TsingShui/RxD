@@ -4,7 +4,7 @@ use super::filter::CaseArgs;
 use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::Result;
-use rxd_core::envelope::{RecordMeta, attach_protocol, record};
+use rxd_core::envelope::RecordMeta;
 use rxd_core::perf::Perf;
 use rxd_wasm::{Limits, Module};
 use serde_json::{Map, Value, json};
@@ -187,7 +187,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one function as C-like or instructions.
-    #[command(name = "get-function", after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nrxd wasm get-function module.wasm --at 'func:1' --raw\nRequired: --at copied from functions.at or xref.context_at; use actual func:N.\nImported functions have no defined body. Not a function name or type:N coordinate.\nOutput: one function_view JSON record. Default attempts C-like reconstruction;\nunsupported cases fall back to instructions. --raw forces original instruction evidence.", mut_arg("at", |arg| arg.required(true).value_name("FUNCTION_AT").help("Copy functions.at or xref.context_at: func:N in this module")))]
+    #[command(name = "get-function", after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nrxd wasm get-function module.wasm --at 'func:1' --raw\nRequired: --at copied from functions.at or xref.context_at; use actual func:N.\nImported functions have no defined body. Not a function name or type:N coordinate.\nOutput: C-like reconstruction text; --raw or an unsupported body prints the\noriginal instruction listing as text.", mut_arg("at", |arg| arg.required(true).value_name("FUNCTION_AT").help("Copy functions.at or xref.context_at: func:N in this module")))]
     Get {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
@@ -362,62 +362,38 @@ fn execute_inner(
         let at = selector.resolve()?;
         let position = module.defined_position_at(&at)?;
         let view = perf.measure("decode", || rxd_wasm::get_view(&module, position, *raw))?;
-        // A successful reconstruction is the answer; `--raw` or a fallback stays evidence.
-        if !*raw && view.decompiled {
-            let source = view.code.clone().unwrap_or_default();
+        // Instructions are the answer when reconstruction is not: `--raw` or a
+        // fallback prints the disassembly, never a record.
+        if *raw || !view.decompiled {
+            let mut text = String::new();
+            text.push_str(&format!(
+                "// func={} type={} body_size={}\n",
+                view.func_index, view.type_index, view.body_size
+            ));
+            for instruction in &view.instructions {
+                text.push_str(&instruction.offset.to_string());
+                text.push('\t');
+                text.push_str(&instruction.opcode);
+                if let Some(operand) = operand_text(&instruction.operand) {
+                    text.push(' ');
+                    text.push_str(&operand);
+                }
+                text.push('\n');
+            }
             perf.record("query", query_start);
             perf.counters.records = Some(1);
-            perf.counters.output_bytes = Some(source.len());
+            perf.counters.output_bytes = Some(text.len());
             perf.measure("write", || {
-                super::write_output(source.as_bytes(), options.output.as_deref(), sink)
+                super::write_output(text.as_bytes(), options.output.as_deref(), sink)
             })?;
             return Ok(());
         }
-        let mut value = record(
-            "function_view",
-            RecordMeta {
-                at: Some(&module.function_at(position).id),
-                start: Some(view.body_file_offset),
-                end: Some(view.body_file_offset + view.body_size),
-                ..RecordMeta::default()
-            },
-            {
-                let mut fields = json!({
-                    "representation": view.representation,
-                    "decompiled": view.decompiled,
-                    "reason": view.reason,
-                    "code": view.code,
-                    "func": {
-                        "func_index": view.func_index,
-                        "type_index": view.type_index,
-                        "name": view.name,
-                        "params": view.params,
-                        "results": view.results
-                    },
-                    "body_file_offset": view.body_file_offset,
-                    "body_size": view.body_size,
-                    "locals": view.locals,
-                    "mapping": view.mapping,
-                    "complete": true,
-                })
-                .as_object()
-                .unwrap()
-                .clone();
-                // Include original instructions for --raw or reconstruction fallback.
-                if *raw || !view.decompiled {
-                    fields.insert("instructions".into(), json!(view.instructions));
-                    fields.insert("bytecode_hex".into(), json!(view.bytecode_hex));
-                }
-                fields
-            },
-        );
-        attach_protocol(&mut value, "wasm", command.name());
-        append(&mut output, &value)?;
+        let source = view.code.clone().unwrap_or_default();
         perf.record("query", query_start);
         perf.counters.records = Some(1);
-        perf.counters.output_bytes = Some(output.len());
+        perf.counters.output_bytes = Some(source.len());
         perf.measure("write", || {
-            super::write_output(&output, options.output.as_deref(), sink)
+            super::write_output(source.as_bytes(), options.output.as_deref(), sink)
         })?;
         return Ok(());
     }
@@ -931,4 +907,33 @@ fn push_limited(
 fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
     output.json_line(value)?;
     Ok(())
+}
+
+/// Immediate operands as they appear in the original listing.
+fn operand_text(operand: &rxd_wasm::Operand) -> Option<String> {
+    use rxd_wasm::Operand;
+    Some(match operand {
+        Operand::None => return None,
+        Operand::I32 { value } => value.to_string(),
+        Operand::I64 { value } => value.to_string(),
+        Operand::F32 { bits } => format!("0x{bits:08x}"),
+        Operand::F64 { bits } => format!("0x{bits:016x}"),
+        Operand::Local { index } => format!("local[{index}]"),
+        Operand::Global { index } => format!("global[{index}]"),
+        Operand::Function { index } => format!("func[{index}]"),
+        Operand::Type { index } => format!("type[{index}]"),
+        Operand::Table { index } => format!("table[{index}]"),
+        Operand::Memory { memarg } => {
+            format!("memory[align={} offset={}]", memarg.align, memarg.offset)
+        }
+        Operand::Branch { depth } => format!("depth={depth}"),
+        Operand::BranchTable { targets, default } => {
+            format!("targets={targets:?} default={default}")
+        }
+        Operand::Block { block_type } => block_type.clone(),
+        Operand::CallIndirect {
+            type_index,
+            table_index,
+        } => format!("type[{type_index}] table[{table_index}]"),
+    })
 }

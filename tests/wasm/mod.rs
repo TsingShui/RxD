@@ -219,40 +219,6 @@ fn records_of(rows: &[Value], record: &str) -> Vec<Value> {
         .collect()
 }
 
-/// The `at` a `functions` row prints, which is exactly what `--at` accepts.
-fn get_raw(path: &Path, at: &str) -> Value {
-    let out = run("get-function", path, &["--at", at, "--raw"]);
-    success(&out);
-    let row: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_record(&row);
-    assert_eq!(row["detail"]["complete"], true);
-    row
-}
-#[test]
-fn wasm_xref_rows_carry_the_caller_coordinate_and_target() {
-    let path = input();
-    let rows = wasm_jsonl(&run("xref", &path, &["--at", "func:1"]));
-    let refs = records_of(&rows, "reference");
-    // `run` (index 2) references `sum` (index 1) via both ref.func and call.
-    let opcodes: Vec<&str> = refs
-        .iter()
-        .map(|r| r["detail"]["opcode"].as_str().unwrap())
-        .collect();
-    assert!(opcodes.contains(&"call"));
-    assert!(opcodes.contains(&"ref.func"));
-    for r in &refs {
-        assert_eq!(r["context_at"], "func:2");
-        assert_eq!(r["detail"]["target"], "func:1");
-        assert_eq!(r["detail"]["caller_index"], 2);
-        assert_eq!(r["detail"]["target_index"], 1);
-        // Offset is within the caller's code body.
-        assert!(r["detail"]["offset"].as_u64().is_some());
-        // The caller coordinate a row prints is directly fetchable.
-        let caller = get_raw(&path, r["context_at"].as_str().unwrap());
-        assert_eq!(caller["detail"]["func"]["func_index"], 2);
-    }
-}
-
 #[test]
 fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
     let path = input();

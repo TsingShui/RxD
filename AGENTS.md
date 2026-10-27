@@ -225,9 +225,11 @@ envelope and no `columns`/`rows` document. The first cell selects the row, so a
 listing never needs a header to be parsed; text cells are JSON-quoted and `\N`
 marks an absent value. Each command's long help opens with its own `Columns:`
 line and the root help states the format once, so a shape change updates both.
-Source reconstruction (`decompile`) prints the reconstructed source itself, one
-labelled block per unit, and never wraps it in a record. Fetch commands (`get-*`,
-`get-code`) still emit one full JSON record. Do not add presentation columns,
+Source reconstruction prints the source itself, never a record: `decompile`
+commands emit one labelled block per unit, and `get-method`/`get-class`/
+`get-function` print the reconstructed Java, C# or C-like text. `--raw` prints the
+original instructions as text lines too. Only evidence that is not source
+(`get-code` inventories, class metadata under `--raw`) stays a JSON record. Do not add presentation columns,
 padding or per-backend dialects.
 
 `xref` is one command, not per-kind subcommands. Preserve argument errors for

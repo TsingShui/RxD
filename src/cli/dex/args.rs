@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Fetch one class as Java.
-    #[command(name = "get-class", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; not a method coordinate")), after_long_help = "Examples:\n  rxd rasc classes app.apk -f Main\n  rxd rasc get-class app.apk --at 'Lx/y;'\nUse actual classes.at. Output: one class_body JSON record; detail.code is Java.\nNo --raw flag. Unsupported methods may be stubs; inspect members and references.")]
+    #[command(name = "get-class", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; not a method coordinate")), after_long_help = "Examples:\n  rxd rasc classes app.apk -f Main\n  rxd rasc get-class app.apk --at 'Lx/y;'\nUse actual classes.at. Output: reconstructed Java text.\nNo --raw flag. Unsupported methods may be stubs; inspect members and references.")]
     Getclass(GetClassArgs),
     /// List APK/ZIP entries (columns: name, uncompressed_size, compression).
     #[command(
@@ -42,7 +42,7 @@ pub enum Command {
     )]
     Classes(ClassesArgs),
     /// Fetch one method as Java.
-    #[command(name = "get-method", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at; include parameters and return type, e.g. Lx/y;->run()V")), after_long_help = "Examples:\n  rxd rasc methods app.apk -f run\n  rxd rasc get-method app.apk --at 'Lx/y;->run()V'\nUse actual methods.at or reference.context_at, not a name, index or file hash.\nThe prototype includes return type after ): ()V, (I)I, (I)[Ljava/lang/String;.\nOutput: one method_body JSON record; detail.code is Java. No --raw flag.")]
+    #[command(name = "get-method", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at; include parameters and return type, e.g. Lx/y;->run()V")), after_long_help = "Examples:\n  rxd rasc methods app.apk -f run\n  rxd rasc get-method app.apk --at 'Lx/y;->run()V'\nUse actual methods.at or reference.context_at, not a name, index or file hash.\nThe prototype includes return type after ): ()V, (I)I, (I)[Ljava/lang/String;.\nOutput: reconstructed Java text. No --raw flag.")]
     GetMethod(GetMethodArgs),
     /// List fields across every DEX (columns: at).
     #[command(

@@ -72,7 +72,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one method as IL or C#.
-    #[command(name = "get-method", after_long_help = "Examples:\nrxd ilspy methods app.dll -f Read\nrxd ilspy get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context_at from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: one method_body JSON record. --raw preserves IL; C# needs ILSpy.\nInspect detail.representation/decompiled/reason; engine fallback IL is not C#.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context_at: eight-digit MethodDef token, e.g. 0x0600000b")))]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd ilspy methods app.dll -f Read\nrxd ilspy get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context_at from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: C# text; --raw prints the original IL as text. C# needs ILSpy.\nWithout the engine the IL text is printed with an explicit reason line.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context_at: eight-digit MethodDef token, e.g. 0x0600000b")))]
     Get {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
@@ -85,7 +85,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one type and its nested types.
-    #[command(name = "get-class", after_long_help = "Examples:\nrxd ilspy classes app.dll -f Client\nrxd ilspy get-class app.dll --at '0x0200000b' --raw\nCopy classes.at or a member's parent_at. TypeDef token, not a class name.\nOutput: one class_body JSON record including recursively owned nested types.\n--raw keeps metadata/IL/EH; C# requires ILSpy and may explicitly fall back to IL.", mut_arg("at", |arg| arg.required(true).value_name("TYPE_TOKEN").help("Copy classes.at or member.parent_at: eight-digit TypeDef token, e.g. 0x0200000b")))]
+    #[command(name = "get-class", after_long_help = "Examples:\nrxd ilspy classes app.dll -f Client\nrxd ilspy get-class app.dll --at '0x0200000b' --raw\nCopy classes.at or a member's parent_at. TypeDef token, not a class name.\nOutput: C# text. --raw returns the metadata/IL inventory record.\nC# requires ILSpy and may explicitly fall back to IL.", mut_arg("at", |arg| arg.required(true).value_name("TYPE_TOKEN").help("Copy classes.at or member.parent_at: eight-digit TypeDef token, e.g. 0x0200000b")))]
     GetClass {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
@@ -289,57 +289,49 @@ fn execute_inner(
         };
         // Each metadata-token operand carries the resolved member it denotes, so a
         // fallback to IL does not require a separate --token --semantic round trip.
-        let instructions = if *raw {
-            annotate_operands(&input, &body.instructions)?
-        } else {
-            Value::Null
-        };
-        let reason_detail = decompilation.reason.as_deref().map(|reason| {
-            describe_method_reason(
-                reason,
-                body.instructions.len(),
-                body.handlers.len(),
-                &unresolved_operands(&instructions),
-            )
-        });
         if !*raw {
-            // A reconstruction is the answer: print the C# (or the engine's IL
-            // fallback) directly; the record stays for `--raw` evidence.
-            let source = decompilation.code.clone().unwrap_or_default();
-            output.write_all(source.as_bytes())?;
+            // A reconstruction is the answer. Without the engine there is no C#, so
+            // fall back to the original IL text rather than printing nothing.
+            match decompilation.code.as_deref() {
+                Some(source) if !source.trim().is_empty() => output.write_all(source.as_bytes())?,
+                _ => {
+                    let reason = decompilation.reason.as_deref().unwrap_or("no engine");
+                    output.write_all(
+                        format!("// reconstruction unavailable: {reason}\n").as_bytes(),
+                    )?;
+                    write_il_text(&mut output, &body)?;
+                }
+            }
+            perf.record("query", query_start);
+            perf.counters.records = Some(1);
+            perf.counters.output_bytes = Some(output.len());
+            perf.measure("write", || {
+                super::write_output(&output, options.output.as_deref(), sink)
+            })?;
             return Ok(());
         }
-        let value = fetch_record(
-            "method_body",
-            command.name(),
-            RecordMeta {
-                at: Some(&at),
-                parent_at: Some(&coordinate(method.declaring_type_token)),
-                start: Some(body.code_offset),
-                end: Some(body.code_offset + body.code_size),
-                ..RecordMeta::default()
-            },
-            {
-                let mut out = json!({"method":method_record(&input, method)?,"body_present":true,"representation":decompilation.representation,"decompiled":decompilation.decompiled,"reason":decompilation.reason,"reason_detail":reason_detail,"warnings":decompilation.warnings,"code":decompilation.code,"mapping":decompilation.mapping,"file_offset":body.file_offset,"code_offset":body.code_offset,"code_size":body.code_size,"work_used":body.work_used,"complete":true})
-                    .as_object()
-                    .unwrap()
-                    .clone();
-                if *raw {
-                    out.insert("max_stack".into(), json!(body.max_stack));
-                    out.insert("init_locals".into(), json!(body.init_locals));
-                    out.insert(
-                        "local_signature_token".into(),
-                        json!(body.local_signature_token),
-                    );
-                    out.insert("locals".into(), serde_json::to_value(&body.locals)?);
-                    out.insert("instructions".into(), instructions);
-                    out.insert("handlers".into(), serde_json::to_value(&body.handlers)?);
-                    out.insert("il_hex".into(), json!(body.il_hex));
-                }
-                out
-            },
-        );
-        output.json_line(&value)?;
+        // Original IL is the answer for `--raw`: one line per instruction with the
+        // code attributes as comment lines, never a record wrapper.
+        let mut text = String::new();
+        text.push_str(&format!(
+            "// max_stack={} init_locals={} code_offset={} code_size={}\n",
+            body.max_stack, body.init_locals, body.code_offset, body.code_size
+        ));
+        for instruction in &body.instructions {
+            text.push_str(&format!(
+                "{:04x}\t{}",
+                instruction.offset, instruction.mnemonic
+            ));
+            if let Some(operand) = il_operand_text(&instruction.operand) {
+                text.push(' ');
+                text.push_str(&operand);
+            }
+            text.push('\n');
+        }
+        for handler in &body.handlers {
+            text.push_str(&format!("// handler {handler:?}\n"));
+        }
+        output.write_all(text.as_bytes())?;
     } else if let Command::GetClass { selector, raw, .. } = &command {
         let at = selector.resolve()?;
         let root = perf.measure("prepare", || input.prepare_class(&at))?;
@@ -365,6 +357,12 @@ fn execute_inner(
             // A reconstruction is the answer: print it, keep the record for --raw.
             let source = rendered.code.clone().unwrap_or_default();
             output.write_all(source.as_bytes())?;
+            perf.record("query", query_start);
+            perf.counters.records = Some(1);
+            perf.counters.output_bytes = Some(output.len());
+            perf.measure("write", || {
+                super::write_output(&output, options.output.as_deref(), sink)
+            })?;
             return Ok(());
         }
         let mut payload = detail(
@@ -563,75 +561,6 @@ fn record(
     Ok(())
 }
 
-/// Names of token operands the resolver could not place, deduplicated and truncated so
-/// the reason stays readable.
-fn unresolved_operands(instructions: &Value) -> Vec<String> {
-    let mut names = Vec::new();
-    let Some(list) = instructions.as_array() else {
-        return names;
-    };
-    for instruction in list {
-        let Some(operand) = instruction.get("operand") else {
-            continue;
-        };
-        if operand.get("kind").and_then(Value::as_str) != Some("token") {
-            continue;
-        }
-        match operand.get("status").and_then(Value::as_str) {
-            Some("resolved" | "external") => {}
-            _ => {
-                // User-string tokens have no member name.
-                if operand.get("value").and_then(Value::as_u64).unwrap_or(0) >> 24 == 0x70 {
-                    continue;
-                }
-                // Unresolved operands expose only their usable token.
-                let label = match (
-                    operand.get("owner").and_then(Value::as_str),
-                    operand.get("name").and_then(Value::as_str),
-                ) {
-                    (Some(owner), Some(name)) => format!("{owner}::{name}"),
-                    _ => format!(
-                        "token {:#010x}",
-                        operand.get("value").and_then(Value::as_u64).unwrap_or(0)
-                    ),
-                };
-                if !names.contains(&label) {
-                    names.push(label);
-                }
-            }
-        }
-    }
-    names.truncate(4);
-    names
-}
-
-/// Describe why reconstruction fell back to IL.
-fn describe_method_reason(
-    reason: &str,
-    instructions: usize,
-    handlers: usize,
-    unresolved: &[String],
-) -> String {
-    let unresolved_detail = if unresolved.is_empty() {
-        "every member operand resolves, so the refusal is the engine's own reconstruction limit rather than missing metadata".to_string()
-    } else {
-        format!(
-            "{} unresolved member operand(s): {}",
-            unresolved.len(),
-            unresolved.join(", ")
-        )
-    };
-    match reason {
-        "engine_unavailable" => format!(
-            "this build cannot load the pinned C# engine ({}), so only the original IL is available: {instructions} instructions, {unresolved_detail}",
-            engine_state(),
-        ),
-        other => format!(
-            "the C# engine rejected this body (`{other}`); the original IL is returned: {instructions} instructions, {handlers} exception handlers, {unresolved_detail}"
-        ),
-    }
-}
-
 fn describe_class_reason(reason: &str, methods: usize) -> String {
     match reason {
         "class_engine_unavailable" => format!(
@@ -670,67 +599,23 @@ fn engine_state() -> &'static str {
 }
 
 /// Annotate every metadata-token operand with the member it provably denotes.
-fn annotate_operands(
-    input: &Input,
-    instructions: &[rxd_dotnet::Instruction],
-) -> anyhow::Result<Value> {
-    let mut value = serde_json::to_value(instructions)?;
-    let Some(list) = value.as_array_mut() else {
-        return Ok(value);
-    };
-    let mut resolver = input.target_resolver()?;
-    // A `#US` operand has no member identity, but its token is a usable coordinate and
-    // the literal is already decoded in the heap, so one lookup answers both questions.
-    let literals = if instructions.iter().any(|instruction| {
-        matches!(instruction.operand, rxd_dotnet::Operand::Token(token) if token >> 24 == 0x70)
-    }) {
-        let mut map = BTreeMap::new();
-        for record in input.strings()? {
-            map.insert(record.offset, record);
+/// IL immediate operands as they appear in the original listing.
+fn il_operand_text(operand: &rxd_dotnet::Operand) -> Option<String> {
+    use rxd_dotnet::Operand;
+    Some(match operand {
+        Operand::None => return None,
+        Operand::I32(value) => value.to_string(),
+        Operand::I64(value) => value.to_string(),
+        Operand::F32Bits(bits) => format!("0x{bits:08x}"),
+        Operand::F64Bits(bits) => format!("0x{bits:016x}"),
+        Operand::Variable(index) => format!("v{index}"),
+        Operand::Token(token) => format!("0x{token:08x}"),
+        Operand::Branch(target) => format!("->{target:04x}"),
+        Operand::Switch(targets) => {
+            let list: Vec<String> = targets.iter().map(|t| format!("{t:04x}")).collect();
+            format!("[{}]", list.join(" "))
         }
-        Some(map)
-    } else {
-        None
-    };
-    for instruction in list.iter_mut() {
-        let Some(operand) = instruction.get_mut("operand") else {
-            continue;
-        };
-        if operand.get("kind").and_then(Value::as_str) != Some("token") {
-            continue;
-        }
-        let Some(token) = operand.get("value").and_then(Value::as_u64) else {
-            continue;
-        };
-        let token = u32::try_from(token).unwrap_or(0);
-        if token >> 24 == 0x70 {
-            operand["target_at"] = Value::from(format!("0x{token:08x}"));
-            if let Some(record) = literals
-                .as_ref()
-                .and_then(|map| map.get(&(token & 0x00ff_ffff)))
-            {
-                match (&record.value, &record.utf16_units) {
-                    (Some(text), _) => operand["string"] = Value::from(text.clone()),
-                    (None, Some(units)) => {
-                        operand["utf16_units"] = serde_json::to_value(units)?;
-                    }
-                    (None, None) => {}
-                }
-            }
-            continue;
-        }
-        let Some(target) = resolver.target(token)? else {
-            continue;
-        };
-        operand["owner"] = Value::from(target.owner_name.clone());
-        operand["name"] = Value::from(target.name.clone());
-        operand["status"] = Value::from(target.resolution_status.clone());
-        operand["scope"] = serde_json::to_value(&target.scope)?;
-        if let Some(canonical) = target.canonical_token {
-            operand["target_at"] = Value::from(coordinate(canonical));
-        }
-    }
-    Ok(value)
+    })
 }
 
 fn coordinate(token: u32) -> String {
@@ -1145,4 +1030,32 @@ fn parse_token(value: &str) -> anyhow::Result<u32> {
         "INVALID_QUERY: expected a metadata token such as `0x0600000b` (eight hex digits, `0x` optional)"
     );
     Ok(u32::from_str_radix(body, 16)?)
+}
+
+/// Original IL as text: one line per instruction, attributes as comment lines.
+fn write_il_text(
+    output: &mut rxd_core::output::Output,
+    body: &rxd_dotnet::MethodBody,
+) -> anyhow::Result<()> {
+    let mut text = String::new();
+    text.push_str(&format!(
+        "// max_stack={} init_locals={} code_offset={} code_size={}\n",
+        body.max_stack, body.init_locals, body.code_offset, body.code_size
+    ));
+    for instruction in &body.instructions {
+        text.push_str(&format!(
+            "{:04x}\t{}",
+            instruction.offset, instruction.mnemonic
+        ));
+        if let Some(operand) = il_operand_text(&instruction.operand) {
+            text.push(' ');
+            text.push_str(&operand);
+        }
+        text.push('\n');
+    }
+    for handler in &body.handlers {
+        text.push_str(&format!("// handler {handler:?}\n"));
+    }
+    output.write_all(text.as_bytes())?;
+    Ok(())
 }
