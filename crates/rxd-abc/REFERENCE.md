@@ -60,9 +60,38 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   fallback. Non-structured methods use a labeled form with `while (true)` plus
   `break`/`continue`; dominators validate natural-loop back edges and loop
   headers can be entered from outside. Pure-rethrow handlers are elided.
-- Known remaining gap: unsized exception handlers that implement shared
-  `finally` cleanups (2 ClashBox methods after the last audit) still fail
-  explicitly pending finally reconstruction; they are not approximated.
+- Unsized handlers that are neither pure rethrows nor empty catches still fail
+  explicitly pending `finally` reconstruction; they are not approximated.
+
+## Full-sample evidence and reference differences
+
+- Pinned input: ClashBox v1.7.4 `ets/modules.abc` (SHA-256
+  `a2046b75...c197c`, 7,203,484 bytes); xpanda `8f27d3c` full run produced 376
+  sources; the sample has 385 records, 376 with module data/`func_main_0`.
+  The 9 auxiliary records are `L@ohos.*`/`L@system.*` records and the
+  `L_ESConcurrentModuleRequestsAnnotation;`/`L_ESSlotNumberAnnotation;` classes;
+  they carry no module initializer, so no record source exists.
+- RxD reconstructs all 14,082 methods and all 376 source records. An unsized
+  exception handler whose entry is the target of the normal bypass jump is an
+  empty catch (the handler entry coincides with the continuation); pure-rethrow
+  handlers are elided; other unsized handlers would still fail explicitly.
+- Every rendered method/record parses as a module; instruction decoding is
+  identical to the pinned reference for all methods/operands.
+- Substantive reference differences with static evidence:
+  - Class static stores (`stownbyname` on the constructor) are non-enumerable
+    in Ark (`RuntimeStOwnByName`: `enumerable = !(IsClassPrototype ||
+    IsClassConstructor)`); xpanda prints `static` fields, which are enumerable.
+    RxD emits `Object.defineProperty` with the class-constructor/prototype
+    check.
+  - Derived constructors must not read `this` before `super()`. RxD models the
+    incoming this register as `void 0` and keeps the Ark
+    `throw.ifsupernotcorrectcall` checks; xpanda assigns `p2 = this` at entry.
+  - A module local export named `=ens0` is not a valid JS identifier; xpanda
+    emits it verbatim (invalid source), RxD binds it as `__abc_export_N` and
+    exports it with the original string name.
+  - Dynamic calls use `Reflect.apply(callee, receiver, [...])` because Ark
+    passes the callee in the accumulator and the receiver in a register; RxD
+    does not infer a static callee name or build call edges.
 
 ## Independent implementation reference
 

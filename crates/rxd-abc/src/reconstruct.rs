@@ -1770,19 +1770,31 @@ fn simple_tries(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<TryRegion>> 
                 "typed or unsized exception handler is not yet supported",
             ));
         }
-        if handler.length == 0 {
-            if pure_rethrow(decoded, handler.pc, 0) {
-                continue;
-            }
-            return Err(unsupported(
-                "unsized exception handler needs region analysis",
-            ));
-        }
-        if pure_rethrow(decoded, handler.pc, handler.length) {
+        if handler.length == 0 && pure_rethrow(decoded, handler.pc, 0) {
             continue;
         }
+        if handler.length != 0 && pure_rethrow(decoded, handler.pc, handler.length) {
+            continue;
+        }
+        let join_pc = if handler.length == 0 {
+            let previous = decoded
+                .instructions
+                .iter()
+                .take_while(|instruction| instruction.end() <= handler.pc)
+                .last()
+                .ok_or_else(|| invalid("ABC unsized handler has no preceding code"))?;
+            if previous.opcode.name == "jmp" && previous.branch == Some(handler.pc) {
+                handler.pc
+            } else {
+                return Err(unsupported(
+                    "unsized exception handler needs region analysis",
+                ));
+            }
+        } else {
+            handler.pc + handler.length
+        };
         let (start_pc, end_pc) = (region.pc, region.pc + region.length);
-        let (handler_pc, join_pc) = (handler.pc, handler.pc + handler.length);
+        let handler_pc = handler.pc;
         if end_pc > handler_pc {
             return Err(unsupported(
                 "exception handler overlaps its protected range",
@@ -1792,7 +1804,7 @@ fn simple_tries(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<TryRegion>> 
         let end = block(end_pc)?;
         let handler_block = block(handler_pc)?;
         let join = block(join_pc)?;
-        if !(start < end && end <= handler_block && handler_block < join) {
+        if !(start < end && end <= handler_block && handler_block <= join) {
             return Err(unsupported(
                 "exception handler does not follow its protected range",
             ));
@@ -2189,8 +2201,35 @@ impl<'a> Abc<'a> {
         for register in &plan.registers {
             writeln!(writer.out, "let v{register};")?;
         }
+        let mut prefix = Vec::new();
+        prefix
+            .try_reserve_exact(writer.out.len())
+            .map_err(|_| resource("ABC source prefix allocation failed"))?;
+        prefix.extend_from_slice(&writer.out);
         let end = writer.graph.blocks.len();
-        writer.range(0, end, end, None, None, 0)?;
+        let structured = writer.range(0, end, end, None, None, 0).and_then(|()| {
+            if let Some(index) = writer
+                .graph
+                .reachable
+                .iter()
+                .zip(&writer.visited)
+                .position(|(reachable, visited)| *reachable && !visited)
+            {
+                return Err(unsupported(format!(
+                    "reachable ABC block {index} was not reconstructed"
+                )));
+            }
+            Ok(())
+        });
+        if let Err(error) = structured {
+            if error.code != "DECOMPILE_FAILED" {
+                return Err(error);
+            }
+            writer.out = Output::new(self.budget.output_bytes);
+            writer.out.write_all(&prefix)?;
+            writer.visited.fill(false);
+            writer.linear(0)?;
+        }
         Ok(writer.out.into_bytes())
     }
 

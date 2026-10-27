@@ -78,10 +78,16 @@ fn main() -> Result<()> {
     let mut traces: Option<PathBuf> = None;
     let mut source_coverage = false;
     let mut source_path: Option<PathBuf> = None;
+    let mut record_source: Option<PathBuf> = None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--decode" => decode = true,
             "--source-coverage" => source_coverage = true,
+            "--record-source" => {
+                record_source = Some(PathBuf::from(arguments.next().ok_or_else(|| {
+                    Error::new("INVALID_QUERY", "--record-source requires a new directory")
+                })?));
+            }
             "--source-out" => {
                 source_path = Some(PathBuf::from(arguments.next().ok_or_else(|| {
                     Error::new("INVALID_QUERY", "--source-out requires a new path")
@@ -228,11 +234,30 @@ fn main() -> Result<()> {
     if let Some(output) = &mut source_output {
         output.flush()?;
     }
+    let mut record_sources = 0usize;
+    let mut record_failures = Vec::new();
+    if let Some(directory) = &record_source {
+        fs::create_dir_all(directory)?;
+        for offset in abc.record_offsets() {
+            let record = abc.record(offset)?;
+            match abc.decompile_record(&record) {
+                Ok(source) => {
+                    record_sources += 1;
+                    fs::write(directory.join(format!("{offset:x}.js")), source)?;
+                }
+                Err(error) => record_failures.push(json!({
+                    "record": offset,
+                    "code": error.code,
+                    "error": error.message
+                })),
+            }
+        }
+    }
     let report = json!({"source_id":abc.source_id,"records":records,"record_count":records.len(),"method_count":method_count,
         "code_bytes":code_bytes,"tries":try_count,"module_count":module_offsets.len(),"literal_entries":literals,
         "decoded":decode,"instruction_count":instruction_count,"opcode_histogram":histogram,
         "source_coverage":source_coverage,"source_successes":source_successes,"source_errors":coverage,
-        "source_failures":failures});
+        "source_failures":failures,"record_sources":record_sources,"record_failures":record_failures});
     let mut output = serde_json::to_vec(&report)
         .map_err(|error| Error::new("INTERNAL_ERROR", error.to_string()))?;
     output.push(b'\n');
