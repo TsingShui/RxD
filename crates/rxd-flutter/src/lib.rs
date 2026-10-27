@@ -244,7 +244,7 @@ impl Snapshot {
     }
 
     /// Reconstruct Dart-like pseudocode for the selected libraries.
-    pub fn decompile(&self, only: Option<&str>) -> Result<Vec<Rendered>> {
+    pub fn decompile(&self, only: Option<&str>, at: Option<u64>) -> Result<Vec<Rendered>> {
         let times = std::env::var("DART_AOT_TIMINGS").is_ok();
         let mut mark = std::time::Instant::now();
         let analyzer = self.analyzer()?;
@@ -259,6 +259,25 @@ impl Snapshot {
                 return Err(Error::new(
                     "INVALID_QUERY",
                     format!("no library matches {prefix:?}"),
+                ));
+            }
+        }
+        // A single function still renders through the same pipeline; the function
+        // table is the only structure libapp.so keeps, so the range comes from it.
+        if let Some(ep) = at {
+            let mut found = false;
+            for (_, classes) in &mut groups {
+                for (_, entries) in classes.iter_mut() {
+                    entries.retain(|entry| entry.ep == ep);
+                    found |= !entries.is_empty();
+                }
+                classes.retain(|(_, entries)| !entries.is_empty());
+            }
+            groups.retain(|(_, classes)| !classes.is_empty());
+            if !found {
+                return Err(Error::failure(
+                    rxd_core::Failure::NotFound,
+                    format!("no function at 0x{ep:x}"),
                 ));
             }
         }

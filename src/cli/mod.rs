@@ -250,12 +250,13 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
   rxd dae functions libapp.so -f fl_clash
   rxd dae strings libapp.so -f Authorization
   rxd dae xref libapp.so --at 'str:0x6590'
+  rxd dae decompile libapp.so --at '0x532ad0'
   rxd dae decompile libapp.so --lib fl_clash
 Input is an ELF ARM64 libapp.so from a Flutter Android release build; there is no encoding flag.
 The Dart SDK profile comes from the snapshot fingerprint and may be unverified.
 functions.at is a code entry offset; strings.at is a pool offset that xref consumes.
 xref decodes every function to find pool loads, so it takes seconds.
-decompile renders machine-level pseudocode per library.")]
+decompile renders one function (--at) or whole libraries (--lib).")]
     #[command(
         display_order = 56,
         long_about = "Analyze Dart/Flutter AOT: info, functions, pool strings, references, pseudocode"

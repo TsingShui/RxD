@@ -34,7 +34,7 @@ pub enum Command {
     Xref(XrefOptions),
     /// Reconstruct Dart-like pseudocode for whole libraries.
     #[command(
-        after_long_help = "Examples:\nrxd dae decompile libapp.so --lib fl_clash\nrxd dae decompile libapp.so\nOutput: one dae_decompile record with the rendered library files.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart.\nRendering runs the upstream decompiler: expect seconds, not milliseconds."
+        after_long_help = "Examples:\nrxd dae functions libapp.so -f fl_clash\nrxd dae decompile libapp.so --at 0x532ad0\nrxd dae decompile libapp.so --lib fl_clash\nOutput: one dae_decompile record with the rendered files.\n--at copies functions.at and renders that function alone; --lib widens to a package.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart.\nWhole-library rendering runs the upstream decompiler: expect seconds, not milliseconds."
     )]
     Decompile(DecompileOptions),
 }
@@ -93,8 +93,11 @@ pub struct DecompileOptions {
     #[command(flatten)]
     options: Options,
     /// Restrict rendering to libraries whose name starts with this prefix.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "at")]
     lib: Option<String>,
+    /// Copy functions.at: render this one function only.
+    #[arg(long, value_parser = parse_address, conflicts_with = "lib")]
+    at: Option<u64>,
 }
 
 impl Command {
@@ -121,6 +124,12 @@ impl Command {
             Self::Decompile(_) => "decompile",
         }
     }
+}
+
+/// Function entry address as printed by `functions`.
+fn parse_address(text: &str) -> std::result::Result<u64, String> {
+    let digits = text.trim_start_matches("0x");
+    u64::from_str_radix(digits, 16).map_err(|_| format!("expected 0x<address>, got {text}"))
 }
 
 /// Accept `str:0x…` (as printed by `strings`) or a bare object ref.
@@ -213,8 +222,9 @@ pub fn execute(
                 out.into_bytes()
             }
             Command::Decompile(decompile) => {
-                let rendered =
-                    perf.measure("analyze", || snapshot.decompile(decompile.lib.as_deref()))?;
+                let rendered = perf.measure("analyze", || {
+                    snapshot.decompile(decompile.lib.as_deref(), decompile.at)
+                })?;
                 let files: Vec<_> = rendered
                     .into_iter()
                     .map(|file| json!({"name": file.name, "source": file.source}))
