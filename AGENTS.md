@@ -5,7 +5,7 @@
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
 Android APK/DEX (`rxd rasc`), JVM class/JAR (`rxd jar`), .NET IL (`rxd ilspy`),
 WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`), Lua/LuaJIT/Luau
-bytecode (`rxd unluac`) and native EVMole EVM bytecode (`rxd evm`). Outer command names credit the engines a backend wraps;
+bytecode (`rxd unluac-rs`) and native EVMole EVM bytecode (`rxd evmole`). Outer command names credit the engines a backend wraps;
 crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
 CLI adapter and bundled specs. ASAR, ZIP and PyInstaller archives are unpacked
@@ -42,14 +42,14 @@ The current layout is:
 - `crates/rxd-dotnet/`: managed-assembly metadata, IL and C# reconstruction via
   the ILSpy NativeAOT shared library. Its pinned validation fork lives in
   `crates/rxd-dotnet/vendor/`.
-- `crates/rxd-evm/`: pinned EVMole Rust analysis behind `rxd evm`, explicit
+- `crates/rxd-evm/`: pinned EVMole Rust analysis behind `rxd evmole`, explicit
   raw/hex inputs, selector candidates, disassembly, PUSH literals and terminal
   CBOR metadata only; no CFG, storage or decompilation surface.
 - `crates/rxd-wasm/`: WASM module structure, instruction decode, explicit
   reference scanning, and self-built structured C-like decompilation; uses a
   pinned wasmparser (`REFERENCE.md`).
 - `crates/rxd-lua/`: bounded Lua/LuaJIT/Luau chunk parsing and whole-chunk
-  reconstruction through the pinned `unluac` crate; listings read the proto tree
+  reconstruction through the pinned `unluac` crate (`unluac-rs`); listings read the proto tree
   without running the decompiler.
 - `crates/rxd-pyc/`: bounded PYC/marshal parsing, code/constant identities,
   original instruction FETCH, explicit references and embedded pycdc source
@@ -202,7 +202,7 @@ mandatory.
   ground is a defect. Non-decompilation special workloads use the general
   special-workload rule above, not these grounds.
 
-`rxd evm` is capability-first and has no numeric latency gate. Preserve
+`rxd evmole` is capability-first and has no numeric latency gate. Preserve
 correctness, identities and resource budgets; EVM measurements are
 informational unless a concrete regression is being investigated. It exposes
 only `interface`, `disassemble`, `strings` and `metadata`: commands whose facts
@@ -252,10 +252,10 @@ swapped or added.
 | `rxd rasc` | Rascal (APK/DEX) | `rxd-dex`, `src/cli/dex`, `backend-dex` | `dex` |
 | `rxd jar` | JAR format, no engine | `rxd-jvm`, `src/cli/jvm`, `backend-jvm` | `jvm` |
 | `rxd ilspy` | ILSpy | `rxd-dotnet`, `src/cli/dotnet`, `backend-dotnet` | `dotnet` |
-| `rxd unluac` | unluac | `rxd-lua`, `src/cli/lua`, `backend-lua` | `lua` |
+| `rxd unluac-rs` | unluac | `rxd-lua`, `src/cli/lua`, `backend-lua` | `lua` |
 | `rxd pyc` | CPython format, no engine | `rxd-pyc`, `src/cli/pyc`, `backend-pyc` | `pyc` |
 | `rxd wasm` | WASM format, no engine | `rxd-wasm`, `src/cli/wasm`, `backend-wasm` | `wasm` |
-| `rxd evm` | EVM format, no engine | `rxd-evm`, `src/cli/evm`, `backend-evm` | `evm` |
+| `rxd evmole` | EVM format, no engine | `rxd-evm`, `src/cli/evm`, `backend-evm` | `evm` |
 
 Apply the same rule to a new backend: pick the outer command from the engine
 when one exists, keep the crate/module/feature/label on the format, and never

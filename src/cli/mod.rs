@@ -133,17 +133,17 @@ C# requires ILSpy; missing/failed reconstruction returns original IL with a reas
     #[cfg(feature = "backend-evm")]
     /// Analyze EVM bytecode.
     #[command(after_long_help = "Examples:
-  rxd evm interface runtime.hex --encoding hex
-  rxd evm disassemble runtime.hex --encoding hex
-  rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
-  rxd evm metadata runtime.hex --encoding hex
+  rxd evmole interface runtime.hex --encoding hex
+  rxd evmole disassemble runtime.hex --encoding hex
+  rxd evmole strings runtime.hex --encoding hex --kind text --query Authorization
+  rxd evmole metadata runtime.hex --encoding hex
 --encoding raw means binary bytes; hex means ASCII hexadecimal. Never guessed.
 interface selectors/types/mutability are inferred candidates, not a verified ABI.")]
     #[command(
         display_order = 60,
         long_about = "Analyze EVM bytecode: interface, disassembly, literals, compiler metadata"
     )]
-    Evm {
+    Evmole {
         #[command(subcommand)]
         command: evm::Command,
     },
@@ -240,11 +240,11 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
     #[cfg(feature = "backend-lua")]
     /// Analyze Lua bytecode.
     #[command(after_long_help = "Examples:
-  rxd unluac codes module.luac
-  rxd unluac strings module.luac -f token
-  rxd unluac xref module.luac --at 'proto:1:const:0'
-  rxd unluac instructions module.luac --at 'proto:1'
-  rxd unluac decompile module.luac
+  rxd unluac-rs codes module.luac
+  rxd unluac-rs strings module.luac -f token
+  rxd unluac-rs xref module.luac --at 'proto:1:const:0'
+  rxd unluac-rs instructions module.luac --at 'proto:1'
+  rxd unluac-rs decompile module.luac
 Dialect (PUC Lua 5.1-5.5, LuaJIT 2.1, Luau) comes from the chunk header, never a flag.
 codes.at is proto:N; strings.at is proto:N:const:I and selects xref, not a fetch.
 Decompile reconstructs the whole chunk; listings never run the decompiler.")]
@@ -252,7 +252,7 @@ Decompile reconstructs the whole chunk; listings never run the decompiler.")]
         display_order = 55,
         long_about = "Analyze Lua bytecode: codes, constants, references, source reconstruction"
     )]
-    Unluac {
+    UnluacRs {
         #[command(subcommand)]
         command: lua::Command,
     },
@@ -316,11 +316,11 @@ impl Cli {
             #[cfg(feature = "backend-wasm")]
             Backend::Wasm { command } => command.perf(),
             #[cfg(feature = "backend-evm")]
-            Backend::Evm { command } => command.perf(),
+            Backend::Evmole { command } => command.perf(),
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { command } => command.perf(),
             #[cfg(feature = "backend-lua")]
-            Backend::Unluac { command } => command.perf(),
+            Backend::UnluacRs { command } => command.perf(),
         }
     }
     pub fn backend_name(&self) -> &'static str {
@@ -341,11 +341,11 @@ impl Cli {
             #[cfg(feature = "backend-wasm")]
             Backend::Wasm { .. } => "wasm",
             #[cfg(feature = "backend-evm")]
-            Backend::Evm { .. } => "evm",
+            Backend::Evmole { .. } => "evm",
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { .. } => "pyc",
             #[cfg(feature = "backend-lua")]
-            Backend::Unluac { .. } => "lua",
+            Backend::UnluacRs { .. } => "lua",
         }
     }
     pub fn command_name(&self) -> &'static str {
@@ -366,11 +366,11 @@ impl Cli {
             #[cfg(feature = "backend-wasm")]
             Backend::Wasm { command } => command.name(),
             #[cfg(feature = "backend-evm")]
-            Backend::Evm { command } => command.name(),
+            Backend::Evmole { command } => command.name(),
             #[cfg(feature = "backend-pyc")]
             Backend::Pyc { command } => command.name(),
             #[cfg(feature = "backend-lua")]
-            Backend::Unluac { command } => command.name(),
+            Backend::UnluacRs { command } => command.name(),
         }
     }
 }
@@ -426,11 +426,11 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         #[cfg(feature = "backend-wasm")]
         Backend::Wasm { command } => wasm::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-evm")]
-        Backend::Evm { command } => evm::execute(command, policy, output).map(|()| 0),
+        Backend::Evmole { command } => evm::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-pyc")]
         Backend::Pyc { command } => pyc::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-lua")]
-        Backend::Unluac { command } => lua::execute(command, policy, output).map(|()| 0),
+        Backend::UnluacRs { command } => lua::execute(command, policy, output).map(|()| 0),
     }
 }
 /// One analysis worker per available logical CPU.

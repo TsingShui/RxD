@@ -1,4 +1,4 @@
-//! `rxd unluac`: Lua/LuaJIT/Luau bytecode navigation and reconstruction.
+//! `rxd unluac-rs`: Lua/LuaJIT/Luau bytecode navigation and reconstruction.
 
 use std::path::PathBuf;
 
@@ -15,27 +15,27 @@ use serde_json::json;
 pub enum Command {
     /// List code objects (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd unluac codes module.luac\nrxd unluac codes module.luac -f vararg=true\nOutput: one row per function in compiler order; at is proto:N, parent_at is containment.\nLabels report params, vararg, source line range and instruction count.\nDialect comes from the chunk header; no encoding flag is needed."
+        after_long_help = "Examples:\nrxd unluac-rs codes module.luac\nrxd unluac-rs codes module.luac -f vararg=true\nOutput: one row per function in compiler order; at is proto:N, parent_at is containment.\nLabels report params, vararg, source line range and instruction count.\nDialect comes from the chunk header; no encoding flag is needed."
     )]
     Codes(CodesOptions),
     /// List string constants (columns: at, value).
     #[command(
-        after_long_help = "Examples:\nrxd unluac strings module.luac -f token\nOutput: at is proto:N:const:I, the pool slot the owning prototype loads.\nNon-UTF-8 bytes appear as lossy text; use instructions for raw operand words."
+        after_long_help = "Examples:\nrxd unluac-rs strings module.luac -f token\nOutput: at is proto:N:const:I, the pool slot the owning prototype loads.\nNon-UTF-8 bytes appear as lossy text; use instructions for raw operand words."
     )]
     Strings(StringsOptions),
     /// Search references to a string constant.
     #[command(
-        after_long_help = "Columns: at, context_at, instruction.\nExamples:\nrxd unluac xref module.luac --at 'proto:1:const:0'\nrxd unluac xref module.luac -m ':'\nRequired: exactly one of --at/--match; --match must resolve to one constant.\n--at copies strings.at; zero hits is NOT_FOUND, several are AMBIGUOUS.\nat is proto:N:ins:M; context_at is the owning prototype.\nOnly explicit constant operands (LOADK, GETTABUP/SETTABUP, GETGLOBAL/SETGLOBAL) count."
+        after_long_help = "Columns: at, context_at, instruction.\nExamples:\nrxd unluac-rs xref module.luac --at 'proto:1:const:0'\nrxd unluac-rs xref module.luac -m ':'\nRequired: exactly one of --at/--match; --match must resolve to one constant.\n--at copies strings.at; zero hits is NOT_FOUND, several are AMBIGUOUS.\nat is proto:N:ins:M; context_at is the owning prototype.\nOnly explicit constant operands (LOADK, GETTABUP/SETTABUP, GETGLOBAL/SETGLOBAL) count."
     )]
     Xref(XrefOptions),
     /// List original instructions (columns: offset, instruction).
     #[command(
-        after_long_help = "Examples:\nrxd unluac codes module.luac\nrxd unluac instructions module.luac --at 'proto:1'\nRequired: --at copied from codes.at. Offsets are chunk byte offsets, not instruction indices.\nNo reconstruction here; use decompile for reconstructed source."
+        after_long_help = "Examples:\nrxd unluac-rs codes module.luac\nrxd unluac-rs instructions module.luac --at 'proto:1'\nRequired: --at copied from codes.at. Offsets are chunk byte offsets, not instruction indices.\nNo reconstruction here; use decompile for reconstructed source."
     )]
     Instructions(InstructionsOptions),
     /// Reconstruct Lua source for the whole chunk.
     #[command(
-        after_long_help = "Examples:\nrxd unluac decompile module.luac\nOutput: one lua_decompile JSON record with source, dialect and completeness.\nReconstruction is a representation, not the original source file."
+        after_long_help = "Examples:\nrxd unluac-rs decompile module.luac\nOutput: one lua_decompile JSON record with source, dialect and completeness.\nReconstruction is a representation, not the original source file."
     )]
     Decompile(Options),
 }

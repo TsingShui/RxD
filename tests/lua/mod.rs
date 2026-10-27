@@ -9,7 +9,7 @@ fn input(name: &str) -> PathBuf {
 
 fn run(command: &str, path: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["unluac", command])
+        .args(["unluac-rs", command])
         .arg(path)
         .args(args)
         .env_remove("RXD_CACHE_DIR")

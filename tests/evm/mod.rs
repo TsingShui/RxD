@@ -7,7 +7,7 @@ const ARGUMENTS: &str = "6080604052348015600e575f80fd5b50600436106030575f3560e01
 
 fn run(command: &str, path: &Path, encoding: &str, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["evm", command])
+        .args(["evmole", command])
         .arg(path)
         .args(["--encoding", encoding])
         .args(args)

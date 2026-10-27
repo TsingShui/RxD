@@ -19,10 +19,10 @@ explicitly, then locate → associate
 | Android APK or DEX | `rxd rasc` | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
-| Local EVM flat bytecode | `rxd evm` | `interface`, `disassemble`, `strings`, `metadata` |
+| Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
-| PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
+| PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac-rs` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
@@ -181,11 +181,11 @@ plain source mode fails when recovery is incomplete.
 ## Lua: prototypes, constants, instructions, source
 
 ```sh
-rxd unluac codes module.luac
-rxd unluac strings module.luac -f token
-rxd unluac xref module.luac --at "$CONST_AT"
-rxd unluac instructions module.luac --at "$CODE_AT"
-rxd unluac decompile module.luac
+rxd unluac-rs codes module.luac
+rxd unluac-rs strings module.luac -f token
+rxd unluac-rs xref module.luac --at "$CONST_AT"
+rxd unluac-rs instructions module.luac --at "$CODE_AT"
+rxd unluac-rs decompile module.luac
 ```
 
 The dialect (PUC Lua 5.1-5.5, LuaJIT 2.1, Luau) comes from the chunk header, so
@@ -194,16 +194,16 @@ there is no encoding flag. `codes.at` is `proto:N` in compiler order;
 selects `xref`, which reports the instructions naming that slot as
 `proto:N:ins:M` with the owning prototype in `context_at`. `instructions` pairs
 chunk byte offsets with original opcodes.
-Decompilation reconstructs the whole chunk through the pinned unluac engine and
+Decompilation reconstructs the whole chunk through the pinned unluac-rs engine and
 is a representation, not the original source file.
 
 ## EVM: selectors, literals, compiler metadata
 
 ```sh
-rxd evm interface runtime.hex --encoding hex
-rxd evm disassemble runtime.hex --encoding hex
-rxd evm strings runtime.hex --encoding hex --kind text --query Authorization
-rxd evm metadata runtime.hex --encoding hex
+rxd evmole interface runtime.hex --encoding hex
+rxd evmole disassemble runtime.hex --encoding hex
+rxd evmole strings runtime.hex --encoding hex --kind text --query Authorization
+rxd evmole metadata runtime.hex --encoding hex
 ```
 
 Encoding is required (`raw` bytes or ASCII `hex`), never guessed. Search kinds

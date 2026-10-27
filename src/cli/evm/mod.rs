@@ -13,24 +13,24 @@ use serde_json::Value;
 pub enum Command {
     /// Search decoded PUSH literals and data candidates.
     #[command(
-        after_long_help = "Columns: at, value.\nExamples:\nrxd evm strings runtime.hex --encoding hex --kind text --query Authorization\nrxd evm strings runtime.bin --encoding raw --kind bytes --query 4142\nrxd evm strings runtime.hex --encoding hex --kind number --query 42\nRequired: --encoding and --kind. Omit --query to inventory the selected literal kind.\ntext matches readable fragments; bytes is exact even hex; number is decimal/0x U256.\nRows are literal candidates; value is JSON-quoted text or hex.\nThese are static PUSH/CODECOPY candidates, not proven runtime strings."
+        after_long_help = "Columns: at, value.\nExamples:\nrxd evmole strings runtime.hex --encoding hex --kind text --query Authorization\nrxd evmole strings runtime.bin --encoding raw --kind bytes --query 4142\nrxd evmole strings runtime.hex --encoding hex --kind number --query 42\nRequired: --encoding and --kind. Omit --query to inventory the selected literal kind.\ntext matches readable fragments; bytes is exact even hex; number is decimal/0x U256.\nRows are literal candidates; value is JSON-quoted text or hex.\nThese are static PUSH/CODECOPY candidates, not proven runtime strings."
     )]
     Strings(StringsOptions),
 
     /// List function candidates with ABI fields.
     #[command(
-        after_long_help = "Columns: at, signature.\nExamples:\nrxd evm interface runtime.hex --encoding hex -f 313ce567\nRows are selector candidates; signature is selector(arguments), arguments may be empty.\nSelectors/types/mutability are inferred candidates, not a verified source ABI."
+        after_long_help = "Columns: at, signature.\nExamples:\nrxd evmole interface runtime.hex --encoding hex -f 313ce567\nRows are selector candidates; signature is selector(arguments), arguments may be empty.\nSelectors/types/mutability are inferred candidates, not a verified source ABI."
     )]
     Interface(ListOptions),
     /// List decoded instructions as offset/opcode.
     #[command(
-        after_long_help = "Columns: offset, opcode.\nExamples:\nrxd evm disassemble runtime.hex --encoding hex\nOffsets are decoded bytecode bytes, not hex characters.\nOffsets index decoded bytecode, so a range is start..start+length."
+        after_long_help = "Columns: offset, opcode.\nExamples:\nrxd evmole disassemble runtime.hex --encoding hex\nOffsets are decoded bytecode bytes, not hex characters.\nOffsets index decoded bytecode, so a range is start..start+length."
     )]
     Disassemble(Options),
 
     /// Extract terminal CBOR compiler metadata.
     #[command(
-        after_long_help = "Columns: key, value.\nExamples:\nrxd evm metadata runtime.hex --encoding hex\nRows are terminal CBOR entries; solc decodes to major.minor.patch. Not a contract identity.\nRaw bytes remain explicit when metadata is unknown/undecodable."
+        after_long_help = "Columns: key, value.\nExamples:\nrxd evmole metadata runtime.hex --encoding hex\nRows are terminal CBOR entries; solc decodes to major.minor.patch. Not a contract identity.\nRaw bytes remain explicit when metadata is unknown/undecodable."
     )]
     Metadata(Options),
 }
