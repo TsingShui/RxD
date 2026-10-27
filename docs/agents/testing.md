@@ -32,7 +32,7 @@ more gates concurrently.
 
 Full query-result dumps are disposable after verification unless needed for a
 concrete regression. Prefer compact hashes, counts, provenance and selected samples
-over repeated large JSONL exports; record cleanup rather than claiming removed
+over repeated large result dumps; record cleanup rather than claiming removed
 output is still retained. Inspect and hash large files incrementally, not with
 whole-file string reads. Output benchmarks must still include real writes, but
 reuse or remove their temporary result files afterward.

@@ -40,14 +40,18 @@ beyond PYZ are unsupported.
 ## Consume results and preserve identity
 
 - stdout contains payload; diagnostics and the `--perf` record
-  use stderr. Do not mix them. JSONL lists/searches/references are data rows
-  only: no header and no summary. Require exit 0 and parse the rows; zero rows is
-  a complete empty result. Backend-specific completeness, inference and reconstruction flags still apply.
-- Schema v2 navigation (`at`, `parent_at`, `context_at`, `source_id`, `start`,
-  `end`) is outside `detail`; format-specific fields are inside. `at` is the
-  copy-only coordinate a row prints and the value `--at` accepts; a stream row
-  does not repeat a content hash. Not every row has a usable coordinate or range.
-  Parse actual responses, never manufacture coordinates.
+  use stderr. Do not mix them. Listings, searches and reference results are
+  Unix-table rows: one record per line, TAB-separated cells, no header and no
+  summary. Each command's `--help` opens with its `Columns:` line; the first
+  cell selects the row, text cells are JSON-quoted and `\N` means absent.
+  Read columns by position (`cut -f2`, `awk -F'\t'`), not by guessing.
+  Require exit 0; zero rows is a complete empty result. Backend-specific
+  completeness and inference flags still apply.
+- Fetch commands (`get-*`, `decompile`, `get-code`, `analyze`) return one JSON
+  record with schema v2 navigation (`at`, `parent_at`, `context_at`,
+  `source_id`, `start`, `end`) outside `detail` and format-specific fields
+  inside. `at` is the copy-only coordinate a listing prints and the value `--at`
+  accepts. Parse actual responses, never manufacture coordinates.
 - A coordinate names a range in the input you are querying, not the file itself: reuse
   it only with the same bytes and interpretation options. A coordinate copied from
   another input is not checked; re-run the listing for the file you are fetching.

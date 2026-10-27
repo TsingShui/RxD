@@ -3,8 +3,10 @@
 ## Project Structure & Module Organization
 
 `rxd` is an Agent-oriented, multi-format analysis CLI. The Rust backends cover
-Android APK/DEX, JVM class/JAR, .NET IL, WebAssembly, and native EVMole EVM
-bytecode analysis. CPython bytecode has bounded embedded source reconstruction
+Android APK/DEX (`rxd rasc`), JVM class/JAR (`rxd jar`), .NET IL (`rxd ilspy`),
+WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`) and native EVMole EVM
+bytecode (`rxd evm`). Outer command names credit the engines a backend wraps;
+crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
 CLI adapter and bundled specs. ASAR, ZIP and PyInstaller archives are unpacked
 into a directory; they are not analyzed in place.
@@ -19,10 +21,12 @@ The current layout is:
   `src/cli/output.rs`: explicit stdout/buffer output sink.
   `src/mcp/`: optional stdio protocol, immutable targets and
   disposable analysis-worker scheduling.
-- `src/cli/mod.rs`: top-level dispatch; `src/cli/dex/`, `src/cli/jvm/`,
-  `src/cli/dotnet/`, `src/cli/kuna/`, `src/cli/evm/`, `src/cli/wasm/`,
-  and `src/cli/pyc/`: peer command adapters. `src/cli/unpack.rs` performs
-  whole-archive ASAR/ZIP/PyInstaller extraction. DEX preserves streaming and exit-code contracts.
+- `src/cli/mod.rs`: top-level dispatch; `src/cli/dex/` (`rasc`), `src/cli/jvm/`
+  (`jar`), `src/cli/dotnet/` (`ilspy`), `src/cli/kuna/`, `src/cli/evm/`,
+  `src/cli/wasm/`, and `src/cli/pyc/`: peer command adapters.
+  `src/cli/table.rs` renders the shared TAB-separated listing rows.
+  `src/cli/unpack.rs` performs whole-archive ASAR/ZIP/PyInstaller extraction.
+  DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
@@ -31,15 +35,16 @@ The current layout is:
 - `crates/rxd-pyinstaller/`: PyInstaller CArchive/PYZ extraction with reconstructed
   `.pyc` headers.
 - `crates/rxd-wxapkg/`: wxapkg index extraction and V1MMWX appid decryption.
-- `crates/rxd-dex/`: APK/DEX analysis, Manifest and Java emission; the shared
-  typed service is provided by `src/mcp/`.
+- `crates/rxd-dex/`: APK/DEX analysis behind `rxd rasc`, Manifest and Java
+  emission; the shared typed service is provided by `src/mcp/`.
 - `crates/rxd-jvm/`: class/JAR parsing and JVM stack front end; lifts bytecode
   into the vendored radguard backend IR and renders Java through it.
 - `crates/rxd-dotnet/`: managed-assembly metadata, IL and C# reconstruction via
   the ILSpy NativeAOT shared library. Its pinned validation fork lives in
   `crates/rxd-dotnet/vendor/`.
-- `crates/rxd-evm/`: pinned EVMole Rust analysis, explicit raw/hex inputs,
-  inferred interfaces/storage/CFG and metadata.
+- `crates/rxd-evm/`: pinned EVMole Rust analysis behind `rxd evm`, explicit
+  raw/hex inputs, selector candidates, disassembly, PUSH literals and terminal
+  CBOR metadata only; no CFG, storage or decompilation surface.
 - `crates/rxd-wasm/`: WASM module structure, instruction decode, explicit
   reference scanning, and self-built structured C-like decompilation; uses a
   pinned wasmparser (`REFERENCE.md`).
@@ -196,7 +201,9 @@ mandatory.
 
 `rxd evm` is capability-first and has no numeric latency gate. Preserve
 correctness, identities and resource budgets; EVM measurements are
-informational unless a concrete regression is being investigated.
+informational unless a concrete regression is being investigated. It exposes
+only `interface`, `disassemble`, `strings` and `metadata`: commands whose facts
+the bytecode settles, never a control-flow graph or a recovered source ABI.
 
 ## Query Surface
 
@@ -204,6 +211,14 @@ Keep listing filters consistent through `rxd_core::filter`: case-folded substrin
 matching by default, with `--case sensitive` for exact case. Use the printed `at`
 coordinate to select a unit and `context_at` to follow a reference to its caller.
 Coordinates are file-scoped; re-list when the input changes.
+
+Listings are Unix-table rows: one record per line, TAB-separated cells, no
+envelope and no `columns`/`rows` document. The first cell selects the row, so a
+listing never needs a header to be parsed; text cells are JSON-quoted and `\N`
+marks an absent value. Each command's long help opens with its own `Columns:`
+line and the root help states the format once, so a shape change updates both.
+Fetch commands (`get-*`, `decompile`, `get-code`) still emit one full JSON
+record. Do not add presentation columns, padding or per-backend dialects.
 
 `xref` is one command, not per-kind subcommands. Preserve argument errors for
 contradictory kinds and distinguish a missing coordinate from zero search hits.
