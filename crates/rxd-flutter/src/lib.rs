@@ -243,7 +243,10 @@ impl Snapshot {
         Ok(written)
     }
 
-    /// Reconstruct Dart-like pseudocode for the selected libraries.
+    /// Reconstruct Dart-like pseudocode, handing each library to `sink`.
+    ///
+    /// Streaming keeps a whole-application decompile from holding every file in
+    /// memory at once; a single function still renders through the same pipeline.
     pub fn decompile(&self, only: Option<&str>, at: Option<u64>) -> Result<Vec<Rendered>> {
         let times = std::env::var("DART_AOT_TIMINGS").is_ok();
         let mut mark = std::time::Instant::now();

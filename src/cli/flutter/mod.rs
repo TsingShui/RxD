@@ -34,7 +34,7 @@ pub enum Command {
     Xref(XrefOptions),
     /// Reconstruct Dart-like pseudocode for whole libraries.
     #[command(
-        after_long_help = "Examples:\nrxd dae functions libapp.so -f fl_clash\nrxd dae decompile libapp.so --at 0x532ad0\nrxd dae decompile libapp.so --lib fl_clash\nOutput: one dae_decompile record with the rendered files.\n--at copies functions.at and renders that function alone; --lib widens to a package.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart.\nWhole-library rendering runs the upstream decompiler: expect seconds, not milliseconds."
+        after_long_help = "Examples:\nrxd dae functions libapp.so -f fl_clash\nrxd dae decompile libapp.so --at 0x532ad0\nrxd dae decompile libapp.so --lib fl_clash\nOutput: one dart_library record per rendered library, each with name and source.\n--at copies functions.at and renders that function alone; --lib widens to a package.\nThis is machine-level pseudocode (registers and memory access remain), not source Dart.\nWhole-library rendering runs the upstream decompiler: expect seconds, not milliseconds."
     )]
     Decompile(DecompileOptions),
 }
@@ -225,20 +225,24 @@ pub fn execute(
                 let rendered = perf.measure("analyze", || {
                     snapshot.decompile(decompile.lib.as_deref(), decompile.at)
                 })?;
-                let files: Vec<_> = rendered
-                    .into_iter()
-                    .map(|file| json!({"name": file.name, "source": file.source}))
-                    .collect();
-                let mut record = serde_json::to_vec(&json!({
-                    "record": "dae_decompile",
-                    "backend": "flutter",
-                    "command": "decompile",
-                    "complete": true,
-                    "files": files,
-                }))
-                .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
-                record.push(b'\n');
-                record
+                // One record per library, like every other fetch: a library scope
+                // stops being a single unbounded object.
+                let mut out = String::with_capacity(1 << 16);
+                for file in rendered {
+                    let mut record = serde_json::to_vec(&json!({
+                        "record": "dart_library",
+                        "backend": "flutter",
+                        "command": "decompile",
+                        "source_id": null,
+                        "name": file.name,
+                        "complete": true,
+                        "source": file.source,
+                    }))
+                    .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?;
+                    record.push(b'\n');
+                    out.push_str(&String::from_utf8_lossy(&record));
+                }
+                out.into_bytes()
             }
         };
         perf.counters.output_bytes = Some(bytes.len());

@@ -198,8 +198,8 @@ so `--lib` and `-f` match that spelling. `strings` lists the object pool, and it
 `at` is the pool offset `xref` consumes: `xref` decodes every function and reports
 each instruction that loads the string, with the containing function in
 `context_at`. Matches come from the ARM64 pool-load encoding, so only the hits
-are decoded. `decompile --lib PREFIX` renders whole libraries, and `--at <functions.at>`
-renders one function; the output is machine-level pseudocode (registers, `mem()`
+are decoded. `decompile --lib PREFIX` renders whole libraries as one `dart_library` record
+each, and `--at <functions.at>` renders one function; the output is machine-level pseudocode (registers, `mem()`
 access, raw PC comments), not source Dart.
 
 ## Lua: prototypes, constants, instructions, source
