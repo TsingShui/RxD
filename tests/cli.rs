@@ -71,9 +71,9 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
     success(&root);
     assert!(root.stderr.is_empty());
     let text = String::from_utf8(root.stdout).unwrap();
-    assert!(text.contains("Workflow: list/search"));
+    assert!(text.contains("Coordinates: at and context_at"));
     assert!(text.contains("COMMAND --help"));
-    assert!(text.lines().next().unwrap().contains("Native binaries"));
+    assert!(text.lines().next().unwrap().contains("APK/DEX"));
     assert!(!text.contains("JavaScript"));
     assert!(!text.contains("HTML"));
     assert_query_focused(&text);

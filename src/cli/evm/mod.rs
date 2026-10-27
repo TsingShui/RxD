@@ -11,42 +11,42 @@ use rxd_evm::{
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Search decoded PUSH literals and data candidates using an explicit query interpretation.
+    /// Search decoded PUSH literals and data candidates.
     #[command(
         after_long_help = "Examples:\nrxd evm strings runtime.hex --encoding hex --kind text --query Authorization\nrxd evm strings runtime.bin --encoding raw --kind bytes --query 4142\nrxd evm strings runtime.hex --encoding hex --kind number --query 42\nRequired: --encoding and --kind. Omit --query to inventory the selected literal kind.\ntext matches readable fragments; bytes is exact even hex; number is decimal/0x U256.\nOutput: analysis then literal/data_literal JSONL; copy literal.at into xref.\nThese are static PUSH/CODECOPY candidates, not proven runtime strings."
     )]
     Strings(StringsOptions),
-    /// Find evidenced references to a literal, block or function coordinate.
+    /// Search references to a literal, block or function.
     #[command(
         after_long_help = "Examples:\nrxd evm xref runtime.hex --encoding hex --at '<literal.at>'\nrxd evm xref runtime.hex --encoding hex -m 313ce567 --kind function\nRequired: --encoding and exactly one of --at/--match; --match needs --kind.\n--at copies interface.at/blocks.at/strings.at. --match must identify one candidate:\nzero matches is NOT_FOUND, multiple matches AMBIGUOUS; narrow or list then copy at.\nOutput: analysis plus reference rows. context_at is a function or block caller.\nNext: get-function for function context_at, get-block for block context_at; never guess."
     )]
     Xref(XrefOptions),
-    /// Return all native EVMole analyses as one JSON object.
+    /// Reconstruct all EVMole analyses as one JSON object.
     #[command(
         after_long_help = "Examples:\nrxd evm analyze runtime.hex --encoding hex\nrxd evm analyze runtime.bin --encoding raw --include-bytecode\nRequired: --encoding raw/hex. Output: one evm_analysis JSON record with native results.\nFor navigable coordinates use interface/blocks/strings."
     )]
     Analyze(Options),
-    /// List function candidates with EVMole's own ABI fields.
+    /// List function candidates with ABI fields.
     #[command(
         after_long_help = "Examples:\nrxd evm interface runtime.hex --encoding hex -f 313ce567\nOutput: analysis plus function JSONL; at is a file-scoped candidate coordinate.\nNext: rxd evm get-function runtime.hex --encoding hex --at '<function.at>'.\nSelectors/types/mutability are inferred candidates, not a verified source ABI."
     )]
     Interface(ListOptions),
-    /// Infer persistent and transient storage, retaining the function candidates.
+    /// List inferred persistent and transient storage.
     #[command(
         after_long_help = "Examples:\nrxd evm storage runtime.hex --encoding hex\nOutput: one native analysis JSON record with persistent/transient storage evidence.\nThis infers static candidates; it does not read chain state or perform RPC calls."
     )]
     Storage(Options),
-    /// Decode bytecode into offset/opcode pairs.
+    /// List decoded instructions as offset/opcode.
     #[command(
         after_long_help = "Examples:\nrxd evm disassemble runtime.hex --encoding hex\nOutput: native JSON offset/opcode pairs. Offsets are decoded bytecode bytes, not hex characters.\nFor a selected range list blocks, then get-block --at '<block.at>'."
     )]
     Disassemble(Options),
-    /// Enumerate native basic-block ranges. Each end is the start offset of its last opcode.
+    /// List native basic-block ranges.
     #[command(
         after_long_help = "Examples:\nrxd evm basic-blocks runtime.hex --encoding hex\nOutput: native EVMole range array; its end is the last opcode START, not exclusive EOF.\nFor navigable coordinates use blocks, which returns block.at and exclusive ranges."
     )]
     BasicBlocks(Options),
-    /// Infer a control-flow graph. Destinations are upstream block IDs.
+    /// List inferred control flow as block IDs.
     #[command(
         after_long_help = "Examples:\nrxd evm cfg runtime.hex --encoding hex\nOutput: native JSON control-flow graph. Destinations are producer block IDs, not PCs.\nFor original selected instructions use blocks -> get-block --at."
     )]
@@ -61,12 +61,12 @@ pub enum Command {
         after_long_help = "Examples:\nrxd evm blocks runtime.hex --encoding hex\nOutput: analysis plus basic_block JSONL with at and decoded ranges.\nNext: rxd evm get-block runtime.hex --encoding hex --at '<basic_block.at>'.\nCoordinates refer to this raw/hex carrier, not arbitrary PC values."
     )]
     Blocks(ListOptions),
-    /// Fetch one basic block using the coordinate a blocks row prints.
+    /// Fetch one basic block by coordinate.
     #[command(
         after_long_help = "Examples:\nrxd evm blocks runtime.hex --encoding hex\nrxd evm get-block runtime.hex --encoding hex --at '<basic_block.at>'\nRequired: --encoding and --at copied from blocks or block-kind xref.context_at.\nOutput: one block JSON record with original instructions and exact carrier ranges.\nDo not use a function coordinate or fabricate a block from a PC."
     )]
     GetBlock(BlockOptions),
-    /// Fetch native reachable regions for one selector-dispatched function candidate.
+    /// Fetch reachable regions for one function candidate.
     #[command(
         after_long_help = "Examples:\nrxd evm interface runtime.hex --encoding hex -f 313ce567\nrxd evm get-function runtime.hex --encoding hex --at '<function.at>' --raw\nrxd evm get-function runtime.hex --encoding hex --selector 313ce567\nRequired: --encoding and exactly one of --at/--selector. Selector is four-byte ABI hex.\nPrefer interface.at or function-kind xref.context_at from this same input.\nOutput: one function_code JSON record; default bounded pseudo-code with explicit raw fallback.\n--raw returns original selected regions; reconstruction is not original Solidity."
     )]

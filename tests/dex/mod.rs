@@ -649,7 +649,7 @@ fn dex_retires_skill_and_root_help_exposes_the_print_entry() {
         .unwrap();
     success(&help);
     assert!(text(&help).contains("skill"));
-    assert!(text(&help).contains("RxD skill"));
+    assert!(text(&help).contains("Print Agent skill"));
     let skill = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["skill", "--help"])
         .output()

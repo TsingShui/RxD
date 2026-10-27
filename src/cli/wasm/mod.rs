@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 /// functions, and so on. There is no mixed structural stream.
 #[derive(Subcommand)]
 pub enum Command {
-    /// Enumerate the type section (function signatures) as JSONL.
+    /// List type-section signatures as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm types module.wasm\nOutput: type JSONL with func signatures and type:N coordinates; these are not functions."
     )]
@@ -28,7 +28,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate the import section as JSONL.
+    /// List imports as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm imports module.wasm -f env\nOutput: import JSONL; function imports have detail.target_at = func:N for xref.\nImports have no defined body to fetch."
     )]
@@ -43,7 +43,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate the export section as JSONL.
+    /// List exports as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm exports module.wasm -f sum\nOutput: export JSONL; copy detail.target_at (func:N) for exported function FETCH/xref.\nExport names are aliases, not function identities."
     )]
@@ -58,7 +58,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate module-defined functions as JSONL.
+    /// List module-defined functions as JSONL.
     #[command(after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nOutput: function JSONL; at is func:N in the combined imported/defined index space.\nNext: rxd wasm get-function module.wasm --at '<function.at>'.\n--name is exact, -f is a substring; --at optionally selects an existing function.", mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Optional existing functions.at coordinate, func:N; omit to list functions")))]
     Functions {
         /// The regular local `.wasm` file to read.
@@ -78,7 +78,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate the table section as JSONL.
+    /// List tables as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm tables module.wasm\nOutput: table JSONL with table:N, limits and element types; not func:N."
     )]
@@ -93,7 +93,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate the memory section as JSONL.
+    /// List memories as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm memories module.wasm\nOutput: memory JSONL with memory:N and page limits."
     )]
@@ -108,7 +108,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate the global section as JSONL.
+    /// List globals as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm globals module.wasm -f counter\nOutput: global JSONL with global:N, type, mutability and initializer evidence."
     )]
@@ -123,7 +123,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate data segments as JSONL.
+    /// List data segments as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm data module.wasm\nOutput: data JSONL with data:N, original segment bytes/ranges and active/passive mode."
     )]
@@ -138,7 +138,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate element segments as JSONL.
+    /// List element segments as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm elements module.wasm\nOutput: element JSONL with element:N and explicit function indices/ref expressions.\nDo not infer resolved call_indirect targets from a table inventory."
     )]
@@ -153,7 +153,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Enumerate decodable UTF-8 strings in data segments and the name section.
+    /// List decodable UTF-8 strings as JSONL.
     #[command(
         after_long_help = "Examples:\nrxd wasm strings module.wasm -f hello\nOutput: string JSONL from data/name sections. These are not proven string-to-code uses.\nTo navigate code, list functions first and use func:N with xref/get-function."
     )]
@@ -168,7 +168,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Find defined functions that explicitly reference a target function index.
+    /// Search functions that reference a function index.
     #[command(after_long_help = "Examples:\nrxd wasm xref module.wasm --at 'func:1'\nrxd wasm xref module.wasm -m 'env.log' --kind function\nRequired: exactly one of --at/--match; --match requires --kind function.\nCopy functions.at or exports/imports.detail.target_at, not a type/table index.\nOutput: reference JSONL; context_at names the caller, detail.target the function.\nNext: rxd wasm get-function module.wasm --at '<reference.context_at>' --raw.\nOnly explicit call/ref.func; indirect calls remain unresolved.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])), mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Copy functions.at or exports/imports.detail.target_at: func:N")))]
     Xref {
         /// The regular local `.wasm` file to read.
@@ -186,8 +186,7 @@ pub enum Command {
         #[command(flatten)]
         options: Options,
     },
-    /// Get one function. Attempts structured C-like
-    /// decompilation by default; falls back to the instruction view.
+    /// Fetch one function as C-like or instructions.
     #[command(name = "get-function", after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nrxd wasm get-function module.wasm --at 'func:1' --raw\nRequired: --at copied from functions.at or xref.context_at; use actual func:N.\nImported functions have no defined body. Not a function name or type:N coordinate.\nOutput: one function_view JSON record. Default attempts C-like reconstruction;\nunsupported cases fall back to instructions. --raw forces original instruction evidence.", mut_arg("at", |arg| arg.required(true).value_name("FUNCTION_AT").help("Copy functions.at or xref.context_at: func:N in this module")))]
     Get {
         /// The regular local `.wasm` file to read.

@@ -63,24 +63,13 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze Native binaries, JVM, .NET IL, APK/DEX, EVM, WASM and PYC files; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
-    after_long_help = "Start here:
-  rxd rasc --help      APK or DEX: classes, strings, references, Java
-  rxd jar --help       JVM class/JAR: members, references, Java/bytecode
-  rxd ilspy --help     Managed DLL/EXE: metadata, IL, optional C#
-  rxd unpack --help    ASAR/ZIP/PyInstaller/wxapkg input: extract every file
-  rxd wasm --help      Binary core WASM: functions and instructions/C-like
-  rxd pyc --help       CPython bytecode: codes, constants, Python reconstruction
-  rxd evm --help       Local raw/hex EVM bytecode: specify --encoding
-  rxd kuna --help      Native ELF/PE/Mach-O: optional linked engine
-
-Workflow: list/search -> copy at or context_at -> fetch from the same input.
-Listings emit data-row JSONL; require exit 0, and zero rows means no matches.
--f/--filter narrows listings; -m/--match searches xref targets with --kind.
---raw selects original instructions where supported.
-Run rxd BACKEND COMMAND --help for minimal examples and parameter sources.
-For typed tools: rxd mcp; use tools/list and absolute input paths.
-Default source builds omit Kuna/ILSpy engines; help availability is not engine availability."
+    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
+    after_long_help = "Coordinates: at and context_at select the next fetch on the same input.
+Output: data-row JSONL; exit 0 required; zero rows means no matches.
+Filters: -f narrows listings; -m with --kind searches xref targets.
+Raw: --raw selects original instructions where reconstruction exists.
+Details: rxd BACKEND COMMAND --help; typed tools through rxd mcp.
+Engines: source builds may omit Kuna/ILSpy."
 )]
 pub struct Cli {
     #[arg(long, hide = true, global = true)]
@@ -90,20 +79,33 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Backend {
-    /// Print the embedded RxD skill for coding agents.
+    /// Print Agent skill.
+    #[command(
+        display_order = 100,
+        long_about = "Print Agent skill: embedded query workflows, coordinate and exit-code contracts"
+    )]
     Skill,
     #[cfg(feature = "mcp")]
-    /// Serve typed analysis tools over local MCP stdio.
+    /// Serve MCP stdio.
+    #[command(
+        display_order = 90,
+        long_about = "Serve MCP stdio: typed analysis tools, immutable targets and disposable workers"
+    )]
     Mcp(crate::mcp::Options),
     #[cfg(feature = "backend-kuna")]
-    /// Run the bundled Kuna CLI with native arguments.
-    #[command(disable_help_flag = true, visible_alias = "bin")]
+    /// Decompile ELF/PE/Mach-O.
+    #[command(
+        disable_help_flag = true,
+        visible_alias = "bin",
+        display_order = 70,
+        long_about = "Decompile ELF/PE/Mach-O: native functions and C through the optional linked engine"
+    )]
     Kuna {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<std::ffi::OsString>,
     },
     #[cfg(feature = "backend-dotnet")]
-    /// Analyze managed .NET assemblies.
+    /// Analyze DLL/EXE.
     #[command(
         name = "ilspy",
         after_long_help = "Examples:
@@ -115,12 +117,13 @@ Copy methods.at into get-method; copy xref.context_at to fetch its caller.
 Tokens such as 0x0600000b are module-scoped; use actual returned values.
 C# requires ILSpy; missing/failed reconstruction returns original IL with a reason."
     )]
+    #[command(display_order = 30, long_about = "Analyze DLL/EXE: metadata, IL, C#")]
     Dotnet {
         #[command(subcommand)]
         command: dotnet::Command,
     },
     #[cfg(feature = "backend-evm")]
-    /// Analyze local EVM bytecode through the native EVMole library.
+    /// Analyze EVM bytecode.
     #[command(after_long_help = "Examples:
   rxd evm interface runtime.hex --encoding hex
   rxd evm get-function runtime.hex --encoding hex --at '<interface.at>' --raw
@@ -129,12 +132,16 @@ C# requires ILSpy; missing/failed reconstruction returns original IL with a reas
 --encoding raw means binary bytes; hex means ASCII hexadecimal. Never guessed.
 Use interface.at for functions, blocks.at for blocks, strings.at for literals.
 EVM interfaces/storage/ownership are inferred candidates, not verified Solidity or ABI.")]
+    #[command(
+        display_order = 60,
+        long_about = "Analyze EVM bytecode: interface, storage, CFG, metadata"
+    )]
     Evm {
         #[command(subcommand)]
         command: evm::Command,
     },
     #[cfg(feature = "unpack")]
-    /// Unpack an ASAR, ZIP, PyInstaller or wxapkg input into a new directory.
+    /// Unpack ASAR/ZIP/PyInstaller/wxapkg.
     #[command(after_long_help = "Examples:
   rxd unpack app.asar -o app
   rxd unpack archive.zip -o archive
@@ -151,12 +158,16 @@ unpacked; loose _internal files remain in the input directory.
 wxapkg extracts the indexed files; V1MMWX PC/Mac packages require --appid or an
 appid path component.
 No entry selection, nested extraction beyond PYZ, links, or encrypted ASAR/ZIP/PyInstaller archives.")]
+    #[command(
+        display_order = 80,
+        long_about = "Unpack ASAR/ZIP/PyInstaller/wxapkg: every entry to a new directory"
+    )]
     Unpack {
         #[command(flatten)]
         command: unpack::Command,
     },
     #[cfg(feature = "backend-dex")]
-    /// Analyze APK archives and standalone DEX files.
+    /// Analyze APK/DEX.
     #[command(
         name = "rasc",
         after_long_help = "Examples:
@@ -170,12 +181,16 @@ Method coordinates include parameters AND return type after ). Use actual return
 classes.at selects get-class; -f filters names, --class is one exact owner.
 Input is one APK/ZIP with root DEX entries, or one bare DEX. Java may contain unsupported stubs."
     )]
+    #[command(
+        display_order = 10,
+        long_about = "Analyze APK/DEX: classes, strings, references, Java"
+    )]
     Dex {
         #[command(subcommand)]
         command: dex::Command,
     },
     #[cfg(feature = "backend-jvm")]
-    /// Analyze JVM class files and JAR archives without Java or D8.
+    /// Analyze Class/JAR.
     #[command(
         name = "jar",
         after_long_help = "Examples:
@@ -187,12 +202,16 @@ Copy methods.at or xref.context_at into get-method; classes.at selects get-class
 Coordinates retain JVM overload descriptors, including return type; use returned values.
 --release N selects multi-release JAR versions. No Java runtime or D8 conversion needed."
     )]
+    #[command(
+        display_order = 20,
+        long_about = "Analyze Class/JAR: members, references, Java/bytecode"
+    )]
     Jvm {
         #[command(subcommand)]
         command: jvm::Command,
     },
     #[cfg(feature = "backend-pyc")]
-    /// Decompile Python bytecode without loading a Python interpreter.
+    /// Analyze PYC.
     #[command(after_long_help = "Examples:
   rxd pyc codes module.pyc -f token
   rxd pyc strings module.pyc -f Authorization
@@ -203,12 +222,16 @@ Static navigation supports final CPython 3.8-3.13; raw marshal needs --version X
 code:N selects get-code; const:N:PATH selects constant xref, not get-code.
 Name xref is explicit bytecode evidence, not resolved Python runtime dispatch.
 Decompile reconstructs the whole module; JSON detail.complete reports recovery status.")]
+    #[command(
+        display_order = 50,
+        long_about = "Analyze PYC: codes, constants, Python reconstruction"
+    )]
     Pyc {
         #[command(subcommand)]
         command: pyc::Command,
     },
     #[cfg(feature = "backend-wasm")]
-    /// Analyze WebAssembly modules.
+    /// Analyze WASM.
     #[command(after_long_help = "Examples:
   rxd wasm functions module.wasm -f sum
   rxd wasm xref module.wasm --at '<function.at>'
@@ -217,6 +240,10 @@ Copy functions.at (func:N) into xref/get-function; xref.context_at names the cal
 exports.detail.target_at also names the exported function; imported functions have no body.
 Input is a binary core module, not WAT or Component Model.
 Default FETCH attempts C-like reconstruction and falls back to original instructions.")]
+    #[command(
+        display_order = 40,
+        long_about = "Analyze WASM: functions, instructions, C-like reconstruction"
+    )]
     Wasm {
         #[command(subcommand)]
         command: wasm::Command,
