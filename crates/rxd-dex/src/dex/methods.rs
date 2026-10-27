@@ -264,9 +264,10 @@ impl<'a> MethodRenderer<'a> {
                 }
                 let prototype = prototype.as_deref().unwrap();
                 out.reserve(descriptor.len() + name.len() + prototype.len() + 40);
-                out.push_str("{\"record\":\"method\",\"at\":");
+                if rows > 0 {
+                    out.push(',');
+                }
                 push_json_string(out, [descriptor, "->", name, prototype]);
-                out.push_str(",\"detail\":{}}\n");
                 crate::profile::count(crate::profile::Counter::CodeItems, 1);
                 rows += 1;
             }
@@ -384,11 +385,10 @@ fn render_fields_of(
             rendered.push_str(&name);
             rendered.push(':');
             rendered.push_str(&ty);
-            out.push_str("{\"record\":\"field\",\"at\":");
+            if rows > 0 {
+                out.push(',');
+            }
             push_json_string(out, [rendered.as_str()]);
-            // Flags stay out of data rows: `get-class`/`get-method` render the Java
-            // modifiers, so a per-row integer would be a second spelling of the same fact.
-            out.push_str(",\"detail\":{}}\n");
             rows += 1;
         }
     }

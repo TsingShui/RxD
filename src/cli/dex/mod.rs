@@ -2,7 +2,7 @@
 
 mod args;
 mod output;
-use output::{emit, emit_rows};
+use output::{emit, emit_table};
 use serde_json::{Value, json};
 
 use anyhow::{Result, bail};
@@ -179,29 +179,16 @@ fn run_command(
                                 continue;
                             }
                         }
-                        // Only a class that departs from the root carries a `super`, so
-                        // the default costs nothing on an index of hundreds of thousands.
-                        match entry.super_descriptor.as_deref() {
-                            Some(name) => push_record_at(
-                                &mut payload,
-                                "class",
-                                Some(&entry.descriptor),
-                                &[("super", Field::Text(name))],
-                                limit,
-                            )?,
-                            None => push_record_at(
-                                &mut payload,
-                                "class",
-                                Some(&entry.descriptor),
-                                &[],
-                                limit,
-                            )?,
+                        if !payload.is_empty() {
+                            payload.push(',');
                         }
+                        push_json_string(&mut payload, entry.descriptor.as_str());
                     }
                     Ok(payload)
                 })
                 .collect::<Result<_>>()?;
-            let payload_len = emit_rows(pieces.into_iter(), args.output.as_deref(), sink)?;
+            emit_table(pieces.into_iter(), "[\"at\"]", args.output.as_deref(), sink)?;
+            let payload_len = 0usize;
             if args.perf {
                 // The window now covers rendering and writing, not rendering alone.
                 rxd_dex::diag::diagnose(format_args!(
@@ -251,11 +238,19 @@ fn run_command(
                         })
                         .collect::<Result<Vec<_>>>()?;
                     for piece in pieces {
+                        if !payload.ends_with('[') && !payload.is_empty() && !piece.is_empty() {
+                            payload.push(',');
+                        }
                         payload.push_str(&piece);
                     }
                 }
             }
-            emit(&payload, args.output.as_deref(), sink)?;
+            emit_table(
+                std::iter::once(payload),
+                "[\"at\",\"value\",\"entry\"]",
+                args.output.as_deref(),
+                sink,
+            )?;
         }
         Command::GetMethod(args) => {
             let at = args.selector.resolve()?;
@@ -297,7 +292,7 @@ fn run_command(
                 args.threads,
                 args.perf,
             )?;
-            emit_rows(chunks.into_iter(), args.output.as_deref(), sink)?;
+            emit_table(chunks.into_iter(), "[\"at\"]", args.output.as_deref(), sink)?;
         }
         Command::Methods(args) => {
             let selector = apk::MethodSelector {
@@ -313,7 +308,7 @@ fn run_command(
                 args.threads,
                 args.perf,
             )?;
-            emit_rows(chunks.into_iter(), args.output.as_deref(), sink)?;
+            emit_table(chunks.into_iter(), "[\"at\"]", args.output.as_deref(), sink)?;
         }
         Command::Entries(args) => {
             let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {
@@ -332,21 +327,34 @@ fn run_command(
                 {
                     continue;
                 }
-                append_json(
-                    &mut payload,
-                    &data_record(
-                        "entry",
-                        json!({
-                            "name":entry.name,
-                            "compression":match entry.compression { 0 => "stored", 8 => "deflated", _ => "other" },
-                            "compressed_size":entry.compressed_size,
-                            "uncompressed_size":entry.uncompressed_size,
-                        }),
-                    ),
-                    limit,
-                )?;
+                if !payload.is_empty() {
+                    payload.push(',');
+                }
+                let mut rendered = String::with_capacity(entry.name.len() + 48);
+                rendered.push('[');
+                push_json_string(&mut rendered, entry.name.as_str());
+                use std::fmt::Write as _;
+                let _ = write!(
+                    rendered,
+                    ",{},\"{}\",\"{}\"",
+                    entry.compressed_size,
+                    entry.uncompressed_size,
+                    match entry.compression {
+                        0 => "stored",
+                        8 => "deflated",
+                        _ => "other",
+                    }
+                );
+                rendered.push(']');
+                payload.push_str(&rendered);
+                let _ = limit;
             }
-            emit(&payload, args.output.as_deref(), sink)?;
+            emit_table(
+                std::iter::once(payload),
+                "[\"name\",\"uncompressed_size\",\"compression\"]",
+                args.output.as_deref(),
+                sink,
+            )?;
         }
         Command::Extract(args) => {
             let destination = args
@@ -496,12 +504,6 @@ fn fetch_record(
     Ok(line)
 }
 
-enum Field<'a> {
-    Text(&'a str),
-    #[cfg(test)]
-    Number(u64),
-}
-
 /// Append one caller/target reference row.
 fn push_reference(
     payload: &mut String,
@@ -566,52 +568,17 @@ fn push_string_row(
     value: &str,
     limit: Option<usize>,
 ) -> Result<()> {
-    payload.push_str("{\"record\":\"string\",\"detail\":{\"entry\":");
-    push_json_string(payload, entry);
-    payload.push_str(",\"index\":");
+    if !payload.is_empty() {
+        payload.push(',');
+    }
+    payload.push('[');
     use std::fmt::Write as _;
     let _ = write!(payload, "{index}");
-    payload.push_str(",\"value\":");
+    payload.push(',');
     push_json_string(payload, value);
-    payload.push_str("}}\n");
-    if limit.is_some_and(|limit| payload.len() > limit) {
-        bail!("RESOURCE_LIMIT: query output byte budget exceeded");
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-fn push_record(payload: &mut String, kind: &str, fields: &[(&str, Field<'_>)]) -> Result<()> {
-    push_record_at(payload, kind, None, fields, None)
-}
-
-fn push_record_at(
-    payload: &mut String,
-    kind: &str,
-    at: Option<&str>,
-    fields: &[(&str, Field<'_>)],
-    limit: Option<usize>,
-) -> Result<()> {
-    payload.push_str("{\"record\":");
-    push_json_string(payload, kind);
-    if let Some(at) = at {
-        payload.push_str(",\"at\":");
-        push_json_string(payload, at);
-    }
-    payload.push_str(",\"detail\":{");
-    for (index, (key, value)) in fields.iter().enumerate() {
-        if index > 0 {
-            payload.push(',');
-        }
-        push_json_string(payload, key);
-        payload.push(':');
-        match value {
-            Field::Text(text) => push_json_string(payload, text),
-            #[cfg(test)]
-            Field::Number(number) => payload.push_str(&number.to_string()),
-        }
-    }
-    payload.push_str("}}\n");
+    payload.push(',');
+    push_json_string(payload, entry);
+    payload.push(']');
     if limit.is_some_and(|limit| payload.len() > limit) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
@@ -720,28 +687,5 @@ mod json_writer {
                 "escaped bytes differ for {case:?}"
             );
         }
-    }
-
-    /// A whole row parses back to the same JSON object the `Value` path produced.
-    #[test]
-    fn record_writer_matches_value_path() {
-        let mut out = String::new();
-        push_record(
-            &mut out,
-            "class",
-            &[
-                ("entry", Field::Text("classes|\"\n.dex")),
-                ("descriptor", Field::Text("La/a$a;")),
-                ("index", Field::Number(7)),
-            ],
-        )
-        .unwrap();
-        let row: Value = serde_json::from_str(out.trim_end()).unwrap();
-        let expected = data_record(
-            "class",
-            json!({"entry":"classes|\"\n.dex", "descriptor":"La/a$a;", "index":7}),
-        );
-        assert_eq!(row, expected);
-        assert!(out.ends_with("}\n"));
     }
 }

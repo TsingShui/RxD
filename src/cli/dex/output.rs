@@ -17,12 +17,15 @@ pub(super) fn emit(payload: &str, output: Option<&Path>, sink: &mut Output<'_>) 
     Ok(())
 }
 
-/// Emit ordered chunks, releasing each after writing.
-pub(super) fn emit_rows(
+/// Emit one listing document: the columns declare the schema once, rows follow as
+/// comma-separated values. The separator belongs to the caller's chunk boundary so
+/// parallel rendering keeps working.
+pub(super) fn emit_table(
     chunks: impl Iterator<Item = String>,
+    columns: &str,
     output: Option<&Path>,
     sink: &mut Output<'_>,
-) -> Result<usize> {
+) -> Result<()> {
     let mut file = match output {
         Some(path) => {
             Some(fs::File::create(path).with_context(|| format!("write {}", path.display()))?)
@@ -30,17 +33,38 @@ pub(super) fn emit_rows(
         None => None,
     };
     let mut writer = io::BufWriter::new(sink);
-    let mut written = 0usize;
+    write_both(
+        &mut file,
+        &mut writer,
+        format!("{{\"columns\":{columns},\"rows\":[").as_bytes(),
+    )?;
+    let mut first = true;
     for chunk in chunks {
-        written += chunk.len();
-        if let Some(file) = file.as_mut() {
-            file.write_all(chunk.as_bytes())?;
+        if chunk.is_empty() {
+            continue;
         }
-        writer.write_all(chunk.as_bytes())?;
+        if !first {
+            write_both(&mut file, &mut writer, b",")?;
+        }
+        write_both(&mut file, &mut writer, chunk.as_bytes())?;
+        first = false;
     }
+    write_both(&mut file, &mut writer, b"]}\n")?;
     if let Some(file) = file.as_mut() {
         file.flush()?;
     }
     writer.flush()?;
-    Ok(written)
+    Ok(())
+}
+
+fn write_both(
+    file: &mut Option<fs::File>,
+    writer: &mut io::BufWriter<&mut Output<'_>>,
+    bytes: &[u8],
+) -> Result<()> {
+    if let Some(file) = file.as_mut() {
+        file.write_all(bytes)?;
+    }
+    writer.write_all(bytes)?;
+    Ok(())
 }
