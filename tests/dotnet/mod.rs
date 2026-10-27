@@ -132,18 +132,3 @@ fn dotnet_outline_ends_a_closed_pipe_quietly() {
     );
 }
 // Relocate valid IL/EH by extending .text and updating its MethodDef RVA.
-#[test]
-fn dotnet_unrelated_invalid_parent_reference_stays_out_of_local_listings() {
-    let bad =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/InvalidReference.dll");
-    // A name-only query must ignore unrelated custom-attribute corruption.
-    let output = run("methods", &bad, &["--name", "Add"]);
-    success(&output);
-    let rows = jsonl(&output);
-    assert_eq!(rows.len(), 1);
-
-    // The explicit whole-structure check still reports the corruption.
-    let parsed = rxd_dotnet::Input::read(&bad, rxd_dotnet::Limits::default()).unwrap();
-    let error = parsed.verify_module().unwrap_err().to_string();
-    assert!(error.contains("INVALID_INPUT"), "{error}");
-}

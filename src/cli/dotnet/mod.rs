@@ -431,24 +431,23 @@ fn execute_inner(
                 let uses = perf.measure("strings", || {
                     input.string_uses(filter.as_deref(), case.sensitive())
                 })?;
-                let mut rows: Vec<Vec<Value>> = Vec::new();
+                let mut rows: Vec<String> = Vec::new();
                 for group in &uses.groups {
                     let literal = &uses.literals[group.literal_index];
                     // One row per load site: `at` names the heap literal, `context_at`
                     // names the method that loads it, so equal values stay distinct.
                     let context = group.method_token.map(coordinate);
-                    rows.push(vec![
-                        format!("0x{:08x}", 0x7000_0000u32 | literal.offset).into(),
-                        Value::from(literal.value.clone()),
-                        context.map(Value::from).unwrap_or(Value::Null),
-                    ]);
+                    let at = format!("0x{:08x}", 0x7000_0000u32 | literal.offset);
+                    rows.push(crate::cli::table::line(&[
+                        crate::cli::table::Cell::Atom(&at),
+                        crate::cli::table::Cell::Text(literal.value.as_deref().unwrap_or_default()),
+                        match context.as_deref() {
+                            Some(value) => crate::cli::table::Cell::Atom(value),
+                            None => crate::cli::table::Cell::Null,
+                        },
+                    ])?);
                 }
-                emit_table(
-                    &mut output,
-                    &mut records,
-                    &["at", "value", "context_at"],
-                    rows,
-                )?;
+                emit_table(&mut output, &mut records, rows)?;
             }
             Command::Xref { .. } => {
                 if let Some(result) = reference_result.take() {
@@ -944,7 +943,7 @@ fn list(
         Listing::Classes => Vec::new(),
     };
     let mut selected_by_type: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-    let mut rows: Vec<Vec<Value>> = Vec::new();
+    let mut rows: Vec<String> = Vec::new();
     // Resolve only selected members, in original table order. Retain their indices
     // for output instead of grouping and filtering the entire table a second time.
     for index in selected {
@@ -970,10 +969,10 @@ fn list(
         }
         if listing == Listing::Classes {
             if matches(&ty.full_name) {
-                rows.push(vec![
-                    coordinate(ty.token).into(),
-                    Value::String(ty.full_name.to_string()),
-                ]);
+                rows.push(crate::cli::table::line(&[
+                    crate::cli::table::Cell::Atom(&coordinate(ty.token)),
+                    crate::cli::table::Cell::Atom(ty.full_name.as_ref()),
+                ])?);
             }
             continue;
         }
@@ -981,48 +980,34 @@ fn list(
             rows.push(match listing {
                 Listing::Fields => {
                     let field = &input.fields[index];
-                    vec![
-                        coordinate(field.token).into(),
-                        format!(
-                            "{}::{}: {}",
-                            field.declaring_type, field.name, field.signature
-                        )
-                        .into(),
-                    ]
+                    let name = format!(
+                        "{}::{}: {}",
+                        field.declaring_type, field.name, field.signature
+                    );
+                    crate::cli::table::line(&[
+                        crate::cli::table::Cell::Atom(&coordinate(field.token)),
+                        crate::cli::table::Cell::Atom(&name),
+                    ])?
                 }
                 Listing::Methods => {
                     let method = &input.methods[index];
-                    vec![
-                        coordinate(method.token).into(),
-                        format!(
-                            "{}::{}({}): {}",
-                            method.declaring_type,
-                            method.name,
-                            method.parameters.join(", "),
-                            method.return_type
-                        )
-                        .into(),
-                    ]
+                    let name = format!(
+                        "{}::{}({}): {}",
+                        method.declaring_type,
+                        method.name,
+                        method.parameters.join(", "),
+                        method.return_type
+                    );
+                    crate::cli::table::line(&[
+                        crate::cli::table::Cell::Atom(&coordinate(method.token)),
+                        crate::cli::table::Cell::Atom(&name),
+                    ])?
                 }
                 Listing::Classes => unreachable!("handled above"),
             });
         }
     }
-    emit_table(output, records, &["at", "full_name"], rows)
-}
-
-/// Emit one listing as a single document: the columns declare the schema, so a query
-/// with zero rows still describes what it would have produced.
-fn emit_table(
-    output: &mut rxd_core::output::Output,
-    records: &mut usize,
-    columns: &[&str],
-    rows: Vec<Vec<Value>>,
-) -> anyhow::Result<()> {
-    *records = rows.len();
-    let rows: Vec<Value> = rows.into_iter().map(Value::Array).collect();
-    output.json_line(&json!({"columns": columns, "rows": rows}))?;
-    Ok(())
+    emit_table(output, records, rows)
 }
 
 fn detail(value: Value) -> Map<String, Value> {
@@ -1030,6 +1015,20 @@ fn detail(value: Value) -> Map<String, Value> {
         unreachable!(".NET record detail is a statically defined object")
     };
     fields
+}
+
+/// Emit one listing as Unix-table lines: one record per line, TAB-separated.
+fn emit_table(
+    output: &mut rxd_core::output::Output,
+    records: &mut usize,
+    rows: Vec<String>,
+) -> anyhow::Result<()> {
+    use std::io::Write as _;
+    *records = rows.len();
+    for row in rows {
+        output.write_all(row.as_bytes())?;
+    }
+    Ok(())
 }
 
 /// One metadata-token or decoded-literal reference target.

@@ -2,7 +2,7 @@
 
 mod args;
 mod output;
-use output::{emit, emit_table};
+use output::emit;
 use serde_json::{Value, json};
 
 use anyhow::{Result, bail};
@@ -179,15 +179,13 @@ fn run_command(
                                 continue;
                             }
                         }
-                        if !payload.is_empty() {
-                            payload.push(',');
-                        }
-                        push_json_string(&mut payload, entry.descriptor.as_str());
+                        payload.push_str(&entry.descriptor);
+                        payload.push('\n');
                     }
                     Ok(payload)
                 })
                 .collect::<Result<_>>()?;
-            emit_table(pieces.into_iter(), "[\"at\"]", args.output.as_deref(), sink)?;
+            emit(&pieces.concat(), args.output.as_deref(), sink)?;
             let payload_len = 0usize;
             if args.perf {
                 // The window now covers rendering and writing, not rendering alone.
@@ -238,19 +236,11 @@ fn run_command(
                         })
                         .collect::<Result<Vec<_>>>()?;
                     for piece in pieces {
-                        if !payload.ends_with('[') && !payload.is_empty() && !piece.is_empty() {
-                            payload.push(',');
-                        }
                         payload.push_str(&piece);
                     }
                 }
             }
-            emit_table(
-                std::iter::once(payload),
-                "[\"at\",\"value\",\"entry\"]",
-                args.output.as_deref(),
-                sink,
-            )?;
+            emit(&payload, args.output.as_deref(), sink)?;
         }
         Command::GetMethod(args) => {
             let at = args.selector.resolve()?;
@@ -292,7 +282,7 @@ fn run_command(
                 args.threads,
                 args.perf,
             )?;
-            emit_table(chunks.into_iter(), "[\"at\"]", args.output.as_deref(), sink)?;
+            emit(&chunks.concat(), args.output.as_deref(), sink)?;
         }
         Command::Methods(args) => {
             let selector = apk::MethodSelector {
@@ -308,7 +298,7 @@ fn run_command(
                 args.threads,
                 args.perf,
             )?;
-            emit_table(chunks.into_iter(), "[\"at\"]", args.output.as_deref(), sink)?;
+            emit(&chunks.concat(), args.output.as_deref(), sink)?;
         }
         Command::Entries(args) => {
             let entries = rxd_dex::profile::measure(rxd_dex::profile::Stage::ZipIndex, || {
@@ -327,9 +317,6 @@ fn run_command(
                 {
                     continue;
                 }
-                if !payload.is_empty() {
-                    payload.push(',');
-                }
                 let mut rendered = String::with_capacity(entry.name.len() + 48);
                 rendered.push('[');
                 push_json_string(&mut rendered, entry.name.as_str());
@@ -345,16 +332,11 @@ fn run_command(
                         _ => "other",
                     }
                 );
-                rendered.push(']');
+                rendered.push_str("]\n");
                 payload.push_str(&rendered);
                 let _ = limit;
             }
-            emit_table(
-                std::iter::once(payload),
-                "[\"name\",\"uncompressed_size\",\"compression\"]",
-                args.output.as_deref(),
-                sink,
-            )?;
+            emit(&payload, args.output.as_deref(), sink)?;
         }
         Command::Extract(args) => {
             let destination = args
@@ -568,17 +550,14 @@ fn push_string_row(
     value: &str,
     limit: Option<usize>,
 ) -> Result<()> {
-    if !payload.is_empty() {
-        payload.push(',');
-    }
-    payload.push('[');
     use std::fmt::Write as _;
-    let _ = write!(payload, "{index}");
-    payload.push(',');
-    push_json_string(payload, value);
-    payload.push(',');
-    push_json_string(payload, entry);
-    payload.push(']');
+    let _ = write!(payload, "{index}\t");
+    let quoted =
+        serde_json::to_string(value).map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
+    payload.push_str(&quoted);
+    payload.push('\t');
+    payload.push_str(entry);
+    payload.push('\n');
     if limit.is_some_and(|limit| payload.len() > limit) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }

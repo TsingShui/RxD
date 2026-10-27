@@ -1,61 +1,35 @@
-//! Listing documents: the columns declare the schema once, rows carry values only.
-use super::Output;
-use anyhow::{Context, Result};
-use std::{
-    fs,
-    io::{self, Write},
-    path::Path,
-};
+//! Unix-table listings: one record per line, TAB-separated cells.
+//!
+//! Atoms (coordinates, identifiers, numbers) are written verbatim, free text is
+//! JSON-quoted so a value may contain TAB, newline or a quote, and an absent value
+//! is `\N` so it stays distinct from an empty string.
+use anyhow::Result;
 
-/// Emit one listing document to the sink and an optional file.
-///
-/// `chunks` yields already-rendered, comma-separated row values, so a backend can
-/// keep rendering chunks in parallel; the separator between chunks belongs here.
-pub(crate) fn emit_table(
-    chunks: impl Iterator<Item = String>,
-    columns: &str,
-    output: Option<&Path>,
-    sink: &mut Output<'_>,
-) -> Result<()> {
-    let mut file = match output {
-        Some(path) => {
-            Some(fs::File::create(path).with_context(|| format!("write {}", path.display()))?)
-        }
-        None => None,
-    };
-    let mut writer = io::BufWriter::new(sink);
-    write_both(
-        &mut file,
-        &mut writer,
-        format!("{{\"columns\":{columns},\"rows\":[").as_bytes(),
-    )?;
-    let mut first = true;
-    for chunk in chunks {
-        if chunk.is_empty() {
-            continue;
-        }
-        if !first {
-            write_both(&mut file, &mut writer, b",")?;
-        }
-        write_both(&mut file, &mut writer, chunk.as_bytes())?;
-        first = false;
-    }
-    write_both(&mut file, &mut writer, b"]}\n")?;
-    if let Some(file) = file.as_mut() {
-        file.flush()?;
-    }
-    writer.flush()?;
-    Ok(())
+pub(crate) const NULL: &str = "\\N";
+
+pub(crate) enum Cell<'a> {
+    Atom(&'a str),
+    Text(&'a str),
+    Null,
 }
 
-fn write_both(
-    file: &mut Option<fs::File>,
-    writer: &mut io::BufWriter<&mut Output<'_>>,
-    bytes: &[u8],
-) -> Result<()> {
-    if let Some(file) = file.as_mut() {
-        file.write_all(bytes)?;
+/// Render one line, TAB-separated, newline-terminated.
+pub(crate) fn line(cells: &[Cell<'_>]) -> Result<String> {
+    let mut out = String::new();
+    for (index, cell) in cells.iter().enumerate() {
+        if index > 0 {
+            out.push('\t');
+        }
+        match cell {
+            Cell::Atom(value) => out.push_str(value),
+            Cell::Text(value) => {
+                let quoted = serde_json::to_string(value)
+                    .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
+                out.push_str(&quoted);
+            }
+            Cell::Null => out.push_str(NULL),
+        }
     }
-    writer.write_all(bytes)?;
-    Ok(())
+    out.push('\n');
+    Ok(out)
 }

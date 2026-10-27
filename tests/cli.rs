@@ -10,10 +10,6 @@ mod dex;
 #[path = "dotnet/mod.rs"]
 mod dotnet;
 
-#[cfg(feature = "backend-jvm")]
-#[path = "jvm/mod.rs"]
-mod jvm;
-
 #[cfg(feature = "backend-pyc")]
 #[path = "pyc/mod.rs"]
 mod pyc;

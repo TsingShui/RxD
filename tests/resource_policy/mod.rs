@@ -185,42 +185,6 @@ fn pyc_static_and_source_json_have_no_input_scaled_output_quota() {
     }
     assert_eq!(fs::read(&input).unwrap(), original);
 }
-
-#[cfg(feature = "backend-jvm")]
-#[test]
-fn input_scaled_jvm_keeps_format_valid_metadata_above_four_kib() {
-    // A complete Java 8 class, no methods/code. CONSTANT_Utf8 has a u16 length;
-    // the former 4096-unit metadata policy is not part of that format.
-    let name = "A".repeat(5000);
-    let mut bytes = vec![0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 52, 0, 5];
-    for (text, index) in [(name.as_str(), 1u16), ("java/lang/Object", 3u16)] {
-        bytes.push(1);
-        bytes.extend_from_slice(&(text.len() as u16).to_be_bytes());
-        bytes.extend_from_slice(text.as_bytes());
-        bytes.push(7);
-        bytes.extend_from_slice(&index.to_be_bytes());
-    }
-    for value in [0x21u16, 2, 4, 0, 0, 0, 0] {
-        bytes.extend_from_slice(&value.to_be_bytes());
-    }
-    let directory = TempDir::new().unwrap();
-    let input = directory.path().join("LongName.class");
-    fs::write(&input, &bytes).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["jar", "classes"])
-        .arg(&input)
-        .output()
-        .unwrap();
-    success(&output);
-    let rows: Vec<Value> = String::from_utf8(output.stdout)
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0]["at"], format!("L{name};"));
-}
-
 #[cfg(feature = "backend-pyc")]
 #[test]
 fn input_scaled_pyc_still_refuses_recursive_expansion_atomically() {

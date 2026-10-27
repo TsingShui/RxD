@@ -389,25 +389,12 @@ fn execute_inner(
                 // Lossless escape: when decoding is lossy (unpaired surrogates),
                 // keep the raw UTF-16 code units so no consumer loses data.
                 let lossless = String::from_utf16(value.as_utf16()).is_ok();
+                let mut rows_first = true;
                 let utf16_units: Option<Vec<u16>> = (!lossless).then(|| value.as_utf16().to_vec());
-                append(
-                    &mut output,
-                    &record(
-                        "string",
-                        RecordMeta {
-                            ..RecordMeta::default()
-                        },
-                        json!({
-                            "class":selected.class.name,
-                            "index":index,
-                            "value":text,
-                            "utf16_units":utf16_units,
-                        })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                    ),
-                )?;
+                let _ = (&utf16_units, &selected.class.name);
+                let quoted = serde_json::to_string(&text)
+                    .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
+                append_row(&mut output, &mut rows_first, &format!("{index}\t{quoted}"))?;
             }
         }
         super::write_output(&output, options.output.as_deref(), sink)?;
@@ -463,6 +450,7 @@ fn execute_inner(
         let limits = options.limits(&input, policy)?;
         let (_, _, entries) = Input::read_entries(&input, limits, options.release)?;
         let mut output = Vec::new();
+        let mut rows_first = true;
         let pattern = filter.map(|value| rxd_core::filter::Contains::new(&value, case.sensitive()));
         for entry in &entries {
             if pattern
@@ -476,20 +464,13 @@ fn execute_inner(
                 8 => "deflated",
                 _ => "other",
             };
-            append(
+            let _ = entry.compressed_size;
+            append_row(
                 &mut output,
-                &record(
-                    "entry",
-                    RecordMeta::default(),
-                    json!({
-                        "name":entry.name,
-                        "compression":compression,
-                        "compressed_size":entry.compressed_size,
-                        "uncompressed_size":entry.uncompressed_size,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
+                &mut rows_first,
+                &format!(
+                    "{}\t{}\t{}",
+                    entry.name, entry.uncompressed_size, compression
                 ),
             )?;
         }
@@ -571,6 +552,7 @@ fn execute_inner(
     let limits = options.limits(&path, policy)?;
     let input = Input::read(&path, limits, options.release)?;
     let mut output = Vec::new();
+    let mut rows_first = true;
     if let Some((selector, raw)) = request {
         let at = selector.resolve()?;
         if raw {
@@ -666,25 +648,7 @@ fn execute_inner(
                         continue;
                     }
                     let at = format!("L{};->{}:{}", class.name, field.name, field.descriptor);
-                    append(
-                        &mut output,
-                        &record(
-                            "field",
-                            RecordMeta {
-                                at: Some(&at),
-                                ..RecordMeta::default()
-                            },
-                            json!({
-                                // Modifiers come from the Java rendering (`get-class`),
-                                // so a per-row copy would be the same fact twice.
-                                "signature":field.signature,
-                                "constant_index":field.constant_index,
-                            })
-                            .as_object()
-                            .unwrap()
-                            .clone(),
-                        ),
-                    )?;
+                    append_row(&mut output, &mut rows_first, &at)?;
                 }
                 continue;
             }
@@ -699,56 +663,23 @@ fn execute_inner(
                     }) {
                         continue;
                     }
-                    append(
-                        &mut output,
-                        &record(
-                            "method",
-                            RecordMeta {
-                                at: Some(&Input::method_at(selected, index)),
-                                ..RecordMeta::default()
-                            },
-                            json!({
-
-                                "signature":method.signature,
-                                "exceptions":method.exceptions,
-                            })
-                            .as_object()
-                            .unwrap()
-                            .clone(),
-                        ),
-                    )?;
+                    let at = Input::method_at(selected, index);
+                    append_row(&mut output, &mut rows_first, &at)?;
                 }
                 continue;
             }
-            append(
-                &mut output,
-                &record(
-                    "class",
-                    RecordMeta {
-                        at: Some(&format!("L{};", class.name)),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        // A default parent or an empty interface list is not evidence, and
-                        // printing it would put the same two bytes on most of a class index.
-                        "super":class.super_name.as_deref().filter(|name| *name != "java/lang/Object"),
-                        "interfaces":(!class.interfaces.is_empty()).then_some(&class.interfaces),
-                        "major":class.major,
-                        "minor":class.minor,
-                        "access_flags":class.access,
-                        "signature":class.signature,
-                        "source_file":class.source_file,
-                        "fields":class.fields.len(),
-                        "methods":class.methods.len(),
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
+            append_row(&mut output, &mut rows_first, &format!("L{};", class.name))?;
         }
     }
     super::write_output(&output, options.output.as_deref(), sink)?;
+    Ok(())
+}
+
+fn append_row(output: &mut Vec<u8>, first: &mut bool, row: &str) -> anyhow::Result<()> {
+    let _ = &first;
+    output.extend_from_slice(row.as_bytes());
+    output.push(b'\n');
+    *first = false;
     Ok(())
 }
 

@@ -16,5 +16,3 @@ pub(super) fn emit(payload: &str, output: Option<&Path>, sink: &mut Output<'_>) 
     writer.flush()?;
     Ok(())
 }
-
-pub(super) use crate::cli::table::emit_table;

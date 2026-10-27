@@ -264,46 +264,17 @@ impl<'a> MethodRenderer<'a> {
                 }
                 let prototype = prototype.as_deref().unwrap();
                 out.reserve(descriptor.len() + name.len() + prototype.len() + 40);
-                if rows > 0 {
-                    out.push(',');
-                }
-                push_json_string(out, [descriptor, "->", name, prototype]);
+                out.push_str(descriptor);
+                out.push_str("->");
+                out.push_str(name);
+                out.push_str(prototype);
+                out.push('\n');
                 crate::profile::count(crate::profile::Counter::CodeItems, 1);
                 rows += 1;
             }
         }
         Ok(rows)
     }
-}
-
-fn push_json_string<'a>(out: &mut String, parts: impl IntoIterator<Item = &'a str>) {
-    out.push('"');
-    for value in parts {
-        if value
-            .bytes()
-            .all(|byte| byte >= 0x20 && byte != b'"' && byte != b'\\')
-        {
-            out.push_str(value);
-            continue;
-        }
-        for character in value.chars() {
-            match character {
-                '"' => out.push_str("\\\""),
-                '\\' => out.push_str("\\\\"),
-                '\n' => out.push_str("\\n"),
-                '\r' => out.push_str("\\r"),
-                '\t' => out.push_str("\\t"),
-                '\u{8}' => out.push_str("\\b"),
-                '\u{c}' => out.push_str("\\f"),
-                control if (control as u32) < 0x20 => {
-                    use std::fmt::Write as _;
-                    let _ = write!(out, "\\u{:04x}", control as u32);
-                }
-                other => out.push(other),
-            }
-        }
-    }
-    out.push('"');
 }
 
 fn skip_uleb(data: &[u8], cursor: &mut usize) -> Result<()> {
@@ -385,10 +356,8 @@ fn render_fields_of(
             rendered.push_str(&name);
             rendered.push(':');
             rendered.push_str(&ty);
-            if rows > 0 {
-                out.push(',');
-            }
-            push_json_string(out, [rendered.as_str()]);
+            out.push_str(&rendered);
+            out.push('\n');
             rows += 1;
         }
     }
