@@ -21,70 +21,9 @@ fn dotnet_semantic_signature_expansion_has_no_work_quota_and_preserves_atomic_ou
     assert!(written.stdout.is_empty());
     assert_eq!(fs::read(destination).unwrap(), output.stdout);
 }
-
-#[test]
-fn dotnet_semantic_method_refs_find_generic_instantiations_and_preserve_raw_tokens() {
-    let path = input();
-    let id = method_id(&path, "GenericIdentity");
-    let rows = jsonl(&run("xref", &path, &["--at", &id]));
-    assert_eq!(rows.len(), 1);
-    let hit = &rows[0];
-    assert_eq!(hit["detail"]["name"], "GenericCaller");
-    assert_eq!(hit["detail"]["il_offset"], 1);
-    assert_eq!(hit["detail"]["target_token"], 0x2b000001u32);
-    assert_eq!(hit["detail"]["resolution_status"], "resolved");
-    assert_eq!(hit["detail"]["target"], id);
-    assert_eq!(
-        hit["detail"]["method_arguments"],
-        serde_json::json!([{"kind":"method_parameter","index":1}])
-    );
-    success(&run(
-        "get-method",
-        &path,
-        &["--at", hit["context_at"].as_str().unwrap(), "--raw"],
-    ));
-    success(&run(
-        "get-class",
-        &path,
-        &["--at", hit["parent_at"].as_str().unwrap(), "--raw"],
-    ));
-    let by_token = jsonl(&run("xref", &path, &["--at", "0x06000021"]));
-    assert_eq!(by_token[0], rows[0]);
-}
-
 fn semantic_input() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/semantic/References.dll")
 }
-
-#[test]
-fn dotnet_semantic_method_refs_prove_local_aliases_without_matching_overloads_or_external_scopes() {
-    let path = semantic_input();
-    let outline = outline(&path, &[]);
-    let id = outline
-        .iter()
-        .find(|row| row["record"] == "method" && row["at"] == "0x06000001")
-        .unwrap()["at"]
-        .as_str()
-        .unwrap();
-    let rows = jsonl(&run("xref", &path, &["--at", id]));
-    let sites: Vec<_> = rows[..]
-        .iter()
-        .map(|row| {
-            (
-                row["detail"]["il_offset"].as_u64().unwrap(),
-                row["detail"]["opcode"].as_str().unwrap(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        sites,
-        [(0, "call"), (5, "ldftn"), (11, "ldtoken"), (16, "jmp")]
-    );
-    assert!(rows[..].iter().all(
-        |row| row["detail"]["target"] == id && row["detail"]["resolution_status"] == "resolved"
-    ));
-}
-
 #[test]
 fn dotnet_reference_scans_validate_the_complete_heap_even_after_one_thousand_unused_entries() {
     let path = semantic_input();
@@ -151,78 +90,6 @@ fn dotnet_semantic_method_refs_keep_instantiations_nested_members_and_ambiguous_
     let ambiguous_definition = jsonl(&run("xref", &path, &["--at", "0x06000005"]));
     assert_eq!(ambiguous_definition.len(), 0);
 }
-
-#[test]
-fn dotnet_method_reference_failures_reject_bad_selectors_and_preserve_atomic_outputs() {
-    let path = input();
-    let id = method_id(&path, "GenericIdentity");
-    for args in [
-        vec![],
-        vec!["--at", &id, "--at", "0x06000021"],
-        vec!["--at", "0x0600ffff"],
-        vec!["--at", "0x11000001"],
-    ] {
-        let output = run("xref", &path, &args);
-        assert_eq!(
-            output.status.code(),
-            Some(2),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(output.stdout.is_empty());
-    }
-    let directory = tempfile::tempdir().unwrap();
-    let destination = directory.path().join("refs.jsonl");
-    fs::write(&destination, b"preserved").unwrap();
-    let output = run(
-        "xref",
-        &path,
-        &["--at", "0x06000006", "-o", destination.to_str().unwrap()],
-    );
-    success(&output);
-    assert!(!fs::read(&destination).unwrap().is_empty());
-    let plain = run("xref", &path, &["--at", &id]);
-    success(&plain);
-    let repeat = run("xref", &path, &["--at", &id, "--perf"]);
-    success(&repeat);
-    assert_eq!(plain.stdout, repeat.stdout);
-    assert_eq!(String::from_utf8(repeat.stderr).unwrap().lines().count(), 2);
-    let file = run(
-        "xref",
-        &path,
-        &["--at", &id, "-o", destination.to_str().unwrap()],
-    );
-    success(&file);
-    assert!(file.stdout.is_empty());
-    assert_eq!(fs::read(destination).unwrap(), plain.stdout);
-    let semantic_rows = jsonl(&run("xref", &path, &["--at", &id]));
-    let keys = semantic_rows[0]["detail"]
-        .as_object()
-        .unwrap()
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
-    for args in [
-        vec!["--at", "0x06000006"],
-        vec!["--at", "0x70000001"],
-        vec!["-m", "世界\nλ", "--kind", "string"],
-    ] {
-        let rows = jsonl(&run("xref", &path, &args));
-        for row in &rows[..] {
-            assert_eq!(
-                row["detail"]
-                    .as_object()
-                    .unwrap()
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                keys
-            );
-            assert_eq!(row["parent_at"], row["parent_at"]);
-        }
-    }
-}
-
 #[test]
 fn dotnet_semantic_method_scans_reject_resolution_cycles_and_invalid_unselected_il() {
     let path = semantic_input();

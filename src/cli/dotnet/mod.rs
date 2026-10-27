@@ -431,36 +431,24 @@ fn execute_inner(
                 let uses = perf.measure("strings", || {
                     input.string_uses(filter.as_deref(), case.sensitive())
                 })?;
+                let mut rows: Vec<Vec<Value>> = Vec::new();
                 for group in &uses.groups {
                     let literal = &uses.literals[group.literal_index];
-                    // `index` is the backend's own identifier for this string in its
-                    // inventory: here, its position among the assembly's literals.
-                    let index = group.literal_index;
-                    let method = group.method_token.map(|token| {
-                        &input.methods[input
-                            .methods
-                            .binary_search_by_key(&token, |method| method.token)
-                            .expect("checked string owner")]
-                    });
-                    record(&mut output, &mut records, &{
-                        let token = format!("0x{:08x}", 0x7000_0000u32 | literal.offset);
-                        let context = method.map(|method| coordinate(method.token));
-                        envelope::record(
-                            "string",
-                            RecordMeta {
-                                at: Some(&token),
-                                parent_at: method
-                                    .map(|method| coordinate(method.declaring_type_token))
-                                    .as_deref(),
-                                context_at: context.as_deref(),
-                                ..metadata(&input)
-                            },
-                            detail(
-                                json!({"index":index,"value":literal.value,"utf16_units":literal.utf16_units,"status":if method.is_some(){"referenced"}else{"unreferenced"},"il_offsets":group.il_offsets}),
-                            ),
-                        )
-                    })?;
+                    // One row per load site: `at` names the heap literal, `context_at`
+                    // names the method that loads it, so equal values stay distinct.
+                    let context = group.method_token.map(coordinate);
+                    rows.push(vec![
+                        format!("0x{:08x}", 0x7000_0000u32 | literal.offset).into(),
+                        Value::from(literal.value.clone()),
+                        context.map(Value::from).unwrap_or(Value::Null),
+                    ]);
                 }
+                emit_table(
+                    &mut output,
+                    &mut records,
+                    &["at", "value", "context_at"],
+                    rows,
+                )?;
             }
             Command::Xref { .. } => {
                 if let Some(result) = reference_result.take() {
@@ -956,6 +944,7 @@ fn list(
         Listing::Classes => Vec::new(),
     };
     let mut selected_by_type: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    let mut rows: Vec<Vec<Value>> = Vec::new();
     // Resolve only selected members, in original table order. Retain their indices
     // for output instead of grouping and filtering the entire table a second time.
     for index in selected {
@@ -981,19 +970,58 @@ fn list(
         }
         if listing == Listing::Classes {
             if matches(&ty.full_name) {
-                record(output, records, &type_record(input, ty)?)?;
+                rows.push(vec![
+                    coordinate(ty.token).into(),
+                    Value::String(ty.full_name.to_string()),
+                ]);
             }
             continue;
         }
         for &index in selected_by_type.get(&ty.token).into_iter().flatten() {
-            let value = match listing {
-                Listing::Fields => field_record(input, &input.fields[index])?,
-                Listing::Methods => method_record(input, &input.methods[index])?,
+            rows.push(match listing {
+                Listing::Fields => {
+                    let field = &input.fields[index];
+                    vec![
+                        coordinate(field.token).into(),
+                        format!(
+                            "{}::{}: {}",
+                            field.declaring_type, field.name, field.signature
+                        )
+                        .into(),
+                    ]
+                }
+                Listing::Methods => {
+                    let method = &input.methods[index];
+                    vec![
+                        coordinate(method.token).into(),
+                        format!(
+                            "{}::{}({}): {}",
+                            method.declaring_type,
+                            method.name,
+                            method.parameters.join(", "),
+                            method.return_type
+                        )
+                        .into(),
+                    ]
+                }
                 Listing::Classes => unreachable!("handled above"),
-            };
-            record(output, records, &value)?;
+            });
         }
     }
+    emit_table(output, records, &["at", "full_name"], rows)
+}
+
+/// Emit one listing as a single document: the columns declare the schema, so a query
+/// with zero rows still describes what it would have produced.
+fn emit_table(
+    output: &mut rxd_core::output::Output,
+    records: &mut usize,
+    columns: &[&str],
+    rows: Vec<Vec<Value>>,
+) -> anyhow::Result<()> {
+    *records = rows.len();
+    let rows: Vec<Value> = rows.into_iter().map(Value::Array).collect();
+    output.json_line(&json!({"columns": columns, "rows": rows}))?;
     Ok(())
 }
 

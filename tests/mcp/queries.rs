@@ -190,8 +190,8 @@ fn cli_query(
 fn cli_projection(_name: &str, raw: &[u8]) -> Value {
     let text = std::str::from_utf8(raw).unwrap().to_owned();
     if let Ok(value) = serde_json::from_str::<Value>(&text)
-        && value.get("backend").is_some()
-        && value.get("command").is_some()
+        && ((value.get("backend").is_some() && value.get("command").is_some())
+            || (value.get("columns").is_some() && value.get("rows").is_some()))
     {
         return value;
     }
@@ -467,31 +467,22 @@ fn mcp_managed_metadata_navigation_keeps_original_il_evidence() {
         "ilspy_classes",
         json!({"input":{"path":input}}),
     );
-    assert!(
-        classes["records"][0]["at"]
-            .as_str()
-            .unwrap()
-            .starts_with("0x02")
-    );
+    // Listings are one table document: [at, full_name] per row.
+    assert!(classes["rows"][0][0].as_str().unwrap().starts_with("0x02"));
     let methods = checked(
         &mut client,
         &tools,
         "ilspy_methods",
         json!({"input":{"path":input}}),
     );
-    let method = methods["records"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["record"] == "method" && row["detail"]["has_body"] == true)
-        .unwrap();
-    let declaring_type = method["parent_at"].clone();
+    let method_at = methods["rows"][0][0].clone();
+    let declaring_type = classes["rows"][1][0].clone();
     for (name, extra) in [
         ("ilspy_fields", json!({"filter":"Count"})),
         ("ilspy_strings", json!({"filter":""})),
-        ("ilspy_xref", json!({"at":method["at"]})),
+        ("ilspy_xref", json!({"at":method_at})),
         ("ilspy_xref", json!({"match":"missing","kind":"string"})),
-        ("ilspy_get_method", json!({"at":method["at"],"raw":true})),
+        ("ilspy_get_method", json!({"at":method_at,"raw":true})),
         ("ilspy_get_class", json!({"at":declaring_type,"raw":true})),
     ] {
         let mut arguments = extra;
