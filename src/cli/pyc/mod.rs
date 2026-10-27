@@ -35,9 +35,9 @@ pub enum Command {
         #[command(flatten)]
         options: refs::RefsOptions,
     },
-    /// List str/bytes constants as JSONL.
+    /// List str/bytes constants (columns: at, value).
     #[command(
-        after_long_help = "Columns: at, value.\nExamples:\nrxd pyc strings module.pyc -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nOutput: string JSONL; at is const:N:PATH, context_at its code:N owner.\nUse xref --at '<string.at>' for loads, or get-code --at '<string.context_at>'.\nText and hexadecimal filters are exclusive. Non-UTF-8 bytes retain raw_bytes."
+        after_long_help = "Examples:\nrxd pyc strings module.pyc -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nOutput: string JSONL; at is const:N:PATH, context_at its code:N owner.\nUse xref --at '<string.at>' for loads, or get-code --at '<string.context_at>'.\nText and hexadecimal filters are exclusive. Non-UTF-8 bytes retain raw_bytes."
     )]
     Strings {
         /// One regular .pyc file, or raw marshal with explicit --version X.Y.
@@ -69,8 +69,8 @@ pub enum Command {
         #[command(flatten)]
         options: fetch_commands::FetchOptions,
     },
-    /// List code-object metadata as JSONL.
-    #[command(after_long_help = "Columns: at, qualname.\nExamples:\nrxd pyc codes module.pyc -f login\nrxd pyc codes module.pyc --at 'code:0'\nOutput: code JSONL in original depth-first order; at is code:N, parent_at first containment.\n--at is optional; --name exact and -f substring filters preserve original indices.\nNext: rxd pyc get-code module.pyc --at '<code.at>'. No instruction/source recovery during listing.", mut_arg("at", |arg| arg.value_name("CODE_AT").help("Optional codes.at coordinate, code:N; omit to enumerate all code objects")))]
+    /// List code-object metadata (columns: at, qualname).
+    #[command(after_long_help = "Examples:\nrxd pyc codes module.pyc -f login\nrxd pyc codes module.pyc --at 'code:0'\nOutput: code JSONL in original depth-first order; at is code:N, parent_at first containment.\n--at is optional; --name exact and -f substring filters preserve original indices.\nNext: rxd pyc get-code module.pyc --at '<code.at>'. No instruction/source recovery during listing.", mut_arg("at", |arg| arg.value_name("CODE_AT").help("Optional codes.at coordinate, code:N; omit to enumerate all code objects")))]
     Codes {
         /// One regular .pyc file, or raw marshal with explicit --version X.Y.
         input: PathBuf,

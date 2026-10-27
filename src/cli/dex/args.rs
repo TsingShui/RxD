@@ -11,9 +11,9 @@ pub enum Command {
     /// Fetch one class as Java.
     #[command(name = "get-class", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; not a method coordinate")), after_long_help = "Examples:\n  rxd rasc classes app.apk -f Main\n  rxd rasc get-class app.apk --at 'Lx/y;'\nUse actual classes.at. Output: one class_body JSON record; detail.code is Java.\nNo --raw flag. Unsupported methods may be stubs; inspect members and references.")]
     Getclass(GetClassArgs),
-    /// List APK/ZIP entries in central-directory order.
+    /// List APK/ZIP entries (columns: name, uncompressed_size, compression).
     #[command(
-        after_long_help = "Columns: name, uncompressed_size, compression.\nExamples:\n  rxd rasc entries app.apk -f lib/arm64-v8a/\nOutput: entry JSONL with detail.name, compression and sizes. Copy detail.name into:\n  rxd rasc extract app.apk --name '<entry.detail.name>' -o target/library.so\nDuplicate entry names remain visible."
+        after_long_help = "Examples:\n  rxd rasc entries app.apk -f lib/arm64-v8a/\nOutput: entry JSONL with detail.name, compression and sizes. Copy detail.name into:\n  rxd rasc extract app.apk --name '<entry.detail.name>' -o target/library.so\nDuplicate entry names remain visible."
     )]
     Entries(EntriesArgs),
     /// Extract original entry bytes to -o.
@@ -21,9 +21,9 @@ pub enum Command {
         after_long_help = "Examples:\n  rxd rasc extract app.apk --name lib/arm64-v8a/libfoo.so -o target/libfoo.so\n  rxd rasc extract app.apk --all -f lib/arm64-v8a/ -o target/native\nRequired: exactly one of --name/--all, plus -o FILE/DIR. Copy entries.detail.name.\nOutput: original bytes at destination, file receipt JSONL on stdout.\nUnsafe/duplicate destinations and attempts to overwrite input are rejected."
     )]
     Extract(ExtractArgs),
-    /// List DEX string literals as JSONL.
+    /// List DEX string literals (columns: at, value, entry).
     #[command(
-        after_long_help = "Columns: at, value, entry.\nExamples:\n  rxd rasc strings app.apk -f Authorization --limit 20\n  rxd rasc xref app.apk -m Authorization --kind string\nOutput: string JSONL; detail.value is text, detail.index is a DEX string index.\nString indices are not class/method coordinates. xref.context_at names a caller.\n--offset skips matching rows, --limit caps the page; omit both for full inventory."
+        after_long_help = "Examples:\n  rxd rasc strings app.apk -f Authorization --limit 20\n  rxd rasc xref app.apk -m Authorization --kind string\nOutput: string JSONL; detail.value is text, detail.index is a DEX string index.\nString indices are not class/method coordinates. xref.context_at names a caller.\n--offset skips matching rows, --limit caps the page; omit both for full inventory."
     )]
     Strings(StringsArgs),
     /// Search code references across every DEX.
@@ -36,20 +36,20 @@ pub enum Command {
         after_long_help = "Examples:\n  rxd rasc manifest app.apk -o target/AndroidManifest.xml\nInput must contain AndroidManifest.xml. Output is decoded XML, not JSONL.\nPlain XML remains original bytes; binary Android XML is decoded."
     )]
     Manifest(ManifestArgs),
-    /// List classes across every DEX as JSONL.
+    /// List classes across every DEX (columns: at).
     #[command(
-        after_long_help = "Columns: at.\nExamples:\n  rxd rasc classes app.apk -f Main\n  rxd rasc classes app.apk --class com.example.Main\nOutput: class JSONL; at is Lcom/example/Main;.\nNext: rxd rasc get-class app.apk --at '<class.at>'.\n-f searches class names; --class selects one exact class."
+        after_long_help = "Examples:\n  rxd rasc classes app.apk -f Main\n  rxd rasc classes app.apk --class com.example.Main\nOutput: class JSONL; at is Lcom/example/Main;.\nNext: rxd rasc get-class app.apk --at '<class.at>'.\n-f searches class names; --class selects one exact class."
     )]
     Classes(ClassesArgs),
     /// Fetch one method as Java.
-    #[command(name = "get-method", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at; include parameters and return type, e.g. Lx/y;->run()V")), after_long_help = "Columns: at.\nExamples:\n  rxd rasc methods app.apk -f run\n  rxd rasc get-method app.apk --at 'Lx/y;->run()V'\nUse actual methods.at or reference.context_at, not a name, index or file hash.\nThe prototype includes return type after ): ()V, (I)I, (I)[Ljava/lang/String;.\nOutput: one method_body JSON record; detail.code is Java. No --raw flag.")]
+    #[command(name = "get-method", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at; include parameters and return type, e.g. Lx/y;->run()V")), after_long_help = "Examples:\n  rxd rasc methods app.apk -f run\n  rxd rasc get-method app.apk --at 'Lx/y;->run()V'\nUse actual methods.at or reference.context_at, not a name, index or file hash.\nThe prototype includes return type after ): ()V, (I)I, (I)[Ljava/lang/String;.\nOutput: one method_body JSON record; detail.code is Java. No --raw flag.")]
     GetMethod(GetMethodArgs),
-    /// List fields across every DEX as JSONL.
+    /// List fields across every DEX (columns: at).
     #[command(
-        after_long_help = "Columns: at.\nExamples:\n  rxd rasc fields app.apk --class com.example.Main -f token\n  rxd rasc xref app.apk --at '<field.at>'\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f is a substring.\nFor declarations/layout use get-class with the owner classes.at."
+        after_long_help = "Examples:\n  rxd rasc fields app.apk --class com.example.Main -f token\n  rxd rasc xref app.apk --at '<field.at>'\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f is a substring.\nFor declarations/layout use get-class with the owner classes.at."
     )]
     Fields(FieldsArgs),
-    /// List defined methods as JSONL.
+    /// List defined methods (columns: at).
     #[command(
         after_long_help = "Examples:\n  rxd rasc methods app.apk --class com.example.Main -f run\n  rxd rasc methods app.apk --name run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads; -f searches names, --class selects one owner.\nNext: rxd rasc get-method app.apk --at '<method.at>', or xref --at for callers."
     )]
