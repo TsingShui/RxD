@@ -1,4 +1,4 @@
-//! Whole-archive extraction for ASAR, ZIP, PyInstaller and wxapkg containers.
+//! Whole-archive extraction for ASAR, ZIP/HAP, PyInstaller and wxapkg containers.
 use std::{
     fs,
     io::Read,
@@ -10,7 +10,7 @@ use rxd_core::{Error, Limits, Result, perf::Perf};
 
 #[derive(Args)]
 pub(crate) struct Command {
-    /// ASAR, ZIP-family, PyInstaller or wxapkg input, or PyInstaller one-dir root.
+    /// ASAR, ZIP-family (including HAP), PyInstaller or wxapkg input, or PyInstaller one-dir root.
     pub(super) archive: PathBuf,
     /// New directory that receives every extracted file.
     #[arg(short, long, value_name = "DIR")]
@@ -52,7 +52,7 @@ fn detect(path: &Path) -> Result<Format> {
     }
     Err(Error::new(
         "UNSUPPORTED_INPUT",
-        "expected an ASAR, ZIP, PyInstaller or wxapkg input",
+        "expected an ASAR, ZIP-family (including HAP), PyInstaller or wxapkg input",
     ))
 }
 

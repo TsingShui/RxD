@@ -127,6 +127,7 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         let help = String::from_utf8(output.stdout).unwrap();
         assert!(help.contains("Examples:") && help.contains("Output:"));
         assert!(help.contains("PyInstaller") && help.contains("wxapkg"));
+        assert!(help.contains("HAP") && help.contains("rxd unpack app.hap -o app"));
         assert_query_focused(&help);
         assert!(
             !Command::new(binary)

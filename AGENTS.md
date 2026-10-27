@@ -8,8 +8,8 @@ WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`), Lua/LuaJIT/Luau
 bytecode (`rxd unluac-rs`) and native EVMole EVM bytecode (`rxd evmole`). Outer command names credit the engines a backend wraps;
 crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
 and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
-CLI adapter and bundled specs. ASAR, ZIP and PyInstaller archives are unpacked
-into a directory; they are not analyzed in place.
+CLI adapter and bundled specs. ASAR, ZIP (including HAP) and PyInstaller archives
+are unpacked into a directory; they are not analyzed in place.
 
 The current layout is:
 
@@ -26,13 +26,13 @@ The current layout is:
   `src/cli/wasm/`, `src/cli/lua/`, `src/cli/flutter/`, and `src/cli/pyc/`: peer
   command adapters.
   `src/cli/table.rs` renders the shared TAB-separated listing rows.
-  `src/cli/unpack.rs` performs whole-archive ASAR/ZIP/PyInstaller extraction.
+  `src/cli/unpack.rs` performs whole-archive ASAR/ZIP/HAP/PyInstaller extraction.
   DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
-- `crates/rxd-zip/`: ZIP-family index and whole-archive Stored/Deflate extraction
-  with CRC, length, duplicate-path and path-safety validation.
+- `crates/rxd-zip/`: ZIP-family (including HAP) index and whole-archive
+  Stored/Deflate extraction with CRC, length, duplicate-path and path-safety validation.
 - `crates/rxd-pyinstaller/`: PyInstaller CArchive/PYZ extraction with reconstructed
   `.pyc` headers.
 - `crates/rxd-wxapkg/`: wxapkg index extraction and V1MMWX appid decryption.

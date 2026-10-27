@@ -154,10 +154,11 @@ interface selectors/types/mutability are inferred candidates, not a verified ABI
         command: evm::Command,
     },
     #[cfg(feature = "unpack")]
-    /// Unpack ASAR/ZIP/PyInstaller/wxapkg.
+    /// Unpack ASAR/ZIP/HAP/PyInstaller/wxapkg.
     #[command(after_long_help = "Examples:
   rxd unpack app.asar -o app
   rxd unpack archive.zip -o archive
+  rxd unpack app.hap -o app
   rxd unpack app.bin -o app
   rxd unpack app_onedir -o app
   rxd unpack app.wxapkg -o app
@@ -165,6 +166,7 @@ interface selectors/types/mutability are inferred candidates, not a verified ABI
 Output: extracted files under the new directory; one JSON receipt on stdout.
 Format is detected from content. The output directory must not exist.
 ZIP entries must be regular, unencrypted Stored/Deflate files.
+HAP packages use ZIP extraction; every entry is unpacked and the receipt format is zip.
 PyInstaller one-file executables yield CArchive files and a PYZ.pyz_extracted tree of .pyc files.
 For a PyInstaller one-dir root, its launcher is found and only its CArchive/PYZ is
 unpacked; loose _internal files remain in the input directory.
@@ -173,7 +175,7 @@ appid path component.
 No entry selection, nested extraction beyond PYZ, links, or encrypted ASAR/ZIP/PyInstaller archives.")]
     #[command(
         display_order = 80,
-        long_about = "Unpack ASAR/ZIP/PyInstaller/wxapkg: every entry to a new directory"
+        long_about = "Unpack ASAR/ZIP/HAP/PyInstaller/wxapkg: every entry to a new directory"
     )]
     Unpack {
         #[command(flatten)]

@@ -108,17 +108,67 @@ fn unpack_extracts_zip_trees_and_detects_format_from_content() {
 }
 
 #[test]
+fn unpack_extracts_every_hap_entry_byte_exactly_through_zip() {
+    let directory = TempDir::new().unwrap();
+    let archive = directory.path().join("app.hap");
+    let entries: &[(&str, &[u8], CompressionMethod)] = &[
+        (
+            "module.json",
+            br#"{"module":{"name":"entry"}}"#,
+            CompressionMethod::Stored,
+        ),
+        (
+            "ets/modules.abc",
+            b"PANDA\0\0\0",
+            CompressionMethod::Deflated,
+        ),
+        (
+            "resources/你好.txt",
+            "你好".as_bytes(),
+            CompressionMethod::Deflated,
+        ),
+        (
+            "libs/arm64-v8a/libstub.so",
+            b"\x7fELF\0\x01",
+            CompressionMethod::Stored,
+        ),
+    ];
+    zip_fixture(&archive, entries);
+    let output = directory.path().join("out");
+    let receipt = receipt(&run(&archive, &output));
+    assert_eq!(receipt["detail"]["format"], "zip");
+    assert_eq!(receipt["detail"]["complete"], true);
+    assert_eq!(receipt["detail"]["files"], entries.len());
+    assert_eq!(
+        receipt["detail"]["bytes"],
+        entries
+            .iter()
+            .map(|(_, bytes, _)| bytes.len() as u64)
+            .sum::<u64>()
+    );
+    for (path, bytes, _) in entries {
+        assert_eq!(fs::read(output.join(path)).unwrap(), *bytes, "{path}");
+    }
+}
+
+#[test]
 fn unpack_rejects_unsafe_duplicate_link_and_existing_destinations_without_partial_trees() {
     let directory = TempDir::new().unwrap();
     let output = directory.path().join("out");
 
-    let traversal = directory.path().join("traversal.zip");
-    zip_fixture(
-        &traversal,
-        &[("../escape", b"x", CompressionMethod::Stored)],
-    );
-    failure(run(&traversal, &output), 1, "INVALID_INPUT");
-    assert!(!output.exists());
+    for name in ["traversal.zip", "traversal.hap"] {
+        let traversal = directory.path().join(name);
+        zip_fixture(
+            &traversal,
+            &[
+                ("ok.txt", b"ok", CompressionMethod::Stored),
+                ("../escape", b"x", CompressionMethod::Stored),
+            ],
+        );
+        failure(run(&traversal, &output), 1, "INVALID_INPUT");
+        assert!(!output.exists());
+        assert!(!directory.path().join("escape").exists());
+    }
 
     let duplicate = directory.path().join("duplicate.zip");
     zip_fixture(
