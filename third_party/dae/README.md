@@ -1,0 +1,488 @@
+# dae
+
+[简体中文](README.zh.md)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/ejfkdev/dae)](https://github.com/ejfkdev/dae/releases/latest)
+[![crates.io](https://img.shields.io/crates/v/dae-rs)](https://crates.io/crates/dae-rs)
+[![Release CI](https://img.shields.io/github/actions/workflow/status/ejfkdev/dae/release.yml?label=build)](https://github.com/ejfkdev/dae/actions/workflows/release.yml)
+[![Publish CI](https://img.shields.io/github/actions/workflow/status/ejfkdev/dae/publish.yml?label=publish)](https://github.com/ejfkdev/dae/actions/workflows/publish.yml)
+[![Built with ZCode](https://img.shields.io/badge/Built%20with%20ZCode-000000.svg?style=flat&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTE4IiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDI1NiAyMTgiPjxwYXRoIGZpbGw9IiNmZmZmZmYiIGQ9Ik0xMzQuNCAwLjEzMDE1MkwxMTEuNDggMjUuNjAyMkMxMTEuNjY1IDI5LjU2OTkgMTA5LjA1NCAzMi4wMDE5IDEwNC4wNjQgMzIuMDAxOUg2LjM5OTlWMEM2LjM5OTkgMC4xMzAxNDkgMTM0LjQgMC4xMzAxNTIgMTM0LjQgMC4xMzAxNTJaIi8+PHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTI1NiAwLjEzMDEyN0wxMDIuNDAxIDIxNy43MzJIMDBMMTUzLjU5OSAwLjEzMDEyN0gyNTZaIi8+PHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTEyMS42MDEgMjE3LjczMkwxMzkuNjUgMTkyLjEzNEMxNDIuNDY1IDE4OC4xNjYgMTQ3LjA3NiAxODUuNzM0IDE1Mi4wNjcgMTg1LjczNEgyNDkuNjA0VjIxNy43MzZIMTIxLjYwMVYyMTcuNzMyWiIvPjwvc3ZnPg==)](https://zcode.z.ai/)
+
+> Config-driven **Dart AOT snapshot** analyzer and debug-info exporter. No Dart SDK, never runs the target: locates the embedded snapshot inside Mach-O / ELF / PE, exports the same symbols and structs as [blutter](https://github.com/worawit/blutter) for IDA / radare2 / Frida (with six deliberate corrections where the reference it was ported from was wrong — see `src/export/mod.rs`), and **decompiles functions into Dart that `dart analyze` accepts**. Covers desktop *and* real-device mobile (compressed-pointer) builds.
+
+Works on any Dart AOT artifact — Flutter release builds, `dart compile exe`, `dart compile aot-snapshot` (Dart 2.7+ cluster snapshots).
+
+## Features
+
+- **Self-contained & auto-detecting** — all 26 SDK profiles plus **21 compressed-pointer variants** are embedded; the Dart version is matched by snapshot hash and the variant (`compressed-pointers`, i.e. every mobile Flutter build) from the snapshot's own features string, with a structural-probe fallback for custom/Flutter-engine builds. Verified against real shipping apps, not just our own builds:
+
+  - **Android arm64** — Reqable 3.3.4, Lark 3.6.1, ChatGLM 3.11.6, CHSI 3.7.2, Weibo 2.19.6.
+    For all five the instructions-table entry count matches aotopsy exactly
+    (57 960 / 79 327 / 30 782 / 19 752 / 22 623), each at zero warnings, and Reqable, Lark and
+    Weibo all decompile to `dart analyze`-clean Dart (97.0% / 94.5% / 90.2% structured, over
+    11 237 / 19 555 / 19 053 functions).
+  - **macOS arm64** — Reqable.app 3.3.4: 70 996 table entries, 0 warnings, 17 319 functions
+    (14 392 decompiled) at 97.1% structured, `dart analyze` 0 errors.
+    > The previous release quoted "1 808 functions at 94.9%". Same story as Lark's: it was measured
+    > while ~90% of this artifact's functions had a name but no body, so the rate was computed over
+    > the tenth that survived. See
+    > [Names without bodies](docs/DECOMPILER.md#names-without-bodies-the-same-defect-twice-invisible-to-every-gate-2026-10-01-fixed).
+  - **flutter-samples demos built locally** (Dart 3.13.0) — `material_3_demo` (5 107 lines) and
+    `animations` (2 108 lines): 15 796 and 11 102 functions, 92.0% and 91.8% structured, both
+    `dart analyze` 0 errors. Because the source is known, these are checked *against it*:
+    98.8% and 100% of the public classes/mixins/enums declared in `lib/` are recovered, 95.4% and
+    97.4% of its string literals appear in the output, and 18/18 and 21/23 source files map to a
+    recovered library. `tests/app_truth.rs` asserts those ratios (floor 0.90) so the chain cannot
+    silently rot.
+- **Decompiles to valid Dart** — lift → CFG → structured emission, not a disassembly dump: loops,
+  `if/else`, `break`/`continue`, object-pool literals inlined at their load site, recovered field
+  names as attribution comments. Across 26 artifacts (291 files, 24 497 functions) the output
+  analyses with **0 `dart analyze` errors**, and on real apps it holds up too — Reqable 3.3.4 at
+  97.0% structured (11 237 functions, 1.50 M statements), Lark 3.6.1 at 94.5% (19 555 functions)
+  and Weibo 2.19.6 at 90.2% (19 053 functions, 1.62 M statements), all three error-free.
+  **Every conditional branch edge is accounted for**: an arm is either structured into the `if`,
+  tail-duplicated from an already-emitted shared block, or written as an explicit `gotoLabel(0x…)`,
+  and irreducible control flow additionally gets a `NOTE` header. An empty branch body now only ever
+  means one thing — the target *is* the code immediately after the `if` — where it used to also mean
+  "this edge was dropped" (9 817 such sites across the five apps above; 216 remain and each was
+  checked against the raw disassembly). See
+  [Recording every conditional branch edge](docs/DECOMPILER.md#recording-every-conditional-branch-edge-2026-10-01). See [Decompiler](#decompiler-experimental).
+- **Fast** — every number below is the **median of three alternating A/B rounds** with this
+  release's binary (a single wall-clock run on this project swings ±35%, so one run proves nothing):
+  a 9 MB macOS Flutter sample exports in 0.27 s; `--decompile` takes 0.82 s on `material_3_demo`
+  (14 MB macOS, 15 082 decompiled functions), 1.25 s on Weibo (9 MB Android, 19 053 functions /
+  1.62 M statements), 2.00 s on ChatGLM (14 MB Android, 27 517 functions), 2.64 s on Reqable
+  (21 MB Android, 11 237 functions / 1.50 M statements) and 2.91 s on Lark (25.6 MB Android,
+  19 555 functions), at 151–834 MB peak RSS (Reqable is the outlier: 1.50 M statements).
+  That is **~85× faster than v0.1.7** on the same artifact (106.8 s → 1.25 s) — from not rebuilding
+  run-invariant data per function, from streaming artifacts to disk instead of buffering them, and
+  from rendering the 505 libraries in parallel; not from a faster algorithm.
+  Recording every branch edge (above) costs **~3% on the largest corpus and is inside noise on the
+  rest** — measured against the pre-fix binary in the same alternating rounds, not against a
+  number quoted earlier.
+  > The previous release quoted "1.5 s on Lark, 95.9% structured". Both numbers were measured while
+  > 79% of Lark's functions had a name but no body, so the run was fast and the rate was computed
+  > over the fifth that survived. See
+  > [Names without bodies](docs/DECOMPILER.md#names-without-bodies-the-same-defect-twice-invisible-to-every-gate-2026-10-01-fixed). The parallel path is **byte-identical** to
+  the serial one (`diff -rq` over 1011 files), because file names and "which library emits each
+  entry point" are both settled by a sequential pre-pass before any rendering starts.
+- **Bilingual CLI** — Chinese locale prints Chinese, everything else English; override with `DAE_LANG=zh|en`.
+- **Parallel decompiler** — the 505-ish libraries are rendered concurrently (default `n_threads()`,
+  i.e. core count capped at 8); override with `DAE_DEC_THREADS=N`. Output is **byte-identical** at any
+  setting, because file names and "which library emits each entry point" are settled by a sequential
+  pre-pass first. Past 8 threads it gets *slower* and uses more memory on a 6P+12E-core Mac, so the
+  cap is the sweet spot, not a limitation. `DART_AOT_PROF=1` prints a per-phase breakdown — note its
+  percentages can exceed 100% because the phases are CPU time summed across threads.
+- **Progressive mode** — 20 subcommands to query the snapshot like a database (`libs`, `classes`,
+  `functions`, `members`, `strings`, `findrefs`, `callers`, `callees`, `pp`, `objs`, `stubs`, ...)
+  and then decompile exactly one thing (`getclass` / `getmethod` / `getlib` / `decompile --app`).
+  Queries answer in 15–30 ms on a small corpus and 43–311 ms on a 15,796-function app; a full
+  export of that app is 0.55 s, or ~1.4 s with `--decompile` (~1000 files). Every command's output
+  is pasteable into the next one.
+  See [Progressive mode](#progressive-mode-list-first-decompile-one-thing).
+- **No toolchain required** — one self-contained binary: no Dart SDK, no Flutter install, and the
+  target is never executed, only parsed. Mach-O/ELF/PE parsing and all 47 profiles are built in.
+
+## Install
+
+| Way | Command |
+|---|---|
+| Homebrew (macOS) | `brew install ejfkdev/tap/dae` |
+| cargo | `cargo install dae-rs` |
+| Prebuilt | binary from [Releases](https://github.com/ejfkdev/dae/releases/latest) — Windows/macOS/Linux × x64/arm64 |
+| Source | `cargo build --release` |
+
+macOS prebuilt binaries are ad-hoc signed; if Gatekeeper blocks the first run: `xattr -dr com.apple.quarantine dae`.
+
+*(The crates.io package is `dae-rs` because `dae` was taken; the repository, library and binary all stay `dae`.)*
+
+## Usage
+
+```bash
+dae <binary> <out_dir>                    # auto-detect the Dart version
+dae export <binary> <out_dir>             # same thing, explicit verb
+dae <binary> <out_dir> --sdk-profile P.json   # or force one
+dae <binary> <out_dir> --app --decompile  # app-side code only (drops dart: and package:flutter)
+
+dae help                                  # every subcommand, grouped
+dae help findrefs                         # one command's options and output columns
+dae decompile <binary> | less             # whole app's pseudocode to stdout
+```
+
+```console
+$ dart compile exe demo.dart -o demo
+$ dae demo out
+SDK profile: dart/3.13.0 (version-hash match)
+export done -> /absolute/path/to/out:
+  ida_script/  r2_script/  frida.js  asm/
+  text/  pp.txt · objs.txt · strings.txt · libs.txt · classes.txt · functions.txt · arrays.txt · maps.txt
+```
+
+- **IDA** — `File → Script file…`, pick `ida_script/addNames.py`. Names, boundaries and the `DartThread` / `DartObjectPool` structs land in the database (image base rebased automatically).
+- **radare2** — `r2 -i r2_script/addNames.r2 <binary>`, then `to r2_dart_struct.h` in the session.
+- **Frida** — edit the marked hook line, then `frida -f <app> -l out/frida.js`.
+
+## Outputs
+
+| Output | Purpose |
+|---|---|
+| `ida_script/addNames.py` | IDAPython: names + boundaries + structs |
+| `r2_script/addNames.r2` | radare2 flags/comments (libraries → classes → methods) |
+| `*_dart_struct.h` | Dart runtime structs (`r2_script/r2_dart_struct.h`, `ida_script/ida_dart_struct.h`) |
+| `frida.js` | Frida template + runtime `Classes` array |
+| `asm/*.dart` | disassembly with blutter-style IL comments (arm64) |
+| `pp.txt` | object-pool entries (under `text/`) |
+| `objs.txt` | recursive user-class instance dump (under `text/`) |
+| `strings.txt` | full string table (under `text/`) |
+| `libs.txt` | library inventory (URI + name, under `text/`) |
+| `classes.txt` | class inventory (ref, cid, library, name; under `text/`) |
+| `functions.txt` | flat `Library.Class.method → offset` index (under `text/`) |
+| `arrays.txt` / `maps.txt` | every List / Map object with its contents (under `text/`) |
+| `text/fields.txt` | named fields recovered from the snapshot's Field cluster (`rec`) or implicit-accessor names (`accessor`), with byte offsets |
+| `text/stubs.txt` | instruction-table entries that **no Function object references** (what `functions.txt` omits); names only where provable, empty otherwise. **They are not all stubs**: on builds with `first_entry_with_code > 0` a large share are unnamed *function bodies* -- 53.4% (8.09 MB) on Reqable, 72.3% (14.67 MB) on Lark begin with a standard Dart `EnterFrame` prologue, versus 0.4-1.2% on corpora where that field is 0. dae does not decompile them and does not invent names for them; see [Decompiler](docs/DECOMPILER.md). |
+| `text/call_edges.txt` | call edges: direct `bl`/`call` targets + indirect call sites; per-class allocation stubs are named from their prologue |
+| `callgraph.dot` | direct-call graph between named functions (Graphviz DOT) |
+| `dart/*.dart` | per-function pseudocode that passes `dart analyze` — one file per **library**, via `--decompile` or the `decompile` subcommand |
+
+Struct headers are generated **per target**: `DartThread` from a version × architecture layout table, `DartObjectPool` from the target's own object pool.
+
+## Dart version support
+
+| Range | Status |
+|---|---|
+| 3.0.0 – 3.14β | ✅ verified — full user functions |
+| 2.15.0 – 2.17.0 | ✅ verified — full user functions |
+| 2.10.4 – 2.14.4 | function names + addresses |
+| 2.7.2 | objects layer only |
+| 1.24.3 / 2.0.0 | ❌ JIT snapshot (non-AOT) |
+
+## Tool compatibility
+
+| Tool | Status |
+|---|---|
+| IDA 9.3 / 9.4 | ✅ tested end-to-end (naming + structs) |
+| IDA 7.x – 8.x | expected — same typed APIs since 7.x |
+| radare2 6.2 | ✅ tested — no script errors |
+| radare2 5.x | expected — long-stable commands only |
+| rizin | parses/executes; one-flag-per-address skips same-address extras |
+| Frida 14 – 17 | core `Interceptor`/`Module`/`ptr` API |
+
+## How it works
+
+Three layers; the engine is version-invariant, versions add configuration only:
+
+| Layer | Path | Contents |
+|---|---|---|
+| Engine | `src/` | varint/cluster traversal, fill interpreter, name deobfuscation, exporters |
+| SDK profile | `profiles/sdk/*.json` | cid enums, field layouts (fill DSL), tagging, offsets |
+| Platform profile | `profiles/platform/*.json` | container parser, symbol names, register roles |
+
+Spec: [`docs/PROFILES.md`](docs/PROFILES.md) · Decompiler baseline: [`docs/DECOMPILER.md`](docs/DECOMPILER.md) · Measured against aotopsy: [`docs/COMPARISON.md`](docs/COMPARISON.md)
+
+## Progressive mode (list first, decompile one thing)
+
+A full export writes thousands of files; often you only want one class, one package, or just the
+answer to "where is this string used". Query first, decompile surgically (`dae help` has every
+option, `dae help <cmd>` has one command's):
+
+```
+  Overview
+    dae info      <binary>                      snapshot, SDK and size summary
+    dae libs      <binary> [pattern]            libraries with class and function counts
+    dae classes   <binary> [pattern] [--lib P]  classes that own at least one function
+    dae functions <binary> [pattern] [--lib P]  functions: entry address, size, owner
+    dae largest   <binary> [-n N]               the N largest functions by size
+
+  Search
+    dae strings   <binary> [-f TEXT]            search the string table
+    dae fields    <binary> [pattern]            recovered field names with source and byte offset
+    dae members   <binary> [NAME] [--class X]   method and field name search
+    dae findrefs  <binary> string TEXT          code sites loading this literal from the object pool
+    dae findrefs  <binary> kind NAME            code sites that load an object of this kind
+    dae callers   <binary> <NAME|0xADDR>        callers of a function
+    dae callees   <binary> <NAME|0xADDR>        callees of a function; same columns as callers
+
+  Object layer (query interface to the text/ artifacts; same data)
+    dae pp        <binary> [pattern]            object pool entries
+    dae objs      <binary> [pattern]            instances of user classes, with field values
+    dae stubs     <binary> [pattern]            table entries no Function object references
+
+  Decompilation
+    dae getclass  <binary> <CLASS>              decompile a single class
+    dae getmethod <binary> <CLASS.method>       decompile a single method
+    dae getlib    <binary> <LIB>                decompile one library; a prefix selects the package
+    dae decompile <binary> [-o DIR|FILE.dart|-] decompile only; no other artifacts; all libraries
+
+  Low-level
+    dae disasm    <binary> <NAME|0xADDR>        disassembly of a function or table entry (arm64)
+
+  Export
+    dae export    <binary> <out_dir> [options]  write every artifact under out_dir
+    export is prepended when the first argument is not a command, so the two forms are equivalent.
+
+  Meta
+    dae help      [command]                     this text; with a command name, that command's help
+    dae version                                 print the name and version
+```
+`dae disasm <binary> 0xADDR` accepts three kinds of address: a function entry, a stub-table entry,
+and a sub-stub *inside* one entry (the write-barrier family: a single 640-byte table entry is really
+20 32-byte variants and callers branch straight to an inner address, so neither table lists it).
+The window length is taken only from somewhere provable -- the function/stub table's own length, or
+the exact 8 instructions a shape check requires; an address none of the three accepts is an error
+rather than a guessed window, because a guessed length disassembles unrelated bytes and still looks
+plausible.
+
+The authoritative list is `dae help`; the table above is a copy of its COMMANDS section.
+
+Conventions, chosen so the commands compose:
+
+- **stdout is the data channel.** Query results and decompiled pseudocode go to stdout with no
+  stats or timing mixed in; every diagnostic (target, SDK profile, warnings, counts) goes to
+  stderr, so `dae getclass app.apk Foo | less` and `dae classes app.apk > index.tsv` just work.
+  `-o FILE` writes to a file instead; `-o FILE.dart` merges into one file and `-o DIR` writes the
+  same `<DIR>/dart/<lib>.dart` layout as a full export. Full export is the one exception, and it
+  is deliberate: its summary goes to stdout because that is the human channel there.
+- **Names you can paste back.** A library can be written three ways — the `lib` column of
+  `functions.txt` (`testing_app$screens$home`), the URL from `libs.txt`
+  (`package:testing_app/screens/home.dart`), or the artifact file name
+  (`testing_app_screens_home`) — and library names match by **prefix**, so
+  `getlib testing_app` is the whole package. Classes are exact (case-insensitive fallback);
+  add `--fuzzy` for substring. Function names accept `Class.method`, a bare member, the
+  artifact-style `Class_method`, **and** the all-dots `lib.Class.method` that
+  `callers`/`callees`/`findrefs`/`call_edges.txt` print — so the output of one command can be fed
+  straight into the next without reformatting.
+- A miss is actionable: `getclass HomePag` suggests real names, and `findrefs kind NoSuchKind`
+  lists the object kinds that actually exist in that pool.
+- **Scope filters.** `--lib/--class/--func` narrow the function-scoped artifacts
+  (`functions.txt`, `asm/`, `dart/`, `call_edges.txt`, `callgraph.dot`); the object-layer dumps
+  (`pp`, `objs`, `strings`, `libs`, `classes`, `arrays`, `maps`) stay complete because they are
+  the index you pick from. Three more filters drop whole libraries:
+  `--exclude-lib PATTERN` (repeatable), `--no-sdk` (URLs starting with `dart:`), and `--app`
+  (also `package:flutter`). Those two are decided by the library's **original URL**, not by
+  guessing from the mangled name — `dart:core` mangles to `dart_core`, which a package named
+  `dart_core_extra` would also resemble. On a real Flutter app the three levels are
+  505 libraries / 15,796 functions → 489 / 11,016 (`--no-sdk`) → 56 / 765 (`--app`).
+- **Exit codes**: `0` ok; `1` runtime error (including a miss and parse drift); `2` usage error.
+- **Not provided, and why.** `findrefs` has no `field` kind: compiled code carries no symbolic
+  field reference, only a bare displacement, so matching on displacement would report unrelated
+  `[x, #0x18]` as hits — guessing, not querying. There is no `hierarchy`: the superclass chain
+  dae can read is not backed by ground truth (measured against an app's own source, `App extends
+  StatefulWidget` resolves to `SceneBuilder`), and a wrong inheritance chain is worse than none.
+  The same unresolved chain feeds `frida.js`'s `sid` field and the ancestor grouping inside
+  `text/objs.txt`, so treat both as unreliable; this is marked at their source sites. There is no
+  manifest-style `--app` that infers your package name, because a Dart snapshot has no manifest.
+
+### Why `dart/` is one file per library, not per class
+
+Because that is how Dart source is organized: a *library* is normally one `.dart` file and holds
+many classes, and Dart's privacy is **library-scoped**, not class-scoped. `_SliderState` is
+visible to `Slider` precisely because they share a library — in the decompiled output,
+`Slider_createState()` calls `SliderState_ctor()` (Flutter's `createState() => _SliderState()`).
+Per-library files mirror the original layout, so those references stay real definitions.
+
+Splitting per class would still pass `dart analyze` (the per-file preamble declares any identifier
+used but not defined in that file, so cross-class calls degrade to `dynamic` invocations), but it
+costs fidelity — definitions you could read become opaque stubs — multiplies the file count roughly
+eightfold (4,150 classes vs 535 libraries on one sample), and can collide, since `_SliderState`
+loses its underscore and could clash with a public `SliderState`. If you want a class-named file,
+`dae getclass App HomePage -o HomePage.dart` already gives you one; `-o DIR` deliberately keeps
+the full-export layout so "the selection is a subset of the full export" is literally checkable.
+
+Cost, measured: a full `--decompile` export of a 15,796-function Flutter app takes ~1.4s and
+writes ~1000 files. Queries are 15–30ms on a small corpus; on that same large app `findrefs` is
+0.21s, `callees` 0.30s, and `decompile --app` 0.20s. Snapshot parsing itself is ~50ms — what
+progressive mode saves is the writing.
+
+
+## Decompiler (experimental)
+
+`dae --decompile` adds `dart/<library>.dart`: one pseudocode function per named function,
+lifted from the disassembly through the same pipeline shape the sibling tools use
+(machine-specific lift → basic blocks → emission).
+
+What it does today:
+
+- Real comparison conditions folded from `cmp`/`fcmp`/`test` + the branch (`if (rdx < 2)`).
+- Framework register names (`PP`/`THR`/`SP`/`FP`, plus each platform's `register_aliases`) —
+  including inside memory operands.
+- Named direct call targets (`call router`), and `sub_0x...` for entries with no name.
+- **Pool constants recovered**: `ldr x0, [PP, #0x17f8]` becomes `x0 = "Hello" /* pp+0x17f8 */`
+  (string literals, immediates; non-string entries get a type comment). Verified against source
+  on both arm64 and x64.
+- **Field names, where they can be proved**: AOT deletes almost all of them
+  (`Precompiler::DropFields`), so dae uses exactly two routes — the snapshot's surviving `Field`
+  objects (name + word index via the Mint cluster) and implicit getter/setter names, whose body
+  touches exactly one field. A name shows up attributed, without claiming the base's type:
+  `x0 = mem((local_0), 0x17); /* _FutureListener.result (off 0x18) */`. Coverage: 60 recovered
+  names / 218 annotated accesses on the arm64 sample, 367 / 438 on the Flutter app; the two
+  routes independently agree on 40 of 41 entries and 0 anywhere conflict. `dae fields` lists the
+  table, `text/fields.txt` carries it in the export.
+- Stack slots rendered as locals (`local_8`), frame save/restore and barriers kept as
+  `// frame:` / `// barrier:` comments, and the raw disassembly kept above each function so
+  the output stays checkable.
+
+**The output is valid Dart.** It parses and passes `dart analyze` with zero errors — machine
+syntax is rewritten (`mem(base, disp)`, `memSet(...)`, `callIndirect(x8)`, `gotoLabel(0x..)`),
+names are sanitised into identifiers (mixin-application class names contain `&`, which is a Dart
+operator) and every file starts with a *pseudo-runtime* preamble declaring the machine-level
+concepts plus whatever registers and cross-library call targets the body uses. That preamble is
+not pretending the code compiles: it writes down where the machine layer ends and Dart begins.
+Baseline: **680,515 → 0** errors on a 412-file / 10,245-function Flutter app, and 0 across all
+27 corpora — see [`docs/DECOMPILER.md`](docs/DECOMPILER.md) for the table, the fix history and
+the per-sample scores.
+
+Control flow is **structured**: dominators give the natural loops (back edge = header
+dominates its tail), then each region is emitted recursively — a conditional branch whose two
+arms rejoin becomes `if/else`, `join == region end` counts as a valid diamond, an arm that
+returns becomes `if (c) { return ... }`, a loop header becomes `while`, and an arm that leaves
+the loop becomes `break`/`continue`. 77–90% of functions come out fully structured on the
+corpora we gate on; the rest keep a `gotoLabel` and are marked with a `NOTE` header.
+That range used to read 87–92%, and it widened because a branch whose target was an already-emitted
+shared block used to render as an empty `if (c) { }` — counted as *structured* while the edge, and
+any `store`/`call` on it, was silently dropped. Recording those edges as tail duplication (preferred,
+keeps the function structured) or as a `gotoLabel` is a reclassification, not a regression.
+
+What it does **not** do yet: cross-block expression composition beyond a few levels, and type
+recovery (everything is `dynamic`, field access is `mem(base, disp)`). Unrecognised instructions
+are emitted verbatim as `// unmapped:` rather than approximated, and the count is printed in the
+run summary — treat it as the quality dial.
+
+Gates run on every change: `tests/app_truth.rs` (decompiles locally built **flutter-samples** apps
+and checks the result against their real source — recovered public types, string literals and
+library mapping, floors at 0.90; point `DAE_DEMO_ROOT` at a checkout),
+`tests/source_truth.rs` (compiles `tests/fixtures/truth.dart` with the
+local `dart`, decompiles it, and checks the result against the source — plus the same battery on a
+compressed-pointer arm64 build under `DAE_TRUTH_ANDROID=1`), `tests/dart_valid.rs` (real
+`dart analyze`, zero errors),
+`tests/decompiler_shape.rs` (braces must balance in every emitted file — an unbalanced file means
+a branch was silently dropped — every in-function statement must terminate, a structured-rate
+floor, and **address self-consistency**: at least 80% of function entries must look like prologues
+and direct calls must land on function entries) and `tests/field_names.rs` (the two field-name
+routes must agree, zero conflicts, and every annotation in the output must exist in the recovered
+table — that is the no-fabrication check), and `tests/cli_query.rs` (the query commands, plus three
+decompiler invariants that validity checks cannot see because they are **omissions**: every real
+instruction address from `asm/` must show up as a statement address in `dart/`, floor 0.75;
+`condFlag(...)` may only ever wrap a bare condition code, never an expression that is already valid
+Dart; and every `cset`/`csetm` on arm64 and every whitelisted `setcc` on x86 must materialise as a
+ternary inside its own function's body — not vanish, and not degrade to `// unmapped:`).
+The address gate exists because an address-location bug
+on appended Mach-O snapshots once made the decompiler read the wrong bytes while every name-based
+metric stayed green. Its criterion is the *prologue rate*, not "the last instruction is a
+terminator": that older check was itself fake — it was counting x64 `int3` padding and still scored
+95.7% with every address wrong. Mislocated snapshots score 51–58% on prologue rate, correct ones
+91–100%.
+
+Both `dart analyze` gates also verify their own parsing: they cross-check the error count against
+the tool's exit code (0/1/2 ⇒ none, 3 ⇒ at least one) and require its summary line to be present,
+because `dart analyze` on a missing directory exits 64 with usage text that contains no `error - `
+lines — which a naive parser reads as "0 errors" and passes. Each carries a
+`*_rejects_directory_it_never_analyzed` test so that hole cannot silently return, and `dart_valid`
+asserts every corpus actually produced files and functions, so empty output cannot masquerade as
+clean output.
+
+Two further gates exist but are **maintainer-local: they are not in this repository and not in CI**.
+`scripts/` and `tools/` are gitignored together with the corpora they consume (`testing/`,
+`dart/dart_samples/`, `dart/dart_profiles/` — large binaries and SDK checkouts), so the paths below
+will not resolve in a fresh clone. They are listed so the verification behind a release is visible:
+
+- `scripts/regress_all.sh` — 25-version matrix; the object layer must stay byte-identical to the
+  archived reference output.
+- `scripts/check_profiles.sh` — profile freshness; regenerates all 47 committed profiles (26 w64 +
+  21 compressed-pointer variants) from SDK source with `tools/sdk2profile.py` and diffs them, and
+  also fails on an orphan variant or an unexpected variant count. It hard-codes that expected count
+  on purpose: "the file is not there, so skip it" is the same false-pass shape the `dart analyze`
+  gates above just closed.
+
+**What a fresh clone actually verifies.** Everything runnable lives in `tests/`, but five of the
+six gate files consume the gitignored corpora above and *skip themselves* when those are absent,
+and `cargo test` swallows the skip notices by default — so a clean checkout reports a green suite
+having measured almost nothing. Only `tests/source_truth.rs` is self-contained: it compiles its own
+`tests/fixtures/truth.dart` and needs nothing but a `dart` on `PATH`. For that reason every
+skip-because-a-dependency-is-missing path goes through one helper, and
+
+```bash
+DAE_REQUIRE_GATES=1 cargo test --release
+```
+
+turns any such skip into a hard failure. Maintainers run it in a checkout that has the corpora; it
+is the only way to tell "the gates passed" from "the gates never ran". Deliberate opt-outs (the
+Android source-truth chain, which needs `DAE_TRUTH_ANDROID=1`) are not affected.
+
+Two gates have a blind spot that no amount of in-repo corpus can close, and both say so out loud
+rather than passing quietly. Point them at real large mobile builds to close it:
+
+```bash
+DAE_TRUTH_ANDROID_SO=/path/to/libapp.so[,/path/to/another.so] \
+  cargo test --release --test code_coverage --test cli_query --test stub_names -- --ignored
+```
+
+A third gate, `tests/stub_names.rs` (release-time, `--ignored`), sweeps **every** corpus it can find
+and re-derives all four stub-name families against each corpus's own `DartThread` layout:
+29 corpora / 23 446 names / 9 arm64 / 5 compressed-pointer, 0 suspicious. It exists because a wrong
+name (`ArrayWriteBarrierStub_*` on compressed-pointer builds) once passed every single-corpus gate --
+the two corpora checked first were exactly the two where the faulty lookup still gave the right
+answer.
+
+* `tests/code_coverage.rs` asserts that *every published function name has a body*. Half of the defect
+  it guards — a stale `idx < first_entry` test in `code_size` that cost Reqable 83.8% and Lark 79.1%
+  of their function bodies — only manifests when the snapshot's `first_entry_with_code` is non-zero,
+  and that value is **0 in all 26 desktop artifacts, all 25 `regress` archives, and even a freshly
+  built Flutter `android-arm64` `app.so`**, so it cannot be synthesised from the toolchain. With
+  Reqable, Lark, ChatGLM, Weibo and CHSI supplied it reaches 29 corpora / 241 699 instruction table
+  entries / 130 435 published functions / 0 orphans, and both of its negative controls are sensitive.
+  The other half (Dart 2.12–2.15 deduplicating byte-identical `Instructions`) *is* covered in-repo.
+* `tests/cli_query.rs::write_barrier_stub_names_are_provable` re-derives every
+  `*WriteBarrierStub_*` name from the instruction's own `THR` displacement plus that SDK version's
+  `DartThread` layout. On in-repo corpora alone it **cannot** catch a hardcoded field name, because
+  they are all dart 3.13.0 where the field really is `write_barrier_entry_point`; adding Reqable
+  (dart 3.3.4, displacement `0x1e8` → `array_write_barrier_entry_point`) makes hardcoding fail.
+  This was verified by running the negative control, not assumed.
+
+Without the variable both gates still run and still assert; each prints which part it could not reach.
+
+## Known limitations
+
+- `text/pp.txt`'s first line reports `pool heap offset: unavailable`. blutter computes that value
+  as `pool_address - heap_base`, which needs the loaded image layout; dae parses the snapshot
+  stream and has neither, so it says so instead of printing a number. (It used to print a hardcoded
+  `0x10f000080` inherited from the Python reference implementation — the same value for macOS and
+  Android, compressed and uncompressed alike. `tests/cli.rs::pp_header_is_not_fabricated` keeps it
+  from coming back.) Object-pool *entries* are unaffected: `pp.txt` still resolves all of them.
+- **Out of scope: non-standard and placeholder artifacts.** Of the 41 APKs in the local corpus
+  exactly 8 ship a `lib/arm64-v8a/libapp.so`. Three of those eight are not standard Flutter AOT
+  snapshots and dae says so rather than guessing: WeChat's `libapp.so` is a **21-byte `CSOS`
+  placeholder inside the APK itself** (not an extraction artifact — the real payload lives
+  elsewhere), and DingTalk's carries `enable_aion` + `llvm_compiler` in its features string, i.e.
+  a vendor fork that replaced the AOT compiler with an LLVM backend; its snapshot version hash
+  matches no known SDK, so detection falls back to a low-confidence structural probe.
+  Tonghuashun is a genuine Dart **2.7.2** build and behaves *identically to the reference
+  `hello_2.7.2` sample*: strings and the object layer export, but the instruction table is
+  recoverable neither from the snapshot header nor from Code-cluster text offsets, so there are no
+  function addresses. That is the documented ≤2.9 ceiling, not an artifact-specific failure.
+- **Dart 2.18.1 is not usable.** Its fill layout has a second, still-unlocated error: with the
+  source-correct `Function` shape (which 2.19.6 and real 2.19.6 artifacts confirm) the parse
+  collapses to `libraries=1 / classes=1`. The previous layout scored better on `hello_2.18.1.aot`
+  only because an extra varint was compensating — it too parsed to `classes=2` against a healthy
+  ~320. The sample is registered in `KNOWN_COLLAPSED` in `tests/ground_truth.rs` with this reason,
+  and `FUNC_FLOOR` fails any *new* collapse. 2.18.1 should be treated as unsupported until that
+  second error is found; 2.15/2.16/2.17 and 2.19+ are fine.
+- Addresses are file-offset space, not runtime VAs (matches the blutter reference)
+- The snapshot/instructions sections are located in three layers: symbols (`kDartVm*` /
+  single-snapshot `kDartSnapshot*`) → the Mach-O `LC_NOTE __dart_app_snap` appended blob
+  (`dart compile exe`, some Flutter builds) → a magic-number scan inside the analysed slice.
+  If only the last layer succeeds, instruction-section addresses are unavailable and dae says
+  so; the address-dependent artifacts are then object-layer only
+- `asm/` IL comments are arm64-only (x64 disassembly is emitted)
+- Call graph: indirect calls (`blr` / `call reg`) stay unresolved by design — their targets
+  are computed at runtime. Direct targets land on a name when the target is an exported
+  function or a per-class allocation stub (recognised from the stub prologue, which
+  materialises the class id); anything else keeps its address and an empty name. On
+  2.16.x the class layer itself is not parsed yet, so stub naming is skipped there
+  (reported as coverage, never as a guessed name).
+- PE stripped of COFF symbols needs a `.pdb` backfill first
+- Dart 1.24 / 2.0 are JIT snapshots and unsupported
+
+## License
+
+[MIT](LICENSE)

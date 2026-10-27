@@ -32,6 +32,7 @@ fn mcp_catalog_exposes_all_compiled_backends_and_publishes_input_output_schemas(
         ("wasm", cfg!(feature = "backend-wasm")),
         ("pyc", cfg!(feature = "backend-pyc")),
         ("lua", cfg!(feature = "backend-lua")),
+        ("flutter", cfg!(feature = "backend-flutter")),
         ("kuna", cfg!(feature = "bundled-kuna")),
     ]
     .into_iter()

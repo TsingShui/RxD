@@ -26,6 +26,10 @@ mod evm;
 #[path = "lua/mod.rs"]
 mod lua;
 
+#[cfg(feature = "backend-flutter")]
+#[path = "flutter/mod.rs"]
+mod flutter;
+
 #[cfg(feature = "bundled-kuna")]
 #[path = "kuna/mod.rs"]
 mod kuna;

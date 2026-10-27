@@ -20,11 +20,12 @@ members = [
     "crates/rxd-evm",
     "crates/rxd-pyc",
     "crates/rxd-lua",
+    "crates/rxd-flutter",
     "crates/rxd-pyinstaller",
     "crates/rxd-wxapkg",
     "third_party/radguard",
 ]
-exclude = ["third_party/axmldecoder", "third_party/pycdc", "third_party/kuna"]
+exclude = ["third_party/axmldecoder", "third_party/pycdc", "third_party/kuna", "third_party/dae"]
 resolver = "3"
 
 [workspace.dependencies]
@@ -35,6 +36,7 @@ rxd-asar = { path = "crates/rxd-asar" }
 rxd-zip = { path = "crates/rxd-zip" }
 rxd-pyc = { path = "crates/rxd-pyc" }
 rxd-lua = { path = "crates/rxd-lua" }
+rxd-flutter = { path = "crates/rxd-flutter" }
 rxd-pyinstaller = { path = "crates/rxd-pyinstaller" }
 rxd-wxapkg = { path = "crates/rxd-wxapkg" }
 
@@ -50,6 +52,7 @@ all-backends = [
     "backend-wasm",
     "backend-pyc",
     "backend-lua",
+    "backend-flutter",
     "backend-kuna",
 ]
 backend-asar = ["dep:rxd-asar"]
@@ -62,6 +65,7 @@ backend-evm = ["dep:rxd-evm"]
 backend-wasm = ["dep:rxd-wasm"]
 backend-pyc = ["dep:rxd-pyc"]
 backend-lua = ["dep:rxd-lua"]
+backend-flutter = ["dep:rxd-flutter"]
 backend-kuna = []
 mcp = ["dep:rmcp", "dep:tokio", "dep:tokio-util", "dep:schemars", "dep:sha2", "dep:base64", "dep:rayon", "dep:windows-sys"]
 csharp-decompiler = ["backend-dotnet", "rxd-dotnet/csharp-decompiler"]
@@ -94,6 +98,7 @@ rxd-pyinstaller = { workspace = true, optional = true }
 rxd-wxapkg = { workspace = true, optional = true }
 rxd-pyc = { workspace = true, optional = true }
 rxd-lua = { workspace = true, optional = true }
+rxd-flutter = { workspace = true, optional = true }
 
 [dev-dependencies]
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] }

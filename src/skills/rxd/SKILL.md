@@ -22,6 +22,7 @@ explicitly, then locate → associate
 | Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
+| Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `functions` / `decompile --lib PREFIX` |
 | PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac-rs` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
@@ -177,6 +178,23 @@ preserves instructions, caches, tables and location evidence; names are explicit
 bytecode facts, not resolved duck-typed calls. Whole-module source reconstruction
 is bounded and has independent completeness: inspect `detail.complete` in JSON;
 plain source mode fails when recovery is incomplete.
+
+## Dart AOT (Flutter): snapshot info, functions, pseudocode
+
+```sh
+rxd dae info libapp.so
+rxd dae functions libapp.so -f fl_clash
+rxd dae decompile libapp.so --lib 'fl_clash$models'
+```
+
+Input is the ELF ARM64 `libapp.so` from a Flutter Android release build; there is
+no encoding flag and no SDK installation. `info` reports the fingerprint-detected
+Dart profile and its verification status, which can be `unverified` — treat the
+symbols as strong evidence, not as a verified source model. `functions` rows pair
+a code entry offset with `library::class::method`; libraries use `$` separators,
+so `--lib` and `-f` match that spelling. `decompile` renders machine-level
+pseudocode (registers, `mem()` access, raw PC comments) for whole libraries and
+costs seconds, not milliseconds.
 
 ## Lua: prototypes, constants, instructions, source
 

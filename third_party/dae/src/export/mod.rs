@@ -1,0 +1,283 @@
+//! 七类导出（与 blutter / 参考实现格式对齐）：
+//! r2_script/addNames.r2、ida_script/addNames.py、frida.js、asm/、pp.txt、objs.txt
+//! （另附 r2/ida 共用的 Dart 结构头 r2_dart_struct.h / ida_dart_struct.h）。
+//!
+//! 与 Python 参考实现的六处有意修正（README 有说明）：
+//! 1. addNames.r2 的 Library()/Class() 编号正确自增（参考实现漏了自增）；
+//! 2. addNames.r2 的 app.base 取容器 __TEXT 段 VM 地址（参考实现硬编码 0x106484000）；
+//! 3. frida 模板的 PointerCompressedEnabled/CompressedWordSize/HeapAddressReg 按 Profile 重写；
+//! 4. pp.txt 首行的 `pool heap offset` 不再硬编码 0x10f000080（参考实现写死的值，
+//!    对 macOS/安卓、压缩/非压缩指针的产物都印同一个数）。blutter 是算出来的
+//!    （`raw_addr - app.heap_base()`），dae 既不重建 image 布局也没有 heap_base，
+//!    算不出来就如实写 unavailable——见 `tests/cli.rs::pp_header_is_not_fabricated`。
+//! 5. 平台 profile 的 `register_aliases` 把 `CODE_REG` 标在 **x23**，而同一份 profile 的
+//!    `registers.code_reg` 是 **x24**——参考实现（`dart_aot_export.py` 同一行）就是这么写的，
+//!    dae 原样继承了。SDK `runtime/vm/constants_arm64.h` 从 2.12.4 到 3.13.0 **每一版**都是
+//!    `const Register CODE_REG = R24;`，而 R23 只是 `kAbiPreservedCpuRegs` 里一个**没有名字角色**
+//!    的普通被保留寄存器。渲染用的是别名表，所以每一份 arm64 产物都在错标：
+//!    material_3_demo 实测 asm/ 里 1010 处、dart/ 里 3014 处把 x23 印成 `CODE_REG`，
+//!    同时真正的 CODE_REG（x24）被印成裸 `r24`/`x24`（asm/ 559 处、dart/ 2834 处）。
+//!    旁证两条：`non_field_base` 里列的是 x24（CODE_REG 永远不是对象指针）而没有 x23；
+//!    而 `ldr x24, [THR, #<某个 *_stub 字段>]` 正是「把本 stub 的 Code 对象装进 CODE_REG」，
+//!    修完之后这一行读起来才自洽。见 `tests/cli.rs::platform_register_aliases_are_self_consistent`。
+//! 6. 同一行还写着 `"x18": "ARG2"`，而 **`ARG2` 在任何版本的 constants_arm64.h 里都不存在**；
+//!    R18 的注释是「reserved on iOS, shadow call stack on Fuchsia, TEB on Windows」，
+//!    SDK 还明说「We rely on R18 not being touched by Dart generated assembly or stubs at all」。
+//!    实测 material_3_demo 与 Reqable 的产物里 `ARG2`/`x18`/`r18` 出现 **0 次**，
+//!    所以删掉它对输出是**可证明的无操作**，只是不再在发布数据里留一个编造的角色名。
+//!    ⚠️ 这两条能长期存活，是因为没有任何检查把 `registers` 与 `register_aliases` 放在一起看：
+//!    `scripts/check_profiles.sh` 只管 SDK profile 的新鲜度，不碰平台 profile 的寄存器表。
+
+/// 流式写产物文件：返回 BufWriter，写完调 [`finish_writer`]。
+///
+/// 原来是「整份先在 String 里建好、再 `fs::write` 落盘」，而容量按「条数 × 猜的每行字节」
+/// 预估（猜大就白占内存，猜小就反复 realloc + memmove）。改成 BufWriter 后峰值只留一个
+/// 8 KB 缓冲，也不再需要维护那些每行字节数的魔数。实测 Reqable.app（macOS，26 MB）
+/// 普通导出峰值 RSS 163 → 148 MB，产物逐字节一致。
+pub fn stream_writer(dir: &Path, name: &str) -> Result<std::io::BufWriter<std::fs::File>, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("创建 {} 目录失败: {e}", dir.display()))?;
+    let f = std::fs::File::create(dir.join(name)).map_err(|e| format!("写 {name} 失败: {e}"))?;
+    Ok(std::io::BufWriter::new(f))
+}
+
+pub fn finish_writer(mut w: std::io::BufWriter<std::fs::File>, name: &str) -> Result<(), String> {
+    std::io::Write::flush(&mut w).map_err(|e| format!("写 {name} 失败: {e}"))
+}
+
+pub mod frida;
+/// 未具名条目（指令表里 idx < first_entry 的 stub 前缀）的索引产物
+pub mod stubs;
+pub mod ida;
+pub mod ppobjs;
+pub mod r2;
+pub mod struct_hdr;
+pub mod textinfo;
+#[cfg(feature = "asm")]
+pub mod asm;
+#[cfg(feature = "asm")]
+pub mod callgraph;
+
+use crate::analyzer::Analyzer;
+use std::path::Path;
+
+/// 与 r2 同源的 Dart 结构头模板（r2_dart_struct.h 与 ida_dart_struct.h 共用；
+/// blutter 派生，MIT 归因见文件头部）
+pub(crate) const R2_STRUCT_TEMPLATE: &str = include_str!("../../templates/r2_dart_struct.h");
+
+pub struct ExportSummary {
+    pub r2_functions: usize,
+    pub ida_functions: usize,
+    pub frida_classes: usize,
+    pub pp_entries: usize,
+    pub objs_instances: usize,
+    pub asm_functions: usize,
+    pub asm_enabled: bool,
+    pub textinfo: textinfo::TextInfoCounts,
+    /// (参与函数数, 直接边, 间接调用点)；未启用 asm 特性时为 None
+    /// (函数数, 直接边, 已解析直接边, 间接调用点)
+    pub callgraph: Option<(usize, usize, usize, usize)>,
+    /// (指令表里无 Code 对象的条目数, 其中解出名字的个数)
+    pub stubs: Option<(usize, usize)>,
+}
+
+/// DART_AOT_TIMINGS=1 时打印导出阶段耗时
+#[inline]
+fn t(name: &str, since: &mut std::time::Instant) {
+    if std::env::var("DART_AOT_TIMINGS").is_ok() {
+        let now = std::time::Instant::now();
+        eprintln!("[timing] {name}: {:?}", now.duration_since(*since));
+        *since = now;
+    }
+}
+
+/// 全量导出（等价于空筛选的 `run_with`）
+pub fn run(analyzer: &Analyzer, out_dir: &Path) -> Result<ExportSummary, String> {
+    run_with(analyzer, out_dir, &crate::selection::Selection::default())
+}
+
+/// 带筛选的导出：函数维度的产物（functions.txt / asm / dart / call_edges / callgraph.dot）
+/// 只保留命中项；对象层产物（pp/objs/strings/libs/classes/arrays/maps）是全局索引，始终完整
+/// —— 它们是「看有哪些东西」的依据，被筛掉反而没用。
+pub fn run_with(
+    analyzer: &Analyzer,
+    out_dir: &Path,
+    sel: &crate::selection::Selection,
+) -> Result<ExportSummary, String> {
+    std::fs::create_dir_all(out_dir)
+        .map_err(|e| format!("无法创建输出目录 {}: {e}", out_dir.display()))?;
+    std::fs::create_dir_all(out_dir.join("text"))
+        .map_err(|e| format!("无法创建输出子目录 text: {e}"))?;
+
+    let mut since = std::time::Instant::now();
+    // r2 全量（含 dart: 内部库，保证反编译工具里 SDK 函数也有还原名）；
+    // asm 聚焦应用代码（跳过 dart: 内部库，控制产物规模）。
+    let libs_r2 = crate::selection::filter_libs(&analyzer.build_functions(true), sel);
+    // asm 聚焦应用代码（跳过 dart: 内部库）；无 asm 特性时不需要这份
+    #[cfg(feature = "asm")]
+    let libs_asm = crate::selection::filter_libs(&analyzer.build_functions(false), sel);
+    let libs_ref = &libs_r2;
+    #[cfg(feature = "asm")]
+    let libs_asm_ref = &libs_asm;
+    t("build_functions", &mut since);
+
+    // 四个导出任务相互独立（写不同文件），铺平并行：
+    // asm/ppobjs 内部各自分块并行，r2/frida 轻量
+    let asm_enabled = cfg!(feature = "asm");
+    let do_asm = asm_enabled && analyzer.platform.arch == "arm64";
+    enum TaskDone {
+        R2(Result<usize, String>),
+        Ida(Result<usize, String>),
+        Frida(Result<usize, String>),
+        #[cfg(feature = "asm")]
+        Asm(Result<usize, String>),
+        PpObjs(Result<(usize, usize), String>),
+        Stubs(Result<stubs::StubCounts, String>),
+        TextInfo(Result<textinfo::TextInfoCounts, String>),
+        #[cfg(feature = "asm")]
+        CallGraph(Result<callgraph::CallGraphCounts, String>),
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::Stubs(stubs::write(analyzer, out_dir)));
+            });
+        }
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::R2(r2::write(analyzer, libs_ref, out_dir)));
+            });
+        }
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::Ida(ida::write(analyzer, libs_ref, out_dir)));
+            });
+        }
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::Frida(frida::write(analyzer, out_dir)));
+            });
+        }
+        #[cfg(feature = "asm")]
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let r = if do_asm {
+                    asm::write(analyzer, libs_asm_ref, out_dir)
+                } else {
+                    Ok(0)
+                };
+                let _ = tx.send(TaskDone::Asm(r));
+            });
+        }
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::PpObjs(ppobjs::write(analyzer, out_dir)));
+            });
+        }
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::TextInfo(textinfo::write(analyzer, libs_ref, out_dir)));
+            });
+        }
+        #[cfg(feature = "asm")]
+        {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let _ = tx.send(TaskDone::CallGraph(callgraph::write(analyzer, libs_ref, out_dir)));
+            });
+        }
+        drop(tx);
+    });
+
+    let mut n_r2 = 0usize;
+    let mut n_ida = 0usize;
+    let mut n_frida = 0usize;
+    let mut n_pp = 0usize;
+    let mut n_objs = 0usize;
+    let mut stub_counts: Option<stubs::StubCounts> = None;
+    #[allow(unused_mut)]
+    let mut asm_functions = 0usize;
+    let mut textinfo: Option<textinfo::TextInfoCounts> = None;
+    #[allow(unused_mut)]
+    let mut cg: Option<(usize, usize, usize, usize)> = None;
+    for done in rx {
+        match done {
+            TaskDone::R2(Ok(n)) => n_r2 = n,
+            TaskDone::Ida(Ok(n)) => n_ida = n,
+            TaskDone::Frida(Ok(n)) => n_frida = n,
+            #[cfg(feature = "asm")]
+            TaskDone::Asm(Ok(n)) => asm_functions = n,
+            TaskDone::Stubs(Ok(sc)) => {
+                stub_counts = Some(sc);
+            }
+            TaskDone::Stubs(Err(e)) => return Err(e),
+            TaskDone::PpObjs(Ok((p, o))) => {
+                n_pp = p;
+                n_objs = o;
+            }
+            TaskDone::TextInfo(Ok(t)) => textinfo = Some(t),
+            #[cfg(feature = "asm")]
+            TaskDone::CallGraph(Ok(c)) => cg = Some((c.funcs, c.direct, c.edges_resolved, c.indirect)),
+            TaskDone::R2(Err(e))
+            | TaskDone::Ida(Err(e))
+            | TaskDone::Frida(Err(e))
+            | TaskDone::PpObjs(Err(e))
+            | TaskDone::TextInfo(Err(e)) => return Err(e),
+            #[cfg(feature = "asm")]
+            TaskDone::Asm(Err(e)) | TaskDone::CallGraph(Err(e)) => return Err(e),
+        }
+    }
+    if asm_enabled && !do_asm {
+        eprintln!(
+            "note: IL disassembly is currently arm64-only (platform profile arch={}); skipping asm/",
+            analyzer.platform.arch
+        );
+    }
+    t("exports(并行管线)", &mut since);
+
+    Ok(ExportSummary {
+        r2_functions: n_r2,
+        ida_functions: n_ida,
+        frida_classes: n_frida,
+        pp_entries: n_pp,
+        objs_instances: n_objs,
+        asm_functions,
+        asm_enabled,
+        textinfo: textinfo.unwrap_or(textinfo::TextInfoCounts {
+            strings: 0,
+            libs: 0,
+            classes: 0,
+            functions: 0,
+            arrays: 0,
+            maps: 0,
+            fields: 0,
+        }),
+        callgraph: cg,
+        stubs: stub_counts.map(|s| (s.total, s.named)),
+    })
+}
+
+/// Python `%#x` 风格的十六进制（负数输出 -0x..，与 Rust 原生 {:#x} 不同）；用 i128 防溢出
+pub fn hex_py(v: i64) -> String {
+    if v < 0 {
+        format!("-{:#x}", (v as i128).unsigned_abs())
+    } else {
+        format!("{:#x}", v)
+    }
+}
+
+/// Python `%x` 风格（负数输出 -...，与上述同理）
+pub fn hex_noprefix_py(v: i64) -> String {
+    if v < 0 {
+        format!("-{:x}", (v as i128).unsigned_abs())
+    } else {
+        format!("{:x}", v)
+    }
+}

@@ -469,7 +469,9 @@ impl ServerHandler for AnalysisService {
 fn capture_mode(backend: &str) -> std::result::Result<CaptureMode, QueryError> {
     match backend {
         "rasc" => Ok(CaptureMode::Bundle),
-        "file" | "jar" | "ilspy" | "wasm" | "pyc" | "lua" | "evm" | "kuna" => Ok(CaptureMode::File),
+        "file" | "jar" | "ilspy" | "wasm" | "pyc" | "lua" | "flutter" | "evm" | "kuna" => {
+            Ok(CaptureMode::File)
+        }
         _ => Err(QueryError::new(
             "INVALID_QUERY",
             "unsupported capture backend",

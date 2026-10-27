@@ -1,0 +1,44 @@
+//! Real CLI checks for the Dart AOT backend that need no production snapshot.
+//!
+//! A 14 MB `libapp.so` is too large to pin in this repository, so the snapshot
+//! dependent paths are exercised against the sample described in the commit that
+//! added them; these cases pin the admission contract instead.
+use super::*;
+
+fn run(command: &str, path: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dae", command])
+        .arg(path)
+        .env_remove("RXD_CACHE_DIR")
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn dae_rejects_input_that_is_not_an_elf_arm64_snapshot() {
+    let (_dir, path) = fixture(b"not a snapshot", "fake.so");
+    for command in ["info", "functions", "decompile"] {
+        let out = run(command, &path);
+        assert!(!out.status.success(), "{command} accepted a non-ELF input");
+        assert!(out.stdout.is_empty(), "{command} wrote partial stdout");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("UNSUPPORTED_PLATFORM"),
+            "{command}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
+fn dae_reports_columns_in_help() {
+    let out = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["dae", "functions", "--help"])
+        .output()
+        .unwrap();
+    success(&out);
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        help.contains("List recovered functions (columns: at, label)"),
+        "{help}"
+    );
+}

@@ -1,0 +1,35 @@
+[package]
+name = "dae-rs"
+version = "0.1.14"
+edition = "2021"
+description = "Dart AOT snapshot analyzer: blutter-compatible symbols for IDA/radare2/Frida, plus a decompiler emitting dart-analyze-clean Dart. Desktop and mobile (compressed pointers)."
+license = "MIT"
+repository = "https://github.com/ejfkdev/dae"
+authors = ["ejfkdev"]
+keywords = ["dart", "aot", "snapshot", "reverse-engineering", "blutter"]
+categories = ["command-line-utilities", "development-tools::debugging"]
+
+# crates.io 包名是 dae-rs（`dae` 已被占用），但库名/命令名保持 dae，代码零改动
+[lib]
+name = "dae"
+
+[features]
+default = ["asm"]
+asm = ["dep:capstone"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+mimalloc = "0.1"
+# 命令树声明式解析：共享选项只声明一次，位置参数与 flag 各自独立解析。
+# 手写解析器在同类工具里养出过「flag 循环先 bail 导致 -o 成死代码」「flag 的取值被当成
+# 输入路径」这类 bug（见 src/args.rs 顶部说明），clap 让它们结构上不可能发生。
+clap = { version = "4", features = ["derive"] }
+capstone = { version = "0.14", optional = true }
+
+[profile.release]
+lto = true
+
+[[bin]]
+name = "dae"
+path = "src/main.rs"

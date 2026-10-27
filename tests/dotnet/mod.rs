@@ -23,6 +23,7 @@ fn enabled_backend_features_define_the_cli_catalog() {
         ("ilspy", cfg!(feature = "backend-dotnet")),
         ("evmole", cfg!(feature = "backend-evm")),
         ("unluac-rs", cfg!(feature = "backend-lua")),
+        ("dae", cfg!(feature = "backend-flutter")),
         ("wasm", cfg!(feature = "backend-wasm")),
         ("pyc", cfg!(feature = "backend-pyc")),
         ("kuna", cfg!(feature = "backend-kuna")),

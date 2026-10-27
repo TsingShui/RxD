@@ -65,7 +65,7 @@ overrides still apply.
 
 | | |
 | --- | --- |
-| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC, Lua and WASM, plus ASAR/ZIP/PyInstaller/wxapkg unpacking |
+| 🧩 **Broad coverage** | Native, APK, JAR, EVM, .NET, PYC, Lua, Flutter and WASM, plus ASAR/ZIP/PyInstaller/wxapkg unpacking |
 | ⚡ **Fast enough to ask freely** | 31 cold-process workloads across RxD-owned backends: median **6.7 ms**, mean **13.6 ms** |
 | 🔧 **Precise decompilation** | Carefully selected high-performance backends with explicit degradation contracts |
 | 🤖 **CodeMode** | Agent-first output and native CodeMode-compatible records |
@@ -222,6 +222,7 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | **.NET IL** | `rxd ilspy` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |
 | **WebAssembly** | `rxd wasm` | Module structure, instruction decode, explicit reference scanning, structured C-like decompilation | ✅ |
 | **CPython bytecode** | `rxd pyc` | CPython 3.8–3.13 navigation and bounded whole-module source reconstruction | ✅ |
+| **Dart AOT (Flutter)** | `rxd dae` | Snapshot info, function symbols and whole-library pseudocode for arm64 `libapp.so` | ✅ |
 | **Lua bytecode** | `rxd unluac-rs` | PUC Lua 5.1–5.5, LuaJIT 2.1 and Luau navigation, references and whole-chunk reconstruction | ✅ |
 | **EVM bytecode** | `rxd evmole` | EVMole 0.9.4 native analysis; candidate/literal static navigation, on-demand raw evidence and declared pseudocode reconstruction | ✅ static workflow accepted |
 

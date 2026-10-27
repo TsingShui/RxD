@@ -23,7 +23,8 @@ The current layout is:
   disposable analysis-worker scheduling.
 - `src/cli/mod.rs`: top-level dispatch; `src/cli/dex/` (`rasc`), `src/cli/jvm/`
   (`jar`), `src/cli/dotnet/` (`ilspy`), `src/cli/kuna/`, `src/cli/evm/`,
-  `src/cli/wasm/`, `src/cli/lua/`, and `src/cli/pyc/`: peer command adapters.
+  `src/cli/wasm/`, `src/cli/lua/`, `src/cli/flutter/`, and `src/cli/pyc/`: peer
+  command adapters.
   `src/cli/table.rs` renders the shared TAB-separated listing rows.
   `src/cli/unpack.rs` performs whole-archive ASAR/ZIP/PyInstaller extraction.
   DEX preserves streaming and exit-code contracts.
@@ -48,6 +49,9 @@ The current layout is:
 - `crates/rxd-wasm/`: WASM module structure, instruction decode, explicit
   reference scanning, and self-built structured C-like decompilation; uses a
   pinned wasmparser (`REFERENCE.md`).
+- `crates/rxd-flutter/`: Dart AOT snapshot navigation and pseudocode through the
+  vendored `dae-rs` analyzer (`third_party/dae/`); listings read library and
+  function tables, `decompile` runs the upstream renderer.
 - `crates/rxd-lua/`: bounded Lua/LuaJIT/Luau chunk parsing and whole-chunk
   reconstruction through the pinned `unluac` crate (`unluac-rs`); listings read the proto tree
   without running the decompiler.
@@ -253,6 +257,7 @@ swapped or added.
 | `rxd jar` | JAR format, no engine | `rxd-jvm`, `src/cli/jvm`, `backend-jvm` | `jvm` |
 | `rxd ilspy` | ILSpy | `rxd-dotnet`, `src/cli/dotnet`, `backend-dotnet` | `dotnet` |
 | `rxd unluac-rs` | unluac | `rxd-lua`, `src/cli/lua`, `backend-lua` | `lua` |
+| `rxd dae` | dae-rs | `rxd-flutter`, `src/cli/flutter`, `backend-flutter` | `flutter` |
 | `rxd pyc` | CPython format, no engine | `rxd-pyc`, `src/cli/pyc`, `backend-pyc` | `pyc` |
 | `rxd wasm` | WASM format, no engine | `rxd-wasm`, `src/cli/wasm`, `backend-wasm` | `wasm` |
 | `rxd evmole` | EVM format, no engine | `rxd-evm`, `src/cli/evm`, `backend-evm` | `evm` |

@@ -1,0 +1,229 @@
+//! CLI 文案双语（zh/en）与语言探测。
+//!
+//! 探测优先级：`DAE_LANG`（显式 zh/en）→ `LC_ALL` → `LC_MESSAGES` → `LANG`。
+//! 中文语系（简体/繁体，如 `zh_CN`、`zh_TW`、`zh_Hant`）→ 中文；其余一律英文。
+//! `C`/`POSIX` 与空值视为未设置。
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lang {
+    Zh,
+    En,
+}
+
+impl Lang {
+    pub fn pick(self, zh: &'static str, en: &'static str) -> &'static str {
+        match self {
+            Lang::Zh => zh,
+            Lang::En => en,
+        }
+    }
+}
+
+fn lang_tag(value: &str) -> String {
+    // "zh_CN.UTF-8" → "zh_cn"；"C" → "c"
+    value
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn match_lang(tag: &str) -> Option<Lang> {
+    if tag.is_empty() || tag == "c" || tag == "posix" {
+        return None; // 未设置
+    }
+    if tag.starts_with("zh") {
+        return Some(Lang::Zh); // 简体/繁体均中文
+    }
+    Some(Lang::En)
+}
+
+pub fn detect() -> Lang {
+    if let Ok(v) = std::env::var("DAE_LANG") {
+        let tag = lang_tag(&v);
+        if !tag.is_empty() {
+            return match_lang(&tag).unwrap_or(Lang::En);
+        }
+    }
+    for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(v) = std::env::var(key) {
+            if let Some(l) = match_lang(&lang_tag(&v)) {
+                return l;
+            }
+        }
+    }
+    Lang::En
+}
+
+/// main.rs / detect.rs 的用户可见文案（zh, en 成对，随启动时的语言探测定稿）
+pub struct Messages {
+    pub lang: Lang,
+    pub target_label: &'static str,
+    pub done_label: &'static str,
+    pub elapsed_label: &'static str,
+    pub err_prefix: &'static str,
+    pub warn_prefix: &'static str,
+    pub err_sdk_arg: &'static str,
+    pub err_platform_arg: &'static str,
+    pub err_read_binary: &'static str,
+    pub err_read_sdk: &'static str,
+    pub err_read_platform: &'static str,
+    pub err_bare_jit: &'static str,
+    pub err_container: &'static str,
+    pub err_platform_missing: &'static str,
+    pub err_flutter_dir: &'static str,
+    pub sdk_profile_label: &'static str,
+    pub detect_basis_hash: &'static str,
+    pub detect_basis_probe: &'static str,
+    pub detect_basis_low: &'static str,
+    pub detect_fallback: &'static str,
+    pub sdk_unverified: &'static str,
+    pub export_done: &'static str,
+    pub sum_r2: &'static str,
+    pub sum_ida: &'static str,
+    pub sum_frida: &'static str,
+    pub sum_asm: &'static str,
+    pub sum_pp: &'static str,
+    pub sum_objs: &'static str,
+    pub sum_strings: &'static str,
+    pub sum_libs: &'static str,
+    pub sum_classes: &'static str,
+    pub sum_funcs: &'static str,
+    pub sum_arrays: &'static str,
+    pub sum_maps: &'static str,
+    pub sum_fields: &'static str,
+    /// 解析漂移时的醒目提示（产物不可信）
+    pub parse_drift_fatal: &'static str,
+    pub sum_cg_d: &'static str,
+    pub sum_cg_i: &'static str,
+    pub sum_cg_r: &'static str,
+    pub sum_dart: &'static str,
+    pub sum_unmapped: &'static str,
+    /// 摘要行里的单位词（原来是硬编码中文，英文语系下也照印——顺手修掉）
+    pub sum_blocks: &'static str,
+    pub sum_stmts: &'static str,
+    pub sum_structured: &'static str,
+    pub sum_unstructured: &'static str,
+    pub sum_lines: &'static str,
+    /// 指令表里未被任何 Function 引用的条目（不全是 stub，见 export/stubs.rs 顶部）
+    pub sum_stubs: &'static str,
+    pub sum_calls: &'static str,
+    pub sum_named: &'static str,
+    /// 筛选（--lib/--class/--func）后一个都没命中
+    pub err_no_match: &'static str,
+    /// 渐进式子命令的段标题
+    pub q_list_hint: &'static str,
+}
+
+pub fn messages(lang: Lang) -> Messages {
+    let p = |zh: &'static str, en: &'static str| lang.pick(zh, en);
+    Messages {
+        lang,
+        target_label: p("目标", "target"),
+        done_label: p("完成", "done"),
+        elapsed_label: p("耗时", "elapsed"),
+        err_prefix: p("错误", "error"),
+        warn_prefix: p("警告", "warning"),
+        err_sdk_arg: p("错误: --sdk-profile 缺少参数", "error: --sdk-profile requires an argument"),
+        err_platform_arg: p(
+            "错误: --platform-profile 缺少参数",
+            "error: --platform-profile requires an argument",
+        ),
+        err_read_binary: p("读二进制失败", "failed to read binary"),
+        err_read_sdk: p("读 --sdk-profile: ", "reading --sdk-profile: "),
+        err_read_platform: p("读 --platform-profile: ", "reading --platform-profile: "),
+        err_bare_jit: p(
+            "裸 app-JIT 快照（kMessageMagic）没有容器包裹，暂不支持（需 AOT 产物：dart compile aot-snapshot / dart2native / Flutter release 构建）",
+            "bare app-JIT snapshot (kMessageMagic) has no container wrapper and is unsupported (an AOT artifact is required: dart compile aot-snapshot / dart2native / Flutter release build)",
+        ),
+        err_container: p(
+            "无法识别容器格式（不是 Mach-O/ELF/PE）",
+            "unrecognized container format (not Mach-O/ELF/PE)",
+        ),
+        err_platform_missing: p(
+            "暂无内嵌平台 Profile，请用 --platform-profile 指定（在 profiles/platform/ 下新建一份即可）",
+            "no embedded platform profile; use --platform-profile (create one under profiles/platform/)",
+        ),
+        err_flutter_dir: p("目录内未找到 Flutter 二进制（尝试了", "no Flutter binary found inside directory (tried"),
+        sdk_profile_label: p("SDK Profile", "SDK profile"),
+        detect_basis_hash: p("版本指纹命中", "version-hash match"),
+        detect_basis_probe: p("结构推断", "structural probe"),
+        detect_basis_low: p("结构推断·低置信", "structural probe, low confidence"),
+        detect_fallback: p(
+            "警告: 无法自动识别 Dart 版本，回退内嵌 dart/3.3.4（可用 --sdk-profile 显式指定）",
+            "warning: cannot auto-detect the Dart version; falling back to embedded dart/3.3.4 (override with --sdk-profile)",
+        ),
+        sdk_unverified: p(
+            "状态为 unverified（该版本的样本对拍尚未全部完成）。导出结果仅供参考，请以 verified 版本结果为准",
+            "is unverified (sample comparison for this version is incomplete); exports are indicative — prefer verified versions",
+        ),
+        export_done: p("导出完成 →", "export done ->"),
+        sum_r2: p("条函数名/地址", "named functions/addresses"),
+        sum_ida: p("个函数命名 + Dart 结构头", "named functions + Dart struct header"),
+        sum_frida: p("个 Classes 条目", "Classes entries"),
+        sum_asm: p("个函数反汇编 + IL", "disassembled functions + IL"),
+        sum_pp: p("个对象池条目", "object pool entries"),
+        sum_objs: p("个用户类实例", "user class instances"),
+        sum_strings: p("条字符串", "strings"),
+        sum_libs: p("个库", "libraries"),
+        sum_classes: p("个类", "classes"),
+        sum_funcs: p("个函数", "functions"),
+        sum_arrays: p("个数组", "arrays"),
+        sum_maps: p("个映射", "maps"),
+        sum_fields: p("条具名字段", "named fields"),
+        parse_drift_fatal: p(
+            "【严重】快照解析漂移：SDK Profile 与该二进制不匹配，本次产物不可信（已写 PARSE_DRIFT.txt）",
+            "[FATAL] snapshot parse drifted: the SDK profile does not match this binary; artifacts are not trustworthy (see PARSE_DRIFT.txt)",
+        ),
+        sum_cg_d: p("条直接边", "direct edges"),
+        sum_cg_i: p("个间接调用", "indirect calls"),
+        sum_cg_r: p("条解析到名字", "resolved"),
+        sum_dart: p("个函数伪代码", "function pseudocode blocks"),
+        sum_unmapped: p("未映射", "unmapped"),
+        sum_blocks: p("基本块", "blocks"),
+        sum_stmts: p("语句", "statements"),
+        sum_structured: p("已结构化", "structured"),
+        sum_unstructured: p("未结构化", "unstructured"),
+        sum_lines: p("行", "lines"),
+        sum_stubs: p(
+            "个未被 Function 引用的表项",
+            "table entries not referenced by any Function",
+        ),
+        sum_calls: p("个直接调用", "direct calls"),
+        sum_named: p("已命名", "named"),
+        err_no_match: p(
+            "筛选条件没有命中任何函数（可先用 `dae libs` / `dae classes` 查清单）",
+            "the filter matched no function (try `dae libs` / `dae classes` first)",
+        ),
+        q_list_hint: p(
+            "渐进式查询：`dae help` 看全部子命令",
+            "progressive queries: `dae help` lists every subcommand",
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zh_variants_pick_chinese() {
+        for tag in ["zh_cn", "zh-cn", "zh_cn.utf-8", "zh_tw", "zh_hant", "zh"] {
+            assert_eq!(match_lang(&lang_tag(tag)), Some(Lang::Zh), "tag={tag}");
+        }
+    }
+
+    #[test]
+    fn non_zh_picks_english() {
+        for tag in ["en_us.utf-8", "de_DE", "ja_JP", "fr_FR.UTF-8"] {
+            assert_eq!(match_lang(&lang_tag(tag)), Some(Lang::En), "tag={tag}");
+        }
+    }
+
+    #[test]
+    fn c_posix_empty_are_unset() {
+        assert_eq!(match_lang(&lang_tag("C.UTF-8")), None);
+        assert_eq!(match_lang(&lang_tag("POSIX")), None);
+        assert_eq!(match_lang(&lang_tag("")), None);
+    }
+}

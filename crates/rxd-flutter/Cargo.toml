@@ -1,0 +1,11 @@
+[package]
+name = "rxd-flutter"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+dae-rs = { path = "../../third_party/dae" }
+rxd-core.workspace = true
+serde.workspace = true

@@ -5,13 +5,23 @@ use clap::{Arg, ArgAction, Command};
 use serde_json::{Map, Value, json};
 
 /// Built-in backends reflected from clap; Native tools use their own adapter.
-const BACKENDS: &[&str] = &["rasc", "jar", "ilspy", "evmole", "wasm", "pyc", "unluac-rs"];
+const BACKENDS: &[&str] = &[
+    "rasc",
+    "jar",
+    "ilspy",
+    "evmole",
+    "wasm",
+    "pyc",
+    "unluac-rs",
+    "dae",
+];
 
 /// The command credits the engine; the record label stays the neutral format name.
 fn label(backend: &str) -> &str {
     match backend {
         "unluac-rs" => "lua",
         "evmole" => "evm",
+        "dae" => "flutter",
         other => other,
     }
 }

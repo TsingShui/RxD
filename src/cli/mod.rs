@@ -41,6 +41,8 @@ mod dotnet;
 mod evm;
 /// `--case`, the one flag that governs case folding for every filter.
 mod filter;
+#[cfg(feature = "backend-flutter")]
+mod flutter;
 #[cfg(feature = "backend-jvm")]
 mod jvm;
 #[cfg(feature = "backend-kuna")]
@@ -70,7 +72,7 @@ mod xref;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, Lua bytecode, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
+    about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, Lua, Dart/Flutter, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/PyInstaller/wxapkg archives",
     after_long_help = "Coordinates: at and context_at chain the next fetch (kuna selects by address_hex).
 Output: one record per line; exit 0 required; zero rows means no matches.
 Filters: -f narrows listings; -m with --kind searches xref targets.
@@ -237,6 +239,23 @@ Decompile reconstructs the whole module; JSON detail.complete reports recovery s
         #[command(subcommand)]
         command: pyc::Command,
     },
+    #[cfg(feature = "backend-flutter")]
+    /// Analyze Dart/Flutter AOT.
+    #[command(after_long_help = "Examples:
+  rxd dae info libapp.so
+  rxd dae functions libapp.so -f fl_clash
+  rxd dae decompile libapp.so --lib fl_clash
+Input is an ELF ARM64 libapp.so from a Flutter Android release build; there is no encoding flag.
+The Dart SDK profile comes from the snapshot fingerprint and may be unverified.
+at is a code entry offset; decompile renders machine-level pseudocode per library.")]
+    #[command(
+        display_order = 56,
+        long_about = "Analyze Dart/Flutter AOT: snapshot info, functions, pseudocode"
+    )]
+    Dae {
+        #[command(subcommand)]
+        command: flutter::Command,
+    },
     #[cfg(feature = "backend-lua")]
     /// Analyze Lua bytecode.
     #[command(after_long_help = "Examples:
@@ -321,6 +340,8 @@ impl Cli {
             Backend::Pyc { command } => command.perf(),
             #[cfg(feature = "backend-lua")]
             Backend::UnluacRs { command } => command.perf(),
+            #[cfg(feature = "backend-flutter")]
+            Backend::Dae { command } => command.perf(),
         }
     }
     pub fn backend_name(&self) -> &'static str {
@@ -346,6 +367,8 @@ impl Cli {
             Backend::Pyc { .. } => "pyc",
             #[cfg(feature = "backend-lua")]
             Backend::UnluacRs { .. } => "lua",
+            #[cfg(feature = "backend-flutter")]
+            Backend::Dae { .. } => "flutter",
         }
     }
     pub fn command_name(&self) -> &'static str {
@@ -371,6 +394,8 @@ impl Cli {
             Backend::Pyc { command } => command.name(),
             #[cfg(feature = "backend-lua")]
             Backend::UnluacRs { command } => command.name(),
+            #[cfg(feature = "backend-flutter")]
+            Backend::Dae { command } => command.name(),
         }
     }
 }
@@ -431,6 +456,8 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
         Backend::Pyc { command } => pyc::execute(command, policy, output).map(|()| 0),
         #[cfg(feature = "backend-lua")]
         Backend::UnluacRs { command } => lua::execute(command, policy, output).map(|()| 0),
+        #[cfg(feature = "backend-flutter")]
+        Backend::Dae { command } => flutter::execute(command, policy, output).map(|()| 0),
     }
 }
 /// One analysis worker per available logical CPU.
