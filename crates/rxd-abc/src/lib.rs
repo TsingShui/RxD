@@ -2,6 +2,7 @@
 mod async_plan;
 mod class_plan;
 mod data;
+mod dominators;
 mod fresh;
 mod instructions;
 mod provenance;

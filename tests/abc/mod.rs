@@ -717,10 +717,10 @@ fn ark_structures_crossing_forward_branches_without_losing_paths() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("__abc_to_10: {"), "{text}");
-    assert!(text.contains("__abc_to_a: {"), "{text}");
-    assert!(text.contains("break __abc_to_a;"), "{text}");
-    assert!(text.contains("break __abc_to_10;"), "{text}");
+    assert!(text.contains("__abc_goto_10_"), "{text}");
+    assert!(text.contains("__abc_goto_a_"), "{text}");
+    assert!(text.contains("break __abc_goto_a_"), "{text}");
+    assert!(text.contains("break __abc_goto_10_"), "{text}");
     assert!(text.contains("acc = 0;\n        return acc;"), "{text}");
     assert!(text.ends_with("    return acc;\n}\n"), "{text}");
 }

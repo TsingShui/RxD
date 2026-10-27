@@ -56,6 +56,7 @@ struct Writer<'a, 'b> {
     top_level_arrow: bool,
     module_body: bool,
     generator: bool,
+    dominance: Vec<Option<usize>>,
     escape_serial: usize,
     escapes: Vec<(u32, String)>,
     out: Output,
@@ -1035,83 +1036,209 @@ impl<'a, 'b> Writer<'a, 'b> {
         )
     }
 
-    fn forward_labels(&mut self, base_depth: usize) -> Result<()> {
-        if !self.try_regions.is_empty() {
-            return Err(unsupported(
-                "labelled control flow cannot cross exception ranges",
-            ));
+    fn dominates(&self, header: usize, block: usize) -> bool {
+        if header == block {
+            return true;
         }
-        let mut targets = Vec::new();
-        targets
-            .try_reserve_exact(self.graph.blocks.len())
-            .map_err(|_| resource("ABC label allocation failed"))?;
+        let mut current = block;
+        let mut steps = 0usize;
+        while let Some(next) = self.dominance.get(current).copied().flatten() {
+            if next == header {
+                return true;
+            }
+            if next == current || steps > self.dominance.len() {
+                return false;
+            }
+            current = next;
+            steps += 1;
+        }
+        false
+    }
+
+    fn compute_loops(&self) -> Result<Vec<(usize, usize)>> {
+        let mut loops: Vec<(usize, usize)> = Vec::new();
         for (index, block) in self.graph.blocks.iter().enumerate() {
             if !self.graph.reachable[index] {
                 continue;
             }
-            let instruction = &self.decoded.instructions[block.end - 1];
-            if instruction.branch.is_some() {
-                let target = self.jump_target(instruction)?;
-                if target <= index {
-                    return Err(unsupported("backward branch requires loop structuring"));
+            let last = &self.decoded.instructions[block.end - 1];
+            if last.branch.is_some() {
+                let target = self.jump_target(last)?;
+                if target <= index && self.dominates(target, index) {
+                    match loops.iter_mut().find(|(header, _)| *header == target) {
+                        Some(entry) => entry.1 = entry.1.max(index),
+                        None => loops.push((target, index)),
+                    }
                 }
-                if target != index + 1 {
+            }
+        }
+        loops.sort_unstable();
+        for (index, outer) in loops.iter().enumerate() {
+            for inner in &loops[index + 1..] {
+                if inner.0 <= outer.1 && outer.1 < inner.1 {
+                    return Err(unsupported("overlapping loops need region analysis"));
+                }
+            }
+        }
+        Ok(loops)
+    }
+
+    fn linear(&mut self, base_depth: usize) -> Result<()> {
+        let successors = crate::structure::successors(self.decoded, self.graph)?;
+        let dominance = crate::dominators::compute_for(self.abc, &successors, 0)?;
+        self.dominance = dominance.idom;
+        let loops = self.compute_loops()?;
+        let end = self.graph.blocks.len();
+        self.linear_container(0, end, &loops, None, base_depth)
+    }
+
+    fn linear_container(
+        &mut self,
+        start: usize,
+        end: usize,
+        loops: &[(usize, usize)],
+        active: Option<Loop>,
+        depth: usize,
+    ) -> Result<()> {
+        let inner: Vec<(usize, usize)> = loops
+            .iter()
+            .copied()
+            .filter(|(header, latch)| *header >= start && *latch < end)
+            .filter(|(header, _)| active.is_none_or(|loop_| loop_.header != *header))
+            .collect();
+        let inside_loop = |index: usize| {
+            inner
+                .iter()
+                .any(|(header, latch)| *header <= index && index <= *latch)
+        };
+        let mut targets = Vec::new();
+        for index in start..end {
+            if !self.graph.reachable[index] {
+                continue;
+            }
+            let last = &self.decoded.instructions[self.graph.blocks[index].end - 1];
+            if last.branch.is_some() {
+                let target = self.jump_target(last)?;
+                if target >= start && target < end && !inside_loop(target) {
                     targets.push(target);
                 }
             }
         }
         targets.sort_unstable();
         targets.dedup();
-        let mut depth = base_depth;
+        targets.retain(|target| Some(*target) != active.map(|loop_| loop_.header));
+        let mut level = depth;
         for target in targets.iter().rev() {
-            self.indent(depth)?;
+            self.indent(level)?;
             writeln!(
                 self.out,
-                "__abc_to_{:x}: {{",
-                self.decoded.instructions[self.graph.blocks[*target].first].pc
+                "__abc_goto_{:x}_{}: {{",
+                self.decoded.instructions[self.graph.blocks[*target].first].pc, self.escape_serial
             )?;
-            depth += 1;
+            level += 1;
         }
-        let mut next = 0;
-        for index in 0..self.graph.blocks.len() {
-            if targets.get(next) == Some(&index) {
-                depth -= 1;
-                self.line(depth, "}")?;
-                next += 1;
+        let mut closing = 0usize;
+        let mut cursor = start;
+        while cursor < end {
+            while closing < targets.len() && targets[closing] == cursor {
+                level -= 1;
+                self.line(level, "}")?;
+                closing += 1;
             }
-            if !self.graph.reachable[index] {
+            if !self.graph.reachable[cursor] {
+                cursor += 1;
                 continue;
             }
-            self.visited[index] = true;
-            let block = self.graph.blocks[index];
+            if let Some((_, latch)) = inner.iter().find(|(header, _)| *header == cursor) {
+                let latch = *latch;
+                self.line(level, "while (true) {")?;
+                let exit = latch + 1;
+                self.linear_container(
+                    cursor,
+                    exit,
+                    loops,
+                    Some(Loop {
+                        header: cursor,
+                        exit,
+                    }),
+                    level + 1,
+                )?;
+                self.line(level, "}")?;
+                cursor = exit;
+                continue;
+            }
+            if self.visited[cursor] {
+                cursor += 1;
+                continue;
+            }
+            self.visited[cursor] = true;
+            let block = self.graph.blocks[cursor];
             let last = &self.decoded.instructions[block.end - 1];
-            let terminal =
-                last.opcode.is_jump() || last.opcode.is_return() || last.opcode.name == "throw";
-            for instruction in
-                &self.decoded.instructions[block.first..block.end - usize::from(terminal)]
-            {
-                self.emit_instruction(instruction, depth)?;
+            let terminal = last.opcode.is_jump() || crate::instructions::is_terminator(last);
+            let body_end = if terminal { block.end - 1 } else { block.end };
+            for instruction in &self.decoded.instructions[block.first..body_end] {
+                self.emit_instruction(instruction, level)?;
             }
-            if last.opcode.is_jump() {
-                let target = self.jump_target(last)?;
-                if target == index + 1 {
-                    continue;
-                }
-                let target_pc = self.decoded.instructions[self.graph.blocks[target].first].pc;
-                self.indent(depth)?;
-                if last.opcode.is_conditional() {
-                    self.out.write_all(b"if (")?;
-                    self.condition(last)?;
-                    writeln!(self.out, ") {{ break __abc_to_{target_pc:x}; }}")?;
+            if crate::instructions::is_terminator(last) {
+                self.emit_instruction(last, level)?;
+                cursor += 1;
+                continue;
+            }
+            if !last.opcode.is_jump() {
+                cursor += 1;
+                continue;
+            }
+            let target = self.jump_target(last)?;
+            let target_pc = if target == self.graph.blocks.len() {
+                self.decoded.code.bytes.len() as u32
+            } else {
+                self.decoded.instructions[self.graph.blocks[target].first].pc
+            };
+            let inside_outer_loop = active.is_some_and(|loop_| target == loop_.header);
+            let outside = active.is_some_and(|loop_| target == loop_.exit);
+            let label = targets.binary_search(&target).ok().map(|_| {
+                format!(
+                    "__abc_goto_{:x}_{}",
+                    self.decoded.instructions[self.graph.blocks[target].first].pc,
+                    self.escape_serial
+                )
+                .to_string()
+            });
+            self.indent(level)?;
+            if last.opcode.is_conditional() {
+                self.out.write_all(b"if (")?;
+                self.condition(last)?;
+                if inside_outer_loop {
+                    self.out.write_all(b") { continue; }\n")?;
+                } else if outside {
+                    self.out.write_all(b") { break; }\n")?;
+                } else if let Some(label) = label {
+                    writeln!(self.out, ") {{ break {label}; }}")?;
                 } else {
-                    writeln!(self.out, "break __abc_to_{target_pc:x};")?;
+                    return Err(unsupported(format!(
+                        "unstructured conditional target {target_pc:#x} in linear fallback"
+                    )));
                 }
-            } else if terminal {
-                self.emit_instruction(last, depth)?;
+                cursor += 1;
+                continue;
             }
+            if inside_outer_loop {
+                self.line(level, "continue;")?;
+            } else if outside {
+                self.line(level, "break;")?;
+            } else if let Some(label) = label {
+                self.line(level, &format!("break {label};"))?;
+            } else {
+                return Err(unsupported(format!(
+                    "unstructured jump target {target_pc:#x} in linear fallback"
+                )));
+            }
+            cursor += 1;
         }
-        if next != targets.len() {
-            return Err(invalid("ABC control-flow target was not emitted"));
+        while closing < targets.len() {
+            level -= 1;
+            self.line(level, "}")?;
+            closing += 1;
         }
         Ok(())
     }
@@ -1846,6 +1973,7 @@ impl<'a> Abc<'a> {
             top_level_arrow: true,
             module_body: true,
             generator: plan.generator,
+            dominance: Vec::new(),
             escape_serial: 0,
             escapes: Vec::new(),
             out: Output::new(self.budget.output_bytes),
@@ -2331,6 +2459,7 @@ impl<'a> Abc<'a> {
             top_level_arrow: options.top_level_arrow,
             module_body: false,
             generator: plan.generator,
+            dominance: Vec::new(),
             escape_serial: 0,
             escapes: Vec::new(),
             out: Output::new(self.budget.output_bytes),
@@ -2388,7 +2517,7 @@ impl<'a> Abc<'a> {
             writer.out = Output::new(self.budget.output_bytes);
             writer.out.write_all(&prefix)?;
             writer.visited.fill(false);
-            writer.forward_labels(depth)?;
+            writer.linear(depth)?;
         }
         Ok(writer.out.into_bytes())
     }

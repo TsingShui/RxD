@@ -190,6 +190,34 @@ impl Graph {
     }
 }
 
+pub fn successors(decoded: &Decoded<'_>, graph: &Graph) -> Result<Vec<Vec<usize>>> {
+    let mut result = Vec::new();
+    result
+        .try_reserve_exact(graph.blocks.len())
+        .map_err(|_| resource("ABC successor allocation failed"))?;
+    result.resize_with(graph.blocks.len(), Vec::new);
+    for (index, block) in graph.blocks.iter().enumerate() {
+        let last = &decoded.instructions[block.end - 1];
+        if let Some(target) = last.branch {
+            let target = graph.target(&decoded.instructions, target)?;
+            result[index]
+                .try_reserve(1)
+                .map_err(|_| resource("ABC successor allocation failed"))?;
+            result[index].push(target);
+        }
+        if (!last.opcode.is_jump() || last.opcode.is_conditional())
+            && !crate::instructions::is_terminator(last)
+            && index + 1 < graph.blocks.len()
+        {
+            result[index]
+                .try_reserve(1)
+                .map_err(|_| resource("ABC successor allocation failed"))?;
+            result[index].push(index + 1);
+        }
+    }
+    Ok(result)
+}
+
 pub fn unsupported(message: impl Into<String>) -> Error {
     Error::new("DECOMPILE_FAILED", message)
 }
