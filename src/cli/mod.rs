@@ -68,7 +68,7 @@ mod xref;
     after_long_help = "Coordinates: at and context_at chain the next fetch (kuna selects by address_hex).
 Output: one record per line; exit 0 required; zero rows means no matches.
 Filters: -f narrows listings; -m with --kind searches xref targets.
-Listings: TAB columns per command help; text JSON-quoted; \\N absent.
+Listings: TAB-separated columns per command help; text JSON-quoted; \\N absent.
 Raw: --raw selects original instructions where reconstruction exists.
 Details: rxd BACKEND COMMAND --help; typed tools through rxd mcp.
 Engines: source builds may omit Kuna/ILSpy."

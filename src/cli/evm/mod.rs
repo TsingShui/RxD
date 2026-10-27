@@ -7,29 +7,30 @@ use rxd_evm::{
     Analysis, FunctionNavigation, Limits, Listing, LiteralInventory, LiteralKind, LiteralQuery,
     Navigation, Query,
 };
+use serde_json::Value;
 
 #[derive(Subcommand)]
 pub enum Command {
     /// Search decoded PUSH literals and data candidates.
     #[command(
-        after_long_help = "Examples:\nrxd evm strings runtime.hex --encoding hex --kind text --query Authorization\nrxd evm strings runtime.bin --encoding raw --kind bytes --query 4142\nrxd evm strings runtime.hex --encoding hex --kind number --query 42\nRequired: --encoding and --kind. Omit --query to inventory the selected literal kind.\ntext matches readable fragments; bytes is exact even hex; number is decimal/0x U256.\nOutput: analysis then literal/data_literal JSONL; find the constant behind a selector or address.\nThese are static PUSH/CODECOPY candidates, not proven runtime strings."
+        after_long_help = "Columns: at, value.\nExamples:\nrxd evm strings runtime.hex --encoding hex --kind text --query Authorization\nrxd evm strings runtime.bin --encoding raw --kind bytes --query 4142\nrxd evm strings runtime.hex --encoding hex --kind number --query 42\nRequired: --encoding and --kind. Omit --query to inventory the selected literal kind.\ntext matches readable fragments; bytes is exact even hex; number is decimal/0x U256.\nRows are literal candidates; value is JSON-quoted text or hex.\nThese are static PUSH/CODECOPY candidates, not proven runtime strings."
     )]
     Strings(StringsOptions),
 
     /// List function candidates with ABI fields.
     #[command(
-        after_long_help = "Examples:\nrxd evm interface runtime.hex --encoding hex -f 313ce567\nOutput: analysis plus function JSONL; at is a file-scoped candidate coordinate.\nSelectors/types/mutability are inferred candidates, not a verified source ABI."
+        after_long_help = "Columns: at, signature.\nExamples:\nrxd evm interface runtime.hex --encoding hex -f 313ce567\nRows are selector candidates; signature is selector(arguments), arguments may be empty.\nSelectors/types/mutability are inferred candidates, not a verified source ABI."
     )]
     Interface(ListOptions),
     /// List decoded instructions as offset/opcode.
     #[command(
-        after_long_help = "Examples:\nrxd evm disassemble runtime.hex --encoding hex\nOutput: native JSON offset/opcode pairs. Offsets are decoded bytecode bytes, not hex characters.\nOffsets index decoded bytecode, so a range is start..start+length."
+        after_long_help = "Columns: offset, opcode.\nExamples:\nrxd evm disassemble runtime.hex --encoding hex\nOffsets are decoded bytecode bytes, not hex characters.\nOffsets index decoded bytecode, so a range is start..start+length."
     )]
     Disassemble(Options),
 
     /// Extract terminal CBOR compiler metadata.
     #[command(
-        after_long_help = "Examples:\nrxd evm metadata runtime.hex --encoding hex\nOutput: native terminal CBOR/compiler metadata evidence. Not a deployed-contract identity.\nRaw bytes remain explicit when metadata is unknown/undecodable."
+        after_long_help = "Columns: key, value.\nExamples:\nrxd evm metadata runtime.hex --encoding hex\nRows are terminal CBOR entries; solc decodes to major.minor.patch. Not a contract identity.\nRaw bytes remain explicit when metadata is unknown/undecodable."
     )]
     Metadata(Options),
 }
@@ -130,6 +131,96 @@ impl Command {
     pub fn perf(&self) -> bool {
         self.options().perf
     }
+}
+
+/// Render the four retained commands as TAB-separated rows; values quoted as JSON text.
+fn rows(command: &str, bytes: &[u8]) -> Result<Vec<u8>> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| Error::new("INTERNAL", "evm output was not UTF-8"))?;
+    let mut out = String::new();
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let row: Value = serde_json::from_str(line)
+            .map_err(|_| Error::new("INTERNAL", "evm output row was not JSON"))?;
+        match command {
+            "disassemble" => {
+                for pair in row["detail"]["result"]["disassembled"]
+                    .as_array()
+                    .map(Vec::as_slice)
+                    .unwrap_or_default()
+                {
+                    out.push_str(&format!(
+                        "{}\t{}\n",
+                        pair[0].as_u64().unwrap_or(0),
+                        pair[1].as_str().unwrap_or("")
+                    ));
+                }
+            }
+            "metadata" => {
+                let entries = row["detail"]["result"]["metadata"]["entries"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                if entries.is_empty() {
+                    out.push_str("\\N\t\\N\n");
+                }
+                for entry in entries {
+                    out.push_str(&format!(
+                        "{}\t{}\n",
+                        entry["key"].as_str().unwrap_or("\\N"),
+                        metadata_value(&entry["value"])
+                    ));
+                }
+            }
+            "interface" => {
+                if row["record"] != "function" {
+                    continue;
+                }
+                let detail = &row["detail"];
+                let arguments = detail["arguments"].as_str().unwrap_or("");
+                out.push_str(&format!(
+                    "{}\t{}({})\n",
+                    row["at"].as_str().unwrap_or("\\N"),
+                    detail["selector"].as_str().unwrap_or(""),
+                    arguments
+                ));
+            }
+            "strings" => {
+                let record = row["record"].as_str().unwrap_or("");
+                if !record.ends_with("literal") {
+                    continue;
+                }
+                let value = row["detail"]["value"]
+                    .as_str()
+                    .map(|text| serde_json::to_string(text).unwrap_or_default())
+                    .unwrap_or_else(|| "\\N".into());
+                out.push_str(&format!(
+                    "{}\t{}\n",
+                    row["at"].as_str().unwrap_or("\\N"),
+                    value
+                ));
+            }
+            _ => return Ok(bytes.to_vec()),
+        }
+    }
+    Ok(out.into_bytes())
+}
+
+/// CBOR metadata values: solc versions decode to `major.minor.patch`, others stay JSON.
+fn metadata_value(value: &Value) -> String {
+    let bytes: Vec<u8> = value["value"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_u64)
+                .map(|b| b as u8)
+                .collect()
+        })
+        .unwrap_or_default();
+    if bytes.len() == 3 {
+        return format!("{}.{}.{}", bytes[0], bytes[1], bytes[2]);
+    }
+    serde_json::to_string(value).unwrap_or_else(|_| "\\N".into())
 }
 
 pub fn execute(
@@ -237,6 +328,7 @@ pub fn execute(
             }
             bytes?
         };
+        let bytes = rows(command.name(), &bytes)?;
         perf.counters.output_bytes = Some(bytes.len());
         perf.measure("write", || {
             super::write_output(&bytes, options.output.as_deref(), sink)
