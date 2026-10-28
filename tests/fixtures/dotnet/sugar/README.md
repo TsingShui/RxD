@@ -98,7 +98,7 @@ Nonempty EH expectations:
 - Async `MoveNext` (`0x06000015`): catch `0x0100001e`, try `[7,111)`,
   handler `[111,136)`.
 
-The fixture is a release sample and an MCP input, not a C# expectation source.
+The fixture is a release sample, not a C# expectation source.
 `expected.json` stays the independent record of this assembly's metadata, IL and
 EH facts, so `rxd ilspy` output can be diffed against it directly. The C# this
 assembly renders to is the engine's own output and rxd does not assert it; rxd
