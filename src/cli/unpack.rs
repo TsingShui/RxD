@@ -15,6 +15,9 @@ pub(crate) struct Command {
     /// New directory that receives every extracted file.
     #[arg(short, long, value_name = "DIR")]
     pub(super) output: PathBuf,
+    /// Parallel ZIP-family extraction workers; deflated trees scale further than Stored ones.
+    #[arg(long, default_value_t = super::default_threads(), value_parser = super::positive)]
+    pub(super) threads: usize,
     /// Emit phase timings as JSONL on stderr.
     #[arg(long)]
     pub(super) perf: bool,
@@ -160,8 +163,15 @@ pub(crate) fn execute(
                 &mut perf,
             )
             .map(|result| ("asar", result.files, result.bytes)),
-            Format::Zip => rxd_zip::unpack(&archive, &command.output, budget, &mut perf)
-                .map(|result| ("zip", result.files, result.bytes)),
+            Format::Zip => rxd_zip::unpack_filtered(
+                &archive,
+                &command.output,
+                budget,
+                &mut perf,
+                command.threads,
+                &|_| true,
+            )
+            .map(|result| ("zip", result.files, result.bytes)),
             Format::PyInstaller => rxd_pyinstaller::unpack(
                 &archive,
                 &command.output,

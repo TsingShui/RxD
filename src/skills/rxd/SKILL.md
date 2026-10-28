@@ -15,7 +15,7 @@ explicitly, then locate → associate
 
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
-| ASAR, ZIP/HAP, PyInstaller or wxapkg input | `rxd unpack` | `rxd unpack ARCHIVE_OR_ONEDIR -o DIR`; extracts every regular file, PYZ modules and reconstructed `.pyc` files; for one-dir, finds the launcher; for V1MMWX wxapkg, pass `--appid` |
+| ASAR, ZIP/HAP, PyInstaller or wxapkg input | `rxd unpack` | `rxd unpack ARCHIVE_OR_ONEDIR -o DIR [--threads N]`; extracts every regular file, PYZ modules and reconstructed `.pyc` files; for one-dir, finds the launcher; for V1MMWX wxapkg, pass `--appid` |
 | Dynamic Ark ABC or HAP | `rxd ark` | `export INPUT -o DIR` writes the whole HAP tree plus one JS file per record for `rg`; `decompile INPUT` reconstructs the selected whole ABC; multiple records or non-scalar module names use scoped, namespaced exports. `list record`, then `list method` (all records by default, `--at record:0x...` to scope); `strings`/`xref` scan decoded string operands. `decompile --at record:0x...` composes one original module, and `--at method:0x...` selects one function. Methods use capture factories with `{env, hole, receiver, newTarget, locals, home, function}`. Semantic approximations and unrecovered structure are marked in source; add `--raw` for original instructions. HAP with multiple ABC files requires `--entry PATH` |
 | Android APK or DEX | `rxd rasc` | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
@@ -246,6 +246,7 @@ rxd ark xref app.hap --entry ets/modules.abc --at "<strings.at>"
 rxd ark decompile app.hap --entry ets/modules.abc --at "method:0x5678"
 rxd ark decompile app.hap --entry ets/modules.abc --at "record:0x1234" --raw
 rxd ark export app.hap -o recovered
+rxd ark export app.hap -o sources --extract none
 rg -n -C 3 'Authorization' recovered/decompiled
 ```
 
@@ -258,17 +259,19 @@ decoded instruction references. They index explicit string operands only, not mo
 requests or literal-array entries.
 
 `decompile` without `--at` returns the whole ABC; `--raw` returns instructions.
-`export` writes `extracted/` with every original HAP file at its archive path,
-`decompiled/<abc path>/0x<record>.js`, and `manifest.jsonl`. Each record file starts
-with `// record:0x... "<name>"` and one `// method:0x... "<name>"` per coded method,
-then an ordinary JS module holding every coded method, including methods no
-initializer reaches. `rg` therefore resolves a name to its coordinate directly. Manifest record rows carry the
+`--extract all` (default) writes `extracted/` with every original HAP file at its
+archive path, `abc` writes only `.abc` entries, and `none` writes no originals; ABC
+reconstruction overlaps the remaining extraction. Sources go under
+`decompiled/<abc path>/0x<record>.js`, with `manifest.jsonl` beside them. Each record
+file starts with `// record:0x... "<name>"` and one `// method:0x... "<name>"` per
+coded method, then an ordinary JS module holding every coded method, including methods
+no initializer reaches. `rg` therefore resolves a name to its coordinate directly.
+Manifest record rows carry the
 `record:0x...` coordinate, original name, coded-method count, warning codes and
 relative file; the ABC row carries its SHA-256. Route a hit back to `--at` on the
 same input. The export is atomic and refuses an existing directory. `--threads N`
-reconstructs records in parallel (one parsed ABC copy per worker); output does not
-depend on thread count. All ABC entries export by default and `--entry` narrows to
-one.
+reconstructs records in parallel with forked parsers; output does not depend on
+thread count. All ABC entries export by default and `--entry` narrows to one.
 
 ## Dart AOT (Flutter): snapshot info, functions, pseudocode
 

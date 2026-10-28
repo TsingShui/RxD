@@ -3355,7 +3355,10 @@ dependencies = [
 name = "rxd-zip"
 version = "0.1.0"
 dependencies = [
+ "crc32fast",
  "libc",
+ "libdeflater",
+ "rayon",
  "rxd-core",
  "serde_json",
  "tempfile",

@@ -8,14 +8,17 @@ now have reconstruction paths; this is not a universal runtime-equivalence claim
 ## Searchable export, method search and string references
 
 `rxd ark export INPUT -o DIR` writes the original container tree, one standalone JS
-module per code-bearing record, and a JSONL manifest; `--threads` reconstructs records
-in parallel, `--entry` narrows a HAP to one ABC, and each file opens with its record
-and method name/coordinate header. Batch export is a special workload, not an ordinary
-150 ms query. Measured on Darwin arm64 release builds, 12 logical CPUs, warm caches,
-whole command including extraction, reconstruction, writes and manifest: ClashBox HAP
-(107,951,762 bytes, 152 archived files) produced 376 record files, 14,082 coded
-methods, 23,880,029 source bytes and a 303-record warning set in 0.34–0.47 s wall
-(0.70–0.82 s at `--threads 1`). The edgemusic HAP (2 ABCs, 322 records, 6,758 methods)
+module per code-bearing record, and a JSONL manifest; `--extract all|abc|none` selects
+the original tree, `--threads` reconstructs records in parallel, `--entry` narrows a
+HAP to one ABC, and each file opens with its record and method name/coordinate header.
+ABC entries are read from the file index first and reconstruct while the remaining
+extraction runs (at most four I/O workers). Batch export is a special workload, not an
+ordinary 150 ms query. Measured on Darwin arm64 release builds, 12 logical CPUs, warm
+caches, whole command including extraction, reconstruction, writes and manifest:
+ClashBox HAP (107,951,762 bytes, 152 archived files) produced 376 record files, 14,082
+coded methods, 23,880,029 source bytes and a 303-record warning set in 0.19–0.25 s wall
+for `all` and 0.20–0.30 s for `abc`/`none`; the deflated Harflix HAP took 0.10–0.11 s
+for `all` and 0.040–0.045 s for `abc`/`none`. The edgemusic HAP (2 ABCs, 322 records, 6,758 methods)
 produced byte-identical trees at `--threads 1` and `--threads 8`. Copi's
 `record:0x8220` exported 36 coded methods, including methods that
 `decompile --at record:0x8220` does not reach, so export does not silently drop
@@ -23,10 +26,26 @@ unreferenced code. All 698 record files (322 edgemusic, 376 ClashBox) parsed wit
 Babel with no unbound generated identifiers; 303 ClashBox records carried warnings,
 matching the earlier 303 warned record outputs. After stripping the name header,
 ClashBox `record:0x283a8` and Copi `record:0x2290` bodies were byte-identical to
-`decompile --at record`. The ClashBox tree had recursive SHA-256 `63e0b8c4…` and its
-ABC SHA-256 matches the fixed input. Existing directories and a bare ABC with
-`--entry` fail with `INVALID_QUERY`; a missing entry fails with `NOT_FOUND` and
-removes the new directory.
+`decompile --at record`. All extract modes emitted identical `decompiled/` trees and
+manifests; `abc` extracted only the selected ABCs and `none` wrote no `extracted/`.
+Extracted ClashBox files matched Python `zipfile` payload hashes; `--entry` with
+`--extract abc` wrote only that ABC. The ClashBox tree had recursive SHA-256
+`63e0b8c4…` and its ABC SHA-256 matches the fixed input. Existing directories and a
+bare ABC with `--entry` fail with `INVALID_QUERY`; a missing entry fails with
+`NOT_FOUND` and removes the new directory. Corrupting one byte of a Stored or Deflate
+entry failed with `INVALID_INPUT: ZIP entry CRC mismatch` for every extract mode and
+worker count, leaving no partial directory.
+
+`rxd unpack` now accepts `--threads` and decodes Stored/Deflate entries from their
+declared spans with libdeflater (≤64 MiB compressed; larger entries stream). ClashBox
+extraction took 97–125 ms at 1 worker, 71–86 ms at 4 and 99–103 ms at 12; the deflated
+Harflix HAP took 109–119 ms, 90 ms and 52 ms (previously 151 ms read plus 48 ms write).
+Tree hashes matched across worker counts; all nine Unix unpack E2E checks passed with
+the default parallel path, including duplicate, unsafe-path, link and pinned
+production archives. The default all-backend CLI suite (debug) reported 71 passed and
+5 failures identical at the parent commit `415d4e2` (Flutter help columns, two PYC
+cases, a .NET resource-policy case and a WASM coordinate case); none exercises
+`rxd-zip`, unpack or Ark, so they are unrelated pre-existing failures.
 
 `list method` without `--at` searches every record and reports the owning `record`
 column; ClashBox lists 14,082 rows and amcl 21,841 rows in 40–70 ms. `strings` lists

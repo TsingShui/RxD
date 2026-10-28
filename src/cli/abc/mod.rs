@@ -26,7 +26,7 @@ pub enum Command {
     Decompile(DecompileOptions),
     #[command(
         about = "Export the whole container and every ABC record for text search.",
-        after_long_help = "Examples:\n  rxd ark export app.hap -o recovered\n  rxd ark export modules.abc -o recovered\n  rxd ark export app.hap -o recovered --entry ets/widgets.abc\n  rg -n -C 3 'Authorization' recovered/decompiled\nOutput: a new directory with extracted/ (original HAP files), decompiled/<abc path>/<record>.js and manifest.jsonl.\nEach record file keeps its original module form and every coded method, including methods the initializer never references.\nmanifest.jsonl maps each record coordinate to its file, name, coded-method count and warning codes; the ABC line carries the full ABC SHA-256.\nOmit --entry to export every .abc entry; --entry restricts the export to one exact path.\nRecords decompile in parallel; each worker holds one parsed copy of its ABC, so memory scales with --threads.\nThe export is atomic: an existing output directory is refused and any failure removes the new directory.\nRecord sources remain best-effort reconstruction; follow warnings at affected operations and never execute them."
+        after_long_help = "Examples:\n  rxd ark export app.hap -o recovered\n  rxd ark export modules.abc -o recovered\n  rxd ark export app.hap -o recovered --entry ets/widgets.abc\n  rxd ark export app.hap -o sources --extract none\n  rg -n -C 3 'Authorization' recovered/decompiled\nOutput: a new directory with extracted/ and/or decompiled/<abc path>/<record>.js plus manifest.jsonl.\n--extract all (default) writes every original HAP file, abc writes only .abc entries, and none writes no originals.\nEach record file keeps its original module form and every coded method, including methods the initializer never references.\nmanifest.jsonl maps each record coordinate to its file, name, coded-method count and warning codes; the ABC line carries the full ABC SHA-256.\nOmit --entry to export every .abc entry; --entry restricts the export to one exact path.\nABC reconstruction overlaps the remaining extraction; records decompile in parallel with forked parsers.\nThe export is atomic: an existing output directory is refused and any failure removes the new directory.\nRecord sources remain best-effort reconstruction; follow warnings at affected operations and never execute them."
     )]
     Export(ExportOptions),
     #[command(
@@ -148,12 +148,37 @@ pub struct ExportOptions {
     /// Exact ABC path inside HAP; omit to export every ABC entry.
     #[arg(long)]
     entry: Option<String>,
-    /// Parallel record workers; each worker parses its own copy of the ABC.
+    /// What to write under extracted/: the whole tree, only .abc entries, or nothing.
+    #[arg(long, value_enum, default_value_t = ExtractMode::All)]
+    extract: ExtractMode,
+    /// Parallel record workers; extraction adds at most four I/O workers.
     #[arg(long, default_value_t = super::default_threads(), value_parser = super::positive)]
     threads: usize,
     /// Emit phase timings as JSONL on stderr.
     #[arg(long)]
     perf: bool,
+}
+
+/// Original-file extraction during Ark export.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum ExtractMode {
+    /// Extract the complete container tree.
+    #[default]
+    All,
+    /// Extract only .abc entries.
+    Abc,
+    /// Write no original files.
+    None,
+}
+
+impl ExtractMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Abc => "abc",
+            Self::None => "none",
+        }
+    }
 }
 
 impl Command {
@@ -499,9 +524,9 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
     super::finish(perf, enabled, result)
 }
 
-struct AbcEntry {
+struct AbcSource {
     relative: String,
-    path: PathBuf,
+    bytes: Vec<u8>,
 }
 
 fn budget_for(policy: BudgetPolicy, bytes: usize) -> Result<Budget> {
@@ -522,32 +547,6 @@ fn read_head(path: &Path) -> Result<[u8; 4]> {
         )
     })?;
     Ok(head)
-}
-
-fn collect_abc_files(root: &Path, relative: &Path, files: &mut Vec<String>) -> Result<()> {
-    let mut entries: Vec<_> =
-        std::fs::read_dir(root.join(relative))?.collect::<std::result::Result<Vec<_>, _>>()?;
-    entries.sort_by_key(std::fs::DirEntry::file_name);
-    for entry in entries {
-        let kind = entry.file_type()?;
-        let path = relative.join(entry.file_name());
-        if kind.is_dir() {
-            collect_abc_files(root, &path, files)?;
-        } else if kind.is_file() {
-            if path.extension().is_some_and(|extension| extension == "abc") {
-                let text = path.to_str().ok_or_else(|| {
-                    Error::new("UNSUPPORTED_INPUT", "ABC entry path is not UTF-8")
-                })?;
-                files.push(text.replace('\\', "/"));
-            }
-        } else {
-            return Err(Error::new(
-                "UNSUPPORTED_INPUT",
-                "extracted entry is not a regular file or directory",
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn write_file(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -818,101 +817,53 @@ fn export(
     result
 }
 
-fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -> Result<Vec<u8>> {
-    let metadata = std::fs::metadata(&options.input)?;
-    if !metadata.is_file() {
-        return Err(Error::new("INVALID_QUERY", "expected a regular local file"));
-    }
-    let pool = worker_pool(options.threads)?;
-    let container = read_head(&options.input)?.starts_with(b"PK");
-    if !container && options.entry.is_some() {
-        return Err(Error::new(
-            "INVALID_QUERY",
-            "--entry requires a HAP/ZIP container",
-        ));
-    }
-    let output = &options.output;
-    let mut entries = Vec::new();
-    let (mut extracted_files, mut extracted_bytes) = (0usize, 0u64);
-    if container {
-        let budget = policy.for_file(&options.input)?;
-        perf.limits = Some(Limits::from(budget));
-        let root = output.join("extracted");
-        let unpacked = rxd_zip::unpack(&options.input, &root, budget, perf)?;
-        extracted_files = unpacked.files;
-        extracted_bytes = unpacked.bytes;
-        let mut files = Vec::new();
-        collect_abc_files(&root, Path::new(""), &mut files)?;
-        if let Some(entry) = options.entry.as_deref() {
-            if !entry.ends_with(".abc") {
-                return Err(Error::new(
-                    "INVALID_QUERY",
-                    "--entry must select a .abc path",
-                ));
-            }
-            if !files.iter().any(|path| path == entry) {
-                return Err(Error::new(
-                    "NOT_FOUND",
-                    format!("container has no .abc entry {entry:?}"),
-                ));
-            }
-            files.retain(|path| path == entry);
-        }
-        if files.is_empty() {
-            return Err(Error::new("NOT_FOUND", "container has no .abc entry"));
-        }
-        for relative in files {
-            entries.push(AbcEntry {
-                path: root.join(&relative),
-                relative,
-            });
-        }
-    } else {
-        let name = options
-            .input
-            .file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            .ok_or_else(|| Error::new("UNSUPPORTED_INPUT", "input file name is not UTF-8"))?;
-        entries.push(AbcEntry {
-            path: options.input.clone(),
-            relative: name.to_owned(),
-        });
-    }
+/// Extraction is I/O-bound; four workers measured fastest on local disks.
+const EXTRACT_WORKERS: usize = 4;
+
+struct Decompiled {
+    manifest: Vec<u8>,
+    records: usize,
+    methods: usize,
+    files: usize,
+    source_bytes: usize,
+    input_bytes: usize,
+}
+
+fn decompile_sources(
+    sources: &[AbcSource],
+    output: &Path,
+    policy: BudgetPolicy,
+    threads: usize,
+) -> Result<Decompiled> {
+    let pool = worker_pool(threads)?;
     let mut manifest = Vec::new();
-    let (mut records, mut methods, mut files, mut source_bytes, mut input_bytes): (
-        usize,
-        usize,
-        usize,
-        usize,
-        usize,
-    ) = (0, 0, 0, 0, 0);
-    for entry in &entries {
-        let length = std::fs::metadata(&entry.path)?.len();
-        let length = usize::try_from(length)
-            .map_err(|_| Error::new("RESOURCE_LIMIT", "ABC length is not addressable"))?;
-        let budget = budget_for(policy, length)?;
-        perf.limits = Some(Limits::from(budget));
-        let bytes = perf.measure("read", || {
-            rxd_core::read_bytes(&entry.path, budget.input_bytes)
-        })?;
-        input_bytes = input_bytes
-            .checked_add(bytes.len())
+    let mut totals = Decompiled {
+        manifest: Vec::new(),
+        records: 0,
+        methods: 0,
+        files: 0,
+        source_bytes: 0,
+        input_bytes: 0,
+    };
+    for source in sources {
+        let budget = budget_for(policy, source.bytes.len())?;
+        totals.input_bytes = totals
+            .input_bytes
+            .checked_add(source.bytes.len())
             .ok_or_else(|| Error::new("RESOURCE_LIMIT", "ABC input byte count overflow"))?;
-        let abc = perf.measure("parse", || Abc::parse(&bytes, budget))?;
-        let directory = PathBuf::from("decompiled").join(&entry.relative);
+        let abc = Abc::parse(&source.bytes, budget)?;
+        let directory = PathBuf::from("decompiled").join(&source.relative);
         let directory_text = directory.to_string_lossy().replace('\\', "/");
         let mut offsets: Vec<u32> = abc.record_offsets().collect();
         offsets.sort_unstable();
         let exported = match &pool {
-            Some(pool) if offsets.len() > 1 => perf.measure("decompile", || {
-                parallel_records(pool, &abc, &offsets, &directory_text, output)
-            })?,
-            _ => perf.measure("decompile", || {
-                offsets
-                    .iter()
-                    .map(|offset| export_record(&abc, *offset, &directory_text, output))
-                    .collect::<Result<Vec<_>>>()
-            })?,
+            Some(pool) if offsets.len() > 1 => {
+                parallel_records(pool, &abc, &offsets, &directory_text, output)?
+            }
+            _ => offsets
+                .iter()
+                .map(|offset| export_record(&abc, *offset, &directory_text, output))
+                .collect::<Result<Vec<_>>>()?,
         };
         let (mut abc_records, mut abc_methods) = (0usize, 0usize);
         let mut entry_manifest = Vec::new();
@@ -921,7 +872,7 @@ fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -
                 &mut entry_manifest,
                 &json!({
                     "kind": "record",
-                    "entry": entry.relative.as_str(),
+                    "entry": source.relative.as_str(),
                     "at": record.at,
                     "source_id": abc.source_id.as_str(),
                     "name": record.name,
@@ -933,8 +884,9 @@ fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -
             )?;
             abc_records += 1;
             abc_methods += record.methods;
-            files += 1;
-            source_bytes = source_bytes
+            totals.files += 1;
+            totals.source_bytes = totals
+                .source_bytes
                 .checked_add(record.bytes)
                 .ok_or_else(|| Error::new("RESOURCE_LIMIT", "record source byte count overflow"))?;
         }
@@ -943,7 +895,7 @@ fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -
             &mut prefix,
             &json!({
                 "kind": "abc",
-                "entry": entry.relative.as_str(),
+                "entry": source.relative.as_str(),
                 "source_id": abc.source_id.as_str(),
                 "version": abc.version.map(|part| part.to_string()).join("."),
                 "records": abc_records,
@@ -953,29 +905,141 @@ fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -
         )?;
         manifest.extend_from_slice(&prefix);
         manifest.extend_from_slice(&entry_manifest);
-        records += abc_records;
-        methods += abc_methods;
+        totals.records += abc_records;
+        totals.methods += abc_methods;
     }
-    if records == 0 {
+    totals.manifest = manifest;
+    Ok(totals)
+}
+
+fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -> Result<Vec<u8>> {
+    let metadata = std::fs::metadata(&options.input)?;
+    if !metadata.is_file() {
+        return Err(Error::new("INVALID_QUERY", "expected a regular local file"));
+    }
+    let container = read_head(&options.input)?.starts_with(b"PK");
+    if !container && options.entry.is_some() {
+        return Err(Error::new(
+            "INVALID_QUERY",
+            "--entry requires a HAP/ZIP container",
+        ));
+    }
+    let output = &options.output;
+    let container_budget = if container {
+        let budget = policy.for_file(&options.input)?;
+        perf.limits = Some(Limits::from(budget));
+        Some(budget)
+    } else {
+        None
+    };
+    let mut sources = Vec::new();
+    if let Some(budget) = container_budget {
+        let mut entries = rxd_zip::read_matching(&options.input, ".abc", budget, perf)?;
+        if let Some(entry) = options.entry.as_deref() {
+            if !entry.ends_with(".abc") {
+                return Err(Error::new(
+                    "INVALID_QUERY",
+                    "--entry must select a .abc path",
+                ));
+            }
+            if !entries.iter().any(|selected| selected.path == entry) {
+                return Err(Error::new(
+                    "NOT_FOUND",
+                    format!("container has no .abc entry {entry:?}"),
+                ));
+            }
+            entries.retain(|selected| selected.path == entry);
+        }
+        if entries.is_empty() {
+            return Err(Error::new("NOT_FOUND", "container has no .abc entry"));
+        }
+        for entry in entries {
+            sources.push(AbcSource {
+                relative: entry.path,
+                bytes: entry.bytes,
+            });
+        }
+        sources.sort_by(|left, right| left.relative.cmp(&right.relative));
+    } else {
+        let name = options
+            .input
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .ok_or_else(|| Error::new("UNSUPPORTED_INPUT", "input file name is not UTF-8"))?;
+        let length = usize::try_from(metadata.len())
+            .map_err(|_| Error::new("RESOURCE_LIMIT", "ABC length is not addressable"))?;
+        let budget = budget_for(policy, length)?;
+        let bytes = perf.measure("read", || {
+            rxd_core::read_bytes(&options.input, budget.input_bytes)
+        })?;
+        sources.push(AbcSource {
+            relative: name.to_owned(),
+            bytes,
+        });
+    }
+    let (decompiled, extracted) = if let Some(budget) = container_budget {
+        let root = output.join("extracted");
+        let extract = options.extract;
+        let wanted = options.entry.as_deref();
+        let extract_threads = options.threads.clamp(1, EXTRACT_WORKERS);
+        std::thread::scope(|scope| -> Result<(Decompiled, rxd_zip::Unpack)> {
+            let handle = scope.spawn(|| {
+                let start = std::time::Instant::now();
+                let result = decompile_sources(&sources, output, policy, options.threads);
+                (result, start.elapsed())
+            });
+            let extracted = match extract {
+                ExtractMode::None => Ok(rxd_zip::Unpack { files: 0, bytes: 0 }),
+                ExtractMode::Abc => rxd_zip::unpack_filtered(
+                    &options.input,
+                    &root,
+                    budget,
+                    perf,
+                    extract_threads,
+                    &|path| path.ends_with(".abc") && wanted.is_none_or(|wanted| wanted == path),
+                ),
+                ExtractMode::All => rxd_zip::unpack_filtered(
+                    &options.input,
+                    &root,
+                    budget,
+                    perf,
+                    extract_threads,
+                    &|_| true,
+                ),
+            };
+            let (decompiled, elapsed) = handle
+                .join()
+                .map_err(|_| Error::new("INTERNAL_ERROR", "decompile worker panicked"))?;
+            perf.stage_ns("decompile", rxd_core::perf::ns(elapsed));
+            Ok((decompiled?, extracted?))
+        })?
+    } else {
+        let decompiled = perf.measure("decompile", || {
+            decompile_sources(&sources, output, policy, options.threads)
+        })?;
+        (decompiled, rxd_zip::Unpack { files: 0, bytes: 0 })
+    };
+    if decompiled.records == 0 {
         return Err(Error::new("NOT_FOUND", "ABC entries have no coded methods"));
     }
     let manifest_path = output.join("manifest.jsonl");
-    write_file(&manifest_path, &manifest)?;
-    perf.counters.input_bytes = Some(input_bytes);
-    perf.counters.records = Some(records);
+    write_file(&manifest_path, &decompiled.manifest)?;
+    perf.counters.input_bytes = Some(decompiled.input_bytes);
+    perf.counters.records = Some(decompiled.records);
     let receipt = json!({
         "record": "export",
         "detail": {
             "complete": true,
             "path": output.to_string_lossy(),
             "manifest": manifest_path.to_string_lossy(),
-            "abc_entries": entries.len(),
-            "records": records,
-            "methods": methods,
-            "files": files,
-            "source_bytes": source_bytes,
-            "extracted_files": extracted_files,
-            "extracted_bytes": extracted_bytes,
+            "extract": options.extract.as_str(),
+            "abc_entries": sources.len(),
+            "records": decompiled.records,
+            "methods": decompiled.methods,
+            "files": decompiled.files,
+            "source_bytes": decompiled.source_bytes,
+            "extracted_files": extracted.files,
+            "extracted_bytes": extracted.bytes,
         },
     });
     let mut bytes = Vec::new();

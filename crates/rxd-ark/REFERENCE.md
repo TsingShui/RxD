@@ -39,9 +39,11 @@ entities that a decoded instruction operand names; `xref` matches those operands
 `str:0x...` coordinate or value substring, one row per method/string pair. Both are
 explicit-operand indexes: module requests and literal-array-only strings are excluded.
 
-`rxd ark export INPUT -o DIR` is the searchable whole-input form. It writes the
-complete container tree under `extracted/`, one standalone module per code-bearing
-record under `decompiled/<abc path>/0x<offset>.js`, and `manifest.jsonl`. Each record
+`rxd ark export INPUT -o DIR` is the searchable whole-input form. `--extract all`
+(default) writes the complete container tree under `extracted/`, `abc` writes only
+`.abc` entries, and `none` writes no original files. It also emits one standalone
+module per code-bearing record under `decompiled/<abc path>/0x<offset>.js` and
+`manifest.jsonl`. Each record
 file opens with its `// record:0x... "<name>"` line and one
 `// method:0x... "<name>"` line per coded method. Record files keep original export
 names and include every coded method. The manifest orders
@@ -49,9 +51,13 @@ ABC entries by archive path and records by offset; a record row carries its
 coordinate, original name (`name_utf16` when non-scalar), coded-method count, warning
 codes and relative file, and an ABC row carries the full
 SHA-256. Export is atomic: it refuses an existing directory and removes the new tree
-on failure. Records reconstruct in parallel with `--threads`; workers use forked
-parsers that share the immutable indexes and input slice, and output is independent of
-thread count. Batch export is a special workload, not an ordinary per-query latency target.
+on failure. ABC entries are read from the file index first; their reconstruction runs
+concurrently with the remaining extraction, which uses at most four I/O workers.
+Records reconstruct in parallel with `--threads`; workers use forked parsers that share
+the immutable indexes and input slice, and output is independent of thread count.
+Stored/Deflate entries decode from their declared spans with libdeflater up to 64 MiB
+compressed; larger entries stream through the ZIP reader. Batch export is a special
+workload, not an ordinary per-query latency target.
 
 ## Pipeline
 

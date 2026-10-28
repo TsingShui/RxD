@@ -90,7 +90,10 @@ pub(super) struct Directory {
     pub methods: Vec<u16>,
 }
 
-pub(super) fn open(input: &Path, budget: Budget) -> Result<(Reader, Directory)> {
+pub(super) fn open(
+    input: &Path,
+    budget: Budget,
+) -> Result<(Reader, Directory, Option<std::fs::File>)> {
     if input.to_str().is_none() || !fs::symlink_metadata(input)?.is_file() {
         return Err(invalid(
             "ZIP input must be a regular UTF-8 local file, not a symlink",
@@ -114,7 +117,10 @@ pub(super) fn open(input: &Path, budget: Budget) -> Result<(Reader, Directory)> 
         return Err(invalid("ZIP input must be a regular file"));
     }
     let len = metadata.len();
-    open_reader(Box::new(file), len, budget)
+    // A second handle enables positioned reads without disturbing the ZIP reader.
+    let raw = file.try_clone().ok();
+    let (reader, directory) = open_reader(Box::new(file), len, budget)?;
+    Ok((reader, directory, raw))
 }
 
 pub(super) fn open_bytes(bytes: Vec<u8>, budget: Budget) -> Result<(Reader, Directory)> {

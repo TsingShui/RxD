@@ -1,9 +1,10 @@
 //! ZIP-family metadata and bounded, byte-exact selected-entry decoding.
 mod archive;
 
-use std::{io::Read, path::Path};
+use std::{fs::File, io::Read, path::Path};
 
 use archive::{invalid, resource, zip_error};
+use rayon::prelude::*;
 use rxd_core::{
     Budget, Error, Origin, Result,
     envelope::{self, RecordMeta},
@@ -81,23 +82,33 @@ fn safe_path(path: &str) -> bool {
         && path.split('/').all(|part| !matches!(part, "" | "." | ".."))
 }
 
+/// Compressed entries above this size stream through the ZIP reader instead of a
+/// one-shot libdeflater buffer, bounding the temporary allocation.
+const MAX_FAST_INFLATE: u64 = 64 << 20;
+
 struct Archive {
     zip: zip::ZipArchive<archive::Reader>,
     entries: Vec<Entry>,
+    /// Positioned-read handle for fast Stored/Deflate entry decoding.
+    raw: Option<File>,
 }
 
 impl Archive {
     fn open(options: &Options<'_>) -> Result<Self> {
-        let (reader, directory) = archive::open(options.input, options.budget)?;
-        Self::from_reader(reader, directory)
+        let (reader, directory, raw) = archive::open(options.input, options.budget)?;
+        Self::from_reader(reader, directory, raw)
     }
 
     fn from_bytes(bytes: Vec<u8>, budget: Budget) -> Result<Self> {
         let (reader, directory) = archive::open_bytes(bytes, budget)?;
-        Self::from_reader(reader, directory)
+        Self::from_reader(reader, directory, None)
     }
 
-    fn from_reader(reader: archive::Reader, directory: archive::Directory) -> Result<Self> {
+    fn from_reader(
+        reader: archive::Reader,
+        directory: archive::Directory,
+        raw: Option<File>,
+    ) -> Result<Self> {
         let mut zip = zip::ZipArchive::new(reader).map_err(zip_error)?;
         if zip.offset() != 0 {
             return Err(Error::new(
@@ -148,7 +159,7 @@ impl Archive {
                 range_valid,
             });
         }
-        Ok(Self { zip, entries })
+        Ok(Self { zip, entries, raw })
     }
 
     fn select(&self, at: &str) -> Result<usize> {
@@ -214,6 +225,60 @@ impl Archive {
             .ok()
             .filter(|bytes| *bytes <= limit)
             .ok_or_else(|| resource("ZIP expanded entry exceeds byte limit"))?;
+        if let Some(bytes) = self.read_fast(entry, expected)? {
+            return Ok(bytes);
+        }
+        self.read_streaming(index, expected)
+    }
+
+    /// Decode Stored/Deflate entries from their declared spans.
+    ///
+    /// Returns `None` when the entry should use the streaming ZIP reader: bytes-only
+    /// archives, very large compressed spans, or unsupported platforms.
+    fn read_fast(&self, entry: &Entry, expected: usize) -> Result<Option<Vec<u8>>> {
+        let (Some(raw), true) = (&self.raw, cfg!(any(unix, windows))) else {
+            return Ok(None);
+        };
+        if entry.method == 8 && entry.compressed_bytes > MAX_FAST_INFLATE {
+            return Ok(None);
+        }
+        if entry.method == 0 && entry.compressed_bytes != entry.bytes {
+            // Let the streaming reader apply the same consistency checks.
+            return Ok(None);
+        }
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(expected)
+            .map_err(|_| resource("ZIP expanded entry allocation failed"))?;
+        bytes.resize(expected, 0);
+        if entry.method == 0 {
+            positioned_read(raw, entry.data_start, &mut bytes)?;
+        } else {
+            let compressed = usize::try_from(entry.compressed_bytes)
+                .map_err(|_| resource("ZIP compressed entry is not addressable"))?;
+            let mut packed = Vec::new();
+            packed
+                .try_reserve_exact(compressed)
+                .map_err(|_| resource("ZIP compressed entry allocation failed"))?;
+            packed.resize(compressed, 0);
+            positioned_read(raw, entry.data_start, &mut packed)?;
+            let written = libdeflater::Decompressor::new()
+                .deflate_decompress(&packed, &mut bytes)
+                .map_err(|error| invalid(format!("ZIP deflate failed: {error:?}")))?;
+            if written != expected {
+                return Err(invalid(
+                    "ZIP expanded entry does not match its declared size",
+                ));
+            }
+        }
+        if crc32fast::hash(&bytes) != entry.crc32 {
+            return Err(invalid("ZIP entry CRC mismatch"));
+        }
+        Ok(Some(bytes))
+    }
+
+    fn read_streaming(&mut self, index: usize, expected: usize) -> Result<Vec<u8>> {
+        let entry = &self.entries[index];
         let mut bytes = Vec::new();
         bytes
             .try_reserve_exact(expected)
@@ -243,6 +308,40 @@ impl Archive {
         }
         Ok(bytes)
     }
+}
+
+fn positioned_read(file: &File, offset: u64, mut buffer: &mut [u8]) -> Result<()> {
+    let mut at = offset;
+    while !buffer.is_empty() {
+        let read = read_at(file, at, buffer)
+            .map_err(|error| invalid(format!("ZIP entry read failed: {error}")))?;
+        if read == 0 {
+            return Err(invalid("ZIP entry data ends before its declared size"));
+        }
+        at += read as u64;
+        buffer = &mut buffer[read..];
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn read_at(file: &File, offset: u64, buffer: &mut [u8]) -> std::io::Result<usize> {
+    use std::os::unix::fs::FileExt;
+    file.read_at(buffer, offset)
+}
+
+#[cfg(windows)]
+fn read_at(file: &File, offset: u64, buffer: &mut [u8]) -> std::io::Result<usize> {
+    use std::os::windows::fs::FileExt;
+    file.seek_read(buffer, offset)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn read_at(_file: &File, _offset: u64, _buffer: &mut [u8]) -> std::io::Result<usize> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "positioned reads are unsupported on this platform",
+    ))
 }
 
 fn check_output(input: &Path, output: Option<&Path>) -> Result<()> {
@@ -335,6 +434,35 @@ pub fn read_unique_entry(
         path: entry.path.clone(),
         at: entry.at.clone(),
     })
+}
+
+/// Read every regular entry whose path ends with `suffix`, in central-directory order.
+pub fn read_matching(
+    input: &Path,
+    suffix: &str,
+    budget: Budget,
+    perf: &mut Perf,
+) -> Result<Vec<SelectedEntry>> {
+    let mut archive = perf.measure("container", || {
+        Archive::open(&Options {
+            input,
+            output: None,
+            budget,
+        })
+    })?;
+    let mut selected = Vec::new();
+    for index in 0..archive.entries.len() {
+        let (path, at) = {
+            let entry = &archive.entries[index];
+            if entry.kind != "file" || !entry.path.ends_with(suffix) {
+                continue;
+            }
+            (entry.path.clone(), entry.at.clone())
+        };
+        let bytes = perf.measure("inflate", || archive.read(index, budget))?;
+        selected.push(SelectedEntry { bytes, path, at });
+    }
+    Ok(selected)
 }
 
 pub fn read_unique_entry_from_bytes(
@@ -445,8 +573,25 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+struct Task {
+    index: Option<usize>,
+    relative: std::path::PathBuf,
+}
+
 /// Extract every regular Stored/Deflate file into a new directory.
 pub fn unpack(input: &Path, destination: &Path, budget: Budget, perf: &mut Perf) -> Result<Unpack> {
+    unpack_filtered(input, destination, budget, perf, 1, &|_| true)
+}
+
+/// Extract entries selected by `include` in parallel, preserving ZIP order for errors.
+pub fn unpack_filtered(
+    input: &Path,
+    destination: &Path,
+    budget: Budget,
+    perf: &mut Perf,
+    threads: usize,
+    include: &(dyn Fn(&str) -> bool + Sync),
+) -> Result<Unpack> {
     let mut archive = perf.measure("container", || {
         Archive::open(&Options {
             input,
@@ -454,11 +599,12 @@ pub fn unpack(input: &Path, destination: &Path, budget: Budget, perf: &mut Perf)
             budget,
         })
     })?;
+    let mut tasks = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut files = 0usize;
-    let mut bytes = 0u64;
-    for index in 0..archive.entries.len() {
-        let entry = &archive.entries[index];
+    for (index, entry) in archive.entries.iter().enumerate() {
+        if !include(&entry.path) {
+            continue;
+        }
         let relative = unpack_path(&entry.path)?;
         let key = entry
             .path
@@ -468,9 +614,11 @@ pub fn unpack(input: &Path, destination: &Path, budget: Budget, perf: &mut Perf)
         if !seen.insert(key.clone()) {
             return Err(invalid(format!("duplicate ZIP entry path: {key}")));
         }
-        let target = destination.join(&relative);
         if entry.kind == "directory" {
-            perf.measure("write", || std::fs::create_dir_all(&target))?;
+            tasks.push(Task {
+                index: None,
+                relative,
+            });
             continue;
         }
         if entry.kind != "file" || entry.encrypted() || !matches!(entry.method, 0 | 8) {
@@ -482,10 +630,77 @@ pub fn unpack(input: &Path, destination: &Path, budget: Budget, perf: &mut Perf)
                 ),
             ));
         }
-        let data = perf.measure("read", || archive.read(index, budget))?;
-        perf.measure("write", || write_file(&target, &data))?;
-        files += 1;
-        bytes = bytes.saturating_add(data.len() as u64);
+        tasks.push(Task {
+            index: Some(index),
+            relative,
+        });
+    }
+    if tasks.is_empty() {
+        return Ok(Unpack { files: 0, bytes: 0 });
+    }
+    let workers = threads.min(tasks.len()).max(1);
+    if workers == 1 {
+        let mut files = 0usize;
+        let mut bytes = 0u64;
+        for task in tasks {
+            let target = destination.join(&task.relative);
+            match task.index {
+                None => perf.measure("write", || std::fs::create_dir_all(&target))?,
+                Some(index) => {
+                    let data = perf.measure("read", || archive.read(index, budget))?;
+                    perf.measure("write", || write_file(&target, &data))?;
+                    files += 1;
+                    bytes = bytes.saturating_add(data.len() as u64);
+                }
+            }
+        }
+        return Ok(Unpack { files, bytes });
+    }
+    drop(archive);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()
+        .map_err(|error| {
+            resource(format!(
+                "cannot start {workers} extraction workers: {error}"
+            ))
+        })?;
+    let chunk = tasks.len().div_ceil(workers);
+    let started = perf.start_stage();
+    let parts: Vec<Result<(usize, u64)>> = pool.install(|| {
+        tasks
+            .par_chunks(chunk)
+            .map(|part| {
+                let mut archive = Archive::open(&Options {
+                    input,
+                    output: None,
+                    budget,
+                })?;
+                let mut files = 0usize;
+                let mut bytes = 0u64;
+                for task in part {
+                    let target = destination.join(&task.relative);
+                    match task.index {
+                        None => std::fs::create_dir_all(&target)?,
+                        Some(index) => {
+                            let data = archive.read(index, budget)?;
+                            write_file(&target, &data)?;
+                            files += 1;
+                            bytes = bytes.saturating_add(data.len() as u64);
+                        }
+                    }
+                }
+                Ok((files, bytes))
+            })
+            .collect()
+    });
+    perf.record("read", started);
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    for part in parts {
+        let (part_files, part_bytes) = part?;
+        files += part_files;
+        bytes = bytes.saturating_add(part_bytes);
     }
     Ok(Unpack { files, bytes })
 }
