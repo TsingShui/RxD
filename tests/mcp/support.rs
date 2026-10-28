@@ -90,6 +90,7 @@ impl Client {
             self.backlog.push_back(response);
         }
     }
+    #[cfg_attr(not(feature = "bundled-kuna"), allow(dead_code))]
     pub fn receive(&mut self) -> Value {
         self.backlog.pop_front().unwrap_or_else(|| self.read_wire())
     }

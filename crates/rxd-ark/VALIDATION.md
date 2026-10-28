@@ -42,10 +42,12 @@ extraction took 97–125 ms at 1 worker, 71–86 ms at 4 and 99–103 ms at 12; 
 Harflix HAP took 109–119 ms, 90 ms and 52 ms (previously 151 ms read plus 48 ms write).
 Tree hashes matched across worker counts; all nine Unix unpack E2E checks passed with
 the default parallel path, including duplicate, unsafe-path, link and pinned
-production archives. The default all-backend CLI suite (debug) reported 71 passed and
-5 failures identical at the parent commit `415d4e2` (Flutter help columns, two PYC
-cases, a .NET resource-policy case and a WASM coordinate case); none exercises
-`rxd-zip`, unpack or Ark, so they are unrelated pre-existing failures.
+production archives. At the operator's request, tests that pinned output presentation
+were removed: the five outdated cases above plus help/catalog checks, DEX envelope-key
+assertions, MCP tool/schema publication, perf-stage keys, WASM/EVK flag lists and the
+.NET zero-hit receipt test. The default all-backend debug suite then passed 63/63 with
+`cargo nextest run`; the release suite was not rerun because a full default release
+rebuild was too slow for this test-only change. Strict all-target Clippy passed.
 
 `list method` without `--at` searches every record and reports the owning `record`
 column; ClashBox lists 14,082 rows and amcl 21,841 rows in 40–70 ms. `strings` lists

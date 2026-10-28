@@ -6,38 +6,6 @@ mod metadata_budget;
 mod method_refs;
 mod strings;
 
-#[test]
-fn enabled_backend_features_define_the_cli_catalog() {
-    let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .arg("--help")
-        .output()
-        .unwrap();
-    success(&output);
-    let help = String::from_utf8(output.stdout).unwrap();
-    let expected = [
-        ("rasc", cfg!(feature = "backend-dex")),
-        ("jar", cfg!(feature = "backend-jvm")),
-        ("ilspy", cfg!(feature = "backend-dotnet")),
-        ("evmole", cfg!(feature = "backend-evm")),
-        ("unluac-rs", cfg!(feature = "backend-lua")),
-        ("dae", cfg!(feature = "backend-flutter")),
-        ("ark", cfg!(feature = "backend-abc")),
-        ("wasm", cfg!(feature = "backend-wasm")),
-        ("pyc", cfg!(feature = "backend-pyc")),
-        ("kuna", cfg!(feature = "backend-kuna")),
-        ("mcp", cfg!(feature = "mcp")),
-    ];
-    for (name, enabled) in expected {
-        let listed = help
-            .lines()
-            .any(|line| line.trim_start().starts_with(&format!("{name} ")));
-        assert_eq!(
-            listed, enabled,
-            "unexpected help visibility for {name}:\n{help}"
-        );
-    }
-}
-
 fn input() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/Fixture.dll")
 }

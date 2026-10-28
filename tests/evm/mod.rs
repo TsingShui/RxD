@@ -45,21 +45,3 @@ fn metadata_extracts_the_terminal_cbor_blob() {
         "{stdout}"
     );
 }
-
-#[test]
-fn removed_commands_no_longer_parse() {
-    let (_dir, path) = fixture(ARGUMENTS, "contract.hex");
-    for command in [
-        "analyze",
-        "storage",
-        "blocks",
-        "basic-blocks",
-        "cfg",
-        "get-block",
-        "get-function",
-        "xref",
-    ] {
-        let out = run(command, &path, "hex", &[]);
-        assert!(!out.status.success(), "{command} still runs");
-    }
-}

@@ -13,16 +13,8 @@ fn mcp_native_functions_enumerate_exact_pinned_cli_facts_with_declared_schema() 
     let path = fixture();
     let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
     client.initialize();
-    let catalog = client.request("tools/list", json!({}));
-    let definition = catalog["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == "kuna_functions")
-        .expect("compiled native functions tool is discoverable");
     let result = client.tool("kuna_functions", json!({"input":{"path":path}}));
     assert_ne!(result["isError"], true, "{result}");
-    assert!(definition["outputSchema"].is_object());
     let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args([
             "kuna",
@@ -106,14 +98,6 @@ fn mcp_native_decompile_uses_returned_address_and_preserves_native_quality_and_s
             .unwrap()
             .is_empty()
     );
-    let catalog = client.request("tools/list", json!({}));
-    let schema = &catalog["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == "kuna_decompile")
-        .unwrap()["outputSchema"];
-    assert!(schema.is_object());
 }
 
 #[test]
@@ -238,15 +222,6 @@ fn mcp_native_rejects_removed_instruction_limits_and_decompiles_completely() {
     );
     assert_ne!(recovery["isError"], true, "{recovery}");
     assert_eq!(recovery["structuredContent"]["count"], 1);
-    let tools = client.request("tools/list", json!({}));
-    let tool = tools["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == "kuna_decompile")
-        .unwrap();
-    assert!(!tool["inputSchema"].to_string().contains("DecompileLimits"));
-    assert!(tool["outputSchema"].is_object());
 }
 #[test]
 fn mcp_native_inventory_has_no_ignored_byte_or_record_limit_parameters() {

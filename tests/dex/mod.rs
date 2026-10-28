@@ -26,58 +26,11 @@ fn text(out: &Output) -> &str {
     std::str::from_utf8(&out.stdout).unwrap()
 }
 
-fn assert_keys(row: &Value, keys: &[&str]) {
-    let mut actual: Vec<_> = row
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let mut expected = keys.to_vec();
-    actual.sort_unstable();
-    expected.sort_unstable();
-    assert_eq!(actual, expected);
-}
-
-fn assert_record(row: &Value) {
-    // DEX records omit unused navigation keys; selectable rows carry at.
-    let keys = if !row["at"].is_null() {
-        vec!["record", "detail", "at"]
-    } else if !row["context_at"].is_null() {
-        vec!["record", "detail", "context_at"]
-    } else {
-        vec!["record", "detail"]
-    };
-    assert_keys(row, &keys);
-    let fields: &[&str] = match row["record"].as_str().unwrap() {
-        "class" => &[],
-        "string" => &["entry", "index", "value"],
-        "reference" => &["entry", "target"],
-        "entry" => &[
-            "name",
-            "compression",
-            "compressed_size",
-            "uncompressed_size",
-        ],
-        "file" => &["entry", "path", "file_bytes", "sha256"],
-        "field" => &[],
-        // `methods` prints one descriptor row per definition; `get-class --members` prints
-        // its member table as text, so this is the only `method` record shape.
-        "method" => &[],
-
-        other => panic!("unexpected dex record {other}"),
-    };
-    assert_keys(&row["detail"], fields);
-}
-
 fn dex_records(output: &Output) -> Vec<Value> {
     let rows: Vec<Value> = text(output)
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    for row in &rows {
-        assert_record(row);
-    }
     rows
 }
 
@@ -297,41 +250,6 @@ fn dex_inflate_budget_preserves_environment_defaults_and_error_bytes() {
             assert_eq!(output.stdout, xml);
         }
     }
-}
-
-#[test]
-fn dex_retires_skill_and_root_help_exposes_the_print_entry() {
-    let home = tempfile::tempdir().unwrap();
-    let rejected = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["rasc", "skill", "--print"])
-        .env("HOME", home.path())
-        .env("USERPROFILE", home.path())
-        .env_remove("CODEX_HOME")
-        .output()
-        .unwrap();
-    assert_eq!(rejected.status.code(), Some(2));
-    assert!(rejected.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&rejected.stderr).contains("unrecognized subcommand 'skill'"));
-    let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["rasc", "--help"])
-        .output()
-        .unwrap();
-    success(&help);
-    assert!(!text(&help).contains("skill"));
-    let help = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .arg("--help")
-        .output()
-        .unwrap();
-    success(&help);
-    assert!(text(&help).contains("skill"));
-    assert!(text(&help).contains("Print Agent skill"));
-    let skill = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["skill", "--help"])
-        .output()
-        .unwrap();
-    success(&skill);
-    assert!(text(&skill).contains("Usage: rxd skill"));
-    assert_eq!(fs::read_dir(home.path()).unwrap().count(), 0);
 }
 
 #[test]

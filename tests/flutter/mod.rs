@@ -62,17 +62,3 @@ fn dae_rejects_a_malformed_string_coordinate() {
     assert!(!out.status.success());
     assert!(out.stdout.is_empty(), "partial stdout");
 }
-
-#[test]
-fn dae_reports_columns_in_help() {
-    let out = Command::new(env!("CARGO_BIN_EXE_rxd"))
-        .args(["dae", "functions", "--help"])
-        .output()
-        .unwrap();
-    success(&out);
-    let help = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        help.contains("List recovered functions (columns: at, label)"),
-        "{help}"
-    );
-}

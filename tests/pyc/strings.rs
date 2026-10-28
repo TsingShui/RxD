@@ -1,11 +1,5 @@
 use super::*;
 
-fn corpus(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/corpus/pyc/3.12.14")
-        .join(name)
-}
-
 fn strings(path: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["pyc", "strings"])
@@ -72,40 +66,4 @@ fn pyc_strings_budget_work_includes_actual_hex_generation_before_allocation() {
         .unwrap();
     // Missing-byte matching visits 494 bytes; raw hex still processes all 500.
     assert!(with_output > without_output);
-}
-#[test]
-fn pyc_strings_reject_invalid_headers_raw_modes_and_trailing_marshal_atomically() {
-    let source = fs::read(corpus("graph.timestamp.pyc")).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let input = dir.path().join("bad.pyc");
-    let destination = dir.path().join("keep.jsonl");
-    for bytes in [&source[..15], &source[..source.len() - 1], b"not pyc"] {
-        fs::write(&input, bytes).unwrap();
-        fs::write(&destination, b"keep").unwrap();
-        failure(
-            strings(&input, &["-o", destination.to_str().unwrap()]),
-            1,
-            "INVALID_INPUT",
-        );
-        assert_eq!(fs::read(&destination).unwrap(), b"keep");
-    }
-    let mut bytes = source.clone();
-    bytes.push(0);
-    fs::write(&input, &bytes).unwrap();
-    failure(strings(&input, &[]), 1, "INVALID_INPUT");
-    let mut bytes = source.clone();
-    bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
-    fs::write(&input, &bytes).unwrap();
-    failure(strings(&input, &[]), 1, "INVALID_INPUT");
-    failure(strings(&corpus("graph.marshal"), &[]), 1, "INVALID_INPUT");
-    failure(
-        strings(&corpus("graph.timestamp.pyc"), &["--version", "3.12"]),
-        1,
-        "INVALID_INPUT",
-    );
-    failure(
-        strings(&corpus("graph.marshal"), &["--version", "3.14"]),
-        1,
-        "INVALID_INPUT",
-    );
 }

@@ -52,100 +52,6 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 #[test]
-fn help_explains_parameter_sources_and_minimal_query_workflows() {
-    let binary = env!("CARGO_BIN_EXE_rxd");
-    let assert_query_focused = |help: &str| {
-        for phrase in [
-            "without executing",
-            "never execute",
-            "never runs input",
-            "without instantiating",
-            "no module instantiation",
-            "without loading it",
-        ] {
-            assert!(!help.to_lowercase().contains(phrase), "{help}");
-        }
-    };
-    let root = Command::new(binary).arg("--help").output().unwrap();
-    success(&root);
-    assert!(root.stderr.is_empty());
-    let text = String::from_utf8(root.stdout).unwrap();
-    assert!(text.contains("COMMAND --help"));
-    assert!(text.lines().next().unwrap().contains("APK/DEX"));
-    assert!(!text.contains("JavaScript"));
-    assert!(!text.contains("HTML"));
-    assert_query_focused(&text);
-    let routes: &[(&str, &str, &str)] = &[
-        #[cfg(feature = "backend-dex")]
-        ("rasc", "get-method", "methods.at"),
-        #[cfg(feature = "backend-jvm")]
-        ("jar", "get-method", "methods.at"),
-        #[cfg(feature = "backend-dotnet")]
-        ("ilspy", "get-method", "methods.at"),
-        #[cfg(feature = "backend-wasm")]
-        ("wasm", "get-function", "functions.at"),
-    ];
-    for (backend, command, source) in routes {
-        let output = Command::new(binary)
-            .args([backend, command, "--help"])
-            .output()
-            .unwrap();
-        success(&output);
-        assert!(output.stderr.is_empty());
-        let help = String::from_utf8(output.stdout).unwrap();
-        assert!(help.contains("Examples:"), "{backend} {command}: {help}");
-        assert!(help.contains(source), "{backend} {command}: {help}");
-        assert!(help.contains("Output:"), "{backend} {command}: {help}");
-        assert!(!help.contains("Not marked required by clap"));
-        assert_query_focused(&help);
-        let missing = Command::new(binary)
-            .args([backend, command, "missing-input"])
-            .output()
-            .unwrap();
-        assert_eq!(missing.status.code(), Some(2), "{missing:?}");
-        assert!(missing.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&missing.stderr).contains("--at"));
-    }
-    assert!(
-        !Command::new(binary)
-            .args(["js", "--help"])
-            .output()
-            .unwrap()
-            .status
-            .success()
-    );
-    #[cfg(feature = "unpack")]
-    {
-        let output = Command::new(binary)
-            .args(["unpack", "--help"])
-            .output()
-            .unwrap();
-        success(&output);
-        let help = String::from_utf8(output.stdout).unwrap();
-        assert!(help.contains("Examples:") && help.contains("Output:"));
-        assert!(help.contains("PyInstaller") && help.contains("wxapkg"));
-        assert!(help.contains("HAP") && help.contains("rxd unpack app.hap -o app"));
-        assert_query_focused(&help);
-        assert!(
-            !Command::new(binary)
-                .args(["asar", "--help"])
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
-        assert!(
-            !Command::new(binary)
-                .args(["zip", "--help"])
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
-    }
-}
-
-#[test]
 fn skill_prints_the_embedded_skill_without_writing_files() {
     let home = TempDir::new().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_rxd"))
@@ -229,21 +135,6 @@ fn refused(output: Output) {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stdout.is_empty());
-}
-
-#[allow(dead_code)]
-fn assert_record_keys(value: &Value, fields: &[&str]) {
-    let mut expected = fields.to_vec();
-    expected.sort_unstable();
-    assert_eq!(
-        value
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        expected
-    );
 }
 
 // Independent handcrafted Chromium Pickles; no Electron/Node process runs input JS.

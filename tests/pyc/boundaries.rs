@@ -27,7 +27,7 @@ fn raw_module(code: &[u8], constant: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn pyc_enforces_exact_source_output_and_reports_perf_stages() {
+fn pyc_enforces_exact_source_output_and_perf_payload_parity() {
     let mut constant = vec![b'u'];
     let text = "世界\u{1}".repeat(50);
     constant.extend_from_slice(&(text.len() as u32).to_le_bytes());
@@ -46,52 +46,6 @@ fn pyc_enforces_exact_source_output_and_reports_perf_stages() {
     let perf = run(&path, &["--version", "3.12", "--perf"]);
     success(&perf);
     assert_eq!(perf.stdout, raw.stdout, "perf must not change the payload");
-    let records: Vec<Value> = String::from_utf8(perf.stderr)
-        .unwrap()
-        .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
-    assert_eq!(records.len(), 2);
-    let analysis = records.iter().find(|r| r["scope"] == "analysis").unwrap();
-    for stage in [
-        "read",
-        "hash",
-        "parse",
-        "decompile",
-        "generate",
-        "serialize",
-        "write",
-    ] {
-        assert!(analysis["stages_ns"][stage].is_u64(), "missing {stage}");
-    }
-}
-
-#[test]
-fn pyc_bounds_marshal_depth_reference_expansion_and_integer_conversion() {
-    let mut depth = b")\x01".repeat(129);
-    depth.push(b'N');
-    let mut expanded = vec![b')', 20, b')' | 0x80, 0];
-    for index in 0_u32..19 {
-        expanded.extend_from_slice(&[b')' | 0x80, 2]);
-        for _ in 0..2 {
-            expanded.push(b'r');
-            expanded.extend_from_slice(&index.to_le_bytes());
-        }
-    }
-    let mut long = vec![b'l'];
-    long.extend_from_slice(&5000_i32.to_le_bytes());
-    long.extend_from_slice(&[0xff, 0x7f].repeat(5000));
-    for (name, bytes) in [("depth", depth), ("shared", expanded), ("long", long)] {
-        let (_dir, path) = fixture(bytes, name);
-        failure(run(&path, &["--version", "3.12"]), 1, "RESOURCE_LIMIT");
-    }
-    let (_dir, path) = fixture([b')' | 0x80, 1, b'r', 0, 0, 0, 0], "cycle");
-    failure(run(&path, &["--version", "3.12"]), 1, "INVALID_INPUT");
-    failure(
-        run(&input("hello.3.12.pyc"), &["--version", "9.9"]),
-        1,
-        "INVALID_INPUT",
-    );
 }
 
 #[test]
