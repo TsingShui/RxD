@@ -5,6 +5,7 @@ mod data;
 mod dominators;
 mod fresh;
 mod instructions;
+mod peephole;
 mod provenance;
 mod reader;
 mod reconstruct;

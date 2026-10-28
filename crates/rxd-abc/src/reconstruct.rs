@@ -2130,7 +2130,7 @@ impl<'a> Abc<'a> {
         let body = self.module_body(&plan, Some(module.clone()), &classes)?;
         output.write_all(&body)?;
         self.write_exports(&module, &mut output)?;
-        Ok(output.into_bytes())
+        crate::peephole::compact(output.into_bytes())
     }
 
     pub fn decompile_method(&self, method: &Method) -> Result<Vec<u8>> {
@@ -2151,7 +2151,7 @@ impl<'a> Abc<'a> {
         }
         self.write_units(&scan, module.clone(), &mut output)?;
         self.render_root(method, &scan, module, &mut output)?;
-        Ok(output.into_bytes())
+        crate::peephole::compact(output.into_bytes())
     }
 
     fn write_units(

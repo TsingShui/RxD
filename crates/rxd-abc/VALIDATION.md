@@ -48,17 +48,21 @@ cargo run --release -p rxd-abc --example audit -- modules.abc \
 
 Output-shape compression keeps the same reconstruction and coverage:
 
-- 376 record sources: 42,193,143 -> 25,720,160 bytes (-39.0%).
-- 14,082 method sources in JSONL: 123,097,289 -> 92,680,152 bytes (-24.7%;
+- 376 record sources: 42,193,143 -> 24,085,384 bytes (-42.9%).
+- 14,082 method sources in JSONL: 123,097,289 -> 85,534,802 bytes (-30.5%;
   JSON escapes each tab, so raw CLI method output shrinks more).
-- Sample async method `0x6af27`: 2,442 -> 1,618 bytes (-33.8%).
-- `record:0x6add4`: 19,932 -> 12,370 bytes (-37.9%).
+- Sample async method `0x6af27`: 2,442 -> 1,571 bytes (-35.7%).
+- `record:0x283a8`: 3,884 -> 3,455 bytes; `record:0x6add4`: 19,932 ->
+  11,753 bytes (-41.0%).
 
 The changes are output-only: one-tab indentation instead of four spaces per
-level, merged `let` declarations, merged module-body declarations, and one
-shared `__abc_copy` helper for `copydataproperties` instead of an inline
-IIFE per site. All 14,082 method and 376 record sources still parse, and the
-string-content audit remains at 0 missing.
+level, merged `let` declarations, one shared `__abc_copy` helper for
+`copydataproperties`, and a safe line peephole. The peephole folds
+`acc = vN; vM = acc` into `vM = acc = vN`, drops immediate `vN = acc; acc =
+vN` reloads, chains adjacent register copies, and wraps `acc = vN; acc = RHS`
+as `acc = (acc = vN, RHS)` so an exception still leaves `acc` at `vN`.
+Top-level comma expressions are never rewritten. All 14,082 method and 376
+record sources still parse, and the string-content audit remains at 0 missing.
 
 ## Fast verification
 
@@ -178,6 +182,7 @@ like-for-like comparison. Reproduce with `benches/ark.py` after an approved
 
 - `cargo test --test cli` (default features): 110 passed.
 - `cargo test -p rxd --no-default-features --features backend-abc --test cli abc::`: 17 passed.
+- `cargo test -p rxd-abc --lib`: 3 peephole tests passed.
 - MCP `mcp::abc`: passed with `--features mcp`.
 - `cargo clippy -p rxd-abc -p rxd --all-targets -- -D warnings` and workspace
   formatting: clean.

@@ -6,6 +6,7 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-2}"
 python3 scripts/format-workspace.py --check
 cargo test -p rxd --no-default-features --features backend-abc --test cli abc::
+cargo test -p rxd-abc --lib
 cargo clippy -p rxd-abc -p rxd --all-targets -- -D warnings
 python3 scripts/gen-abc-opcodes.py --check
 if [[ -n "${ARK_ABC:-}" ]]; then
