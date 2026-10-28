@@ -10,7 +10,19 @@ Best-effort semantic bridges and residual control flow carry source-local warnin
 all 332 pinned opcode encodings have lowering paths, including legacy forms.
 There is no old-engine fallback. Listings use the shared `# ` TAB-column header,
 including empty successes; text cells are JSON-quoted. Source/raw FETCH remains
-plain, and CLI/MCP carry the same bytes.
+plain, and CLI/MCP carry the same bytes. `decompile INPUT` without `--at`
+reconstructs every code-bearing record in the selected ABC as one parseable JS
+module. Record coordinates label sections; when there are multiple code-bearing
+records, generated imports and locals are scoped, and exported names are namespaced
+by record and export index. Original inter-module linkage and evaluation order are not
+recovered (`ARK_WHOLE_ABC_MODULES`). Non-scalar export names are encoded as `utf16:`
+followed by four hex digits per UTF-16 code unit; affected records are namespaced
+(`ARK_MODULE_NAME_ENCODING`) even when selecting a single record or method. A
+non-scalar imported or re-exported name uses a warned namespace-property snapshot
+(`ARK_MODULE_NAME_SNAPSHOT`) because JavaScript module import/export names cannot
+contain lone surrogates. Explicit `--at` selects a per-record or per-method output;
+`--raw` without `--at` fetches instructions for the whole ABC. Records without a module initializer retain all coded methods as
+capture factories rather than inventing an initializer.
 
 ## Pipeline
 

@@ -18,8 +18,8 @@ pub enum Command {
         command: ListCommand,
     },
     #[command(
-        about = "Reconstruct one method or fetch record/method instructions (--raw).",
-        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals, home, function} context.\nBest-effort runtime semantics and unrecovered source structure are marked with warning comments at affected operations.\nDynamic ABC versions are admitted by format; uncertain version semantics carry a source warning.\nPinned dynamic opcodes, including legacy and runtime forms, are reconstructed without substituting empty bodies or disassembly."
+        about = "Reconstruct an ABC, record or method; --raw fetches original instructions.",
+        after_long_help = "Examples:\n  rxd ark decompile modules.abc\n  rxd ark decompile app.hap --entry ets/modules.abc\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nWithout --at, reconstruct all code-bearing records in the selected ABC. For multiple records or non-scalar module names, exports are namespaced to keep the combined source parseable; cross-module linkage is not recovered.\n--at selects one record or method; --raw fetches original instructions instead of source.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals, home, function} context.\nBest-effort runtime semantics and unrecovered source structure are marked with warning comments at affected operations.\nDynamic ABC versions are admitted by format; uncertain version semantics carry a source warning.\nPinned dynamic opcodes, including legacy and runtime forms, are reconstructed without substituting empty bodies or disassembly."
     )]
     Decompile(DecompileOptions),
 }
@@ -79,9 +79,9 @@ pub struct MethodOptions {
 pub struct DecompileOptions {
     #[command(flatten)]
     options: Options,
-    /// Copy a record or method coordinate from the corresponding list.
+    /// Optional record or method coordinate; omit to reconstruct the selected ABC.
     #[arg(long)]
-    at: String,
+    at: Option<String>,
     /// Return original instructions instead of reconstructed source.
     #[arg(long)]
     raw: bool,
@@ -171,11 +171,19 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
         perf.measure("query", || -> Result<()> {
             match &command {
                 Command::Decompile(options) => {
-                    let at = Coordinate::parse(&options.at)?;
+                    let at = options.at.as_deref().map(Coordinate::parse).transpose()?;
                     bytes = if options.raw {
-                        abc.raw_target(at)?
+                        if let Some(at) = at {
+                            abc.raw_target(at)?
+                        } else {
+                            abc.raw_all()?
+                        }
                     } else {
-                        let reconstruction = abc.decompile_target(at)?;
+                        let reconstruction = if let Some(at) = at {
+                            abc.decompile_target(at)?
+                        } else {
+                            abc.decompile_all()?
+                        };
                         for warning in reconstruction.warnings {
                             match warning {
                                 // The warning is already attached to each operation in source.
@@ -198,7 +206,10 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
                                 | ReconstructionWarning::FrameConventions
                                 | ReconstructionWarning::IteratorOperations
                                 | ReconstructionWarning::SendableLocalModule
-                                | ReconstructionWarning::VersionSemantics => {}
+                                | ReconstructionWarning::VersionSemantics
+                                | ReconstructionWarning::WholeAbcModules
+                                | ReconstructionWarning::ModuleNameEncoding
+                                | ReconstructionWarning::ModuleNameSnapshot => {}
                             }
                         }
                         reconstruction.source

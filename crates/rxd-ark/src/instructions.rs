@@ -479,24 +479,32 @@ impl<'a> Abc<'a> {
         Ok(())
     }
 
+    fn write_raw_record(&self, offset: u32, output: &mut rxd_core::output::Output) -> Result<()> {
+        let record = self.record(offset)?;
+        write!(output, "// record:0x{offset:x} ").map_err(output_error)?;
+        record.name.write_quoted(output).map_err(output_error)?;
+        output.write_all(b"\n").map_err(output_error)?;
+        for method in &self.members(&record)?.methods {
+            self.write_raw_method(method, output)?;
+        }
+        Ok(())
+    }
+
+    pub fn raw_all(&self) -> Result<Vec<u8>> {
+        let mut output = rxd_core::output::Output::new(self.budget.output_bytes);
+        for offset in self.record_offsets() {
+            self.write_raw_record(offset, &mut output)?;
+        }
+        Ok(output.into_bytes())
+    }
+
     pub fn raw_target(&self, target: crate::Coordinate) -> Result<Vec<u8>> {
         let mut output = rxd_core::output::Output::new(self.budget.output_bytes);
         match target {
             crate::Coordinate::Method(offset) => {
                 self.write_raw_method(&self.method(offset)?, &mut output)?
             }
-            crate::Coordinate::Record(offset) => {
-                let record = self.record(offset)?;
-                write!(&mut output, "// record:0x{offset:x} ").map_err(output_error)?;
-                record
-                    .name
-                    .write_quoted(&mut output)
-                    .map_err(output_error)?;
-                output.write_all(b"\n").map_err(output_error)?;
-                for method in &self.members(&record)?.methods {
-                    self.write_raw_method(method, &mut output)?;
-                }
-            }
+            crate::Coordinate::Record(offset) => self.write_raw_record(offset, &mut output)?,
         }
         Ok(output.into_bytes())
     }

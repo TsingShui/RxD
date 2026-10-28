@@ -4,8 +4,8 @@ use crate::{
     reader::{invalid, resource},
     structure,
 };
-use rxd_core::{Error, Result};
-use std::collections::HashSet;
+use rxd_core::{Error, Result, output::Output};
+use std::{collections::HashSet, io::Write};
 
 #[derive(Default)]
 pub struct ReconstructionStats {
@@ -39,6 +39,9 @@ pub enum ReconstructionWarning {
     IteratorOperations,
     SendableLocalModule,
     VersionSemantics,
+    WholeAbcModules,
+    ModuleNameEncoding,
+    ModuleNameSnapshot,
 }
 
 impl ReconstructionWarning {
@@ -64,6 +67,9 @@ impl ReconstructionWarning {
             Self::IteratorOperations => "ARK_ITERATOR_OPERATIONS",
             Self::SendableLocalModule => "ARK_SENDABLE_MODULE_TIMING",
             Self::VersionSemantics => "ARK_VERSION_SEMANTICS",
+            Self::WholeAbcModules => "ARK_WHOLE_ABC_MODULES",
+            Self::ModuleNameEncoding => "ARK_MODULE_NAME_ENCODING",
+            Self::ModuleNameSnapshot => "ARK_MODULE_NAME_SNAPSHOT",
         }
     }
 
@@ -129,6 +135,15 @@ impl ReconstructionWarning {
             Self::VersionSemantics => {
                 "ABC version is outside the reference runtime's declared dynamic ISA compatibility range; decoded operations may have different semantics"
             }
+            Self::WholeAbcModules => {
+                "whole ABC output isolates records and namespaces their exports; original cross-module linkage, live bindings, and evaluation order are not reconstructed"
+            }
+            Self::ModuleNameEncoding => {
+                "non-scalar module names use record-scoped bindings and UTF-16 encoded export aliases; original module linkage may differ"
+            }
+            Self::ModuleNameSnapshot => {
+                "non-scalar module name is accessed as a namespace property snapshot; live-binding timing and missing-export diagnostics may differ"
+            }
         }
     }
 }
@@ -137,6 +152,46 @@ pub struct Reconstruction {
     pub source: Vec<u8>,
     pub stats: ReconstructionStats,
     pub warnings: Vec<ReconstructionWarning>,
+}
+
+impl ReconstructionStats {
+    fn add(&mut self, other: Self) -> Result<()> {
+        macro_rules! add {
+            ($field:ident) => {
+                self.$field = self
+                    .$field
+                    .checked_add(other.$field)
+                    .ok_or_else(|| resource("Ark reconstruction statistics overflow"))?;
+            };
+        }
+        add!(functions);
+        add!(values);
+        add!(eliminated_values);
+        add!(blocks);
+        add!(residual_blocks);
+        add!(structured_tries);
+        Ok(())
+    }
+}
+
+fn module_names_need_scope(module: &crate::Module) -> bool {
+    module
+        .regular_imports
+        .iter()
+        .chain(&module.namespace_imports)
+        .any(|import| {
+            import
+                .import_name
+                .as_ref()
+                .is_some_and(|name| name.scalar_text().is_none())
+        })
+        || module
+            .local_exports
+            .iter()
+            .any(|export| export.export_name.scalar_text().is_none())
+        || module.indirect_exports.iter().any(|export| {
+            export.local_name.scalar_text().is_none() || export.export_name.scalar_text().is_none()
+        })
 }
 
 pub(crate) fn method_context(offset: u32, mut error: Error) -> Error {
@@ -164,25 +219,124 @@ impl Abc<'_> {
             .iter()
             .find(|method| method.name.text == "func_main_0")
             .ok_or_else(|| invalid("Ark source record has no module initializer"))?;
-        self.prepare(main, true)
+        self.prepare(main, true, None, None)
     }
 
     pub fn reconstruct(&self, method: &Method) -> Result<Reconstruction> {
-        self.prepare(method, false)
+        self.prepare(method, false, None, None)
     }
 
-    fn prepare(&self, method: &Method, record: bool) -> Result<Reconstruction> {
+    pub fn decompile_all(&self) -> Result<Reconstruction> {
+        let mut output = Output::new(self.budget.output_bytes);
+        let mut stats = ReconstructionStats::default();
+        let mut warnings = Vec::new();
+        let mut records = Vec::new();
+        for offset in self.record_offsets() {
+            let record = self.record(offset)?;
+            if self
+                .members(&record)?
+                .methods
+                .iter()
+                .any(|method| method.code_offset.is_some())
+            {
+                let count = records
+                    .len()
+                    .checked_add(1)
+                    .ok_or_else(|| resource("Ark record count overflow"))?;
+                self.check_storage::<u32>(count)?;
+                records
+                    .try_reserve(1)
+                    .map_err(|_| resource("Ark record list allocation failed"))?;
+                records.push(offset);
+            }
+        }
+        if records.is_empty() {
+            return Err(Error::new("NOT_FOUND", "ABC has no code-bearing methods"));
+        }
+        let multiple = records.len() > 1;
+        for offset in records {
+            let record = self.record(offset)?;
+            let members = self.members(&record)?;
+            let first = members
+                .methods
+                .iter()
+                .find(|method| method.code_offset.is_some())
+                .ok_or_else(|| invalid("Ark code-bearing record changed during reconstruction"))?;
+            let main = if self.module(&record)?.is_some() {
+                members.methods.iter().find(|method| {
+                    method.code_offset.is_some() && method.name.text == "func_main_0"
+                })
+            } else {
+                None
+            };
+            let reconstructed = self.prepare(
+                main.unwrap_or(first),
+                main.is_some(),
+                Some(&members.methods),
+                multiple.then_some(offset),
+            )?;
+            writeln!(&mut output, "// record:0x{offset:x}")?;
+            output.write_all(&reconstructed.source)?;
+            stats.add(reconstructed.stats)?;
+            for warning in reconstructed.warnings {
+                if !warnings.contains(&warning) {
+                    warnings
+                        .try_reserve(1)
+                        .map_err(|_| resource("Ark warning allocation failed"))?;
+                    warnings.push(warning);
+                }
+            }
+        }
+        Ok(Reconstruction {
+            source: output.into_bytes(),
+            stats,
+            warnings,
+        })
+    }
+
+    fn prepare(
+        &self,
+        method: &Method,
+        record: bool,
+        all_methods: Option<&[Method]>,
+        whole_record: Option<u32>,
+    ) -> Result<Reconstruction> {
         let method = self.method(method.offset)?;
         let mut queue = vec![method.clone()];
+        if let Some(methods) = all_methods {
+            self.check_storage::<Method>(methods.len())?;
+            queue
+                .try_reserve(methods.len())
+                .map_err(|_| resource("Ark definition queue allocation failed"))?;
+            queue.extend(
+                methods
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.code_offset.is_some() && candidate.offset != method.offset
+                    })
+                    .cloned(),
+            );
+        }
         let mut seen = HashSet::new();
         let mut constructors = HashSet::new();
         let mut units = Vec::new();
         let mut stats = ReconstructionStats::default();
         let module = self.module(&self.record(method.record)?)?;
+        let names_need_scope = module.as_deref().is_some_and(module_names_need_scope);
+        let scope = whole_record
+            .or(names_need_scope.then_some(method.record))
+            .map(|record| ast::RecordScope {
+                record,
+                whole_abc: whole_record.is_some(),
+                non_scalar_names: names_need_scope,
+            });
         while let Some(current) = queue.pop() {
-            if !seen.insert(current.offset) {
+            if seen.contains(&current.offset) {
                 continue;
             }
+            seen.try_reserve(1)
+                .map_err(|_| resource("Ark definition set allocation failed"))?;
+            seen.insert(current.offset);
             if current.record != method.record {
                 return Err(method_context(
                     current.offset,
@@ -206,6 +360,9 @@ impl Abc<'_> {
                         members,
                         ..
                     } => {
+                        constructors
+                            .try_reserve(1)
+                            .map_err(|_| resource("Ark constructor set allocation failed"))?;
                         constructors.insert(*constructor);
                         std::iter::once(*constructor)
                             .chain(members.iter().filter_map(|member| member.method))
@@ -220,12 +377,14 @@ impl Abc<'_> {
                     queue.push(self.method(method).map_err(context)?);
                 }
             }
-            stats.functions += 1;
-            stats.values += function.values.len();
-            stats.eliminated_values += values.needed.iter().filter(|needed| !**needed).count();
-            stats.blocks += body.owned.iter().filter(|owned| **owned).count();
-            stats.residual_blocks += body.residual_blocks;
-            stats.structured_tries += body.structured_tries;
+            stats.add(ReconstructionStats {
+                functions: 1,
+                values: function.values.len(),
+                eliminated_values: values.needed.iter().filter(|needed| !**needed).count(),
+                blocks: body.owned.iter().filter(|owned| **owned).count(),
+                residual_blocks: body.residual_blocks,
+                structured_tries: body.structured_tries,
+            })?;
             units
                 .try_reserve(1)
                 .map_err(|_| resource("Ark function plan allocation failed"))?;
@@ -244,6 +403,7 @@ impl Abc<'_> {
             module.as_deref(),
             self.budget,
             record.then_some(method.offset),
+            scope,
             self.version > [24, 0, 0, 0]
                 || self.version < [0, 0, 0, 2]
                 || matches!(self.version, [11, 0, 0, 0] | [11, 0, 1, 0]),

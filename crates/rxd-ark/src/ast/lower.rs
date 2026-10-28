@@ -27,7 +27,14 @@ pub(crate) struct Prepared<'a> {
     pub body: Body,
 }
 
-struct SourceWarnings {
+#[derive(Clone, Copy)]
+pub(crate) struct RecordScope {
+    pub record: u32,
+    pub whole_abc: bool,
+    pub non_scalar_names: bool,
+}
+
+pub(super) struct SourceWarnings {
     next_anchor: u32,
     source: String,
     kinds: Vec<crate::ReconstructionWarning>,
@@ -36,7 +43,7 @@ struct SourceWarnings {
 }
 
 impl SourceWarnings {
-    fn attach(
+    pub(super) fn attach(
         &mut self,
         statement: &mut Statement<'_>,
         warning: crate::ReconstructionWarning,
@@ -93,11 +100,13 @@ pub(crate) fn lower(
     module: Option<&Module>,
     budget: Budget,
     main: Option<u32>,
+    scope: Option<RecordScope>,
     unverified_version: bool,
 ) -> Result<(Vec<u8>, Vec<crate::ReconstructionWarning>)> {
     let arena = Allocator::new();
     let ast = Ast::new(&arena);
-    let mut statements = imports(&ast, units, module)?;
+    let scope_record = scope.map(|scope| scope.record);
+    let mut statements = Vec::new();
     let uses_standard_iterator = units.iter().any(|unit| {
         unit.function
             .values
@@ -122,6 +131,7 @@ pub(crate) fn lower(
         metadata_bytes: budget.metadata_bytes,
         comments: Vec::new(),
     });
+    let mut prefix = imports(&ast, units, module, scope_record, &warnings)?;
     let has_op = |predicate: fn(&Op) -> bool| {
         units.iter().any(|unit| {
             unit.function
@@ -275,10 +285,16 @@ pub(crate) fn lower(
         statements.push(super::intrinsics::copy_data(&ast));
     }
     if main.is_some() {
-        statements.extend(super::module::preamble(
+        let preamble = super::module::preamble(
             &ast,
             module.ok_or_else(|| invalid("Ark record has no module"))?,
-        ));
+            scope_record,
+        );
+        if scope_record.is_some() {
+            prefix.extend(preamble);
+        } else {
+            statements.extend(preamble);
+        }
     }
     for unit in units {
         let frame = &unit.function.frame;
@@ -298,6 +314,7 @@ pub(crate) fn lower(
             unit,
             written_implicit,
             unverified_version,
+            scope_record,
             module,
             budget,
             module_mode: main.is_some(),
@@ -314,12 +331,43 @@ pub(crate) fn lower(
             ));
         }
     }
+    let mut exports = Vec::new();
     if let Some(main) = main {
-        statements.extend(super::module::finish(
+        let finish = super::module::finish(
             &ast,
             module.ok_or_else(|| invalid("Ark record has no module"))?,
             main,
-        )?);
+            scope_record,
+            &warnings,
+        )?;
+        if scope_record.is_some() {
+            let mut finish = finish.into_iter();
+            statements.push(
+                finish
+                    .next()
+                    .ok_or_else(|| invalid("Ark module initializer is missing"))?,
+            );
+            exports.extend(finish);
+        } else {
+            statements.extend(finish);
+        }
+    }
+    if scope_record.is_some() {
+        let mut block = ast.block(statements);
+        if scope.is_some_and(|scope| scope.whole_abc) {
+            warnings
+                .borrow_mut()
+                .attach(&mut block, crate::ReconstructionWarning::WholeAbcModules)?;
+        }
+        if scope.is_some_and(|scope| scope.non_scalar_names) {
+            warnings
+                .borrow_mut()
+                .attach(&mut block, crate::ReconstructionWarning::ModuleNameEncoding)?;
+        }
+        prefix.push(block);
+        prefix.extend(exports);
+    } else {
+        prefix.extend(statements);
     }
     let warnings = warnings.into_inner();
     let program = Program::new(
@@ -329,7 +377,7 @@ pub(crate) fn lower(
         ast.vec(warnings.comments),
         None,
         ast.vec([]),
-        ast.vec(statements),
+        ast.vec(prefix),
         &ast.build,
     );
     let code = Codegen::new()
@@ -353,6 +401,8 @@ fn imports<'a>(
     ast: &Ast<'a>,
     units: &[Prepared<'_>],
     module: Option<&Module>,
+    scope_record: Option<u32>,
+    warnings: &RefCell<SourceWarnings>,
 ) -> Result<Vec<Statement<'a>>> {
     let mut imports = BTreeSet::new();
     let mut namespaces = BTreeSet::new();
@@ -383,7 +433,41 @@ fn imports<'a>(
                     .get(index as usize - module.regular_imports.len())
             })
             .ok_or_else(|| invalid("Ark import index exceeds metadata"))?;
-        let local = ast.binding(&format!("__ark_i_{index}"));
+        let request = module
+            .requests
+            .get(import.request as usize)
+            .ok_or_else(|| invalid("Ark import request exceeds metadata"))?;
+        if let (Some(record), Some(name)) = (scope_record, import.import_name.as_ref())
+            && name.scalar_text().is_none()
+        {
+            let namespace = format!("__ark_r{record:x}_invalid_import_ns_{index}");
+            let specifier = ImportDeclarationSpecifier::new_import_namespace_specifier(
+                SPAN,
+                ast.binding(&namespace),
+                &ast.build,
+            );
+            statements.push(Statement::new_import_declaration(
+                SPAN,
+                Some(ast.vec([specifier])),
+                string_literal(ast, request),
+                None,
+                None,
+                ImportOrExportKind::Value,
+                &ast.build,
+            ));
+            let mut snapshot = ast.var(
+                &super::module::import_name(scope_record, index),
+                Some(ast.member(ast.id(&namespace), ast.name(name))),
+                true,
+            );
+            warnings.borrow_mut().attach(
+                &mut snapshot,
+                crate::ReconstructionWarning::ModuleNameSnapshot,
+            )?;
+            statements.push(snapshot);
+            continue;
+        }
+        let local = ast.binding(&super::module::import_name(scope_record, index));
         let specifier = match &import.import_name {
             None => {
                 ImportDeclarationSpecifier::new_import_namespace_specifier(SPAN, local, &ast.build)
@@ -399,10 +483,6 @@ fn imports<'a>(
                 &ast.build,
             ),
         };
-        let request = module
-            .requests
-            .get(import.request as usize)
-            .ok_or_else(|| invalid("Ark import request exceeds metadata"))?;
         statements.push(Statement::new_import_declaration(
             SPAN,
             Some(ast.vec([specifier])),
@@ -421,7 +501,7 @@ fn imports<'a>(
             .ok_or_else(|| invalid("Ark namespace request exceeds metadata"))?;
         let specifier = ImportDeclarationSpecifier::new_import_namespace_specifier(
             SPAN,
-            ast.binding(&format!("__ark_ns_{index}")),
+            ast.binding(&super::module::namespace_name(scope_record, index)),
             &ast.build,
         );
         statements.push(Statement::new_import_declaration(
@@ -442,6 +522,7 @@ struct Lower<'f, 'a, 's> {
     unit: &'f Prepared<'s>,
     written_implicit: [bool; 3],
     unverified_version: bool,
+    scope_record: Option<u32>,
     module: Option<&'f Module>,
     budget: Budget,
     module_mode: bool,
@@ -786,7 +867,9 @@ impl<'a> Lower<'_, 'a, '_> {
                     .ok_or_else(|| invalid("Ark module is missing"))?,
                 index as usize,
             );
-            return Ok(self.ast.id(&format!("__ark_local_{index}")));
+            return Ok(self
+                .ast
+                .id(&super::module::local_name(self.scope_record, index)));
         }
         Ok(self.ast.member(
             self.ast.property(self.ast.id("__ark_context"), "locals"),
@@ -898,8 +981,12 @@ impl<'a> Lower<'_, 'a, '_> {
             } => self.cell(*parent, *index)?,
             Op::Environment => self.ast.id("__ark_env"),
             Op::Home => self.ast.property(self.ast.id("__ark_context"), "home"),
-            Op::Import(index) => self.ast.id(&format!("__ark_i_{index}")),
-            Op::Namespace(index) => self.ast.id(&format!("__ark_ns_{index}")),
+            Op::Import(index) => self
+                .ast
+                .id(&super::module::import_name(self.scope_record, *index)),
+            Op::Namespace(index) => self
+                .ast
+                .id(&super::module::namespace_name(self.scope_record, *index)),
             Op::Module(index) => self.module(*index)?,
             Op::Closure {
                 method,

@@ -9,4 +9,4 @@ mod module;
 mod nodes;
 mod private;
 mod sendable;
-pub(crate) use lower::{Prepared, lower};
+pub(crate) use lower::{Prepared, RecordScope, lower};
