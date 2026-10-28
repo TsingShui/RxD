@@ -46,6 +46,24 @@ The Rust implementation is owned by RxD. It currently admits dynamic ABC
   uninitialized sentinel). New environments initialize all slots to that sentinel;
   this represents captures without guessing variable names or decompiling callers.
 
+## Rust JavaScript AST infrastructure
+
+- Oxc `0.153.0`, pinned equally across allocator, AST/visitor, parser,
+  semantic, syntax/span and codegen crates; MIT, Oxc contributors.
+  Source: <https://github.com/oxc-project/oxc>, Cargo registry checksums in
+  `Cargo.lock`. Source-map support and the generic minifier are not enabled.
+- `src/optimize.rs` parses the selected reconstruction, resolves symbol
+  identities, propagates local copies and primitive constants, removes dead
+  stores/declarations, and prints through Oxc codegen. It replaces the old
+  text-line peephole. Analysis stays scoped to the requested output.
+- RxD owns the optimization rules. Property reads, calls, coercions, lexical
+  cells, exported bindings and captured variables retain their effects;
+  catch/finally reads participate in liveness. Loops keep conservative
+  live-in sets, and direct eval disables rewriting for the generated program.
+- Reviewed xpanda's `simplify/TempVariableSimplify.ts` and
+  `simplify/temp/{copy-propagation,liveness,env}.ts` at the pin below;
+  these supplied architectural reference, not a source translation.
+
 ## Validation
 
 See `VALIDATION.md` for pinned hashes, entity mapping, coverage, differential
@@ -112,6 +130,8 @@ methodology, safety contracts, release measurements and reproduction commands.
 
 ## Performance evidence
 
+- These measurements predate Oxc AST optimization; no AST-stage latency
+  measurement was run, at the operator's request.
 - Environment: macOS 26.5.1 arm64, 12 CPUs, release profile, fresh CLI process
   per sample, 10 samples, pinned ClashBox ABC/HAP; no warm-up.
 - Medians (P95): list record 31.9 (34.5) ms, list method 32.2 (33.3) ms, small

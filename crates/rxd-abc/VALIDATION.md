@@ -46,23 +46,30 @@ cargo run --release -p rxd-abc --example audit -- modules.abc \
 
 ## Source size
 
-Output-shape compression keeps the same reconstruction and coverage:
+Oxc AST optimization replaces the text-line peephole. Pinned sample sizes:
 
-- 376 record sources: 42,193,143 -> 24,085,384 bytes (-42.9%).
-- 14,082 method sources in JSONL: 123,097,289 -> 85,534,802 bytes (-30.5%;
-  JSON escapes each tab, so raw CLI method output shrinks more).
-- Sample async method `0x6af27`: 2,442 -> 1,571 bytes (-35.7%).
-- `record:0x283a8`: 3,884 -> 3,455 bytes; `record:0x6add4`: 19,932 ->
-  11,753 bytes (-41.0%).
+| scope | before compression | line peephole | AST optimization |
+| --- | ---: | ---: | ---: |
+| 376 record sources | 42,193,143 | 24,085,384 | 19,712,894 |
+| 14,082 method sources, raw bytes | not recorded | 71,303,709 | 59,016,909 |
+| method JSONL, including escapes/metadata | 123,097,289 | 85,534,802 | 73,600,938 |
+| method `0x6af27` | 2,442 | 1,571 | 1,055 |
+| record `0x283a8` | 3,884 | 3,455 | 3,044 |
+| record `0x6add4` | 19,932 | 11,753 | 8,127 |
 
-The changes are output-only: one-tab indentation instead of four spaces per
-level, merged `let` declarations, one shared `__abc_copy` helper for
-`copydataproperties`, and a safe line peephole. The peephole folds
-`acc = vN; vM = acc` into `vM = acc = vN`, drops immediate `vN = acc; acc =
-vN` reloads, chains adjacent register copies, and wraps `acc = vN; acc = RHS`
-as `acc = (acc = vN, RHS)` so an exception still leaves `acc` at `vN`.
-Top-level comma expressions are never rewritten. All 14,082 method and 376
-record sources still parse, and the string-content audit remains at 0 missing.
+Against the line peephole, raw record bytes shrink 18.2% and raw method bytes
+17.2%. The initial tab indentation, merged declarations and shared
+`__abc_copy` helper remain. The AST pass resolves actual bindings, propagates
+non-captured local aliases/numeric/boolean constants, folds proven constant
+conditions, and removes dead stores and declarations. Getter/call evaluation
+order and exception-visible locals are retained. Strings are not propagated
+or discarded as dead literal assignments; their original UTF-16 values remain.
+Oxc may choose equivalent string escaping (such as a literal tab), which the
+content auditor normalizes instead of treating as missing data.
+
+All 14,082 method and 376 record sources parse with independent Babel checks;
+the string-content audit remains at 0 missing. These are coverage, syntax and
+content checks, not a proof of runtime equivalence.
 
 ## Fast verification
 
@@ -150,8 +157,9 @@ receiver call convention and lexical environment, not gaps themselves.
 
 ## Performance (release, user-approved)
 
-The table was recorded before the source-size compression; that pass changes
-only output serialization, not parsing or analysis.
+The table predates source-size compression and Oxc AST optimization. AST-stage
+performance has not been measured, at the operator's request; this historical
+table is not latency acceptance evidence for the new pipeline.
 
 macOS 26.5.1 arm64, 12 CPUs, release profile, fresh process per sample, 10
 samples, no warm-up, pinned ABC/HAP:
@@ -180,9 +188,12 @@ like-for-like comparison. Reproduce with `benches/ark.py` after an approved
 
 ## Latest checks
 
-- `cargo test --test cli` (default features): 110 passed.
-- `cargo test -p rxd --no-default-features --features backend-abc --test cli abc::`: 17 passed.
-- `cargo test -p rxd-abc --lib`: 3 peephole tests passed.
-- MCP `mcp::abc`: passed with `--features mcp`.
-- `cargo clippy -p rxd-abc -p rxd --all-targets -- -D warnings` and workspace
-  formatting: clean.
+- AST development: backend-scoped CLI 17 passed; obsolete exact emitted-line
+  assertions were removed. No additional tests were retained at the operator's
+  request. The old text-peephole implementation and its three tests are gone.
+- Full-sample AST audit: 14,082 method sources, 376 record sources, 0 missing
+  string/property references; independent Babel parsing: 0 failures.
+- `cargo clippy -p rxd-abc -p rxd --no-default-features --features backend-abc
+  --all-targets -- -D warnings` and workspace formatting: clean.
+- Earlier pre-AST evidence: default CLI 110 and MCP `mcp::abc` passed. Those
+  gates were not rerun for this prototype; release performance is also pending.

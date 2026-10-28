@@ -12,3 +12,11 @@ rxd-zip.workspace = true
 adler2 = "2"
 sha2 = "0.10"
 serde_json.workspace = true
+oxc_allocator = "=0.153.0"
+oxc_ast = "=0.153.0"
+oxc_ast_visit = "=0.153.0"
+oxc_codegen = { version = "=0.153.0", default-features = false }
+oxc_parser = "=0.153.0"
+oxc_semantic = "=0.153.0"
+oxc_span = "=0.153.0"
+oxc_syntax = "=0.153.0"

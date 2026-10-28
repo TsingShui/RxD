@@ -11,6 +11,7 @@ use std::{
 fn missing_strings(abc: &Abc<'_>, decoded: &Decoded<'_>, source: &[u8]) -> Result<Vec<String>> {
     let text = std::str::from_utf8(source)
         .map_err(|_| Error::new("INTERNAL_ERROR", "ABC source is not UTF-8"))?;
+    let escaped_tabs = text.replace('\t', "\\t");
     let mut seen = HashSet::new();
     let mut missing = Vec::new();
     for instruction in &decoded.instructions {
@@ -33,7 +34,7 @@ fn missing_strings(abc: &Abc<'_>, decoded: &Decoded<'_>, source: &[u8]) -> Resul
             let mut quoted = Vec::new();
             name.write_quoted(&mut quoted)?;
             let quoted = String::from_utf8(quoted).unwrap_or_default();
-            if text.contains(&quoted) {
+            if text.contains(&quoted) || escaped_tabs.contains(&quoted) {
                 continue;
             }
             if let Some(raw) = name.scalar_text()
