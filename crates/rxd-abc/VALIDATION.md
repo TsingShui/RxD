@@ -44,6 +44,22 @@ cargo run --release -p rxd-abc --example audit -- modules.abc \
   --source-out source.jsonl --record-source records --content-check
 ```
 
+## Source size
+
+Output-shape compression keeps the same reconstruction and coverage:
+
+- 376 record sources: 42,193,143 -> 25,720,160 bytes (-39.0%).
+- 14,082 method sources in JSONL: 123,097,289 -> 92,680,152 bytes (-24.7%;
+  JSON escapes each tab, so raw CLI method output shrinks more).
+- Sample async method `0x6af27`: 2,442 -> 1,618 bytes (-33.8%).
+- `record:0x6add4`: 19,932 -> 12,370 bytes (-37.9%).
+
+The changes are output-only: one-tab indentation instead of four spaces per
+level, merged `let` declarations, merged module-body declarations, and one
+shared `__abc_copy` helper for `copydataproperties` instead of an inline
+IIFE per site. All 14,082 method and 376 record sources still parse, and the
+string-content audit remains at 0 missing.
+
 ## Fast verification
 
 `scripts/verify-ark.sh` runs the scoped completion gates in a few minutes and
@@ -129,6 +145,9 @@ receiver call convention and lexical environment, not gaps themselves.
 - Listings are shared TSV with JSON-quoted text and `\N` for absence.
 
 ## Performance (release, user-approved)
+
+The table was recorded before the source-size compression; that pass changes
+only output serialization, not parsing or analysis.
 
 macOS 26.5.1 arm64, 12 CPUs, release profile, fresh process per sample, 10
 samples, no warm-up, pinned ABC/HAP:

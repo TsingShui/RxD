@@ -95,20 +95,7 @@ const CLASS_REGISTRY: &str = concat!(
     "const __abc_class_constructors = __abc_class_registry.constructors;\n",
 );
 
-const COPY_DATA_HEAD: &str = "acc = (() => { const __abc_dst = ";
-const COPY_DATA_TAIL: &str = concat!(
-    "; const __abc_src = acc; ",
-    "if (__abc_src !== null && __abc_src !== undefined) { ",
-    "const __abc_from = Object(__abc_src); ",
-    "for (const __abc_key of Reflect.ownKeys(__abc_from)) { ",
-    "const __abc_desc = Object.getOwnPropertyDescriptor(__abc_from, __abc_key); ",
-    "if (__abc_desc && __abc_desc.enumerable) { ",
-    "if (\"value\" in __abc_desc) { ",
-    "Reflect.defineProperty(__abc_dst, __abc_key, {value: __abc_desc.value, writable: true, enumerable: true, configurable: true}); ",
-    "} else { ",
-    "Reflect.defineProperty(__abc_dst, __abc_key, {get: __abc_desc.get, set: __abc_desc.set, enumerable: true, configurable: true}); ",
-    "} } } } return __abc_dst; })()",
-);
+const COPY_HELPER: &str = "function __abc_copy(d,s){if(s!=null){const f=Object(s);for(const k of Reflect.ownKeys(f)){const x=Object.getOwnPropertyDescriptor(f,k);if(x&&x.enumerable)Reflect.defineProperty(d,k,\"value\"in x?{...x,writable:true,configurable:true}:{...x,configurable:true})}}return d}\n";
 
 fn validate_generator_resume(instructions: &[Instruction]) -> Result<()> {
     for (index, instruction) in instructions.iter().enumerate() {
@@ -227,12 +214,15 @@ impl<'a, 'b> Writer<'a, 'b> {
             return Err(resource("ABC source nesting exceeds depth guard"));
         }
         for _ in 0..depth {
-            self.out.write_all(b"    ")?;
+            self.out.write_all(b"\t")?;
         }
         Ok(())
     }
 
     fn line(&mut self, depth: usize, text: &str) -> Result<()> {
+        if text == "void 0;" {
+            return Ok(());
+        }
         self.indent(depth)?;
         writeln!(self.out, "{text}")?;
         Ok(())
@@ -1032,9 +1022,7 @@ impl<'a, 'b> Writer<'a, 'b> {
             }
             "copydataproperties" => {
                 let target = self.register_text(instruction.register(0)?)?;
-                self.out.write_all(COPY_DATA_HEAD.as_bytes())?;
-                self.out.write_all(target.as_bytes())?;
-                self.out.write_all(COPY_DATA_TAIL.as_bytes())?;
+                write!(self.out, "acc = __abc_copy({target}, acc)")?;
             }
             "starrayspread" => {
                 let target = self.register_text(instruction.register(0)?)?;
@@ -1946,6 +1934,7 @@ struct Scan {
     namespaces: Vec<u32>,
     uses_module: bool,
     class_tracking: bool,
+    uses_copy_data: bool,
 }
 
 struct Plan<'a> {
@@ -1971,7 +1960,7 @@ struct Plan<'a> {
 
 fn indent(output: &mut Output, depth: usize) -> Result<()> {
     for _ in 0..depth {
-        output.write_all(b"    ")?;
+        output.write_all(b"\t")?;
     }
     Ok(())
 }
@@ -2126,6 +2115,9 @@ impl<'a> Abc<'a> {
         output.write_all(
             b"const __abc_hole = {};\nconst __abc_context = {env: null, hole: __abc_hole, newTarget: void 0};\n",
         )?;
+        if scan.uses_copy_data {
+            output.write_all(COPY_HELPER.as_bytes())?;
+        }
         for (index, export) in module.local_exports.iter().enumerate() {
             writeln!(
                 output,
@@ -2153,6 +2145,9 @@ impl<'a> Abc<'a> {
         }
         if scan.class_tracking {
             output.write_all(CLASS_REGISTRY.as_bytes())?;
+        }
+        if scan.uses_copy_data {
+            output.write_all(COPY_HELPER.as_bytes())?;
         }
         self.write_units(&scan, module.clone(), &mut output)?;
         self.render_root(method, &scan, module, &mut output)?;
@@ -2243,16 +2238,17 @@ impl<'a> Abc<'a> {
             escapes: Vec::new(),
             out: Output::new(self.budget.output_bytes),
         };
-        writer.line(0, "let acc;")?;
+        writer.out.write_all(b"let acc")?;
         if plan.uses_env {
-            writer.line(0, "let __abc_env = __abc_context.env;")?;
+            writer.out.write_all(b", __abc_env = __abc_context.env")?;
         }
         if plan.uses_this {
-            writer.line(0, "let __abc_this = this;")?;
+            writer.out.write_all(b", __abc_this = this")?;
         }
         for register in &plan.registers {
-            writeln!(writer.out, "let v{register};")?;
+            write!(writer.out, ", v{register}")?;
         }
+        writer.out.write_all(b";\n")?;
         let mut prefix = Vec::new();
         prefix
             .try_reserve_exact(writer.out.len())
@@ -2361,6 +2357,7 @@ impl<'a> Abc<'a> {
                     | "stmodulevar"
                     | "wide.stmodulevar" => scan.uses_module = true,
                     "defineclasswithbuffer" => scan.class_tracking = true,
+                    "copydataproperties" => scan.uses_copy_data = true,
                     _ if instruction.opcode.name.starts_with("stown") => scan.class_tracking = true,
                     _ => {}
                 }
@@ -2764,30 +2761,28 @@ impl<'a> Abc<'a> {
             out: Output::new(self.budget.output_bytes),
         };
         writer.line(depth, "\"use strict\";")?;
-        writer.line(depth, "let acc;")?;
+        writer.indent(depth)?;
+        writer.out.write_all(b"let acc")?;
         if plan.async_plan.as_ref().is_some_and(|plan| plan.awaits) {
-            writer.line(depth, "let __abc_await;")?;
+            writer.out.write_all(b", __abc_await")?;
         }
         if plan.generator {
-            writer.line(depth, "let __abc_resume;")?;
+            writer.out.write_all(b", __abc_resume")?;
         }
         if plan.uses_env {
-            writer.line(depth, "let __abc_env = __abc_context.env;")?;
+            writer.out.write_all(b", __abc_env = __abc_context.env")?;
         }
         if plan.uses_this {
-            writer.line(
-                depth,
-                if plan.derived {
-                    "let __abc_this = void 0;"
-                } else {
-                    "let __abc_this = this;"
-                },
-            )?;
+            writer.out.write_all(if plan.derived {
+                b", __abc_this = void 0" as &[u8]
+            } else {
+                b", __abc_this = this"
+            })?;
         }
         for register in &plan.registers {
-            writer.indent(depth)?;
-            writeln!(writer.out, "let v{register};")?;
+            write!(writer.out, ", v{register}")?;
         }
+        writer.out.write_all(b";\n")?;
         let mut prefix = Vec::new();
         prefix
             .try_reserve_exact(writer.out.len())

@@ -29,7 +29,7 @@ struct Plan<'a> {
 
 fn indent(output: &mut Output, depth: usize) -> Result<()> {
     for _ in 0..depth {
-        output.write_all(b"    ")?;
+        output.write_all(b"\t")?;
     }
     Ok(())
 }
@@ -426,24 +426,22 @@ impl<'a> Abc<'a> {
             out: Output::new(self.budget.output_bytes),
         };
         writer.line(depth, "\"use strict\";")?;
-        writer.line(depth, "let acc;")?;
+        writer.indent(depth)?;
+        writer.out.write_all(b"let acc")?;
         if plan.uses_env {
-            writer.line(depth, "let __abc_env = __abc_context.env;")?;
+            writer.out.write_all(b", __abc_env = __abc_context.env")?;
         }
         if plan.uses_this {
-            writer.line(
-                depth,
-                if plan.derived {
-                    "let __abc_this = void 0;"
-                } else {
-                    "let __abc_this = this;"
-                },
-            )?;
+            writer.out.write_all(if plan.derived {
+                b", __abc_this = void 0" as &[u8]
+            } else {
+                b", __abc_this = this"
+            })?;
         }
         for register in &plan.registers {
-            writer.indent(depth)?;
-            writeln!(writer.out, "let v{register};")?;
+            write!(writer.out, ", v{register}")?;
         }
+        writer.out.write_all(b";\n")?;
         let mut prefix = Vec::new();
         prefix
             .try_reserve_exact(writer.out.len())

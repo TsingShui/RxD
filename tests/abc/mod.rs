@@ -640,12 +640,14 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("while (true) {\n        acc = v0;\n        if ((acc === false || acc === 0)) { break; }"), "{text}");
-    assert!(text.contains("--acc;\n        v0 = acc;"), "{text}");
     assert!(
-        text.contains("    acc = v0;\n    return acc;\n}\n"),
+        text.contains(
+            "while (true) {\n\t\tacc = v0;\n\t\tif ((acc === false || acc === 0)) { break; }"
+        ),
         "{text}"
     );
+    assert!(text.contains("--acc;\n\t\tv0 = acc;"), "{text}");
+    assert!(text.contains("\tacc = v0;\n\treturn acc;\n}\n"), "{text}");
 
     let (bytes, at) = fixture_with_body(0, 5, &[0x60, 3, 0x42, 0, 2, 0, 0x2e, 0, 3, 4, 0x64]);
     fs::write(&input, &bytes).unwrap();
@@ -721,8 +723,8 @@ fn ark_structures_crossing_forward_branches_without_losing_paths() {
     assert!(text.contains("__abc_goto_a_"), "{text}");
     assert!(text.contains("break __abc_goto_a_"), "{text}");
     assert!(text.contains("break __abc_goto_10_"), "{text}");
-    assert!(text.contains("acc = 0;\n        return acc;"), "{text}");
-    assert!(text.ends_with("    return acc;\n}\n"), "{text}");
+    assert!(text.contains("acc = 0;\n\t\treturn acc;"), "{text}");
+    assert!(text.ends_with("\treturn acc;\n}\n"), "{text}");
 }
 
 #[test]
@@ -860,17 +862,14 @@ fn ark_method_reconstruction_preserves_lexical_cells_and_hole_checks() {
         text.contains("function _abc_capture_") && text.contains("(__abc_context)"),
         "{text}"
     );
-    assert!(
-        text.contains("let __abc_env = __abc_context.env;"),
-        "{text}"
-    );
+    assert!(text.contains("__abc_env = __abc_context.env"), "{text}");
     assert!(
         text.contains("__abc_env = {parent: __abc_env, slots: Array(1).fill(__abc_context.hole)};"),
         "{text}"
     );
     assert!(text.contains("acc = __abc_env;"), "{text}");
     assert!(
-        text.contains("__abc_env.slots[0] = acc;\n        acc = __abc_env.slots[0];"),
+        text.contains("__abc_env.slots[0] = acc;\n\t\tacc = __abc_env.slots[0];"),
         "{text}"
     );
     assert!(
@@ -908,7 +907,7 @@ fn ark_method_reconstruction_resolves_its_module_import_and_local_binding() {
     );
     assert!(text.contains("acc = __abc_import_0;"), "{text}");
     assert!(
-        text.contains("acc = counter;\n        counter = acc;"),
+        text.contains("acc = counter;\n\t\tcounter = acc;"),
         "{text}"
     );
     assert!(!text.contains("throw.undefinedifholewithname"), "{text}");
