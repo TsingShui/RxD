@@ -11,6 +11,7 @@ publish = false
 members = [
     "crates/rxd-core",
     "crates/rxd-abc",
+    "crates/rxd-ark",
     "crates/rxd-asar",
     "crates/rxd-zip",
     "crates/rxd-dex",
@@ -34,6 +35,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 rxd-core = { path = "crates/rxd-core" }
 rxd-abc = { path = "crates/rxd-abc" }
+rxd-ark = { path = "crates/rxd-ark" }
 rxd-asar = { path = "crates/rxd-asar" }
 rxd-zip = { path = "crates/rxd-zip" }
 rxd-pyc = { path = "crates/rxd-pyc" }

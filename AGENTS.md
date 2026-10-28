@@ -33,6 +33,9 @@ The current layout is:
   diagnostics, and phase timings (`src/perf.rs`).
 - `crates/rxd-abc/`: dynamic Ark ABC 12.0.6.0 metadata and target-scoped code
   access; `rxd ark list record` / `list method` provide two-level navigation.
+- `crates/rxd-ark/`: independent semantic-IR rewrite with its own copied parser
+  and decoder, value/control analyses and direct Oxc AST emission. No dependency
+  on `rxd-abc`; the CLI cutover awaits missing class/generator/spread semantics.
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
 - `crates/rxd-zip/`: ZIP-family (including HAP) index and whole-archive
   Stored/Deflate extraction with CRC, length, duplicate-path and path-safety validation.

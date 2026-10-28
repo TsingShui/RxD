@@ -3557,6 +3557,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rxd-ark"
+version = "0.1.0"
+dependencies = [
+ "adler2",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_codegen",
+ "oxc_span",
+ "oxc_str",
+ "oxc_syntax",
+ "rxd-core",
+ "rxd-zip",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "rxd-asar"
 version = "0.1.0"
 dependencies = [
