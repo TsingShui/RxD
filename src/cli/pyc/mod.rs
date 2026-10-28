@@ -302,9 +302,6 @@ fn write_module_files(
                 let mut bytes = 0usize;
                 for (relative, module, body_bytes) in part {
                     let target = output.join(relative);
-                    if let Some(parent) = target.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
                     write_new_parts(
                         &target,
                         module.source.as_bytes(),
@@ -385,6 +382,16 @@ fn decompile_directory(
                 module as &rxd_pyc::ModuleDecompilation,
                 body_bytes,
             ));
+        }
+        let mut parents = std::collections::HashSet::new();
+        parents.insert(output.to_path_buf());
+        for (relative, _, _) in &items {
+            if let Some(parent) = output.join(relative).parent() {
+                parents.insert(parent.to_path_buf());
+            }
+        }
+        for parent in parents {
+            std::fs::create_dir_all(parent)?;
         }
         let body_bytes = perf.measure("write", || write_module_files(output, &items, threads))?;
         write_new(&output.join("manifest.jsonl"), &manifest)?;

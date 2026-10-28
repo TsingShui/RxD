@@ -922,6 +922,8 @@ fn decompile_body(
     recovery: Option<&crate::recovery::Module<'_>>,
 ) -> crate::Result<Decompiled> {
     let _budget_frame = crate::budget::enter();
+    let _timing_frame = crate::timing::enter();
+    let setup_start = std::time::Instant::now();
     let table = table_for(version)?;
     let instrs = crate::timing::scope("decode", || {
         crate::bytecode::decode_instructions(code, table, version)
@@ -2555,7 +2557,11 @@ fn decompile_body(
     }
 
     ctx.tail_pair_at = tail_pair_load_offset(code, &ctx.instrs, version);
+    crate::timing::mark("setup", setup_start.elapsed());
+    let walk_start = std::time::Instant::now();
     ctx.run();
+    crate::timing::mark("walk", walk_start.elapsed());
+    let finalize_start = std::time::Instant::now();
     if let Some(error) = ctx.nested_error.take() {
         return Err(error);
     }
@@ -2822,6 +2828,7 @@ fn decompile_body(
             crate::budget_format!("unsupported reconstruction at offset {offset}"),
         );
     }
+    crate::timing::mark("finalize", finalize_start.elapsed());
     Ok(Decompiled {
         body,
         clean: ctx.clean,
