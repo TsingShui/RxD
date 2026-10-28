@@ -34,7 +34,8 @@ pub enum Command {
     },
     /// Search name and constant references.
     #[command(
-        after_long_help = "Examples:\nrxd pyc strings PYZ.pyz -f token\nrxd pyc xref PYZ.pyz --at '<strings.at>'\nrxd pyc xref PYZ.pyz -m token --kind name\nrxd pyc xref PYZ.pyz -m token --kind name --within yt_dlp.YoutubeDL\nRequired: exactly one of --at/--match; --match requires --kind name.\nConstant coordinates copy strings.at, not codes.at; names are literal text.\nPYZ scans all code-bearing modules unless --within or a constant coordinate selects a module.\nOutput: reference JSONL; context_at selects its caller with decompile --at.\nPYZ detail.entry identifies the module; start/end are offsets in its uncompressed marshal payload, not compressed archive offsets."
+        long_about = "Columns: entry, context, match\nList explicit references as TAB-separated rows after one # column header. Successful zero-hit queries retain the header.",
+        after_long_help = "Examples:\nrxd pyc strings PYZ.pyz -f token\nrxd pyc xref PYZ.pyz --at '<strings.at>'\nrxd pyc xref PYZ.pyz -m token --kind name\nrxd pyc xref PYZ.pyz -m token --kind name --within yt_dlp.YoutubeDL\nRequired: exactly one of --at/--match; --match requires --kind name.\nConstant coordinates copy strings.at, not codes.at; names are literal text.\nPYZ scans all code-bearing modules unless --within or a constant coordinate selects a module.\nOutput: TAB-separated entry, context, match. entry is the full PYZ module name (\\N for standalone PYC); context selects its code body with decompile --at.\nmatch is the actual referenced name or selected constant coordinate; equal-looking names are not resolved runtime calls."
     )]
     Xref {
         /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
@@ -53,7 +54,7 @@ pub enum Command {
     /// List str/bytes constants (columns: at, value).
     #[command(
         long_about = "Columns: at, value\nList str/bytes constant occurrences across PYC or PYZ code-bearing modules.",
-        after_long_help = "Examples:\nrxd pyc strings PYZ.pyz -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nCoordinates: MODULE::const:N:PATH for PYZ; const:N:PATH for standalone PYC.\nUse xref --at '<strings.at>' for loads, then decompile --at '<xref.context_at>'.\nText and hexadecimal filters are exclusive; absent UTF-8 text is \\N."
+        after_long_help = "Examples:\nrxd pyc strings PYZ.pyz -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nCoordinates: MODULE::const:N:PATH for PYZ; const:N:PATH for standalone PYC.\nUse xref --at '<strings.at>' for loads, then decompile --at '<xref.context>'.\nText and hexadecimal filters are exclusive; absent UTF-8 text is \\N."
     )]
     Strings {
         /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
@@ -102,7 +103,7 @@ pub enum Command {
     },
     /// Reconstruct one module or code body as Python.
     #[command(
-        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc codes PYZ.pyz -f proxy\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context_at>' -o recovered.py\nPYZ requires --at: a full module name reconstructs that module; MODULE::code:N reconstructs one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc codes PYZ.pyz -f proxy\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>' -o recovered.py\nPYZ requires --at: a full module name reconstructs that module; MODULE::code:N reconstructs one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
     )]
     Decompile {
         /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.

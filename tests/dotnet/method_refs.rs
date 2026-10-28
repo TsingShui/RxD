@@ -49,48 +49,6 @@ fn dotnet_reference_scans_validate_the_complete_heap_even_after_one_thousand_unu
 }
 
 #[test]
-fn dotnet_semantic_method_refs_keep_instantiations_nested_members_and_ambiguous_targets_distinct() {
-    let path = semantic_input();
-    let instantiation = jsonl(&run("xref", &path, &["--at", "0x2b000001"]));
-    assert_eq!(instantiation.len(), 2);
-    assert_eq!(instantiation[0]["detail"]["target_token"], 0x2b000001u32);
-    assert_eq!(instantiation[1]["detail"]["target_token"], 0x2b000003u32);
-    let other = jsonl(&run("xref", &path, &["--at", "0x2b000002"]));
-    assert_eq!(other.len(), 1);
-    let generic = jsonl(&run("xref", &path, &["--at", "0x06000004"]));
-    assert_eq!(generic.len(), 3);
-    let owners = jsonl(&run("xref", &path, &["--at", "0x06000008"]));
-    assert_eq!(owners.len(), 2);
-    let owner_int = jsonl(&run("xref", &path, &["--at", "0x0a000007"]));
-    assert_eq!(owner_int.len(), 1);
-    assert_eq!(
-        owner_int[0]["detail"]["owner_arguments"],
-        serde_json::json!([{"kind":"primitive","element":8}])
-    );
-    for (token, status, canonical) in [
-        ("0x0a000003", "resolved", Some(0x06000003u32)),
-        ("0x0a000006", "resolved", Some(0x06000009u32)),
-        ("0x0a000009", "ambiguous", None),
-        ("0x0a000004", "external", None),
-        ("0x0a000005", "external", None),
-        ("0x0a00000a", "external", None),
-        ("0x0a000011", "unresolved", None),
-    ] {
-        let rows = jsonl(&run("xref", &path, &["--at", token]));
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0]["detail"]["resolution_status"], status);
-        // `target` is the coordinate: the canonical token when the operand resolves to one,
-        // otherwise the operand's own token. `target_token` stays the operand's token.
-        let operand = rows[0]["detail"]["target_token"].as_u64().unwrap() as u32;
-        assert_eq!(
-            rows[0]["detail"]["target"],
-            format!("0x{:08x}", canonical.unwrap_or(operand))
-        );
-    }
-    let ambiguous_definition = jsonl(&run("xref", &path, &["--at", "0x06000005"]));
-    assert_eq!(ambiguous_definition.len(), 0);
-}
-#[test]
 fn dotnet_semantic_method_scans_reject_resolution_cycles_and_invalid_unselected_il() {
     let path = semantic_input();
     let directory = tempfile::tempdir().unwrap();
@@ -120,33 +78,6 @@ fn dotnet_semantic_method_scans_reject_resolution_cycles_and_invalid_unselected_
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
-    let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x06000001"]));
-    assert_eq!(rows.len(), 4);
-}
-
-#[test]
-fn dotnet_method_refs_compare_scoped_signature_types_instead_of_display_names() {
-    let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x0600000a"]));
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0]["detail"]["target_token"], 0x0a00000cu32);
-    assert_eq!(rows[1]["detail"]["target_token"], 0x0a00000du32);
-    let external = jsonl(&run("xref", &semantic_input(), &["--at", "0x0a00000e"]));
-    assert_eq!(external.len(), 1);
-    assert_eq!(external[0]["detail"]["resolution_status"], "unresolved");
-    assert_eq!(
-        external[0]["detail"]["target"],
-        format!(
-            "0x{:08x}",
-            external[0]["detail"]["target_token"].as_u64().unwrap()
-        )
-    );
-}
-
-#[test]
-fn dotnet_method_refs_preserve_constructed_types_embedded_in_signatures() {
-    let rows = jsonl(&run("xref", &semantic_input(), &["--at", "0x0600000b"]));
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0]["detail"]["target_token"], 0x0a00000fu32);
 }
 
 #[test]

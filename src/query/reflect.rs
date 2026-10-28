@@ -221,7 +221,7 @@ fn tool(backend: &str, command: &Command, path: &[String]) -> ToolSpec {
         description.push_str("\n\n");
         description.push_str(&guide.to_string());
     }
-    description.push_str("\nMCP: input is {path: ABSOLUTE_PATH} or {target_id: ...}; CLI flags become snake_case fields without --. JSON output is automatic; omit json/output/perf.");
+    description.push_str("\nMCP: input is {path: ABSOLUTE_PATH} or {target_id: ...}; CLI flags become snake_case fields without --. Tables and source use structuredContent.text; omit CLI-only json/output/perf.");
     ToolSpec {
         name,
         label: label.to_owned(),

@@ -234,6 +234,8 @@ fn map_dex_entries<T: Send>(
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReferenceHit {
     pub dex_name: String,
+    /// False only for a standalone DEX without logical container members.
+    pub has_entry: bool,
     pub member: String,
 
     pub matched: String,
@@ -306,6 +308,7 @@ pub fn find_reference_hits_with_policy(
                 for row in found {
                     rows.push(ReferenceHit {
                         dex_name: logical.name.clone(),
+                        has_entry: !inflated.entry.bare || logical.name != inflated.entry.name,
                         member: row.member,
                         matched: row.matched,
                     });

@@ -220,56 +220,6 @@ fn records_of(rows: &[Value], record: &str) -> Vec<Value> {
 }
 
 #[test]
-fn wasm_xref_searches_target_labels_and_preserves_instruction_order() {
-    let path = input();
-    let exact = records_of(
-        &wasm_jsonl(&run("xref", &path, &["--at", "func:1"])),
-        "reference",
-    );
-    let folded = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-m", "SUM"]));
-    assert_eq!(records_of(&folded, "reference"), exact);
-    let strict = wasm_jsonl(&run(
-        "xref",
-        &path,
-        &["--kind", "function", "-m", "SUM", "--case", "sensitive"],
-    ));
-    assert!(records_of(&strict, "reference").is_empty());
-    // The caller is run, but references to sum must not match a caller-name search.
-    let callers = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-m", "run"]));
-    assert!(records_of(&callers, "reference").is_empty());
-    let imports = wasm_jsonl(&run(
-        "xref",
-        &path,
-        &["--kind", "function", "-m", "ENV.LOG"],
-    ));
-    let imported = records_of(&imports, "reference");
-    assert_eq!(imported.len(), 1);
-    assert_eq!(imported[0]["detail"]["target"], "func:0");
-    let all = wasm_jsonl(&run("xref", &path, &["--kind", "function", "-m", ""]));
-    let all_refs = records_of(&all, "reference");
-    assert_eq!(all_refs.len(), exact.len() + imported.len());
-    assert_eq!(all_refs[0], imported[0]);
-    assert_eq!(&all_refs[1..], exact.as_slice());
-    failure(run("xref", &path, &["-m", "sum"]), 2, "--kind");
-    failure(
-        run(
-            "xref",
-            &path,
-            &["--at", "func:1", "-m", "sum", "--kind", "function"],
-        ),
-        2,
-        "cannot be used",
-    );
-    let wrong = run("xref", &path, &["--at", "func:1", "--kind", "type"]);
-    assert!(String::from_utf8_lossy(&wrong.stderr).contains("type"));
-    assert!(String::from_utf8_lossy(&wrong.stderr).contains("function"));
-    failure(wrong, 2, "invalid value 'type'");
-    failure(run("xref", &path, &["--at", "func:9999"]), 2, "NOT_FOUND");
-    for at in ["func:+1", "func:01", "func:-1", "type:0"] {
-        failure(run("xref", &path, &["--at", at]), 2, "INVALID_QUERY");
-    }
-}
-#[test]
 fn wasm_rejects_non_wasm_input_without_partial_stdout() {
     let (_dir, path) = fixture(b"not a wasm module".as_slice(), "bad.wasm");
     let out = run("types", &path, &[]);

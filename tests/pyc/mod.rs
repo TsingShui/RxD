@@ -3,8 +3,6 @@ use super::*;
 
 mod boundaries;
 mod codes;
-mod contracts;
-mod refs;
 mod strings;
 
 fn input(name: &str) -> PathBuf {

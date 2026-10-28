@@ -1,11 +1,13 @@
-//! Unix-table listings: one record per line, TAB-separated cells.
-//!
-//! Atoms (coordinates, identifiers, numbers) are written verbatim, free text is
-//! JSON-quoted so a value may contain TAB, newline or a quote, and an absent value
-//! is `\N` so it stays distinct from an empty string.
+//! Tables: one # column header, then TAB-separated rows.
+//! Atoms are verbatim, text is JSON-quoted, and absent values use `\N`.
 use anyhow::Result;
 
 pub(crate) const NULL: &str = "\\N";
+
+/// One comment-style column header, retained even when a table has no data rows.
+pub(crate) fn header(columns: &[&str]) -> String {
+    format!("# {}\n", columns.join("\t"))
+}
 
 pub(crate) enum Cell<'a> {
     Atom(&'a str),

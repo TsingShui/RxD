@@ -226,13 +226,17 @@ the bytecode settles, never a control-flow graph or a recovered source ABI.
 
 Keep listing filters consistent through `rxd_core::filter`: case-folded substring
 matching by default, with `--case sensitive` for exact case. Use the printed `at`
-coordinate to select a unit and `context_at` to follow a reference to its caller.
+coordinate to select a unit and xref's `context` to follow a reference to its owner.
 Coordinates are file-scoped; re-list when the input changes.
 
-Listings are Unix-table rows: one record per line, TAB-separated cells, no
-envelope and no `columns`/`rows` document. The first cell selects the row, so a
-listing never needs a header to be parsed; text cells are JSON-quoted and `\N`
-marks an absent value. Each command's long help opens with its own `Columns:`
+Every table starts with one `# ` column header, even for successful empty results.
+Data rows have TAB-separated cells, no envelope and no `columns`/`rows` document.
+Text cells are JSON-quoted and `\N` marks an absent value. The header counts
+toward output bytes, not data rows. References use `entry, context, match` on
+DEX/JVM/PYC and `context, match` on single-file backends. Container-capable
+backends keep a null entry cell for standalone inputs. Do not expand these rows
+with instruction detail or JSON envelopes; retain actual matched targets and full
+owner coordinates. Kuna retains its upstream output contracts. Each command's long help opens with its own `Columns:`
 line and the root help states the format once, so a shape change updates both.
 Source reconstruction prints the source itself, never a record: `decompile`
 commands emit one labelled block per unit, and `get-method`/`get-class`/

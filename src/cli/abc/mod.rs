@@ -27,12 +27,14 @@ pub enum Command {
 #[derive(Subcommand)]
 pub enum ListCommand {
     #[command(
-        about = "List module records. Columns: at, name, methods.",
+        about = "List module records.",
+        long_about = "Columns: at, name, methods\nList module records after one # column header.",
         after_long_help = "Examples:\n  rxd ark list record modules.abc\n  rxd ark list record app.hap -f entry\nOutput: one row per file record, including metadata records with no methods.\nCopy at into list method --at. Record names describe modules, not recovered source classes."
     )]
     Record(ListOptions),
     #[command(
-        about = "List methods of one record. Columns: at, name, code_size, args, vregs.",
+        about = "List methods of one record.",
+        long_about = "Columns: at, name, code_size, args, vregs\nList methods after one # column header.",
         after_long_help = "Examples:\n  rxd ark list record app.hap\n  rxd ark list method app.hap --at 'record:0x1234'\nRequired: --at copied from list record. code_size is bytecode bytes; args includes VM parameters.\nMissing code metadata is \\N; filtered zero hits are a complete empty result."
     )]
     Method(MethodOptions),
@@ -147,7 +149,25 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
         let abc = perf.measure("parse", || Abc::parse(&input.bytes, input.budget))?;
         perf.source_id = Some(abc.source_id.clone());
         perf.counters.input_bytes = Some(input.bytes.len());
-        let mut bytes = Vec::new();
+        let mut bytes = match &command {
+            Command::List {
+                command: ListCommand::Record(_),
+            } => table::header(&["at", "name", "methods"]).into_bytes(),
+            Command::List {
+                command: ListCommand::Method(_),
+            } => table::header(&["at", "name", "code_size", "args", "vregs"]).into_bytes(),
+            Command::Decompile(_) => Vec::new(),
+        };
+        if input
+            .budget
+            .output_bytes
+            .is_some_and(|limit| bytes.len() > limit)
+        {
+            return Err(Error::new(
+                "RESOURCE_LIMIT",
+                "ABC output byte budget exceeded",
+            ));
+        }
         perf.measure("query", || -> Result<()> {
             match &command {
                 Command::Decompile(options) => {

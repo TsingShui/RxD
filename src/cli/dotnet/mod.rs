@@ -13,7 +13,8 @@ use serde_json::{Map, Value, json};
 pub enum Command {
     /// List types (columns: at, full_name).
     #[command(
-        after_long_help = "Examples:\nrxd ilspy classes app.dll -f JsonReader\nOutput: class JSONL; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd ilspy get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
+        long_about = "Columns: at, full_name\nList types. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd ilspy classes app.dll -f JsonReader\nOutput: TAB-separated at, full_name; at is a TypeDef token, e.g. 0x0200000b.\nNext: rxd ilspy get-class app.dll --at '<class.at>' --raw.\n--class is an exact full type name, -f a substring. <Module> is not a fetchable type."
     )]
     Classes {
         /// One regular local managed PE DLL/EXE.
@@ -31,7 +32,8 @@ pub enum Command {
     },
     /// List fields (columns: at, full_name).
     #[command(
-        after_long_help = "Examples:\nrxd ilspy fields app.dll --class Example.Client -f token\nOutput: field JSONL; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd ilspy xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
+        long_about = "Columns: at, full_name\nList fields. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd ilspy fields app.dll --class Example.Client -f token\nOutput: TAB-separated at, full_name; at is a FieldDef token, e.g. 0x0400000b.\nNext: rxd ilspy xref app.dll --at '<field.at>' for explicit IL uses.\n--name is exact; -f matches field names, never declaring type names."
     )]
     Fields {
         /// One regular local managed PE DLL/EXE.
@@ -52,7 +54,8 @@ pub enum Command {
     },
     /// List methods (columns: at, full_name).
     #[command(
-        after_long_help = "Examples:\nrxd ilspy methods app.dll --class Example.Client -f Send\nOutput: method JSONL; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd ilspy get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
+        long_about = "Columns: at, full_name\nList methods. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd ilspy methods app.dll --class Example.Client -f Send\nOutput: TAB-separated at, full_name; at is a MethodDef token, e.g. 0x0600000b.\nNext: rxd ilspy get-method app.dll --at '<method.at>' --raw.\n--name is exact and retains overloads; -f matches names, --class is one exact owner."
     )]
     Methods {
         /// One regular local managed PE DLL/EXE.
@@ -72,7 +75,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one method as IL or C#.
-    #[command(name = "get-method", after_long_help = "Examples:\nrxd ilspy methods app.dll -f Read\nrxd ilspy get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context_at from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: C# text; --raw prints the original IL as text. C# needs ILSpy.\nWithout the engine the IL text is printed with an explicit reason line.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context_at: eight-digit MethodDef token, e.g. 0x0600000b")))]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd ilspy methods app.dll -f Read\nrxd ilspy get-method app.dll --at '0x0600000b' --raw\nCopy methods.at or xref.context from this input. Token must have eight hex digits;\nnot a method name, method: prefix, table index or file hash.\nOutput: C# text; --raw prints the original IL as text. C# needs ILSpy.\nWithout the engine the IL text is printed with an explicit reason line.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_TOKEN").help("Copy methods.at or xref.context: eight-digit MethodDef token, e.g. 0x0600000b")))]
     Get {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
@@ -99,7 +102,8 @@ pub enum Command {
     },
     /// List user-string heap literals (columns: at, value, context_at).
     #[command(
-        after_long_help = "Examples:\nrxd ilspy strings app.dll -f Authorization\nOutput: string JSONL; at is a #US token, context_at an owning method, parent_at a type.\nNext: rxd ilspy get-method app.dll --at '<string.context_at>' --raw,\nor rxd ilspy xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have null caller/owner; equal values may be separate heap entries."
+        long_about = "Columns: at, value, context_at\nList user-string heap literals. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd ilspy strings app.dll -f Authorization\nOutput: TAB-separated at, value, context_at; at is a #US token, context_at an owning method.\nNext: rxd ilspy get-method app.dll --at '<string.context_at>' --raw,\nor rxd ilspy xref app.dll --at '<string.at>' for exact loads.\nUnreferenced strings have no context_at; equal values may be separate heap entries."
     )]
     Strings {
         /// One regular local managed PE DLL/EXE.
@@ -113,7 +117,7 @@ pub enum Command {
         options: Options,
     },
     /// Search member and type references.
-    #[command(after_long_help = "Examples:\nrxd ilspy xref app.dll --at '0x0600000b'\nrxd ilspy xref app.dll -m Authorization --kind string\nRequired: exactly one of --at/--match; --match supports only --kind string.\nCopy member/class/string at tokens; --at literal text requires --kind string.\nOutput: reference JSONL; context_at is caller, detail.target is referenced value/token.\nNext: rxd ilspy get-method app.dll --at '<reference.context_at>' --raw.\nReferences are explicit IL operands, not reflection or runtime dispatch.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
+    #[command(long_about = "Columns: context, match\nList explicit references as TAB-separated rows after one # column header. Successful zero-hit queries retain the header.", after_long_help = "Examples:\nrxd ilspy xref app.dll --at '0x0600000b'\nrxd ilspy xref app.dll -m Authorization --kind string\nRequired: exactly one of --at/--match; --match supports only --kind string.\nCopy member/class/string at tokens; --at literal text requires --kind string.\nOutput: TAB-separated context, match. context is the referencing MethodDef token; match is the resolved target token or exact string literal.\nNext: rxd ilspy get-method app.dll --at '<xref.context>' --raw.\nReferences are explicit IL operands, not reflection or runtime dispatch.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
     Xref {
         /// One regular local managed PE DLL/EXE.
         input: PathBuf,
@@ -457,9 +461,13 @@ fn execute_inner(
     } else {
         match &command {
             Command::Classes { .. } | Command::Fields { .. } | Command::Methods { .. } => {
+                output.write_all(crate::cli::table::header(&["at", "full_name"]).as_bytes())?;
                 list(&mut input, &command, &mut output, &mut records)?;
             }
             Command::Strings { filter, case, .. } => {
+                output.write_all(
+                    crate::cli::table::header(&["at", "value", "context_at"]).as_bytes(),
+                )?;
                 let uses = perf.measure("strings", || {
                     input.string_uses(filter.as_deref(), case.sensitive())
                 })?;
@@ -482,15 +490,17 @@ fn execute_inner(
                 emit_table(&mut output, &mut records, rows)?;
             }
             Command::Xref { .. } => {
+                output.write_all(crate::cli::table::header(&["context", "match"]).as_bytes())?;
                 if let Some(result) = reference_result.take() {
                     for reference in result.references {
-                        let value = reference_record(
+                        let row = reference_line(
                             &input,
                             &reference.site,
                             reference.target.as_deref(),
                             None,
                         )?;
-                        record(&mut output, &mut records, &value)?;
+                        output.write_all(row.as_bytes())?;
+                        records += 1;
                     }
                 } else {
                     // Build literal inventory once; token and text anchors resolve to the same literal.
@@ -511,9 +521,9 @@ fn execute_inner(
                         let literal = literals
                             .as_ref()
                             .and_then(|map| map.get(&(site.target_token & 0x00ff_ffff)));
-                        let value =
-                            reference_record(&input, &site, None, literal.map(String::as_str))?;
-                        record(&mut output, &mut records, &value)?;
+                        let row = reference_line(&input, &site, None, literal.map(String::as_str))?;
+                        output.write_all(row.as_bytes())?;
+                        records += 1;
                     }
                 }
             }
@@ -547,39 +557,24 @@ fn fetch_record(
     value
 }
 
-fn reference_record(
+fn reference_line(
     input: &Input<'_>,
     site: &rxd_dotnet::TokenSite,
     target: Option<&rxd_dotnet::SemanticTarget>,
-    // The decoded `#US` literal this site loads, when the query went through the string
-    // route: a token alone does not say which text the row is about.
     literal: Option<&str>,
-) -> anyhow::Result<Value> {
+) -> anyhow::Result<String> {
+    use crate::cli::table::{self, Cell};
     let method = &input.methods[(site.method_token & 0xffffff) as usize - 1];
     let context = coordinate(method.token);
-    let start = site.code_offset + site.il_offset as usize;
-    Ok(envelope::reference(
-        RecordMeta {
-            context_at: Some(&context),
-            parent_at: Some(&coordinate(method.declaring_type_token)),
-            start: Some(start),
-            end: Some(start + site.size as usize),
-            ..metadata(input)
-        },
-        detail(
-            json!({"target":literal.map(str::to_owned).or_else(||target.and_then(|target|target.canonical_token).map(coordinate)).unwrap_or_else(||format!("0x{:08x}",site.target_token)),"declaring_type":method.declaring_type,"name":method.name,"il_offset":site.il_offset,"opcode":site.mnemonic,"target_token":site.target_token,"target_kind":if let Some(target)=target{target.target_kind}else if site.target_token >> 24 == 0x70 {"string"}else{"token"},"resolution_status":target.map_or("token_only",|target|target.resolution_status.as_str()),"scope":target.map(|target|&target.scope),"owner_token":target.map(|target|target.owner_token),"original_owner_token":target.map(|target|target.original_owner_token),"owner_name":target.map(|target|&target.owner_name),"target_name":target.map(|target|&target.name),"signature":target.and_then(|target|target.signature.as_ref()),"type_signature":target.and_then(|target|target.type_signature.as_ref()),"owner_arguments":target.map_or(&[][..],|target|target.owner_arguments.as_slice()),"method_arguments":target.map_or(&[][..],|target|target.method_arguments.as_slice())}),
-        ),
-    ))
-}
-
-fn record(
-    output: &mut rxd_core::output::Output,
-    records: &mut usize,
-    value: &Value,
-) -> anyhow::Result<()> {
-    output.json_line(value)?;
-    *records += 1;
-    Ok(())
+    let matched = literal
+        .map(str::to_owned)
+        .or_else(|| {
+            target
+                .and_then(|target| target.canonical_token)
+                .map(coordinate)
+        })
+        .unwrap_or_else(|| format!("0x{:08x}", site.target_token));
+    table::line(&[Cell::Atom(&context), Cell::Text(&matched)])
 }
 
 fn describe_class_reason(reason: &str, methods: usize) -> String {
@@ -890,7 +885,7 @@ fn list(
             if matches(&ty.full_name) {
                 rows.push(crate::cli::table::line(&[
                     crate::cli::table::Cell::Atom(&coordinate(ty.token)),
-                    crate::cli::table::Cell::Atom(ty.full_name.as_ref()),
+                    crate::cli::table::Cell::Text(ty.full_name.as_ref()),
                 ])?);
             }
             continue;
@@ -905,7 +900,7 @@ fn list(
                     );
                     crate::cli::table::line(&[
                         crate::cli::table::Cell::Atom(&coordinate(field.token)),
-                        crate::cli::table::Cell::Atom(&name),
+                        crate::cli::table::Cell::Text(&name),
                     ])?
                 }
                 Listing::Methods => {
@@ -919,7 +914,7 @@ fn list(
                     );
                     crate::cli::table::line(&[
                         crate::cli::table::Cell::Atom(&coordinate(method.token)),
-                        crate::cli::table::Cell::Atom(&name),
+                        crate::cli::table::Cell::Text(&name),
                     ])?
                 }
                 Listing::Classes => unreachable!("handled above"),

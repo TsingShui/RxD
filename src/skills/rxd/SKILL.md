@@ -48,12 +48,14 @@ beyond PYZ are unsupported.
 ## Consume results and preserve identity
 
 - stdout contains payload; diagnostics and the `--perf` record
-  use stderr. Do not mix them. Listings, searches and reference results are
-  Unix-table rows: one record per line, TAB-separated cells, no header and no
-  summary. Each command's `--help` opens with its `Columns:` line; the first
-  cell selects the row, text cells are JSON-quoted and `\N` means absent.
-  Read columns by position (`cut -f2`, `awk -F'\t'`), not by guessing.
-  Require exit 0; zero rows is a complete empty result. Backend-specific
+  use stderr. Do not mix them. Every table begins with one `# ` column-header
+  line, then TAB-separated data rows. An empty result retains the header.
+  Each table command's `--help` opens with its `Columns:` line. Listing data
+  starts with its coordinate; xref routing uses the context column below.
+  Text cells are JSON-quoted and `\N` means absent.
+  Skip the first line and read columns by position (`tail -n +2 | cut -f2`),
+  not by guessing. Kuna keeps its native formatting.
+  Require exit 0; zero data rows is a complete empty result. Backend-specific
   completeness and inference flags still apply.
 - Fetch commands print the selected unit: `get-*` and `decompile` print the
   reconstructed source text itself, and `--raw` prints original instructions as
@@ -82,8 +84,21 @@ beyond PYZ are unsupported.
   Inspect reconstruction/fallback flags and original bytecode where available.
   Static references do not imply a complete runtime call graph.
 
-Examples below use local input placeholders and `at`/`context_at` coordinates or
-offsets obtained from the preceding response. Keep each input fixed and use its actual returned values.
+Reference rows are minimal: `rasc`, `jar` and `pyc` emit `entry, context, match`;
+their standalone inputs retain the entry cell as `\N`. `ilspy`, `wasm`,
+`unluac-rs` and `dae` emit `context, match`. Entry paths/module
+names are JSON-quoted text. Context is the complete owner coordinate; match is
+the actual operand target, not the search pattern. PYC constant/Lua queries
+retain the selected constant coordinate as match; ILSpy and WASM retain target
+tokens/coordinates. Repeated sites can produce identical rows; no new deduplication
+is implied by omitting instruction details. No JSON envelope is emitted.
+The first line is `# entry<TAB>context<TAB>match` or `# context<TAB>match`.
+Skip it before reading data (for example, `tail -n +2 | cut -f2`); a successful
+zero-hit query contains only that header, and errors still emit no partial payload.
+Kuna keeps its upstream `xrefs` formatting and `--json` option; it is not converted.
+
+Examples below use local input placeholders and listing `at` / reference `context`
+coordinates or offsets obtained from the preceding response. Keep each input fixed and use its actual returned values.
 
 ## Android and JVM: string → caller → selected Java
 
@@ -104,15 +119,13 @@ rxd jar get-class library.jar --at "$CLASS_AT"
 `get-method` and `get-class` print the reconstructed Java itself; `--raw`
 returns the original instructions instead. JVM method FETCH supports `--raw`;
 DEX FETCH emits Java and has no `--raw` flag.
-DEX records carry no per-row `source_id`: route `xref` rows with their
-`context_at` (the caller) and `detail.entry` (which DEX); reuse the unchanged
-archive. DEX strings have global table
-indices and no owning class. A duplicate class is an ambiguity, not a reason to
+DEX xref rows retain `entry` (which DEX), `context` (the referencing member),
+and `match` (the target). Reuse the unchanged input. DEX strings have per-DEX
+table indices and no owning class. A duplicate class is an ambiguity, not a reason to
 choose the first definition. DEX 041 may identify logical DEX members separately.
 DEX `-o` also prints the same bytes to stdout; other backends have their own file
-output contracts. In JVM `xref` rows put the caller in `context_at` (usable as
-`--at`) and the reference site's `byte_offset`/`mnemonic` in `detail`; method
-coordinates preserve overload descriptors. JVM
+output contracts. JVM xref puts the class archive path in `entry` and the caller
+in `context` (usable as `--at`); method coordinates preserve overload descriptors. JVM
 `--release` selects multi-release JAR versions. Java reconstruction may fail or
 contain unsupported-method stubs; inspect bytecode when necessary.
 
@@ -134,8 +147,8 @@ A `classes` row's first cell is its `at`; copy it to class FETCH or type XREF
 without rewriting it as `type`. Select a real type first: unfiltered listings
 can start with the non-fetchable `<Module>` row.
 
-Use the `context_at`/`parent_at` a `strings` or `xref` row prints, and the `at` a
-`classes` row prints; `.NET` coordinates are bare metadata tokens (`0x06000025`).
+Use `strings.context_at` or `xref.context` for the owning method, and
+`classes.at` for a type; .NET coordinates are bare metadata tokens (`0x06000025`).
 Metadata tokens are scoped to the module and cannot identify a member across
 assemblies. A .NET query validates the rows it reads, so unrelated corruption does not
 fail it; a row that is itself unreadable fails when queried. C# reconstruction
@@ -203,9 +216,9 @@ to their module and remain unchanged by filtering.
 A strings coordinate selects constant xref; equal strings in different modules
 remain distinct. Name xref searches explicit imports/loads/attributes, not
 resolved dynamic calls. `xref --within` accepts a whole-module coordinate or one
-code coordinate. Reference `context_at` selects the caller for reconstruction.
-PYZ reference `detail.entry` identifies its module; `start`/`end` refer to that
-member's uncompressed marshal payload, not ranges in the compressed archive.
+code coordinate. Reference `context` selects the code body for reconstruction.
+PYZ reference `entry` identifies its module. Name matches remain original names;
+constant matches remain exact module-qualified constant coordinates.
 
 PYZ reconstruction requires `--at`. A module coordinate reconstructs that whole
 module; a code coordinate reconstructs its complete execution body as a source

@@ -14,21 +14,25 @@ use rxd_lua::Chunk;
 pub enum Command {
     /// List code objects (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd unluac-rs codes module.luac\nrxd unluac-rs codes module.luac -f vararg=true\nOutput: one row per function in compiler order; at is proto:N, parent_at is containment.\nLabels report params, vararg, source line range and instruction count.\nDialect comes from the chunk header; no encoding flag is needed."
+        long_about = "Columns: at, label\nList code objects. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd unluac-rs codes module.luac\nrxd unluac-rs codes module.luac -f vararg=true\nOutput: one row per function in compiler order; at is proto:N.\nLabels report params, vararg, source line range and instruction count.\nDialect comes from the chunk header; no encoding flag is needed."
     )]
     Codes(CodesOptions),
     /// List string constants (columns: at, value).
     #[command(
+        long_about = "Columns: at, value\nList string constants. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd unluac-rs strings module.luac -f token\nOutput: at is proto:N:const:I, the pool slot the owning prototype loads.\nNon-UTF-8 bytes appear as lossy text; use instructions for raw operand words."
     )]
     Strings(StringsOptions),
     /// Search references to a string constant.
     #[command(
-        after_long_help = "Columns: at, context_at, instruction.\nExamples:\nrxd unluac-rs xref module.luac --at 'proto:1:const:0'\nrxd unluac-rs xref module.luac -m ':'\nRequired: exactly one of --at/--match; --match must resolve to one constant.\n--at copies strings.at; zero hits is NOT_FOUND, several are AMBIGUOUS.\nat is proto:N:ins:M; context_at is the owning prototype.\nOnly explicit constant operands (LOADK, GETTABUP/SETTABUP, GETGLOBAL/SETGLOBAL) count."
+        long_about = "Columns: context, match\nList explicit references as TAB-separated rows after one # column header. Successful zero-hit queries retain the header.",
+        after_long_help = "Examples:\nrxd unluac-rs xref module.luac --at 'proto:1:const:0'\nrxd unluac-rs xref module.luac -m ':'\nRequired: exactly one of --at/--match; --match must resolve to one constant.\n--at copies strings.at; zero hits is NOT_FOUND, several are AMBIGUOUS.\nOutput: TAB-separated context, match. context is the owning proto:N; match is the selected constant coordinate.\nOnly explicit constant operands (LOADK, GETTABUP/SETTABUP, GETGLOBAL/SETGLOBAL) count."
     )]
     Xref(XrefOptions),
     /// List original instructions (columns: offset, instruction).
     #[command(
+        long_about = "Columns: offset, instruction\nList original instructions. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd unluac-rs codes module.luac\nrxd unluac-rs instructions module.luac --at 'proto:1'\nRequired: --at copied from codes.at. Offsets are chunk byte offsets, not instruction indices.\nNo reconstruction here; use decompile for reconstructed source."
     )]
     Instructions(InstructionsOptions),
@@ -156,7 +160,7 @@ pub fn execute(
                     .filter
                     .as_deref()
                     .map(|needle| rxd_core::filter::Contains::new(needle, codes.case.sensitive()));
-                let mut out = String::new();
+                let mut out = table::header(&["at", "label"]);
                 for code in chunk.codes() {
                     if let Some(at) = &codes.at
                         && at != &code.at
@@ -179,7 +183,7 @@ pub fn execute(
                 let filter = strings.filter.as_deref().map(|needle| {
                     rxd_core::filter::Contains::new(needle, strings.case.sensitive())
                 });
-                let mut out = String::new();
+                let mut out = table::header(&["at", "value"]);
                 for item in chunk.strings() {
                     if let Some(filter) = &filter
                         && !filter.matches(&item.value)
@@ -226,26 +230,22 @@ pub fn execute(
                     }
                     _ => unreachable!("clap enforces exactly one xref anchor"),
                 };
-                let mut out = String::new();
+                let mut out = table::header(&["context", "match"]);
                 for reference in chunk.xref(&at)? {
                     out.push_str(
-                        &table::line(&[
-                            Cell::Atom(&reference.at),
-                            Cell::Atom(&reference.context_at),
-                            Cell::Atom(&reference.instruction),
-                        ])
-                        .map_err(table_error)?,
+                        &table::line(&[Cell::Atom(&reference.context_at), Cell::Text(&at)])
+                            .map_err(table_error)?,
                     );
                 }
                 out.into_bytes()
             }
             Command::Instructions(instructions) => {
-                let mut out = String::new();
+                let mut out = table::header(&["offset", "instruction"]);
                 for instruction in chunk.instructions(&instructions.at)? {
                     out.push_str(
                         &table::line(&[
                             Cell::Atom(&instruction.offset.to_string()),
-                            Cell::Atom(&instruction.text),
+                            Cell::Text(&instruction.text),
                         ])
                         .map_err(table_error)?,
                     );

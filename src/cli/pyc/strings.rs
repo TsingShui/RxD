@@ -53,6 +53,7 @@ pub fn run(
         _ => Query::All,
     };
     let mut writer = Output::new(options.budget.output_bytes);
+    writer.write_all(crate::cli::table::header(&["at", "value"]).as_bytes())?;
     let mut records = 0usize;
     source.visit(None, perf, |analysis, perf| {
         let literals = perf.measure("query", || string_constants::enumerate(analysis, &query))?;

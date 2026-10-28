@@ -90,7 +90,7 @@ def verify_oracle(case, data):
     if not oracle:
         raise ValueError('each case requires an independent oracle')
     kind = oracle['kind']
-    records = data.get('records', [])
+    records = data.get('records', []) if isinstance(data, dict) else []
     if kind == 'js-find':
         actual = [{'literal_kind': row['detail']['literal_kind'], 'value': row['detail']['value'],
                    'start': row['start'], 'end': row['end'], 'dynamic': row['detail']['dynamic']}
@@ -103,10 +103,16 @@ def verify_oracle(case, data):
         if len(methods) != 1 or methods[0]['detail']['name'] != oracle['name']:
             raise ValueError('published method declaration oracle differs')
     elif kind == 'pyc-refs':
-        actual = Counter((row['detail']['code_index'], row['detail']['offset'],
-                          row['detail']['opcode'], row['detail']['raw_operand'],
-                          row['detail']['operation']) for row in records)
-        expected = Counter(tuple(row[:5]) for row in oracle['sites'])
+        actual = Counter()
+        lines = data.splitlines()
+        if not lines or lines[0] != '# entry\tcontext\tmatch':
+            raise ValueError('missing PYC xref column header')
+        for line in lines[1:]:
+            entry, context, matched = line.split('\t')
+            if entry != '\\N':
+                raise ValueError('standalone PYC unexpectedly has an archive entry')
+            actual[(context, json.loads(matched))] += 1
+        expected = Counter((f'code:{row[0]}', 'self') for row in oracle['sites'])
         if actual != expected:
             raise ValueError('independent CPython dis name-reference oracle differs')
     elif kind == 'dotnet-strings':
@@ -181,7 +187,7 @@ def builtin_cases(root, dotnet, csharp):
                       'source_scale': {'code_objects': len(oracle['codes']),
                                        'module_bytecode_bytes': sum(len(code['code_hex']) // 2 for code in oracle['codes'])},
                       'query': {'tool': 'pyc_xref', 'arguments': {'kind': 'name', 'at': 'self'},
-                                'cli': ['pyc', 'xref', '${path}', '--kind', 'name', '--at', 'self'], 'projection': 'jsonl'},
+                                'cli': ['pyc', 'xref', '${path}', '--kind', 'name', '--at', 'self'], 'projection': 'text'},
                       'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'pyc_decompile',
                                     'arguments': {},
                                     'cli': ['pyc', 'decompile', '${path}'], 'projection': 'text'}]})
@@ -196,7 +202,7 @@ def builtin_cases(root, dotnet, csharp):
                                 'projection': 'jsonl'},
                       'workflow': [{'name': 'q'}, {'name': 'refs', 'tool': 'dotnet_xref',
                                     'arguments': {'at': '${selected_id}'},
-                                    'cli': ['dotnet', 'xref', '${path}', '--at', '${selected_id}'], 'projection': 'jsonl'},
+                                    'cli': ['dotnet', 'xref', '${path}', '--at', '${selected_id}'], 'projection': 'text'},
                                    {'name': 'fetch', 'tool': 'dotnet_get_method',
                                     'arguments': {'at': '${selected_id}', 'raw': True},
                                     'cli': ['dotnet', 'get-method', '${path}', '--at', '${selected_id}', '--raw'], 'projection': 'json'}]})
@@ -216,7 +222,7 @@ def builtin_cases(root, dotnet, csharp):
                                 'cli': ['dotnet', 'get-method', '${path}', '--at', at], 'projection': 'json'},
                       'workflow': [{'name': 'q'}, {'name': 'refs', 'tool': 'dotnet_xref',
                                     'arguments': {'at': '${q.at}'},
-                                    'cli': ['dotnet', 'xref', '${path}', '--at', '${q.at}'], 'projection': 'jsonl'},
+                                    'cli': ['dotnet', 'xref', '${path}', '--at', '${q.at}'], 'projection': 'text'},
                                    {'name': 'fetch', 'tool': 'dotnet_get_method',
                                     'arguments': {'at': '${q.at}', 'raw': True},
                                     'cli': ['dotnet', 'get-method', '${path}', '--at', '${q.at}', '--raw'], 'projection': 'json'}]})
