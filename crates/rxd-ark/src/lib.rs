@@ -9,7 +9,7 @@ mod ir;
 mod reader;
 mod structure;
 pub use data::{Export, Import, Literal, LiteralValue, Module};
-pub use decompile::{Reconstruction, ReconstructionStats};
+pub use decompile::{Reconstruction, ReconstructionStats, ReconstructionWarning};
 pub use instructions::{Decoded, EntityKind, Instruction, Opcode, Operand, OperandType, Parameter};
 
 pub use reader::Name;

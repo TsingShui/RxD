@@ -1,7 +1,47 @@
 use super::nodes::Ast;
 use oxc_ast::ast::*;
 use oxc_span::SPAN;
-use oxc_syntax::operator::{BinaryOperator as B, LogicalOperator as L};
+use oxc_syntax::operator::{BinaryOperator as B, LogicalOperator as L, UnaryOperator as U};
+
+// JavaScript iteration calls the method with its receiver and requires an object result.
+pub(super) fn get_iterator<'a>(ast: &Ast<'a>) -> Statement<'a> {
+    let key = ast.property(ast.id("Symbol"), "iterator");
+    let iterator = ast.call(ast.member(ast.id("object"), key), Vec::new());
+    let null = ast.binary(
+        ast.id("iterator"),
+        B::StrictEquality,
+        Expression::new_null_literal(SPAN, &ast.build),
+    );
+    let not_object = ast.binary(
+        ast.unary(U::Typeof, ast.id("iterator")),
+        B::StrictInequality,
+        ast.string("object"),
+    );
+    let not_function = ast.binary(
+        ast.unary(U::Typeof, ast.id("iterator")),
+        B::StrictInequality,
+        ast.string("function"),
+    );
+    let not_object =
+        Expression::new_logical_expression(SPAN, not_object, L::And, not_function, &ast.build);
+    let invalid = Expression::new_logical_expression(SPAN, null, L::Or, not_object, &ast.build);
+    ast.factory(
+        "__ark_get_iterator",
+        vec!["object".into()],
+        vec![
+            ast.var("iterator", Some(iterator), true),
+            ast.if_(
+                invalid,
+                vec![ast.throw(ast.construct(
+                    ast.id("TypeError"),
+                    vec![ast.string("Iterator result is not an object")],
+                ))],
+                None,
+            ),
+            ast.ret(Some(ast.id("iterator"))),
+        ],
+    )
+}
 
 // The pinned Ark runtime copies descriptors and ignores a false DefineOwnProperty result.
 pub(super) fn copy_data<'a>(ast: &Ast<'a>) -> Statement<'a> {

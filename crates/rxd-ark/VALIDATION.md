@@ -16,12 +16,13 @@ Dev-profile full-input scan:
 | --- | ---: |
 | Records admitted | 385 |
 | Methods with code | 14,082 |
-| Successful method reconstructions | 13,061 |
-| Explicit method failures | 1,021 |
-| Successful module records | 96 / 376 |
-| Independent Babel method parses / failures | 13,061 / 0 |
-| Independent Babel record parses / failures | 96 / 0 |
-| Emitted method-source bytes, including required nested definitions | 35,454,451 |
+| Successful method reconstructions | 13,256 |
+| Explicit method failures | 826 |
+| Successful module records | 122 / 376 |
+| Independent Babel method parses / failures | 13,256 / 0 |
+| Independent Babel record parses / failures | 122 / 0 |
+| Method queries / record outputs with iterator warning | 195 / 26 |
+| Emitted method-source bytes, including required nested definitions | 38,356,522 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
@@ -30,12 +31,11 @@ methods group as follows; failures do not produce source or invoke the old engin
 | --- | ---: |
 | `defineclasswithbuffer` | 233 |
 | `throw.ifsupernotcorrectcall` | 229 |
-| `getiterator` runtime ambiguity | 198 |
 | `supercallthisrange` | 190 |
 | `starrayspread` | 114 |
 | `creategeneratorobj` | 35 |
 | `supercallspread` | 9 |
-| for-in normalization | 8 |
+| for-in normalization | 11 |
 | `ldsuperbyname` | 5 |
 
 `method:0x6af27` (`SandboxFinder.handleRequest`) now emits 528 bytes. Its source
@@ -43,21 +43,52 @@ retains two distinct `requestHandler` reads, an explicit call receiver and await
 
 No input or reconstructed code was executed. Coverage, decoding, static
 inspection and parseability are not a runtime-equivalence proof. The current
-all-output comparison checks the intended error-message changes, not general
-semantics. Performance measurement and new tests were intentionally not added;
-the operator requested real-sample implementation work instead.
+all-output comparison accounts for the iterator helper and prior error-message
+changes; it does not prove general semantics. Performance measurement and new
+tests were intentionally not added; the operator requested real-sample
+implementation work instead.
 
-## Runtime-semantics hardening milestone
+## Standard JavaScript iterator milestone
+
+`getiterator` now follows the selected standard JavaScript semantics: read the
+iterator property once, call it with its original receiver, then require an object
+or function result. Runtime-specific errors, implementations and mutable globals
+can differ; this is not a claim of exact behavior across every Ark VM. Each
+successful method or record reconstruction whose source includes the operation
+returns the typed `ARK_ITERATOR_SEMANTICS` warning with its source. The audit CLI
+writes one warning line to stderr per selected query, without modifying source
+stdout. Its full-sample mode writes one warning for the whole invocation and
+records affected method IDs in JSONL and record offsets in the summary.
+
+Against the preceding strict-failure milestone, all 195 method queries and 26
+record queries previously refused solely for `getiterator` now succeed. The 826
+method and 254 record failure identity sets match the pre-refusal baseline.
+All 13,256 successful method outputs and 122 record outputs independently parse.
+An AST-guided comparison against the pre-refusal baseline matches all method and
+record outputs after accounting for the explicit iterator helper and the two
+previously corrected exception messages. This static comparison does not prove
+runtime equivalence or arbitrary input behavior.
+
+`method:0x6ea73` and `record:0x6d77a` each emit source and exactly one warning;
+`method:0x6af27` emits no warning. The former retains both throw-path `v12` stores,
+and the latter retains both property reads, receiver and await. A nested for-in
+query still fails with empty stdout and identifies its actual method. ABC/HAP
+results and diagnostics match for these and selected other targets.
+
+Evidence is under ignored `target/verification/ark/standard-iterator-final-*` and
+`standard-iterator-compare.cjs`. Scoped Clippy, formatting and whitespace checks
+passed. No new tests, analyzed-code execution, performance measurements or
+production CLI changes were made.
+
+## Runtime-semantics hardening milestone (historical)
 
 The pinned ordinary interpreter returns a non-callable `Symbol.iterator` property
 from `RuntimeGetIterator`, while the pinned ASM interpreter throws at the same
 opcode through `StubBuilder::GetIterator`. Both are present in the same runtime
-revision; the ABC and ISA do not select an interpreter mode. `getiterator` now
-fails explicitly at its method and PC rather than emitting either interpretation.
-In `record:0x6e94d`, `method:0x6ea73`, this occurs at PC 16; both ABC and HAP
-queries fail nonzero with empty stdout. A future supported shape must prove the
-property callable without relying on mutable builtins or choose a documented
-runtime contract; neither has been established here.
+revision; the ABC and ISA do not select an interpreter mode. At that milestone,
+`getiterator` failed explicitly rather than selecting either interpretation. In
+`record:0x6e94d`, `method:0x6ea73`, the failure was at PC 16. The current
+contract instead selects standard JavaScript semantics and emits a warning.
 
 `definemethod` also fails explicitly until its home object and length can be
 modelled. In this sample all 117 methods containing it fail earlier on class
@@ -68,14 +99,14 @@ Per-method analysis and function lowering errors include the failing method
 coordinate, even for a nested dependency. For example, `method:0x757e6` reports its
 for-in dependency as `method:0x75802`.
 
-Compared with the prior milestone, 195 method queries and 26 record queries now
-fail on `getiterator` in a target or required dependency; no prior failure became
-a success. Three previously failing queries also report `getiterator` as their
-first error instead of for-in. All 13,061 remaining method outputs and 96 record
-outputs parse. An AST-guided projection of the previous outputs, changing only
-the two expected error messages, is byte-identical for every surviving method
-and record output; 4,467 method queries and 56 records changed. The 195 new
-failures were matched to actual `getiterator` PCs in their reported method.
+At that milestone, 195 method queries and 26 record queries failed on
+`getiterator` in a target or required dependency; no prior failure became a
+success. Three previously failing queries reported `getiterator` as their first
+error instead of for-in. The 13,061 remaining method outputs and 96 record
+outputs parsed. An AST-guided projection of the previous outputs, changing only
+the two expected error messages, was byte-identical for every surviving method
+and record output; 4,467 method queries and 56 records changed. The 195 failures
+were matched to actual `getiterator` PCs in their reported method.
 ABC/HAP parity holds for selected success and failure queries, including
 `method:0x7c07f`, `method:0x6ea73` and the nested for-in case.
 
@@ -162,8 +193,9 @@ all outputs. The correction changes 93 root sources; normalized static root
 string/member/call inventories remain unchanged. These counts do not prove
 runtime equivalence or exception-path correctness for arbitrary bytecode.
 
-At that milestone, the selected method had byte-identical ABC/HAP output; it now
-fails closed on `getiterator`. The bytecode PCs and before/after sources are
+At that milestone, the selected method had byte-identical ABC/HAP output. It was
+later rejected on `getiterator` and is now reconstructed with a warning. The
+bytecode PCs and before/after sources are
 retained under ignored `target/verification/ark/safe-flow-v1-*`. Scoped Clippy,
 formatting and whitespace checks passed; no new tests, execution of analyzed
 code or performance measurements were added. Production CLI remains unchanged.

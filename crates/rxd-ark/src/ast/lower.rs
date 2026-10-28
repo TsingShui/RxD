@@ -32,10 +32,20 @@ pub(crate) fn lower(
     module: Option<&Module>,
     budget: Budget,
     main: Option<u32>,
-) -> Result<Vec<u8>> {
+) -> Result<(Vec<u8>, bool)> {
     let arena = Allocator::new();
     let ast = Ast::new(&arena);
     let mut statements = imports(&ast, units, module)?;
+    let uses_standard_iterator = units.iter().any(|unit| {
+        unit.function
+            .values
+            .iter()
+            .enumerate()
+            .any(|(index, value)| unit.values.needed[index] && matches!(value.op, Op::Iterator(_)))
+    });
+    if uses_standard_iterator {
+        statements.push(super::intrinsics::get_iterator(&ast));
+    }
     if units.iter().any(|unit| {
         unit.function
             .values
@@ -91,7 +101,7 @@ pub(crate) fn lower(
         .code;
     let mut output = Output::new(budget.output_bytes);
     output.write_all(code.as_bytes())?;
-    Ok(output.into_bytes())
+    Ok((output.into_bytes(), uses_standard_iterator))
 }
 
 pub(super) fn string_literal<'a>(ast: &Ast<'a>, name: &crate::Name) -> StringLiteral<'a> {
@@ -550,12 +560,10 @@ impl<'a> Lower<'_, 'a, '_> {
                 self.ast
                     .call(function, vec![self.value(*input, depth + 1)?])
             }
-            Op::Iterator(_) => {
-                return Err(unsupported(
-                    value.pc,
-                    "getiterator behavior differs between pinned runtime interpreters",
-                ));
-            }
+            Op::Iterator(input) => self.ast.call(
+                self.ast.id("__ark_get_iterator"),
+                vec![self.value(*input, depth + 1)?],
+            ),
             Op::Keys(_) | Op::Next(_) => {
                 return Err(unsupported(
                     value.pc,

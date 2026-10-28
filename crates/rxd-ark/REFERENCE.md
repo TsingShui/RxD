@@ -45,12 +45,22 @@ they cannot throw, and leave enclosing native handlers to their lexical scopes.
 Finally cleanup remains explicit control flow; native finally recognition and
 abrupt-completion cleanup merging are not implemented by this milestone.
 
-Class/super construction, `definemethod`, generators, array spread, `getiterator`
-and for-in normalization remain unsupported. Those targets return
-`DECOMPILE_FAILED`, including when a required nested definition is unsupported;
-no empty bodies or raw fallback are emitted. Per-method analysis and function
-lowering errors include the actual method coordinate. Class-sensitive own stores
-require a proven ordinary receiver.
+Class/super construction, `definemethod`, generators, array spread and for-in
+normalization remain unsupported. Those targets return `DECOMPILE_FAILED`,
+including when a required nested definition is unsupported; no empty bodies or
+raw fallback are emitted. Per-method analysis and function lowering errors include
+the actual method coordinate. Class-sensitive own stores require a proven ordinary
+receiver.
+
+`getiterator` is reconstructed using standard JavaScript iterator semantics. Its
+helper reads the iterator property once, calls it with the original receiver and
+requires an object result. Each affected reconstruction returns the typed warning
+`ARK_ITERATOR_SEMANTICS` alongside its source; the audit CLI writes one warning
+line to stderr. `decompile_target`, `decompile_method` and `decompile_record` return
+`Reconstruction { source, stats, warnings }`, so adapters can forward warnings
+without modifying source bytes. Raw instructions are unaffected. This contract
+does not promise identical behavior for every Ark runtime's edge cases or modified
+JS globals.
 
 Recovered source uses explicit lexical/module contexts and JavaScript intrinsic
 bridges. Module aliases share binding identity; record contexts share an emitted
@@ -73,10 +83,11 @@ semantic review before CLI migration.
   encoded try/catch entry; region-length sorting is not its selection rule.
   `RuntimeLdObjByValue` and `RuntimeStObjByValue` perform property-key coercion
   at their respective instructions, in bytecode order. The ordinary interpreter's
-  `RuntimeGetIterator` returns a non-callable iterator property; the ASM
-  interpreter's `StubBuilder::GetIterator` throws instead. The ISA does not
-  choose an interpreter mode, so reconstruction refuses `getiterator` rather
-  than selecting either behavior without proof.
+  `RuntimeGetIterator` returns a non-callable iterator property; the generated ASM
+  stub throws instead. Later OpenHarmony ASM stubs also check certain non-object
+  results. The ISA does not choose a runtime path, so the selected JavaScript
+  semantics are accompanied by an explicit warning rather than claimed equivalent
+  to every runtime implementation.
 - ECMAScript [2024](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-evaluate-property-access-with-expression-key)
   converts a computed assignment key before the RHS; [2025](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-evaluate-property-access-with-expression-key)
   specifies conversion after it. Emitting an earlier read as a separate statement
