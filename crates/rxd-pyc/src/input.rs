@@ -121,15 +121,20 @@ impl Input {
         matches!(self.format, Format::Pyz { .. })
     }
 
-    /// Code-bearing PYZ module names in directory order; empty for standalone PYC.
-    pub fn code_modules(&self) -> Vec<&str> {
+    /// Code-bearing PYZ modules in directory order, with package/module kind.
+    pub fn code_modules(&self) -> Vec<(&str, bool)> {
         match &self.format {
             Format::Single { .. } => Vec::new(),
             Format::Pyz { archive, .. } => archive
                 .entries()
                 .iter()
                 .filter(|entry| entry.kind.has_code())
-                .map(|entry| entry.name.as_str())
+                .map(|entry| {
+                    (
+                        entry.name.as_str(),
+                        matches!(entry.kind, rxd_pyinstaller::pyz::Kind::Package),
+                    )
+                })
                 .collect(),
         }
     }

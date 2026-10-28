@@ -239,11 +239,11 @@ Coordinates retain JVM overload descriptors, including return type; use returned
   rxd pyc codes PYZ.pyz -f proxy
   rxd pyc strings PYZ.pyz -f Authorization
   rxd pyc xref PYZ.pyz --kind name -m getproxies
-  rxd pyc decompile PYZ.pyz -o recovered.py
+  rxd pyc decompile PYZ.pyz -o recovered/
   rxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>'
   rxd pyc decompile module.pyc
 PYC and PyInstaller PYZ are detected by magic; raw marshal needs --version X.Y.
-Without --at, a PYZ reconstructs every code-bearing module with `# ===== <module> =====` headers.
+Without --at, a PYZ writes one source file per code-bearing module into `-o DIR` (or prints `# =====` blocks without `-o`).
 modules reads the PYZ directory without inflating members; codes --within selects one module.
 Unscoped codes/strings/xref scan code-bearing modules. A full module name selects the whole module;
 MODULE::code:N selects one code body; MODULE::const:N:PATH selects a constant occurrence.

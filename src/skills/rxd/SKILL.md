@@ -22,7 +22,7 @@ explicitly, then locate → associate
 | Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
-| CPython PYC, PyInstaller PYZ or versioned raw marshal | `rxd pyc` | `modules`, `codes --within MODULE`, `strings` / `xref --at` (a strings row), `xref --kind name --at NAME/-m TEXT` / `decompile` (a PYZ without `--at` reconstructs every code-bearing module) or `decompile --at` one module/code; standalone PYC defaults to its whole module |
+| CPython PYC, PyInstaller PYZ or versioned raw marshal | `rxd pyc` | `modules`, `codes --within MODULE`, `strings` / `xref --at` (a strings row), `xref --kind name --at NAME/-m TEXT` / `decompile` (a PYZ without `--at` writes one source file per code-bearing module with `-o DIR`) or `decompile --at` one module/code; standalone PYC defaults to its whole module |
 | Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `classes`, `functions --class`, `strings`, `xref --at str:0x...` / `decompile --at|--class|--lib` |
 | PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac-rs` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
@@ -190,16 +190,18 @@ rxd pyc strings PYZ.pyz -f Authorization
 rxd pyc xref PYZ.pyz --at "$CONSTANT_AT"
 rxd pyc xref PYZ.pyz --kind name -m getproxies
 rxd pyc xref PYZ.pyz --kind name -m proxy --within "$MODULE_OR_CODE_AT"
-rxd pyc decompile PYZ.pyz -o recovered.py
+rxd pyc decompile PYZ.pyz -o recovered/
 rxd pyc decompile PYZ.pyz --at "$MODULE_OR_CODE_AT"
 rxd pyc decompile module.pyc
 rxd pyc decompile module.pyc --at "$CODE_AT"
 ```
 
-`decompile` without `--at` reconstructs every code-bearing module in directory
-order, each block introduced by `# ===== <module> =====`. A module whose decompiler
-panics is emitted as a labelled `PYC_FALLBACK` block and named on stderr; other
-failures abort without partial stdout. Redirect `-o` and search with `rg` for a
+`decompile` without `--at` reconstructs every code-bearing module. With `-o DIR` it
+writes one source file per module in the original package layout
+(`json/__init__.py`, `json/decoder.py`) plus `manifest.jsonl`; without `-o` it prints
+concatenated `# ===== <module> =====` blocks. A module whose decompiler panics becomes
+a labelled `PYC_FALLBACK` file/block and is named on stderr; other failures abort
+atomically. Redirect `-o` and search with `rg` for a
 whole-archive text pass. `--at` still selects one module or code body.
 
 The same commands accept PYC and PyInstaller `PYZ\0`, detected by magic rather

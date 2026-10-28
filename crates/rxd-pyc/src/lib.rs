@@ -39,6 +39,16 @@ pub struct Decompilation {
     pub failed: Vec<String>,
 }
 
+/// One reconstructed module, for callers that write a file per module.
+pub struct ModuleDecompilation {
+    pub name: String,
+    /// Package tree path, e.g. `json/__init__.py` or `json/decoder.py`.
+    pub path: String,
+    pub source: String,
+    pub complete: bool,
+    pub failed: Option<String>,
+}
+
 fn input_error(error: PycError) -> Error {
     let code = match error {
         PycError::ResourceLimit(_) => "RESOURCE_LIMIT",
@@ -117,6 +127,23 @@ pub fn run_input(
     }
 }
 
+/// Reconstruct every code-bearing PYZ module in directory order.
+pub fn run_input_modules(
+    path: &Path,
+    version: Option<(u8, u8)>,
+    budget: Budget,
+    perf: &mut Perf,
+) -> Result<Vec<ModuleDecompilation>> {
+    let input = Input::load(path, version, budget, perf)?;
+    if !input.is_archive() {
+        return Err(Error::new(
+            "INVALID_QUERY",
+            "per-module output requires a PYZ archive",
+        ));
+    }
+    decompile_modules(&input, budget, perf)
+}
+
 fn limits_for(input: &Input, budget: Budget) -> Limits {
     Limits {
         input_bytes: budget.input_bytes,
@@ -153,46 +180,100 @@ fn decompile_one(
 
 /// Reconstruct every code-bearing PYZ module in directory order.
 /// Each block is labelled `# ===== <module> =====`; any module failure aborts the call.
-fn decompile_all(input: Input, budget: Budget, perf: &mut Perf) -> Result<Decompilation> {
-    let modules: Vec<String> = input
+/// Mirror PyInstaller's package/module layout, with Python source suffixes.
+fn module_source_path(name: &str, package: bool) -> Result<String> {
+    if name.is_empty() || name.starts_with('.') || name.contains(['\0', '/', '\\', ':']) {
+        return Err(Error::new(
+            "INVALID_INPUT",
+            format!("unsafe PYZ module name: {name}"),
+        ));
+    }
+    let parts: Vec<&str> = name.split('.').collect();
+    if parts.iter().any(|part| part.is_empty()) {
+        return Err(Error::new(
+            "INVALID_INPUT",
+            format!("invalid PYZ module name: {name}"),
+        ));
+    }
+    let mut path = String::new();
+    if package {
+        for part in &parts {
+            path.push_str(part);
+            path.push('/');
+        }
+        path.push_str("__init__.py");
+    } else {
+        for part in &parts[..parts.len() - 1] {
+            path.push_str(part);
+            path.push('/');
+        }
+        path.push_str(parts[parts.len() - 1]);
+        path.push_str(".py");
+    }
+    Ok(path)
+}
+
+fn decompile_modules(
+    input: &Input,
+    budget: Budget,
+    perf: &mut Perf,
+) -> Result<Vec<ModuleDecompilation>> {
+    let entries: Vec<(String, bool)> = input
         .code_modules()
         .into_iter()
-        .map(str::to_owned)
+        .map(|(name, package)| (name.to_owned(), package))
         .collect();
-    if modules.is_empty() {
+    if entries.is_empty() {
         return Err(Error::new("NOT_FOUND", "PYZ has no code-bearing modules"));
     }
-    let limits = limits_for(&input, budget);
+    let limits = limits_for(input, budget);
     record_limits(limits, perf);
-    let mut source = String::new();
-    let mut complete = true;
-    let mut failed = Vec::new();
     let mut work = input.initial_work();
-    for name in &modules {
-        let data = input.data(Some(name), perf)?;
-        let body = match recover(data, 0, limits, work, perf) {
-            Ok((module_complete, module_source)) => {
-                complete &= module_complete;
-                module_source
-            }
+    let mut modules = Vec::new();
+    for (name, package) in entries {
+        let path = module_source_path(&name, package)?;
+        let data = input.data(Some(&name), perf)?;
+        let (source, complete, failed) = match recover(data, 0, limits, work, perf) {
+            Ok((module_complete, module_source)) => (module_source, module_complete, None),
             Err(error) if error.code == "DECOMPILE_ERROR" => {
-                complete = false;
-                failed.push(name.clone());
-                format!(
-                    "# PYC_FALLBACK: {}: module body unavailable\n",
-                    error.message
+                let message = error.message;
+                (
+                    format!("# PYC_FALLBACK: {message}: module body unavailable\n"),
+                    false,
+                    Some(message),
                 )
             }
             Err(error) => return Err(error),
         };
         work = perf.counters.work.unwrap_or(work);
+        modules.push(ModuleDecompilation {
+            name,
+            path,
+            source,
+            complete,
+            failed,
+        });
+    }
+    Ok(modules)
+}
+
+fn decompile_all(input: Input, budget: Budget, perf: &mut Perf) -> Result<Decompilation> {
+    let modules = decompile_modules(&input, budget, perf)?;
+    let mut source = String::new();
+    let mut complete = true;
+    let mut failed = Vec::new();
+    for module in &modules {
+        complete &= module.complete;
+        if module.failed.is_some() {
+            failed.push(module.name.clone());
+        }
         if !source.is_empty() {
             source.push('\n');
         }
         use std::fmt::Write;
-        writeln!(source, "# ===== {name} =====").expect("string write");
-        source.push_str(&body);
-        if !body.ends_with('\n') {
+        writeln!(source, "# ===== {} =====", module.name).expect("string write");
+        source.push_str(&module.source);
+        if !module.source.ends_with('\n') {
             source.push('\n');
         }
         if budget
