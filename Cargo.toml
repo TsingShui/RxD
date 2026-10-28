@@ -58,7 +58,7 @@ all-backends = [
     "backend-flutter",
     "backend-kuna",
 ]
-backend-abc = ["dep:rxd-ark"]
+backend-abc = ["dep:rxd-ark", "backend-zip", "dep:rayon"]
 backend-asar = ["dep:rxd-asar"]
 backend-zip = ["dep:rxd-zip"]
 unpack = ["backend-asar", "backend-zip", "dep:rxd-pyinstaller", "dep:rxd-wxapkg"]

@@ -5,6 +5,29 @@ below predates the production cutover. Approximations carry source-local warning
 input-safety failures remain explicit errors. All pinned dynamic opcode encodings
 now have reconstruction paths; this is not a universal runtime-equivalence claim.
 
+## Searchable whole-input export
+
+`rxd ark export INPUT -o DIR` writes the original container tree, one standalone JS
+module per code-bearing record, and a JSONL manifest; `--threads` reconstructs records
+in parallel and `--entry` narrows a HAP to one ABC. Batch export is a special workload,
+not an ordinary 150 ms query. Measured on Darwin arm64 release builds, 12 logical CPUs,
+warm caches, whole command including extraction, reconstruction, writes and manifest:
+ClashBox HAP (107,951,762 bytes, 152 archived files) produced 376 record files,
+14,082 coded methods, 23,305,116 source bytes and a 303-record warning set in
+1.55–1.93 s wall (5.9–6.6 s user). The
+edgemusic HAP (2 ABCs, 322 records, 6,758 methods) took 5.43 s in a debug build and
+produced byte-identical trees at `--threads 1` and `--threads 8`. Copi's
+`record:0x8220` exported 36 coded methods, including methods that
+`decompile --at record:0x8220` does not reach, so export does not silently drop
+unreferenced code. Record files parsed with Babel for all 322 edgemusic and 376
+ClashBox records with no unbound generated identifiers; 303 ClashBox records carried
+warnings, matching the earlier 303 warned record outputs, and sampled records were
+byte-identical to `decompile --at record`. The final ClashBox tree had recursive
+SHA-256 `b1475b95…` and its ABC SHA-256 matches the fixed input. Existing directories and a bare ABC with `--entry` fail with `INVALID_QUERY`;
+a missing entry fails with `NOT_FOUND` and removes the new directory. No new Rust
+tests were added; CLI help, the embedded skill and MCP documentation describe the
+CLI-only export. Evidence is under ignored `target/verification/ark/export-test/`.
+
 ## Whole ABC reconstruction
 
 `rxd ark decompile INPUT` emits every coded method in each code-bearing record;

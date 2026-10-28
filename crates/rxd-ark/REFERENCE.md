@@ -24,6 +24,18 @@ contain lone surrogates. Explicit `--at` selects a per-record or per-method outp
 `--raw` without `--at` fetches instructions for the whole ABC. Records without a module initializer retain all coded methods as
 capture factories rather than inventing an initializer.
 
+`rxd ark export INPUT -o DIR` is the searchable whole-input form. It writes the
+complete container tree under `extracted/`, one standalone module per code-bearing
+record under `decompiled/<abc path>/0x<offset>.js`, and `manifest.jsonl`. Record
+files keep original export names and include every coded method. The manifest orders
+ABC entries by archive path and records by offset; a record row carries its
+coordinate, original name (`name_utf16` when non-scalar), coded-method count, warning
+codes and relative file, and an ABC row carries the full
+SHA-256. Export is atomic: it refuses an existing directory and removes the new tree
+on failure. Records reconstruct in parallel with `--threads`; each worker parses its
+own ABC copy because caches are thread-local, and output is independent of thread
+count. Batch export is a special workload, not an ordinary per-query latency target.
+
 ## Pipeline
 
 - Immutable ABC/HAP input, identity/checksum/format validation and bounded

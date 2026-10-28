@@ -222,6 +222,32 @@ impl Abc<'_> {
         self.prepare(main, true, None, None)
     }
 
+    /// Reconstruct one record as a standalone module containing every coded method,
+    /// including methods that no initializer-visible definition reaches.
+    pub fn decompile_record_all(&self, record: &Record) -> Result<Reconstruction> {
+        let record = self.record(record.offset)?;
+        let members = self.members(&record)?;
+        let first = members
+            .methods
+            .iter()
+            .find(|method| method.code_offset.is_some())
+            .ok_or_else(|| Error::new("NOT_FOUND", "record has no coded methods"))?;
+        let main = if self.module(&record)?.is_some() {
+            members
+                .methods
+                .iter()
+                .find(|method| method.code_offset.is_some() && method.name.text == "func_main_0")
+        } else {
+            None
+        };
+        self.prepare(
+            main.unwrap_or(first),
+            main.is_some(),
+            Some(&members.methods),
+            None,
+        )
+    }
+
     pub fn reconstruct(&self, method: &Method) -> Result<Reconstruction> {
         self.prepare(method, false, None, None)
     }

@@ -86,8 +86,8 @@ For repeated calls use an open JAR target to avoid repeating input capture.
 Returned method coordinates remain file-scoped; use them only with that target
 or unchanged input bytes.
 
-Archive extraction is CLI-only: `rxd unpack ARCHIVE -o DIR` writes a directory, so
-it is not an MCP artifact tool. Extract first, then open the resulting file target.
+Archive extraction and Ark's searchable export are CLI-only: `rxd unpack ARCHIVE -o DIR`
+and `rxd ark export ARCHIVE -o DIR` write directories, so they are not MCP artifact tools. Extract first, then open the resulting file target.
 PyInstaller PYZ analysis is different: open the PYZ itself with backend `pyc`, then
 use `pyc_modules` to locate modules, then `pyc_codes` with `within` set to a
 returned module coordinate. `pyc_strings` and `pyc_xref` can search the whole PYZ.

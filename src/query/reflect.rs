@@ -28,9 +28,9 @@ fn label(backend: &str) -> &str {
     }
 }
 
-/// CLI commands with no typed MCP projection: `rasc_extract` writes caller paths and
-/// supports batch output, which the one-artifact tool contract cannot express.
-const CLI_ONLY: &[&str] = &["rasc_extract"];
+/// CLI commands with no typed MCP projection: artifact extractors and directory
+/// exports write caller paths or trees, which the one-artifact tool contract cannot express.
+const CLI_ONLY: &[&str] = &["rasc_extract", "abc_export"];
 
 /// Exclude output/process flags and CLI container selectors; MCP uses child targets.
 const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help", "entry"];

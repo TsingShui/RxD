@@ -16,7 +16,7 @@ explicitly, then locate → associate
 | Input | Entry | Locate / associate / fetch |
 | --- | --- | --- |
 | ASAR, ZIP/HAP, PyInstaller or wxapkg input | `rxd unpack` | `rxd unpack ARCHIVE_OR_ONEDIR -o DIR`; extracts every regular file, PYZ modules and reconstructed `.pyc` files; for one-dir, finds the launcher; for V1MMWX wxapkg, pass `--appid` |
-| Dynamic Ark ABC or HAP | `rxd ark` | `decompile INPUT` reconstructs the selected whole ABC; multiple records or non-scalar module names use scoped, namespaced exports. `list record`, then `list method --at record:0x...`; `decompile --at record:0x...` composes one original module, and `--at method:0x...` selects one function. Methods use capture factories with `{env, hole, receiver, newTarget, locals, home, function}`. Semantic approximations and unrecovered structure are marked in source; add `--raw` for original instructions. HAP with multiple ABC files requires `--entry PATH` |
+| Dynamic Ark ABC or HAP | `rxd ark` | `export INPUT -o DIR` writes the whole HAP tree plus one JS file per record for `rg`; `decompile INPUT` reconstructs the selected whole ABC; multiple records or non-scalar module names use scoped, namespaced exports. `list record`, then `list method --at record:0x...`; `decompile --at record:0x...` composes one original module, and `--at method:0x...` selects one function. Methods use capture factories with `{env, hole, receiver, newTarget, locals, home, function}`. Semantic approximations and unrecovered structure are marked in source; add `--raw` for original instructions. HAP with multiple ABC files requires `--entry PATH` |
 | Android APK or DEX | `rxd rasc` | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
 | Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
@@ -41,7 +41,8 @@ archive-wide queries and selected reconstruction without writing extracted files
 wxapkg is unpacked from its index; encrypted `V1MMWX` PC/Mac packages need
 `--appid` or a path component matching the appid. `unpack` has no entry selection or
 in-memory archive analysis. `rxd ark` can instead read the selected ABC directly
-from a HAP without unpacking unrelated resources or native libraries. AAR code normally lives in
+from a HAP without unpacking unrelated resources or native libraries, or
+`rxd ark export` can extract the complete HAP tree and add reconstructed record files. AAR code normally lives in
 `classes.jar` or `libs/*.jar`: unpack, then use `rxd jar`. Encrypted ASAR/ZIP/PyInstaller entries, links and automatic nested extraction
 beyond PYZ are unsupported.
 
@@ -232,6 +233,29 @@ as isolated comments. Partial reconstruction has markers and a stderr diagnostic
 malformed input, incomplete reference scans and resource failures are explicit,
 without partial success output. Navigation and reconstruction share embedded
 magic/version rules; raw marshal still requires `--version X.Y`.
+
+## Ark ABC/HAP: record → method → JS, or an export tree for text search
+
+```sh
+rxd ark list record app.hap --entry ets/modules.abc
+rxd ark list method app.hap --entry ets/modules.abc --at "record:0x1234"
+rxd ark decompile app.hap --entry ets/modules.abc --at "method:0x5678"
+rxd ark decompile app.hap --entry ets/modules.abc --at "record:0x1234" --raw
+rxd ark export app.hap -o recovered
+rg -n -C 3 'Authorization' recovered/decompiled
+```
+
+`decompile` without `--at` returns the whole ABC; `--raw` returns instructions.
+`export` writes `extracted/` with every original HAP file at its archive path,
+`decompiled/<abc path>/0x<record>.js`, and `manifest.jsonl`. Each record file is an
+ordinary JS module holding every coded method, including methods no initializer
+reaches, so an `rg` hit names the record. Manifest record rows carry the
+`record:0x...` coordinate, original name, coded-method count, warning codes and
+relative file; the ABC row carries its SHA-256. Route a hit back to `--at` on the
+same input. The export is atomic and refuses an existing directory. `--threads N`
+reconstructs records in parallel (one parsed ABC copy per worker); output does not
+depend on thread count. All ABC entries export by default and `--entry` narrows to
+one.
 
 ## Dart AOT (Flutter): snapshot info, functions, pseudocode
 
