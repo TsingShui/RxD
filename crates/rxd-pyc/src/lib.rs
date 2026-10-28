@@ -33,6 +33,10 @@ pub struct Decompilation {
     pub version: String,
     pub source: String,
     pub complete: bool,
+    /// One for a selected module/body; every code-bearing module for PYZ all-mode.
+    pub modules: usize,
+    /// Modules whose decompiler panicked in PYZ all-mode.
+    pub failed: Vec<String>,
 }
 
 fn input_error(error: PycError) -> Error {
@@ -90,6 +94,8 @@ pub fn run(
         version: version.display(),
         source,
         complete,
+        modules: 1,
+        failed: Vec::new(),
     })
 }
 
@@ -101,27 +107,37 @@ pub fn run_input(
     perf: &mut Perf,
 ) -> Result<Decompilation> {
     let input = Input::load(path, version, budget, perf)?;
-    let (namespace, local) = match at {
-        Some(at) => input.split(at)?,
-        None if input.is_archive() => {
-            return Err(Error::new(
-                "INVALID_QUERY",
-                "PYZ decompile requires --at; copy a module or code coordinate from codes",
-            ));
+    match at {
+        Some(at) => {
+            let (namespace, local) = input.split(at)?;
+            decompile_one(input, namespace, local, budget, perf)
         }
-        None => (None, "code:0"),
-    };
-    let index = input::code_index(local)?;
-    let data = input.data(namespace, perf)?;
-    let version = data.version;
-    let member_budget = input.member_budget();
-    let limits = Limits {
+        None if input.is_archive() => decompile_all(input, budget, perf),
+        None => decompile_one(input, None, "code:0", budget, perf),
+    }
+}
+
+fn limits_for(input: &Input, budget: Budget) -> Limits {
+    Limits {
         input_bytes: budget.input_bytes,
         work: budget.work,
         ast_depth: budget.ast_depth,
         output_bytes: budget.output_bytes,
-        marshal: marshal_limits(member_budget),
-    };
+        marshal: marshal_limits(input.member_budget()),
+    }
+}
+
+fn decompile_one(
+    input: Input,
+    namespace: Option<&str>,
+    local: &str,
+    budget: Budget,
+    perf: &mut Perf,
+) -> Result<Decompilation> {
+    let index = input::code_index(local)?;
+    let data = input.data(namespace, perf)?;
+    let version = data.version;
+    let limits = limits_for(&input, budget);
     record_limits(limits, perf);
     let (complete, source) = recover(data, index, limits, input.initial_work(), perf)?;
     Ok(Decompilation {
@@ -130,10 +146,96 @@ pub fn run_input(
         version: version.display(),
         source,
         complete,
+        modules: 1,
+        failed: Vec::new(),
+    })
+}
+
+/// Reconstruct every code-bearing PYZ module in directory order.
+/// Each block is labelled `# ===== <module> =====`; any module failure aborts the call.
+fn decompile_all(input: Input, budget: Budget, perf: &mut Perf) -> Result<Decompilation> {
+    let modules: Vec<String> = input
+        .code_modules()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if modules.is_empty() {
+        return Err(Error::new("NOT_FOUND", "PYZ has no code-bearing modules"));
+    }
+    let limits = limits_for(&input, budget);
+    record_limits(limits, perf);
+    let mut source = String::new();
+    let mut complete = true;
+    let mut failed = Vec::new();
+    let mut work = input.initial_work();
+    for name in &modules {
+        let data = input.data(Some(name), perf)?;
+        let body = match recover(data, 0, limits, work, perf) {
+            Ok((module_complete, module_source)) => {
+                complete &= module_complete;
+                module_source
+            }
+            Err(error) if error.code == "DECOMPILE_ERROR" => {
+                complete = false;
+                failed.push(name.clone());
+                format!(
+                    "# PYC_FALLBACK: {}: module body unavailable\n",
+                    error.message
+                )
+            }
+            Err(error) => return Err(error),
+        };
+        work = perf.counters.work.unwrap_or(work);
+        if !source.is_empty() {
+            source.push('\n');
+        }
+        use std::fmt::Write;
+        writeln!(source, "# ===== {name} =====").expect("string write");
+        source.push_str(&body);
+        if !body.ends_with('\n') {
+            source.push('\n');
+        }
+        if budget
+            .output_bytes
+            .is_some_and(|limit| source.len() > limit)
+        {
+            return Err(Error::failure(
+                rxd_core::Failure::Resource,
+                "serialized PYC output bytes",
+            ));
+        }
+    }
+    let version = input.version();
+    Ok(Decompilation {
+        source_id: input.source_id,
+        input_bytes: input.input_bytes,
+        version: version.display(),
+        source,
+        complete,
+        modules: modules.len(),
+        failed,
     })
 }
 
 fn recover(
+    data: Data,
+    index: usize,
+    limits: Limits,
+    initial_work: usize,
+    perf: &mut Perf,
+) -> Result<(bool, String)> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        recover_inner(data, index, limits, initial_work, perf)
+    }))
+    .map_err(|_| {
+        Error::new(
+            "DECOMPILE_ERROR",
+            "pycdc panicked during module reconstruction",
+        )
+    })?
+}
+
+fn recover_inner(
     data: Data,
     index: usize,
     limits: Limits,

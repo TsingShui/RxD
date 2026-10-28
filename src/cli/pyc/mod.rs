@@ -101,9 +101,9 @@ pub enum Command {
         #[command(flatten)]
         options: static_commands::Options,
     },
-    /// Reconstruct one module or code body as Python.
+    /// Reconstruct a PYZ, one module, or a code body as Python.
     #[command(
-        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc codes PYZ.pyz -f proxy\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>' -o recovered.py\nPYZ requires --at: a full module name reconstructs that module; MODULE::code:N reconstructs one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile PYZ.pyz -o recovered.py\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>' -o recovered.py\nWithout --at, a PYZ reconstructs every code-bearing module in directory order, each preceded by `# ===== <module> =====`; a decompiler panic becomes a labelled PYC_FALLBACK block and is reported on stderr, while other failures abort the call.\nWith --at, a full module name reconstructs that module and MODULE::code:N one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
     )]
     Decompile {
         /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
@@ -327,14 +327,22 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
         ));
     }
     perf.counters.output_bytes = Some(bytes.len());
-    perf.counters.records = Some(1);
+    perf.counters.records = Some(result.modules);
     perf.measure("write", || {
         super::write_output(&bytes, options.output.as_deref(), sink)
     })?;
     if !result.complete {
-        eprintln!(
-            "PYC_FALLBACK: partial reconstruction; original bytecode is included in labelled comments"
-        );
+        if result.failed.is_empty() {
+            eprintln!(
+                "PYC_FALLBACK: partial reconstruction; original bytecode is included in labelled comments"
+            );
+        } else {
+            eprintln!(
+                "PYC_FALLBACK: {} module(s) failed: {}",
+                result.failed.len(),
+                result.failed.join(", ")
+            );
+        }
     }
     Ok(())
 }

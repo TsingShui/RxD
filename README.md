@@ -221,7 +221,7 @@ MCP separately with `rxd mcp` and register it in the client configuration.
 | **JVM class/JAR** | `rxd jar` | Class/field/method metadata, constant-pool strings, cross-class references, single-method/whole-class Java | ✅ |
 | **.NET IL** | `rxd ilspy` | Type/member inventory, string navigation, semantic references, original IL or C# reconstruction | ✅ |
 | **WebAssembly** | `rxd wasm` | Module structure, instruction decode, explicit reference scanning, structured C-like decompilation | ✅ |
-| **CPython bytecode** | `rxd pyc` | CPython 3.8–3.13 navigation and bounded whole-module source reconstruction | ✅ |
+| **CPython bytecode** | `rxd pyc` | CPython 3.8–3.13 navigation and bounded whole-module or whole-PYZ source reconstruction | ✅ |
 | **Dart AOT (Flutter)** | `rxd dae` | Snapshot info, function symbols, pool strings and references, whole-library pseudocode for arm64 `libapp.so` | ✅ |
 | **Lua bytecode** | `rxd unluac-rs` | PUC Lua 5.1–5.5, LuaJIT 2.1 and Luau navigation, references and whole-chunk reconstruction | ✅ |
 | **EVM bytecode** | `rxd evmole` | EVMole 0.9.4 native analysis; candidate/literal static navigation, on-demand raw evidence and declared pseudocode reconstruction | ✅ static workflow accepted |

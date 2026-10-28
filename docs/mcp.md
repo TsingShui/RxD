@@ -91,8 +91,8 @@ and `rxd ark export ARCHIVE -o DIR` write directories, so they are not MCP artif
 PyInstaller PYZ analysis is different: open the PYZ itself with backend `pyc`, then
 use `pyc_modules` to locate modules, then `pyc_codes` with `within` set to a
 returned module coordinate. `pyc_strings` and `pyc_xref` can search the whole PYZ.
-`pyc_decompile` selects a returned full-module or module-qualified code coordinate
-with `at`.
+`pyc_decompile` without `at` reconstructs every code-bearing PYZ module with
+`# ===== <module> =====` headers; `at` selects one returned module or code coordinate.
 
 A complete ambiguous candidate result is a
 domain error, not one arbitrarily chosen definition. EVM always requires explicit

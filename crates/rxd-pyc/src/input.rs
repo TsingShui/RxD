@@ -121,6 +121,25 @@ impl Input {
         matches!(self.format, Format::Pyz { .. })
     }
 
+    /// Code-bearing PYZ module names in directory order; empty for standalone PYC.
+    pub fn code_modules(&self) -> Vec<&str> {
+        match &self.format {
+            Format::Single { .. } => Vec::new(),
+            Format::Pyz { archive, .. } => archive
+                .entries()
+                .iter()
+                .filter(|entry| entry.kind.has_code())
+                .map(|entry| entry.name.as_str())
+                .collect(),
+        }
+    }
+
+    pub fn version(&self) -> PythonVersion {
+        match &self.format {
+            Format::Single { version, .. } | Format::Pyz { version, .. } => *version,
+        }
+    }
+
     /// Module inventory uses the PYZ directory; standalone PYC validates its one body.
     pub fn modules(
         &self,
