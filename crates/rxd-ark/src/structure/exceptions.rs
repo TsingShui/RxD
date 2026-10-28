@@ -125,15 +125,36 @@ impl Exceptions {
         Ok(Self { regions, entries })
     }
 
-    fn candidate(&self, block: usize, scope: Option<&Protected>) -> Option<usize> {
-        self.entries.get(block)?.iter().copied().find(|id| {
+    fn candidate(
+        &self,
+        function: &Function<'_>,
+        block: usize,
+        scope: Option<&Protected>,
+    ) -> Option<usize> {
+        let entries = self.entries.get(block)?;
+        let handlers = &function.blocks[block].handlers;
+        entries.iter().copied().find(|id| {
             let region = self.regions[*id];
-            scope.is_none_or(|scope| {
-                region.handler != scope.handler
-                    && scope.first <= region.first
-                    && region.end <= scope.end
-                    && (scope.first != region.first || scope.end != region.end)
-            })
+            let Some(position) = handlers
+                .iter()
+                .position(|handler| *handler == region.handler)
+            else {
+                return false;
+            };
+            // Earlier handlers must be nested inside this try, not shadowed enclosing tries.
+            let nested_priority = handlers[..position].iter().all(|handler| {
+                entries.iter().any(|other| {
+                    let earlier = self.regions[*other];
+                    earlier.handler == *handler && earlier.end < region.end
+                })
+            });
+            nested_priority
+                && scope.is_none_or(|scope| {
+                    region.handler != scope.handler
+                        && scope.first <= region.first
+                        && region.end <= scope.end
+                        && (scope.first != region.first || scope.end != region.end)
+                })
         })
     }
 }
@@ -148,7 +169,7 @@ impl Builder<'_, '_> {
         block: usize,
         scope: Option<&Protected>,
     ) -> Option<usize> {
-        self.exceptions.candidate(block, scope)
+        self.exceptions.candidate(self.function, block, scope)
     }
 
     pub(super) fn try_contains_loop(&self, id: usize, members: &[bool]) -> bool {

@@ -17,7 +17,8 @@ This is an independent rewrite milestone, not the production CLI cutover.
 - A worklist propagates must-equal parameter snapshots, primitive constants and
   boolean facts over normal and per-throw exception edges. Joins retain facts
   only when all paths agree; captured cells remain mutable. Exception-aware
-  liveness, dead stores and materialization preserve ordered operations.
+  liveness includes explicit throw terminators as well as throwing IR events;
+  dead stores and materialization preserve ordered operations.
 - CHK dominators, reverse-CFG postdominators, natural loops and single-owner
   structured plans. Shared predicate tails become short-circuit conditions;
   single-write diamonds become select expressions, and dead boolean bridges
@@ -34,7 +35,9 @@ into a protocol's interior fail. Register snapshots and separate property reads
 are retained rather than assuming getters are pure.
 
 Exception plans retain encoded handler priority, exception-to-accumulator writes,
-loop exits and one emission owner per block. Native protection may cross a bridge
+loop exits and one emission owner per block. A region is structured only when its
+higher-priority handlers are nested; otherwise it retains residual dispatch.
+Native protection may cross a bridge
 only when its surviving IR cannot throw. Residual blocks omit catch wrappers when
 they cannot throw, and leave enclosing native handlers to their lexical scopes.
 Finally cleanup remains explicit control flow; native finally recognition and

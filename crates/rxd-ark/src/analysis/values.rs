@@ -92,6 +92,12 @@ impl Values {
                 for next in block.end.successors() {
                     merge(&mut live, &live_in[next], false);
                 }
+                // A handler reads the state at the throw, before acc is replaced by the exception.
+                if matches!(block.end, Terminator::Throw(_)) {
+                    for handler in &block.handlers {
+                        merge(&mut live, &live_in[*handler], true);
+                    }
+                }
                 for (event_index, event) in block.events.iter().enumerate().rev() {
                     match event {
                         Event::Define(value) => {

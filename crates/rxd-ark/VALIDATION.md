@@ -21,7 +21,7 @@ Dev-profile full-input scan:
 | Successful module records | 122 / 376 |
 | Independent Babel method parses / failures | 13,256 / 0 |
 | Independent Babel record parses / failures | 122 / 0 |
-| Emitted method-source bytes, including required nested definitions | 35,589,345 |
+| Emitted method-source bytes, including required nested definitions | 35,596,525 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
@@ -47,7 +47,36 @@ all-method string-content audit or release-latency claim. Performance measuremen
 and new tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Value-flow milestone
+## Exception-state hardening milestone
+
+The fixed sample exposed a concrete dead-store error in `method:0x6ea73` of
+`record:0x6e94d`: instruction PCs 89 and 149 store `true` into `v12`, then PCs
+93 and 153 throw to handler PC 237. That handler reads `v12` at PC 239 to select
+iterator cleanup. Previous output omitted both writes. Current output preserves:
+
+```js
+v12 = true;
+throw acc;
+```
+
+The analysis now joins handler liveness at explicit throw terminators, excluding
+only the accumulator replaced by the exception. Protected-region selection also
+requires any earlier-priority handler to be a nested region; otherwise it retains
+residual dispatch. The pinned runtime uses the first matching encoded entry.
+
+The 13,256 method successes, 122 record outputs, 826 method failures and 254
+record failure identities are unchanged. Independent Babel parsing passed for
+all outputs. The correction changes 93 root sources; normalized static root
+string/member/call inventories remain unchanged. These counts do not prove
+runtime equivalence or exception-path correctness for arbitrary bytecode.
+
+The selected method has byte-identical ABC/HAP output, and an unsupported record
+still fails with empty stdout. The bytecode PCs and before/after sources are
+retained under ignored `target/verification/ark/safe-flow-v1-*`. Scoped Clippy,
+formatting and whitespace checks passed; no new tests, execution of analyzed
+code or performance measurements were added. Production CLI remains unchanged.
+
+## Value-flow milestone (historical)
 
 A worklist joins must-equal parameter snapshots, primitive constants and boolean
 facts across blocks. Exception handler input is joined at each potentially throwing
