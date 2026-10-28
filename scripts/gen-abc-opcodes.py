@@ -8,8 +8,8 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'crates/rxd-abc/resources/isa.yaml'
-OUTPUT = ROOT / 'crates/rxd-abc/src/opcodes.rs'
+SOURCE = ROOT / 'crates/rxd-ark/resources/isa.yaml'
+OUTPUT = ROOT / 'crates/rxd-ark/src/opcodes.rs'
 SHA256 = '3743c6782ef254e14f32b27b7f23cbb87ae2aa035e5a543021724bbf41f8b66b'
 
 

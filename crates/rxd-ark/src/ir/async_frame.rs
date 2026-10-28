@@ -166,7 +166,25 @@ pub(super) fn normalize(decoded: &mut Decoded<'_>) -> Result<AsyncFrame> {
                     "async resolution is not terminal",
                 ));
             }
+            let return_pc = instructions[index + 1].pc;
+            interior.insert(return_pc);
+            if decoded.code.tries.iter().any(|region| {
+                let contains = |pc| region.pc <= pc && pc < region.pc + region.length;
+                contains(instruction.pc) != contains(return_pc)
+            }) {
+                return Err(unsupported(return_pc, "async return crosses a handler"));
+            }
             skip.insert(instruction.pc);
+        }
+        if matches!(name, "return" | "returnundefined")
+            && (name != "return"
+                || index == 0
+                || instructions[index - 1].opcode.name != "asyncfunctionresolve")
+        {
+            return Err(unsupported(
+                instruction.pc,
+                "async return bypasses resolution",
+            ));
         }
         if matches!(name, "resumegenerator" | "getresumemode") {
             let expected = if name == "resumegenerator" { 3 } else { 6 };
@@ -184,7 +202,19 @@ pub(super) fn normalize(decoded: &mut Decoded<'_>) -> Result<AsyncFrame> {
     }) {
         return Err(unsupported(
             branch.pc,
-            "branch enters await protocol interior",
+            "branch enters async protocol interior",
+        ));
+    }
+    if let Some(catch) = decoded
+        .code
+        .tries
+        .iter()
+        .flat_map(|region| &region.catches)
+        .find(|catch| interior.contains(&catch.pc))
+    {
+        return Err(unsupported(
+            catch.pc,
+            "handler enters async protocol interior",
         ));
     }
     decoded.code.tries.remove(region);

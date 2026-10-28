@@ -2446,30 +2446,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxc_parser"
-version = "0.153.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71ce9e6d646d84b30f8eb4e1a1b50c69e66f4ef08066c721a3b82a451326bad4"
-dependencies = [
- "bitflags 2.13.2",
- "cow-utils",
- "memchr",
- "num-bigint 0.5.1",
- "num-traits",
- "oxc_allocator",
- "oxc_ast",
- "oxc_data_structures",
- "oxc_diagnostics",
- "oxc_ecmascript",
- "oxc_regular_expression",
- "oxc_span",
- "oxc_str",
- "oxc_syntax",
- "rustc-hash",
- "seq-macro",
-]
-
-[[package]]
 name = "oxc_regular_expression"
 version = "0.153.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3171,7 +3147,7 @@ dependencies = [
  "libc",
  "rayon",
  "rmcp",
- "rxd-abc",
+ "rxd-ark",
  "rxd-asar",
  "rxd-core",
  "rxd-dex",
@@ -3195,25 +3171,6 @@ dependencies = [
  "tokio-util",
  "windows-sys",
  "zip",
-]
-
-[[package]]
-name = "rxd-abc"
-version = "0.1.0"
-dependencies = [
- "adler2",
- "oxc_allocator",
- "oxc_ast",
- "oxc_ast_visit",
- "oxc_codegen",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_syntax",
- "rxd-core",
- "rxd-zip",
- "serde_json",
- "sha2 0.10.9",
 ]
 
 [[package]]
@@ -3518,12 +3475,6 @@ checksum = "9900206b54a3527fdc7b8a938bffd94a568bac4f4aa8113b209df75a09c0dec2"
 dependencies = [
  "pest",
 ]
-
-[[package]]
-name = "seq-macro"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bc711410fbe7399f390ca1c3b60ad0f53f80e95c5eb935e52268a0e2cd49acc"
 
 [[package]]
 name = "serde"

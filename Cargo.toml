@@ -10,7 +10,6 @@ publish = false
 [workspace]
 members = [
     "crates/rxd-core",
-    "crates/rxd-abc",
     "crates/rxd-ark",
     "crates/rxd-asar",
     "crates/rxd-zip",
@@ -34,7 +33,6 @@ resolver = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 rxd-core = { path = "crates/rxd-core" }
-rxd-abc = { path = "crates/rxd-abc" }
 rxd-ark = { path = "crates/rxd-ark" }
 rxd-asar = { path = "crates/rxd-asar" }
 rxd-zip = { path = "crates/rxd-zip" }
@@ -60,7 +58,7 @@ all-backends = [
     "backend-flutter",
     "backend-kuna",
 ]
-backend-abc = ["dep:rxd-abc"]
+backend-abc = ["dep:rxd-ark"]
 backend-asar = ["dep:rxd-asar"]
 backend-zip = ["dep:rxd-zip"]
 unpack = ["backend-asar", "backend-zip", "dep:rxd-pyinstaller", "dep:rxd-wxapkg"]
@@ -98,7 +96,7 @@ serde.workspace = true
 serde_json.workspace = true
 tempfile = "3.27"
 rxd-core.workspace = true
-rxd-abc = { workspace = true, optional = true }
+rxd-ark = { workspace = true, optional = true }
 rxd-asar = { workspace = true, optional = true }
 rxd-zip = { workspace = true, optional = true }
 rxd-pyinstaller = { workspace = true, optional = true }

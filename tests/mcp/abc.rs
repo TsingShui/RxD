@@ -40,11 +40,16 @@ fn mcp_ark_nested_navigation_matches_cli_and_preserves_hap_entry_selection() {
         json!({"input":{"path":input},"at":method_at}),
     );
     assert_ne!(source["isError"], true, "{source}");
-    assert!(
-        source["structuredContent"]["text"]
-            .as_str()
-            .unwrap()
-            .contains("acc = 7;")
+    let cli_source = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["ark", "decompile"])
+        .arg(&input)
+        .args(["--at", method_at])
+        .output()
+        .unwrap();
+    assert!(cli_source.status.success(), "{cli_source:?}");
+    assert_eq!(
+        source["structuredContent"]["text"],
+        String::from_utf8(cli_source.stdout).unwrap()
     );
     let raw = client.tool(
         "abc_decompile",

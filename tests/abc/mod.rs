@@ -296,11 +296,14 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.starts_with("const _abc_") && text.contains(" = () => {"),
+        text.contains("function _ark_capture_") && text.contains(" = () => {"),
         "{text}"
     );
-    assert!(text.contains("return this;"), "{text}");
-    assert!(text.ends_with("};\n"), "{text}");
+    assert!(
+        text.contains("return __ark_context[\"receiver\"];"),
+        "{text}"
+    );
+    assert!(text.ends_with("}\n"), "{text}");
 
     let (bytes, at, _) = fixture_with_kind(0x208, 0, 3, &[0x3c, 0, 0x64], &[]);
     fs::write(&input, bytes).unwrap();
@@ -308,11 +311,11 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.contains("function _abc_capture_") && text.contains(" = () => {"),
+        text.contains("function _ark_capture_") && text.contains(" = () => {"),
         "{text}"
     );
     assert!(
-        text.contains("return _abc_") && text.contains("__abc_env.slots[0]"),
+        text.contains("return __ark_env[\"slots\"][0]") && text.contains("_ark_capture_"),
         "{text}"
     );
 
@@ -323,7 +326,7 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
     assert!(
         String::from_utf8(result.stdout)
             .unwrap()
-            .contains("v0 = _abc_"),
+            .contains("return __ark_f_"),
         "function values use their emitted name"
     );
     let (bytes, at, _) = fixture_with_kind(0x308, 0, 3, &[0x65], &[]);
@@ -340,7 +343,7 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.starts_with("function _abc_"), "{text}");
+    assert!(text.starts_with("function _ark_capture_"), "{text}");
     assert!(text.ends_with("}\n"), "{text}");
 }
 
@@ -370,7 +373,7 @@ fn ark_uses_the_method_call_type_annotation_for_its_argument_frame() {
     assert!(
         String::from_utf8(result.stdout)
             .unwrap()
-            .contains("v0 = _abc_"),
+            .contains("return __ark_f_"),
         "function values use their emitted name"
     );
     let (bytes, at) = fixture_with_call_type(11, 2, &[0x65]);
@@ -608,10 +611,7 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     let text = String::from_utf8(result.stdout.clone()).unwrap();
     assert!(text.contains("\"use strict\";"), "{text}");
     assert!(text.contains("p0 === false || p0 === 0"), "{text}");
-    assert!(
-        text.contains("acc = 1;") && text.contains("acc = 2;"),
-        "{text}"
-    );
+    assert!(text.contains("? 2 : 1;"), "{text}");
     assert!(text.contains("return acc;"), "{text}");
     let packed = source(&hap_path, &at, &[]);
     success(&packed);
@@ -630,10 +630,10 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.contains("while (true) {") && text.contains("break;"),
+        text.contains("while (true) {") && text.contains("break __ark_loop_"),
         "{text}"
     );
-    assert!(text.contains("--acc;"), "{text}");
+    assert!(text.contains("return --__ark_u;"), "{text}");
 
     let (bytes, at) = fixture_with_body(0, 5, &[0x60, 3, 0x42, 0, 2, 0, 0x2e, 0, 3, 4, 0x64]);
     fs::write(&input, &bytes).unwrap();
@@ -642,10 +642,9 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(text.contains("你好\\0😀"), "{text}");
     assert!(
-        text.contains("acc = Reflect.apply(acc, p0, [p1]);"),
+        text.contains("return Reflect[\"apply\"](t1, p0, [p1]);"),
         "{text}"
     );
-    assert!(text.contains("return acc;"), "{text}");
 
     let (bytes, at) = fixture_with_body(0, 3, &[0xae, 0x64]);
     fs::write(&input, &bytes).unwrap();
@@ -675,7 +674,8 @@ fn ark_reconstructs_property_definition_index_access_and_rest_arguments() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.contains("Object.defineProperty(p0, \"func_main_0\",") && text.contains("value: 7"),
+        text.contains("Object[\"defineProperty\"](p0, \"func_main_0\",")
+            && text.contains("[\"value\"]: 7"),
         "{text}"
     );
     assert!(text.contains("p0[42]"), "{text}");
@@ -686,11 +686,12 @@ fn ark_reconstructs_property_definition_index_access_and_rest_arguments() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.contains("Object.defineProperty(p0, p1,") && text.contains("enumerable: true"),
+        text.contains("Object[\"defineProperty\"](p0, p1,")
+            && text.contains("[\"enumerable\"]: true"),
         "{text}"
     );
     assert!(
-        text.contains("acc = Array.prototype.slice.call(arguments, 1);"),
+        text.contains("return Array[\"prototype\"][\"slice\"][\"call\"](arguments, 1);"),
         "{text}"
     );
 }
@@ -711,10 +712,8 @@ fn ark_structures_crossing_forward_branches_without_losing_paths() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("__abc_goto_10_"), "{text}");
-    assert!(text.contains("__abc_goto_a_"), "{text}");
-    assert!(text.contains("break __abc_goto_a_"), "{text}");
-    assert!(text.contains("break __abc_goto_10_"), "{text}");
+    assert!(text.contains("__ark_pc_"), "{text}");
+    assert!(text.contains("continue __ark_flow_"), "{text}");
     assert!(
         text.contains("return 0;") && text.contains("return 1;"),
         "{text}"
@@ -736,22 +735,15 @@ fn ark_distinguishes_own_literal_properties_from_unknown_receivers() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("acc = [];"), "{text}");
+    assert!(text.contains("= [];"), "{text}");
     assert!(
-        text.contains("Object.defineProperty(acc, 2,") && text.contains("enumerable: true"),
+        text.contains("Object[\"defineProperty\"](") && text.contains("[\"enumerable\"]: true"),
         "{text}"
     );
 
     let (bytes, at) = fixture_with_body(0, 4, &[0x62, 7, 0, 0, 0, 0x79, 0, 3, 2, 0, 0x64]);
     fs::write(&input, bytes).unwrap();
-    let result = source(&input, &at, &[]);
-    success(&result);
-    let text = String::from_utf8(result.stdout).unwrap();
-    assert!(
-        text.contains("__abc_class_prototypes.has(")
-            && text.contains("__abc_class_constructors.has("),
-        "unproven own-property receivers use the runtime enumerability check: {text}"
-    );
+    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
 
     let branch = [
         0x60, 4, 0x4f, 8, 0x05, 0, 0x61, 0, 0x4d, 6, 0x60, 4, 0x61, 0, 0x62, 7, 0, 0, 0, 0x79, 0,
@@ -759,14 +751,7 @@ fn ark_distinguishes_own_literal_properties_from_unknown_receivers() {
     ];
     let (bytes, at) = fixture_with_body(1, 4, &branch);
     fs::write(&input, bytes).unwrap();
-    let result = source(&input, &at, &[]);
-    success(&result);
-    assert!(
-        String::from_utf8(result.stdout)
-            .unwrap()
-            .contains("__abc_class_prototypes.has("),
-        "unproven own-property receivers stay explicit"
-    );
+    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
     let mut both_fresh = branch;
     both_fresh[10] = 0x05;
     both_fresh[11] = 0;
@@ -790,20 +775,21 @@ fn ark_reconstructs_nested_definitions_with_shared_lexical_cells() {
     success(&result);
     let text = String::from_utf8(result.stdout.clone()).unwrap();
     let target = child.trim_start_matches("method:0x");
-    assert!(text.contains("__abc_env.slots[0] = 7;"), "{text}");
+    assert!(text.contains("__ark_env[\"slots\"][0] = 7;"), "{text}");
     assert!(
-        text.contains(&format!("_abc_capture_{target}({{")),
+        text.contains(&format!("_ark_capture_{target}({{")),
         "{text}"
     );
     assert!(
-        text.contains("Object.defineProperty(acc, \"length\", { value: 1 });"),
+        text.contains("Object[\"defineProperty\"](")
+            && text.contains("\"length\", { [\"value\"]: 1 }"),
         "{text}"
     );
     assert!(
-        text.contains(&format!("function _abc_capture_{target}(__abc_context)")),
+        text.contains(&format!("function _ark_capture_{target}(__ark_context)")),
         "{text}"
     );
-    assert!(text.contains("acc = __abc_env.slots[0];"), "{text}");
+    assert!(text.contains("return __ark_env[\"slots\"][0];"), "{text}");
     let packed = source(&package, &parent, &[]);
     success(&packed);
     assert_eq!(result.stdout, packed.stdout);
@@ -828,7 +814,7 @@ fn ark_reconstructs_nested_definitions_with_shared_lexical_cells() {
     for method in [parent, child] {
         assert_eq!(
             text.matches(&format!(
-                "function _abc_capture_{}(",
+                "function _ark_capture_{}(",
                 method.trim_start_matches("method:0x")
             ))
             .count(),
@@ -854,28 +840,37 @@ fn ark_method_reconstruction_preserves_lexical_cells_and_hole_checks() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.contains("function _abc_capture_") && text.contains("(__abc_context)"),
+        text.contains("function _ark_capture_") && text.contains("(__ark_context)"),
         "{text}"
     );
-    assert!(text.contains("__abc_env = __abc_context.env"), "{text}");
     assert!(
-        text.contains("slots: Array(1).fill(__abc_context.hole)"),
+        text.contains("__ark_env = __ark_context[\"env\"]"),
         "{text}"
     );
-    assert!(text.contains("__abc_env.slots[0] = 7;"), "{text}");
     assert!(
-        text.contains("if (acc === __abc_context.hole)")
-            && text.contains("throw new ReferenceError(\"func_main_0\")"),
+        text.contains("[\"slots\"]: Array(1)[\"fill\"](__ark_context[\"hole\"])"),
         "{text}"
     );
-    assert!(text.contains("__abc_env = __abc_env.parent;"), "{text}");
+    assert!(text.contains("__ark_env[\"slots\"][0] = 7;"), "{text}");
+    assert!(
+        text.contains("=== __ark_context[\"hole\"]")
+            && text.contains("throw new ReferenceError(\"func_main_0\" + \" is not initialized\")"),
+        "{text}"
+    );
+    assert!(
+        text.contains("__ark_env = __ark_env[\"parent\"];"),
+        "{text}"
+    );
 
     let (bytes, at) = fixture_with_body(0, 3, &[0x3c, 0x21, 0x64]);
     fs::write(&input, bytes).unwrap();
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.contains("acc = __abc_env.parent.slots[2];"), "{text}");
+    assert!(
+        text.contains("__ark_env[\"parent\"][\"slots\"][2]"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -892,12 +887,12 @@ fn ark_method_reconstruction_resolves_its_module_import_and_local_binding() {
     success(&output);
     let text = String::from_utf8(output.stdout.clone()).unwrap();
     assert!(
-        text.starts_with("import __abc_import_0 from \"@example/logger\";\n"),
+        text.starts_with("import __ark_i_0 from \"@example/logger\";\n"),
         "{text}"
     );
 
     assert!(
-        text.contains("acc = counter;\n\t\tcounter = acc;"),
+        text.contains("__ark_context[\"locals\"][\"counter\"] = t1;"),
         "{text}"
     );
     assert!(!text.contains("throw.undefinedifholewithname"), "{text}");
@@ -928,17 +923,8 @@ fn ark_reconstructs_a_proven_async_resolve_and_reject_wrapper() {
     let result = source(&input, &at, &[]);
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
-    assert!(text.starts_with("async function _abc_"), "{text}");
-    assert!(
-        text.contains("try {") && text.contains("return 7;"),
-        "{text}"
-    );
-    assert!(
-        text.contains("} catch (__abc_exception) {")
-            && text.contains("acc = __abc_exception;")
-            && text.contains("throw acc;"),
-        "{text}"
-    );
+    assert!(text.contains("= async function __ark_f_"), "{text}");
+    assert!(text.contains("return 7;"), "{text}");
     assert!(!text.contains("asyncfunction"), "{text}");
 
     let (bytes, at, _) = fixture_with_kind(
@@ -988,13 +974,12 @@ fn ark_reconstructs_a_catch_all_without_executing_the_input() {
     success(&result);
     let text = String::from_utf8(result.stdout).unwrap();
     assert!(
-        text.contains("__abc_escape_") && text.contains("try {"),
+        text.contains("try {") && text.contains("return acc;"),
         "{text}"
     );
-    assert!(text.contains("p0()"), "{text}");
-    assert!(text.contains("} catch (__abc_exception) {"), "{text}");
-    assert!(text.contains("acc = __abc_exception;"), "{text}");
-    assert!(text.contains("break __abc_escape_"), "{text}");
+    assert!(text.contains("(0, p0)()"), "{text}");
+    assert!(text.contains("} catch (__ark_exception_0) {"), "{text}");
+    assert!(text.contains("acc = __ark_exception_0;"), "{text}");
 
     // A typed catch must fail rather than become an unconditional catch.
     let type_byte = bytes.len() - 3;
@@ -1041,7 +1026,7 @@ fn ark_reconstructs_exact_global_bindings_and_scalar_literal_buffers() {
     assert!(
         String::from_utf8(result.stdout)
             .unwrap()
-            .contains("acc = func_main_0;")
+            .contains("return func_main_0;")
     );
 
     let (mut bytes, at) = fixture_with_body(0, 3, &[0x3f, 0, 0, 0, 0x64]);

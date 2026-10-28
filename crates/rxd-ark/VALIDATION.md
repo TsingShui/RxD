@@ -1,7 +1,7 @@
-# Standalone rewrite validation
+# Ark semantic-IR validation
 
-This evidence exercises **`rxd-ark`**, not `rxd-abc` or the production CLI.
-The rewrite is not yet a complete replacement.
+`rxd ark` and its reflected MCP tools use **`rxd-ark`**. Older milestone evidence
+below predates the production cutover. Unsupported semantics remain explicit failures.
 
 ## Fixed input and observed coverage
 
@@ -22,7 +22,7 @@ Dev-profile full-input scan:
 | Independent Babel method parses / failures | 13,256 / 0 |
 | Independent Babel record parses / failures | 122 / 0 |
 | Method queries / record outputs with iterator warning | 195 / 26 |
-| Emitted method-source bytes, including required nested definitions | 38,356,522 |
+| Emitted method-source bytes, including required nested definitions and warnings | 38,401,176 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
@@ -42,15 +42,54 @@ methods group as follows; failures do not produce source or invoke the old engin
 retains two distinct `requestHandler` reads, an explicit call receiver and await.
 
 No input or reconstructed code was executed. Coverage, decoding, static
-inspection and parseability are not a runtime-equivalence proof. The current
-all-output comparison accounts for the iterator helper and prior error-message
-changes; it does not prove general semantics. Performance measurement and new
+inspection and parseability are not a runtime-equivalence proof. Static source
+comparisons do not prove general semantics. Performance measurement and new
 tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Standard JavaScript iterator milestone
+## Production cutover
 
-`getiterator` now follows the selected standard JavaScript semantics: read the
+The old crate was removed; `backend-abc` now selects `rxd-ark`. CLI and MCP use
+identical source bytes, including an `ARK_ITERATOR_SEMANTICS` JS comment directly
+before each affected iterator operation. Raw instructions have no source warnings.
+The typed library warning remains available; selected source queries do not emit
+warnings on stderr. Existing CLI checks were updated for the new emitter without
+adding new tests.
+
+A full debug audit produced the counts above. Its success and failure identities
+matched the preceding iterator milestone. Babel parsed all 13,256 method sources
+and 122 record sources; static traversal found 312 and 61 annotated iterator
+operations respectively, with each warning immediately before its call. Removing
+only the warning comment lines made every output byte-identical to that baseline.
+Additional static fixture checks covered direct return, local write and unused
+iterator results. The final audit after the async admission change was byte-identical
+to the verified cutover scan. These are not runtime-equivalence proofs.
+
+Real CLI checks compared bare ABC and HAP listings, selected source/raw output,
+atomic `-o` success/failure, and nested unsupported failure with empty stdout.
+MCP source and raw output for selected ABC/HAP targets matched CLI bytes; nested
+failure retained its method ID.
+During migration an existing fixture exposed a branch into the return following
+`asyncfunctionresolve`, bypassing promise resolution. The new engine rejects that
+branch, other unpaired async returns and handlers entering protocol interiors.
+The fixture now fails with empty stdout and `DECOMPILE_FAILED` at PC 3.
+
+On Darwin arm64 with Rust/Cargo 1.98.0, `CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2`:
+
+- `cargo test -p rxd-ark` passed (no package or doc tests).
+- `cargo test -p rxd --no-default-features --features backend-abc,mcp --test cli abc::`
+  and the same command with `--release` passed: 18 checks each, including MCP.
+  The reduced-feature build emitted existing unused-test-helper warnings.
+- `cargo clippy -p rxd-ark -p rxd --all-targets -- -D warnings`, workspace
+  formatting, `git diff --check` and the opcode generator check passed.
+- `cargo check -p rxd --no-default-features` passed with existing dead-code warnings.
+
+Evidence is under ignored `target/verification/ark/cutover-*`. No analyzed or
+reconstructed code was executed and performance measurement remains paused.
+
+## Standard JavaScript iterator milestone (historical)
+
+At that milestone, `getiterator` followed the selected standard JavaScript semantics: read the
 iterator property once, call it with its original receiver, then require an object
 or function result. Runtime-specific errors, implementations and mutable globals
 can differ; this is not a claim of exact behavior across every Ark VM. Each

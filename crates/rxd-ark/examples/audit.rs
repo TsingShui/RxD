@@ -58,7 +58,6 @@ fn main() -> Result<()> {
     let abc = Abc::parse(&input.bytes, input.budget)?;
     if let Some(at) = at {
         let reconstructed = abc.decompile_target(rxd_ark::Coordinate::parse(&at)?)?;
-        write_warnings(reconstructed.warnings)?;
         std::io::stdout().lock().write_all(&reconstructed.source)?;
         return Ok(());
     }

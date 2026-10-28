@@ -17,6 +17,7 @@ use oxc_syntax::operator::{
 };
 use rxd_core::{Budget, Result, output::Output};
 use std::{
+    cell::RefCell,
     collections::{BTreeSet, HashSet},
     io::Write,
 };
@@ -25,6 +26,37 @@ pub(crate) struct Prepared<'a> {
     pub function: crate::ir::Function<'a>,
     pub values: Values,
     pub body: Body,
+}
+
+struct SourceWarnings {
+    next_anchor: u32,
+    comment_len: u32,
+    metadata_bytes: usize,
+    comments: Vec<Comment>,
+}
+
+impl SourceWarnings {
+    fn attach(&mut self, statement: &mut Statement<'_>) -> Result<()> {
+        let anchor = self.next_anchor;
+        self.next_anchor = anchor
+            .checked_add(1)
+            .ok_or_else(|| resource("Ark warning anchor exceeds span range"))?;
+        self.comments
+            .len()
+            .checked_add(1)
+            .and_then(|count| count.checked_mul(std::mem::size_of::<Comment>()))
+            .filter(|bytes| *bytes <= self.metadata_bytes)
+            .ok_or_else(|| resource("Ark warning metadata admission exceeded"))?;
+        self.comments
+            .try_reserve(1)
+            .map_err(|_| resource("Ark warning allocation failed"))?;
+        *statement.span_mut() = Span::new(anchor, self.next_anchor);
+        let mut comment = Comment::new(0, self.comment_len, CommentKind::Line);
+        comment.attached_to = anchor;
+        comment.position = CommentPosition::Leading;
+        self.comments.push(comment);
+        Ok(())
+    }
 }
 
 pub(crate) fn lower(
@@ -42,6 +74,28 @@ pub(crate) fn lower(
             .iter()
             .enumerate()
             .any(|(index, value)| unit.values.needed[index] && matches!(value.op, Op::Iterator(_)))
+    });
+    let warning = crate::ReconstructionWarning::IteratorRuntimeSemantics;
+    let warning_source = format!("// warning[{}]: {}", warning.code(), warning.message());
+    let max_code_len = units
+        .iter()
+        .map(|unit| unit.function.code.bytes.len())
+        .max()
+        .unwrap_or(0);
+    // Bytecode PCs are below the code length, leaving unique synthetic comment anchors.
+    let next_anchor = if uses_standard_iterator {
+        u32::try_from(max_code_len)
+            .ok()
+            .and_then(|len| len.checked_add(1))
+            .ok_or_else(|| resource("Ark warning anchor exceeds span range"))?
+    } else {
+        0
+    };
+    let warnings = RefCell::new(SourceWarnings {
+        next_anchor,
+        comment_len: warning_source.len() as u32,
+        metadata_bytes: budget.metadata_bytes,
+        comments: Vec::new(),
     });
     if uses_standard_iterator {
         statements.push(super::intrinsics::get_iterator(&ast));
@@ -67,6 +121,7 @@ pub(crate) fn lower(
             module,
             budget,
             module_mode: main.is_some(),
+            warnings: &warnings,
         };
         statements.push(lower.function().map_err(|error| {
             crate::decompile::method_context(unit.function.method.offset, error)
@@ -85,11 +140,13 @@ pub(crate) fn lower(
             main,
         )?);
     }
+    let comments = warnings.into_inner().comments;
+    let emitted_warnings = !comments.is_empty();
     let program = Program::new(
         SPAN,
         SourceType::mjs(),
-        "",
-        ast.vec([]),
+        &warning_source,
+        ast.vec(comments),
         None,
         ast.vec([]),
         ast.vec(statements),
@@ -101,7 +158,7 @@ pub(crate) fn lower(
         .code;
     let mut output = Output::new(budget.output_bytes);
     output.write_all(code.as_bytes())?;
-    Ok((output.into_bytes(), uses_standard_iterator))
+    Ok((output.into_bytes(), emitted_warnings))
 }
 
 pub(super) fn string_literal<'a>(ast: &Ast<'a>, name: &crate::Name) -> StringLiteral<'a> {
@@ -206,6 +263,7 @@ struct Lower<'f, 'a, 's> {
     module: Option<&'f Module>,
     budget: Budget,
     module_mode: bool,
+    warnings: &'f RefCell<SourceWarnings>,
 }
 
 impl<'a> Lower<'_, 'a, '_> {
@@ -615,14 +673,22 @@ impl<'a> Lower<'_, 'a, '_> {
             match event {
                 Event::Define(id) if self.unit.values.needed[id.0] => {
                     let value = &self.unit.function.values[id.0];
-                    if self.unit.values.materialize[id.0] {
-                        statements.push(self.ast.var(
+                    let statement = if self.unit.values.materialize[id.0] {
+                        Some(self.ast.var(
                             &format!("t{}", id.0),
                             Some(self.definition(*id, 0)?),
                             true,
-                        ));
+                        ))
                     } else if value.effects.ordered() && self.unit.values.uses[id.0] == 0 {
-                        statements.push(self.ast.expr(self.definition(*id, 0)?));
+                        Some(self.ast.expr(self.definition(*id, 0)?))
+                    } else {
+                        None
+                    };
+                    if let Some(mut statement) = statement {
+                        if matches!(value.op, Op::Iterator(_)) {
+                            self.warnings.borrow_mut().attach(&mut statement)?;
+                        }
+                        statements.push(statement);
                     }
                 }
                 Event::Action { pc, action } if self.unit.values.keep[block][index] => {

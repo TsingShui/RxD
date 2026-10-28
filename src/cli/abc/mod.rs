@@ -7,7 +7,7 @@ use super::{
     table::{self, Cell},
 };
 use clap::{Args, Subcommand};
-use rxd_abc::{Abc, Coordinate, Input};
+use rxd_ark::{Abc, Coordinate, Input, ReconstructionWarning};
 use rxd_core::{Budget, BudgetPolicy, Error, Limits, Result, perf::Perf};
 
 #[derive(Subcommand)]
@@ -19,7 +19,7 @@ pub enum Command {
     },
     #[command(
         about = "Reconstruct one method or fetch record/method instructions (--raw).",
-        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer with imports, exports, functions and classes.\nMethods using lexical environments are returned as a capture factory accepting {env, hole, newTarget}.\nUnsupported source constructs fail explicitly instead of falling back to disassembly."
+        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals} context.\nIterator runtime differences are marked at affected operations in the source.\nUnsupported source constructs fail explicitly instead of falling back to disassembly."
     )]
     Decompile(DecompileOptions),
 }
@@ -155,7 +155,14 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
                     bytes = if options.raw {
                         abc.raw_target(at)?
                     } else {
-                        abc.decompile_target(at)?
+                        let reconstruction = abc.decompile_target(at)?;
+                        for warning in reconstruction.warnings {
+                            match warning {
+                                // The warning is already attached to each operation in source.
+                                ReconstructionWarning::IteratorRuntimeSemantics => {}
+                            }
+                        }
+                        reconstruction.source
                     };
                 }
                 Command::List {

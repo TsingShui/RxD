@@ -5,8 +5,8 @@ no dependency on `rxd-abc`. The validated format code and ISA table were copied
 from the RxD tree at `0091440`; the old reconstructor and JS postprocessor were
 not copied or called. Removing that crate does not remove this crate's sources.
 
-This is an independent rewrite milestone, not the production CLI cutover.
-`rxd ark` still uses the existing adapter while missing semantics are ported.
+The production `rxd ark` CLI and reflected MCP tools use this engine directly.
+Unsupported semantics fail explicitly; there is no old-engine fallback.
 
 ## Pipeline
 
@@ -55,10 +55,10 @@ receiver.
 `getiterator` is reconstructed using standard JavaScript iterator semantics. Its
 helper reads the iterator property once, calls it with the original receiver and
 requires an object result. Each affected reconstruction returns the typed warning
-`ARK_ITERATOR_SEMANTICS` alongside its source; the audit CLI writes one warning
-line to stderr. `decompile_target`, `decompile_method` and `decompile_record` return
-`Reconstruction { source, stats, warnings }`, so adapters can forward warnings
-without modifying source bytes. Raw instructions are unaffected. This contract
+`ARK_ITERATOR_SEMANTICS` alongside its source and places the warning as a JS
+comment immediately before every affected iterator operation. `decompile_target`,
+`decompile_method` and `decompile_record` return `Reconstruction { source, stats,
+warnings }`; raw instructions are unaffected. This contract
 does not promise identical behavior for every Ark runtime's edge cases or modified
 JS globals.
 
@@ -68,7 +68,7 @@ bridges. Module aliases share binding identity; record contexts share an emitted
 `Reflect` and `Object` affect bridges, so they are not equivalent to private VM
 intrinsics under arbitrary host mutation. Output has not been executed or proved
 runtime-equivalent; cyclic module initialization and bridge behavior still require
-semantic review before CLI migration.
+semantic review.
 
 ## Reference pins and licenses
 
