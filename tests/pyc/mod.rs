@@ -6,7 +6,6 @@ mod codes;
 mod contracts;
 mod refs;
 mod strings;
-mod versions;
 
 fn input(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

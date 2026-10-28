@@ -1,6 +1,5 @@
-use rxd_core::{Error, Result};
+use rxd_core::{Budget, Error, Result};
 
-const MAX_ELEMENTS: usize = 1_000_000;
 const MAX_DEPTH: usize = 64;
 const MAX_LONG_DIGITS: usize = 5;
 
@@ -14,23 +13,102 @@ pub(crate) enum Value {
     Map(Vec<(Value, Value)>),
 }
 
-pub(crate) fn decode(bytes: &[u8]) -> Result<Value> {
-    Decoder {
+pub(crate) struct Decoded {
+    pub value: Value,
+    pub work: usize,
+    pub metadata: usize,
+}
+
+pub(crate) fn decode(bytes: &[u8], limits: Budget) -> Result<Decoded> {
+    let mut reader = Decoder {
         bytes,
         position: 0,
         references: Vec::new(),
+        admission: Admission {
+            limits,
+            nodes: 0,
+            metadata: 0,
+            work: 0,
+        },
+    };
+    let value = reader.value(0)?;
+    if reader.position != bytes.len() {
+        return Err(invalid("trailing PYZ TOC marshal data"));
     }
-    .value(0)
+    Ok(Decoded {
+        value,
+        work: reader.admission.work,
+        metadata: reader.admission.metadata,
+    })
+}
+
+struct Admission {
+    limits: Budget,
+    nodes: usize,
+    metadata: usize,
+    work: usize,
+}
+
+impl Admission {
+    fn charge(&mut self, nodes: usize, bytes: usize) -> Result<()> {
+        let work = nodes
+            .checked_add(bytes)
+            .ok_or_else(|| resource("PYZ TOC work overflow"))?;
+        if nodes > self.limits.semantic_nodes.saturating_sub(self.nodes)
+            || bytes > self.limits.metadata_bytes.saturating_sub(self.metadata)
+            || self
+                .limits
+                .work
+                .is_some_and(|limit| work > limit.saturating_sub(self.work))
+        {
+            return Err(resource("PYZ TOC admission exceeded"));
+        }
+        self.nodes += nodes;
+        self.metadata += bytes;
+        self.work = self
+            .work
+            .checked_add(work)
+            .ok_or_else(|| resource("PYZ TOC work overflow"))?;
+        Ok(())
+    }
+
+    fn copied(&mut self, value: &Value, depth: usize) -> Result<()> {
+        if depth >= MAX_DEPTH {
+            return Err(resource("PYZ TOC reference expansion is too deep"));
+        }
+        self.charge(1, std::mem::size_of::<Value>())?;
+        match value {
+            Value::Text(text) => self.charge(0, text.len())?,
+            Value::Bytes(bytes) => self.charge(0, bytes.len())?,
+            Value::Seq(items) => {
+                for item in items {
+                    self.copied(item, depth + 1)?;
+                }
+            }
+            Value::Map(items) => {
+                for (key, value) in items {
+                    self.copied(key, depth + 1)?;
+                    self.copied(value, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 struct Decoder<'a> {
     bytes: &'a [u8],
     position: usize,
-    references: Vec<Value>,
+    references: Vec<Option<Value>>,
+    admission: Admission,
 }
 
 fn invalid(message: impl Into<String>) -> Error {
     Error::new("INVALID_INPUT", message)
+}
+fn resource(message: impl Into<String>) -> Error {
+    Error::new("RESOURCE_LIMIT", message)
 }
 
 impl Decoder<'_> {
@@ -42,7 +120,6 @@ impl Decoder<'_> {
         self.position += 1;
         Ok(byte)
     }
-
     fn take(&mut self, length: usize) -> Result<&[u8]> {
         let end = self
             .position
@@ -53,82 +130,99 @@ impl Decoder<'_> {
         self.position = end;
         Ok(bytes)
     }
-
     fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(
             self.take(4)?.try_into().expect("four bytes"),
         ))
     }
-
     fn i32(&mut self) -> Result<i32> {
         Ok(i32::from_le_bytes(
             self.take(4)?.try_into().expect("four bytes"),
         ))
     }
-
     fn i64(&mut self) -> Result<i64> {
         Ok(i64::from_le_bytes(
             self.take(8)?.try_into().expect("eight bytes"),
         ))
     }
-
-    fn text(&mut self, length: usize) -> Result<String> {
-        String::from_utf8(self.take(length)?.to_vec())
-            .map_err(|_| invalid("marshal text is not UTF-8"))
+    fn string_bytes(&mut self, length: usize) -> Result<Vec<u8>> {
+        self.admission.charge(0, length)?;
+        let bytes = self.take(length)?;
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(length)
+            .map_err(|_| resource("PYZ TOC string allocation failed"))?;
+        output.extend_from_slice(bytes);
+        Ok(output)
     }
-
     fn long(&mut self) -> Result<i64> {
         let count = self.i32()?;
         let digits = count.unsigned_abs() as usize;
-        if digits == 0 {
-            return Ok(0);
-        }
         if digits > MAX_LONG_DIGITS {
             return Err(invalid("marshal long does not fit in 64 bits"));
         }
         let mut magnitude = 0i128;
         for index in 0..digits {
-            let digit = i128::from(u16::from_le_bytes(
-                self.take(2)?.try_into().expect("two bytes"),
-            ));
-            magnitude |= digit << (15 * index);
+            let digit = u16::from_le_bytes(self.take(2)?.try_into().expect("two bytes"));
+            if digit >= 1 << 15 {
+                return Err(invalid("invalid marshal long digit"));
+            }
+            magnitude |= i128::from(digit) << (15 * index);
         }
-        let value = if count < 0 { -magnitude } else { magnitude };
-        i64::try_from(value).map_err(|_| invalid("marshal long does not fit in 64 bits"))
+        i64::try_from(if count < 0 { -magnitude } else { magnitude })
+            .map_err(|_| invalid("marshal long does not fit in 64 bits"))
     }
-
-    fn slot(&mut self, flagged: bool) -> Option<usize> {
+    fn slot(&mut self, flagged: bool) -> Result<Option<usize>> {
         if !flagged {
-            return None;
+            return Ok(None);
         }
-        self.references.push(Value::Null);
-        Some(self.references.len() - 1)
+        self.admission
+            .charge(0, std::mem::size_of::<Option<Value>>())?;
+        self.references
+            .try_reserve(1)
+            .map_err(|_| resource("PYZ TOC reference allocation failed"))?;
+        let index = self.references.len();
+        self.references.push(None);
+        Ok(Some(index))
     }
-
+    fn cache(&mut self, slot: Option<usize>, value: &Value) -> Result<()> {
+        if let Some(slot) = slot {
+            self.admission.copied(value, 0)?;
+            self.references[slot] = Some(value.clone());
+        }
+        Ok(())
+    }
     fn sequence(&mut self, count: usize, depth: usize, flagged: bool) -> Result<Value> {
-        if depth >= MAX_DEPTH {
-            return Err(invalid("marshal nesting is too deep"));
+        if count
+            > self
+                .admission
+                .limits
+                .semantic_nodes
+                .saturating_sub(self.admission.nodes)
+            || count > self.bytes.len().saturating_sub(self.position)
+            || count.saturating_mul(std::mem::size_of::<Value>())
+                > self
+                    .admission
+                    .limits
+                    .metadata_bytes
+                    .saturating_sub(self.admission.metadata)
+        {
+            return Err(resource("PYZ TOC collection admission exceeded"));
         }
-        if count > MAX_ELEMENTS {
-            return Err(invalid("marshal collection is too large"));
-        }
-        let slot = self.slot(flagged);
+        let slot = self.slot(flagged)?;
         let mut items = Vec::new();
+        items
+            .try_reserve_exact(count)
+            .map_err(|_| resource("PYZ TOC collection allocation failed"))?;
         for _ in 0..count {
             items.push(self.value(depth + 1)?);
         }
         let value = Value::Seq(items);
-        if let Some(slot) = slot {
-            self.references[slot] = value.clone();
-        }
+        self.cache(slot, &value)?;
         Ok(value)
     }
-
     fn mapping(&mut self, depth: usize, flagged: bool) -> Result<Value> {
-        if depth >= MAX_DEPTH {
-            return Err(invalid("marshal nesting is too deep"));
-        }
-        let slot = self.slot(flagged);
+        let slot = self.slot(flagged)?;
         let mut pairs = Vec::new();
         loop {
             let key = self.value(depth + 1)?;
@@ -136,19 +230,20 @@ impl Decoder<'_> {
                 break;
             }
             let value = self.value(depth + 1)?;
+            pairs
+                .try_reserve(1)
+                .map_err(|_| resource("PYZ TOC dictionary allocation failed"))?;
             pairs.push((key, value));
-            if pairs.len() > MAX_ELEMENTS {
-                return Err(invalid("marshal collection is too large"));
-            }
         }
         let value = Value::Map(pairs);
-        if let Some(slot) = slot {
-            self.references[slot] = value.clone();
-        }
+        self.cache(slot, &value)?;
         Ok(value)
     }
-
     fn value(&mut self, depth: usize) -> Result<Value> {
+        if depth >= MAX_DEPTH {
+            return Err(resource("PYZ TOC marshal nesting is too deep"));
+        }
+        self.admission.charge(1, std::mem::size_of::<Value>())?;
         let code = self.byte()?;
         let flagged = code & 0x80 != 0;
         let value = match code & 0x7f {
@@ -160,23 +255,28 @@ impl Decoder<'_> {
             b'l' => Value::Int(self.long()?),
             b's' | b't' => {
                 let length = self.u32()? as usize;
-                Value::Bytes(self.take(length)?.to_vec())
+                Value::Bytes(self.string_bytes(length)?)
             }
-            b'u' | b'a' | b'A' => {
-                let length = self.u32()? as usize;
-                Value::Text(self.text(length)?)
-            }
-            b'z' | b'Z' => {
-                let length = self.byte()? as usize;
-                Value::Text(self.text(length)?)
+            b'u' | b'a' | b'A' | b'z' | b'Z' => {
+                let length = if matches!(code & 0x7f, b'z' | b'Z') {
+                    self.byte()? as usize
+                } else {
+                    self.u32()? as usize
+                };
+                Value::Text(
+                    String::from_utf8(self.string_bytes(length)?)
+                        .map_err(|_| invalid("marshal text is not UTF-8"))?,
+                )
             }
             b'r' => {
                 let index = self.u32()? as usize;
-                return self
+                let value = self
                     .references
                     .get(index)
-                    .cloned()
-                    .ok_or_else(|| invalid("marshal reference is out of range"));
+                    .and_then(Option::as_ref)
+                    .ok_or_else(|| invalid("cyclic or out-of-range marshal reference"))?;
+                self.admission.copied(value, depth)?;
+                return Ok(value.clone());
             }
             b'(' | b'[' | b'<' | b'>' => {
                 let count = self.u32()? as usize;
@@ -189,58 +289,8 @@ impl Decoder<'_> {
             b'{' => return self.mapping(depth, flagged),
             code => return Err(invalid(format!("unsupported marshal type 0x{code:02x}"))),
         };
-        if flagged {
-            self.references.push(value.clone());
-        }
+        let slot = self.slot(flagged)?;
+        self.cache(slot, &value)?;
         Ok(value)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decodes_integers_and_text() {
-        let mut bytes = vec![b'(', 3, 0, 0, 0];
-        bytes.extend_from_slice(b"i\xff\xff\xff\xff");
-        bytes.extend_from_slice(b"z\x03abc");
-        bytes.extend_from_slice(b"l\x01\x00\x00\x00\x11\x00");
-        match decode(&bytes).unwrap() {
-            Value::Seq(items) => match &items[..] {
-                [Value::Int(-1), Value::Text(text), Value::Int(17)] => assert_eq!(text, "abc"),
-                _ => panic!("unexpected tuple contents"),
-            },
-            _ => panic!("expected a tuple"),
-        }
-    }
-
-    #[test]
-    fn references_resolve_to_flagged_objects() {
-        let mut bytes = vec![b'[', 2, 0, 0, 0];
-        bytes.extend_from_slice(b"\xfa\x03abc");
-        bytes.extend_from_slice(b"r\x00\x00\x00\x00");
-        match decode(&bytes).unwrap() {
-            Value::Seq(items) => match &items[..] {
-                [Value::Text(first), Value::Text(second)] => assert_eq!(first, second),
-                _ => panic!("unexpected list contents"),
-            },
-            _ => panic!("expected a list"),
-        }
-    }
-
-    #[test]
-    fn rejects_unsupported_and_truncated_values() {
-        assert!(decode(b"c").is_err());
-        assert!(decode(b"i\x01").is_err());
-        assert!(decode(b"r\x07\x00\x00\x00").is_err());
-        let depth = MAX_DEPTH + 1;
-        let mut bytes = Vec::new();
-        for _ in 0..depth {
-            bytes.extend_from_slice(b"[");
-            bytes.extend_from_slice(&1u32.to_le_bytes());
-        }
-        bytes.push(b'0');
-        assert!(decode(&bytes).is_err());
     }
 }

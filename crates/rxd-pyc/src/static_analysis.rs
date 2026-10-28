@@ -6,12 +6,8 @@ use std::{
 };
 
 use pycdc::{
-    code::CodeObject,
-    evidence::{MarshalEvidence, Span},
-    marshal::MarshalReader,
-    object::PyObject,
-    pyc::PycModule,
-    version::{PythonVersion, version_from_magic},
+    code::CodeObject, evidence::MarshalEvidence, marshal::MarshalReader, object::PyObject,
+    version::PythonVersion,
 };
 use rxd_core::{Error, Result, perf::Perf};
 
@@ -40,23 +36,15 @@ impl Limits {
     }
 }
 
-pub struct Incoming {
-    pub owner: usize,
-    pub path: Vec<usize>,
-    pub span: Option<Span>,
-    pub alias: Option<Span>,
-    pub is_reference: bool,
-}
 pub struct CodeEntry {
     pub code: Rc<CodeObject>,
     pub definition: usize,
-    pub parent: Option<usize>,
-    pub incoming: Vec<Incoming>,
 }
 
 pub struct Analysis {
     pub bytes: Vec<u8>,
     pub source_id: String,
+    pub namespace: Option<String>,
     pub version: PythonVersion,
     pub evidence: MarshalEvidence,
     pub codes: Vec<CodeEntry>,
@@ -76,48 +64,68 @@ impl Analysis {
         perf.counters.input_bytes = Some(bytes.len());
         let source_id = perf.measure("hash", || rxd_core::identity::input_id(&bytes));
         perf.source_id = Some(source_id.clone());
+        let (version, header) =
+            pycdc::loader::input_format(&bytes, version).map_err(super::input_error)?;
+        Self::from_bytes(
+            bytes,
+            version,
+            header.map_or(0, |header| header.header_size),
+            None,
+            source_id,
+            limits,
+            perf,
+        )
+    }
+
+    pub(crate) fn from_bytes(
+        bytes: Vec<u8>,
+        version: PythonVersion,
+        base: usize,
+        namespace: Option<String>,
+        source_id: String,
+        limits: Limits,
+        perf: &mut Perf,
+    ) -> Result<Self> {
         let mut parse_counts = None;
         let parsed = perf.measure("parse", || -> Result<_> {
-            // Accept verified final CPython magic values, never nearest-version guesses.
-            const FINALS: &[(u8, u16)] = &[(8, 3413), (9, 3425), (10, 3439), (11, 3495), (12, 3531), (13, 3571)];
-            let (version, base) = match version {
-                Some((3, minor)) => {
-                    let magic = FINALS.iter().find(|&&(v, _)| v == minor).map(|&(_, m)| m)
-                        .ok_or_else(|| Error::new("INVALID_INPUT", "static PYC queries support verified final CPython 3.8–3.13 formats only"))?;
-                    (version_from_magic(magic).unwrap(), 0)
-                }
-                Some(_) => return Err(Error::new("INVALID_INPUT", "static PYC queries support verified final CPython 3.8–3.13 formats only")),
-                None => {
-                    let header = PycModule::parse_header(&bytes).map_err(super::input_error)?;
-                    if !FINALS.iter().any(|&(_, m)| m == header.magic) || !matches!(header.flags, 0 | 1 | 3) {
-                        return Err(Error::new("INVALID_INPUT", "static PYC queries require verified final CPython magic and valid PEP 552 flags"));
-                    }
-                    (header.version, header.header_size)
-                }
-            };
-            let mut reader = MarshalReader::with_evidence(&bytes[base..], version, base, limits.entities, limits.work).with_limits(limits.marshal);
+            let mut reader = MarshalReader::with_evidence(
+                &bytes[base..],
+                version,
+                base,
+                limits.entities,
+                limits.work,
+            )
+            .with_limits(limits.marshal);
             let result = reader.load();
             parse_counts = reader.evidence_counts();
             let object = result.map_err(super::input_error)?;
-            if !reader.at_eof() { return Err(Error::new("INVALID_INPUT", "trailing marshal data")); }
-            if !matches!(&*object, PyObject::Code(_)) { return Err(Error::new("INVALID_INPUT", "top-level object is not a code object")); }
-            Ok((version, reader.into_evidence().unwrap()))
+            if !reader.at_eof() {
+                return Err(Error::new("INVALID_INPUT", "trailing marshal data"));
+            }
+            if !matches!(&*object, PyObject::Code(_)) {
+                return Err(Error::new(
+                    "INVALID_INPUT",
+                    "top-level object is not a code object",
+                ));
+            }
+            Ok(reader.into_evidence().unwrap())
         });
         if let Some((entities, work)) = parse_counts {
             perf.counters.entities = Some(entities);
             perf.counters.work = Some(work);
         }
-        let (version, evidence) = parsed?;
+        let evidence = parsed?;
         let mut analysis = Self {
             bytes,
             source_id,
+            namespace,
             version,
             evidence,
             codes: Vec::new(),
             limits,
             code_indexes: HashMap::new(),
         };
-        let indexed = perf.measure("visit", || analysis.add_code(0, None).map(|_| ()));
+        let indexed = perf.measure("visit", || analysis.add_code(0).map(|_| ()));
         perf.counters.entities = Some(analysis.evidence.entities);
         perf.counters.work = Some(analysis.evidence.work);
         indexed?;
@@ -138,34 +146,31 @@ impl Analysis {
         self.evidence.work += amount;
         Ok(())
     }
+    pub fn local_id<'a>(&self, id: &'a str) -> Result<&'a str> {
+        match self.namespace.as_deref() {
+            None => Ok(id),
+            Some(namespace) if id == namespace => Ok("code:0"),
+            Some(namespace) => id
+                .strip_prefix(namespace)
+                .and_then(|id| id.strip_prefix("::"))
+                .ok_or_else(|| {
+                    Error::new("INVALID_QUERY", "coordinate belongs to another PYZ module")
+                }),
+        }
+    }
+
     pub fn parse_code_id(&mut self, id: &str) -> Result<usize> {
         self.charge_work(id.len())?;
-        let invalid = || Error::new("INVALID_QUERY", "malformed or stale PYC code coordinate");
-        // A row prints `code:<index>`; the header carries the input identity, so nothing is
-        // expanded here and no coordinate is compared against a fingerprint.
-        let ordinals: Vec<&str> = id.split(':').collect();
-        let ordinal = match ordinals.as_slice() {
-            ["code", ordinal] => *ordinal,
-            _ => return Err(invalid()),
-        };
-        if ordinal.is_empty()
-            || (ordinal.len() > 1 && ordinal.starts_with('0'))
-            || !ordinal.bytes().all(|b| b.is_ascii_digit())
-        {
-            return Err(invalid());
-        }
-        let index = ordinal
-            .parse::<usize>()
-            .map_err(|_| Error::new("INVALID_QUERY", "invalid PYC code index"))?;
+        let index = crate::input::code_index(self.local_id(id)?)?;
         if index >= self.codes.len() {
-            // Well formed and absent: absence, not a bad query.
-            return Err(rxd_core::Error::failure(
-                rxd_core::Failure::NotFound,
-                format!("no code:{} in this input", index),
+            return Err(Error::new(
+                "NOT_FOUND",
+                format!("no code coordinate {id:?} in this input"),
             ));
         }
         Ok(index)
     }
+
     /// Select code rows by the closed listing surface: an optional case-insensitive
     /// substring, an optional exact name, and an optional exact index.
     pub fn select_codes(
@@ -200,11 +205,21 @@ impl Analysis {
             let filter_matches = match filter.as_ref() {
                 None => true,
                 Some(filter) => {
-                    let Some(candidate) = self.text_field(i, "name").map(str::to_owned) else {
-                        continue;
-                    };
-                    self.charge_work(candidate.len())?;
+                    let candidate = self
+                        .text_field(i, "qualname")
+                        .or_else(|| self.text_field(i, "name"))
+                        .unwrap_or_default()
+                        .to_owned();
+                    self.charge_work(
+                        candidate
+                            .len()
+                            .saturating_add(self.namespace.as_ref().map_or(0, String::len)),
+                    )?;
                     filter.matches(&candidate)
+                        || self
+                            .namespace
+                            .as_deref()
+                            .is_some_and(|name| filter.matches(name))
                 }
             };
             if name_matches && filter_matches {
@@ -213,11 +228,15 @@ impl Analysis {
         }
         Ok(selected)
     }
-    pub fn code_index(&self, definition: usize) -> Option<usize> {
-        self.code_indexes.get(&definition).copied()
+    pub fn qualify_id(&self, local: &str) -> String {
+        match self.namespace.as_deref() {
+            Some(namespace) if local == "code:0" => namespace.to_owned(),
+            Some(namespace) => format!("{namespace}::{local}"),
+            None => local.to_owned(),
+        }
     }
     pub fn code_id(&self, index: usize) -> String {
-        format!("code:{index}")
+        self.qualify_id(&format!("code:{index}"))
     }
     pub fn field_occurrence(&self, index: usize, name: &str) -> Option<usize> {
         self.evidence.occurrences[self.codes[index].definition]
@@ -246,7 +265,7 @@ impl Analysis {
             _ => "unavailable",
         }
     }
-    fn add_code(&mut self, occurrence: usize, parent: Option<usize>) -> Result<usize> {
+    fn add_code(&mut self, occurrence: usize) -> Result<usize> {
         self.charge_work(1)?;
         let definition = self.evidence.occurrences[occurrence].definition;
         if let Some(&index) = self.code_indexes.get(&definition) {
@@ -263,50 +282,29 @@ impl Analysis {
         self.codes.push(CodeEntry {
             code: code.clone(),
             definition,
-            parent,
-            incoming: Vec::new(),
         });
         self.code_indexes.insert(definition, index);
         let consts_occurrence = self.field_occurrence(index, "consts").unwrap();
         let consts_row = &self.evidence.occurrences[consts_occurrence];
-        let alias = consts_row.is_reference.then_some(consts_row.span);
         let consts = consts_row.definition;
         self.charge_work(self.evidence.occurrences[consts].children.len())?;
         let children = self.evidence.occurrences[consts].children.clone();
         let mut visited = HashSet::new();
-        for (slot, child) in children.into_iter().enumerate() {
-            self.walk_constant(index, child, &mut vec![slot], alias, &mut visited)?;
+        for child in children {
+            self.walk_constant(child, &mut visited)?;
         }
         Ok(index)
     }
-    fn walk_constant(
-        &mut self,
-        owner: usize,
-        occurrence: usize,
-        path: &mut Vec<usize>,
-        alias: Option<Span>,
-        visited: &mut HashSet<usize>,
-    ) -> Result<()> {
+    fn walk_constant(&mut self, occurrence: usize, visited: &mut HashSet<usize>) -> Result<()> {
         self.charge_work(1)?;
         let row = &self.evidence.occurrences[occurrence];
         let definition = row.definition;
-        let span = row.span;
-        let is_reference = row.is_reference;
         let object = self.evidence.occurrences[definition]
             .object
             .as_deref()
             .unwrap();
         if matches!(object, PyObject::Code(_)) {
-            let index = self.add_code(occurrence, Some(owner))?;
-            // One retained incoming edge per necessary traversal, bounded by cumulative work.
-            self.charge_work(path.len() + 1)?;
-            self.codes[index].incoming.push(Incoming {
-                owner,
-                path: path.clone(),
-                span: alias.is_none().then_some(span),
-                alias,
-                is_reference,
-            });
+            self.add_code(occurrence)?;
             return Ok(());
         }
         if !matches!(
@@ -321,13 +319,10 @@ impl Analysis {
         {
             return Ok(());
         }
-        let alias = alias.or(is_reference.then_some(span));
         self.charge_work(self.evidence.occurrences[definition].children.len())?;
         let children = self.evidence.occurrences[definition].children.clone();
-        for (slot, child) in children.into_iter().enumerate() {
-            path.push(slot);
-            self.walk_constant(owner, child, path, alias, visited)?;
-            path.pop();
+        for child in children {
+            self.walk_constant(child, visited)?;
         }
         Ok(())
     }

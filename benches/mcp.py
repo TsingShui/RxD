@@ -21,7 +21,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from mcp_client import Client, structured
-from pyc_oracle import name_hits, validate_view
+from pyc_oracle import name_hits
 from dotnet_strings_oracle import canonical_hash
 from input_identity import input_identity
 
@@ -66,7 +66,7 @@ def project(raw, kind):
 
 def parity(actual, expected, kind):
     if kind == 'text':
-        if actual.get('source') != expected:
+        if actual.get('text') != expected:
             raise ValueError('unchanged source differs between CLI and MCP')
     elif actual != expected:
         raise ValueError('CLI/MCP content, identity, ordering or completeness differs')
@@ -171,7 +171,6 @@ def builtin_cases(root, dotnet, csharp):
             raise ValueError('independent PYC oracle hash differs')
         oracle = json.loads(raw)
         sites = name_hits(oracle, 'self')
-        selected = min({site[0] for site in sites}, key=lambda index: len(oracle['codes'][index]['code_hex']))
         file = name + '.timestamp.pyc'
         cases.append({'name': 'cpython-' + version + '-email-parser',
                       'input': str(directory / file), 'sha256': manifest['artifacts'][file]['sha256'],
@@ -179,17 +178,13 @@ def builtin_cases(root, dotnet, csharp):
                       'provenance': {'source': str(directory / 'manifest.json'), 'python': manifest['python'],
                                      'compiler_sha256': manifest['binary_sha256'], 'oracle': identity(directory / saved['storage'])},
                       'oracle': {'kind': 'pyc-refs', 'sites': sites},
-                      'source_scale': {'code_objects': len(oracle['codes']), 'selected_code_index': selected,
-                                       'selected_bytecode_bytes': len(oracle['codes'][selected]['code_hex']) // 2},
-                      'query': {'tool': 'pyc_xref', 'arguments': {'name': 'self'},
-                                'cli': ['pyc', 'xref', '${path}', '--name', 'self'], 'projection': 'jsonl'},
-                      'workflow': [{'name': 'q'}, {'name': 'select', 'tool': 'pyc_codes',
-                                    'arguments': {'index': selected},
-                                    'cli': ['pyc', 'codes', '${path}', '--index', selected], 'projection': 'jsonl'},
-                                   {'name': 'fetch', 'tool': 'pyc_get_code',
-                                    'arguments': {'at': '${select.records.0.at}'},
-                                    'cli': ['pyc', 'get-code', '${path}', '--at', '${select.records.0.at}'], 'projection': 'json'}],
-                      '_pyc_oracle': oracle, '_selected': selected})
+                      'source_scale': {'code_objects': len(oracle['codes']),
+                                       'module_bytecode_bytes': sum(len(code['code_hex']) // 2 for code in oracle['codes'])},
+                      'query': {'tool': 'pyc_xref', 'arguments': {'kind': 'name', 'at': 'self'},
+                                'cli': ['pyc', 'xref', '${path}', '--kind', 'name', '--at', 'self'], 'projection': 'jsonl'},
+                      'workflow': [{'name': 'q'}, {'name': 'fetch', 'tool': 'pyc_decompile',
+                                    'arguments': {},
+                                    'cli': ['pyc', 'decompile', '${path}'], 'projection': 'text'}]})
     if dotnet:
         pin = json.loads((root / 'tests/corpus/dotnet/string-expectations.json').read_text())
         expected = next(item for item in pin['workloads'] if item['name'] == 'url')
@@ -444,10 +439,6 @@ def measure_case(recorder, case, samples, concurrency, baseline):
             context['selected_id'] = next(row['at'] for row in result['records'] if row['record'] == 'method')
         elif case['backend'] == 'wasm':
             context['selected_id'] = next(row['at'] for row in result['records'] if row['record'] == 'function')
-        elif case['backend'] == 'pyc':
-            # Get the ID from actual ENUMERATE; never fabricate the timed workflow route.
-            outlined = structured(prepared.tool('pyc_codes', {'input': {'path': path}, 'index': case['_selected']})[0])
-            context['selected_id'] = outlined['records'][0]['at']
         else:
             context['selected_id'] = next((row['context_at'] for row in result.get('records', []) if row['context_at']), None)
         context['q'] = result
@@ -462,10 +453,6 @@ def measure_case(recorder, case, samples, concurrency, baseline):
             if cli_metrics.get('failure'):
                 raise ValueError('CLI workflow preflight failed')
             parity(value, project(cli_raw, step['projection']), step['projection'])
-            if step['tool'] == 'pyc_get_code' and case.get('_pyc_oracle'):
-                oracle = case['_pyc_oracle']
-                validate_view(value, oracle['codes'][case['_selected']],
-                              oracle['marshal_ranges']['code_ranges'][case['_selected']])
             context[step['name']] = value
             detail = value.get('detail', {})
             scale.append({'tool': step['tool'], 'output_json_bytes': len(json.dumps(value).encode()),

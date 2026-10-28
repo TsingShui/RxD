@@ -84,6 +84,11 @@ or unchanged input bytes.
 
 Archive extraction is CLI-only: `rxd unpack ARCHIVE -o DIR` writes a directory, so
 it is not an MCP artifact tool. Extract first, then open the resulting file target.
+PyInstaller PYZ analysis is different: open the PYZ itself with backend `pyc`, then
+use `pyc_modules` to locate modules, then `pyc_codes` with `within` set to a
+returned module coordinate. `pyc_strings` and `pyc_xref` can search the whole PYZ.
+`pyc_decompile` selects a returned full-module or module-qualified code coordinate
+with `at`.
 
 A complete ambiguous candidate result is a
 domain error, not one arbitrarily chosen definition. EVM always requires explicit

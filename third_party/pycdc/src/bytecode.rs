@@ -330,15 +330,40 @@ pub fn decode_evidence_limited<F: FnMut(usize) -> Result<()>>(
     code: &CodeObject,
     table: &OpcodeTable,
     version: PythonVersion,
+    charge: F,
+) -> Result<(Vec<Instruction>, Vec<RawInstruction>)> {
+    decode_evidence_capped(code, table, version, None, charge)
+}
+
+/// Enforce an optional original-instruction cap before retaining decoder state.
+pub fn decode_evidence_capped<F: FnMut(usize) -> Result<()>>(
+    code: &CodeObject,
+    table: &OpcodeTable,
+    version: PythonVersion,
+    max_instructions: Option<usize>,
     mut charge: F,
 ) -> Result<(Vec<Instruction>, Vec<RawInstruction>)> {
-    let logical = decode_core(code, table, version, false, &mut charge)?;
-    // The complete projection retains every code unit; charge it before allocation.
-    charge(if table.wordcode {
+    if table.wordcode && max_instructions.is_some_and(|limit| code.code.len() / 2 > limit) {
+        return Err(PycError::ResourceLimit(
+            "scanned code instruction budget exceeded",
+        ));
+    }
+    let mut scanned = 0usize;
+    let logical = decode_core(code, table, version, false, |amount| {
+        scanned = scanned.saturating_add(amount);
+        if max_instructions.is_some_and(|limit| scanned > limit) {
+            return Err(PycError::ResourceLimit(
+                "scanned code instruction budget exceeded",
+            ));
+        }
+        charge(amount)
+    })?;
+    let units = if table.wordcode {
         code.code.len() / 2
     } else {
-        code.code.len()
-    })?;
+        scanned
+    };
+    charge(units)?;
     let mut raw = Vec::new();
     let mut cursor = 0;
     for ins in &logical {
@@ -475,7 +500,20 @@ pub fn disasm_line(
     version: PythonVersion,
 ) -> String {
     let _budget_frame = crate::budget::enter();
-    let name = table.name(inst.opcode);
+    format_line(
+        inst,
+        table.name(inst.opcode),
+        &operand_repr(inst, code, table, version),
+    )
+}
+
+pub(crate) fn operand_repr(
+    inst: &Instruction,
+    code: &CodeObject,
+    table: &OpcodeTable,
+    version: PythonVersion,
+) -> String {
+    let _budget_frame = crate::budget::enter();
     let mut argrepr = String::new();
     if inst.has_arg {
         let a = inst.arg;
@@ -487,7 +525,12 @@ pub fn disasm_line(
                     argrepr = format!("{a}");
                 }
             }
-            Op::LOAD_FAST | Op::STORE_FAST | Op::DELETE_FAST => {
+            Op::LOAD_FAST
+            | Op::STORE_FAST
+            | Op::DELETE_FAST
+            | Op::LOAD_FAST_CHECK
+            | Op::LOAD_FAST_BORROW
+            | Op::LOAD_FAST_AND_CLEAR => {
                 // 3.11+: LOAD_FAST arg indexes localsplus; earlier: varnames
                 let idx = a as usize;
                 let n = if version.at_least(3, 11) {
@@ -602,7 +645,7 @@ pub fn disasm_line(
             }
         }
     }
-    format_line(inst, name, &argrepr)
+    argrepr
 }
 
 fn format_line(inst: &Instruction, name: &str, argrepr: &str) -> String {
@@ -706,7 +749,7 @@ pub fn compare_op_index(arg: u32, version: PythonVersion) -> usize {
 }
 
 /// BINARY_OP (3.11+) argument -> operator text.
-pub fn binary_op_name(arg: u32, _version: PythonVersion) -> Option<&'static str> {
+pub fn binary_op_name(arg: u32, version: PythonVersion) -> Option<&'static str> {
     let _budget_frame = crate::budget::enter();
     let id = arg;
     Some(match id {
@@ -736,6 +779,7 @@ pub fn binary_op_name(arg: u32, _version: PythonVersion) -> Option<&'static str>
         23 => "-=",
         24 => "/=",
         25 => "^=",
+        26 if version.at_least(3, 14) => "[]",
         _ => return None,
     })
 }

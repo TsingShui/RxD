@@ -422,6 +422,7 @@ pub enum Stmt {
     },
     FuncDef(Rc<FunctionDef>, Vec<Stmt>),
     ClassDef {
+        coordinate: Option<usize>,
         name: String,
         bases: Vec<ExprRef>,
         keywords: Vec<(Option<String>, ExprRef)>,
@@ -446,6 +447,8 @@ pub enum Stmt {
     /// Fallback for bytecode we could not model; keeps the disassembly text
     /// so output stays informative (graceful degradation).
     Unimplemented(String),
+    /// Whole-code fallback; the module renderer owns the original bytes.
+    BytecodeFallback(usize),
 }
 
 // Budget-aware cloning retains the upstream AST shape.
@@ -608,6 +611,7 @@ impl Clone for Stmt {
                 Self::FuncDef(crate::budget_clone!(field_0), crate::budget_clone!(field_1))
             }
             Self::ClassDef {
+                coordinate,
                 name,
                 bases,
                 keywords,
@@ -617,6 +621,7 @@ impl Clone for Stmt {
                 body,
                 type_params,
             } => Self::ClassDef {
+                coordinate: *coordinate,
                 name: crate::budget_clone!(name),
                 bases: crate::budget_clone!(bases),
                 keywords: crate::budget_clone!(keywords),
@@ -640,6 +645,7 @@ impl Clone for Stmt {
                 cases: crate::budget_clone!(cases),
             },
             Self::Unimplemented(field_0) => Self::Unimplemented(crate::budget_clone!(field_0)),
+            Self::BytecodeFallback(index) => Self::BytecodeFallback(*index),
         }
     }
 }

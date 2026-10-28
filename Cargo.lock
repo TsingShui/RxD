@@ -3355,6 +3355,7 @@ version = "0.1.0"
 dependencies = [
  "pycdc",
  "rxd-core",
+ "rxd-pyinstaller",
  "serde",
  "sha2 0.10.9",
 ]

@@ -22,20 +22,22 @@ explicitly, then locate → associate
 | Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
 | Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
-| CPython .pyc or versioned raw marshal | `rxd pyc` | `codes`, `strings` / `xref --at` (a `strings` row), `xref --kind name --at NAME/-m TEXT`, `get-code --at`, whole-module `decompile` |
+| CPython PYC, PyInstaller PYZ or versioned raw marshal | `rxd pyc` | `modules`, `codes --within MODULE`, `strings` / `xref --at` (a strings row), `xref --kind name --at NAME/-m TEXT` / `decompile --at` module or code; standalone PYC defaults to its whole module |
 | Flutter Android `libapp.so` (Dart AOT, ELF ARM64) | `rxd dae` | `info`, `classes`, `functions --class`, `strings`, `xref --at str:0x...` / `decompile --at|--class|--lib` |
 | PUC Lua 5.1-5.5, LuaJIT 2.1 or Luau chunk | `rxd unluac-rs` | `codes`, `strings`, `xref --at proto:N:const:I`, `instructions --at proto:N`, whole-chunk `decompile` |
 | Native binary (optional engine) | `rxd kuna` (alias `rxd bin`) | native `functions` / engine-specific evidence / `decompile` |
 
 Ordinary JVM class/JAR input goes directly to `rxd jar`, without Java, D8 or
 conversion. A ZIP containing root DEX entries belongs to `rxd rasc`. ASAR, ZIP and
-PyInstaller are opaque containers: `rxd unpack ARCHIVE -o DIR` extracts every
+PyInstaller executables are opaque containers: `rxd unpack ARCHIVE -o DIR` extracts every
 regular file into a new directory, then analyze those files with the matching
 backend. HAP packages use the ZIP path: all entries, including ABC, resources and
 native libraries, are extracted byte-exactly; the receipt format is `zip`.
 PyInstaller one-file inputs additionally emit `PYZ.pyz_extracted`
 modules with reconstructed `.pyc` headers. A PyInstaller one-dir root is accepted too:
 its launcher's CArchive/PYZ is extracted; loose `_internal` dependencies stay in place.
+A standalone PyInstaller `PYZ.pyz` can instead go directly to `rxd pyc` for
+archive-wide queries and selected reconstruction without writing extracted files.
 wxapkg is unpacked from its index; encrypted `V1MMWX` PC/Mac packages need
 `--appid` or a path component matching the appid. `unpack` has no entry selection or
 in-memory archive analysis. `rxd ark` can instead read the selected ABC directly
@@ -55,8 +57,8 @@ beyond PYZ are unsupported.
   completeness and inference flags still apply.
 - Fetch commands print the selected unit: `get-*` and `decompile` print the
   reconstructed source text itself, and `--raw` prints original instructions as
-  text lines. Evidence that is not source — `get-code` inventories, class
-  metadata under `--raw` — is one JSON record with schema v2 navigation (`at`,
+  text lines. Evidence that is not source, such as class metadata under `--raw`,
+  is one JSON record with schema v2 navigation (`at`,
   `parent_at`, `context_at`, `source_id`, `start`, `end`) outside `detail` and
   format-specific fields inside. `at` is the copy-only coordinate a listing
   prints and the value `--at` accepts. Parse actual responses, never manufacture
@@ -164,27 +166,59 @@ complete instruction view for unsupported instructions/control flow. `--raw`
 forces that view. WAT text, Component Model, linking and WASI execution are outside
 this binary core-module analyzer.
 
-## Python: constant → explicit reference → original code
+## Python: whole-PYZ search → selected module or code body
 
 ```sh
-rxd pyc codes module.pyc -f token
-rxd pyc strings module.pyc -f Authorization
-rxd pyc xref module.pyc --at "$CONSTANT_AT"
-rxd pyc get-code module.pyc --at "$CODE_AT"
-rxd pyc xref module.pyc --kind name --at token --within "$CODE_AT"
-rxd pyc xref module.pyc --kind name -m token
+rxd pyc modules PYZ.pyz -f networking
+rxd pyc codes PYZ.pyz --within "$MODULE_AT"
+rxd pyc codes PYZ.pyz -f proxy
+rxd pyc strings PYZ.pyz -f Authorization
+rxd pyc xref PYZ.pyz --at "$CONSTANT_AT"
+rxd pyc xref PYZ.pyz --kind name -m getproxies
+rxd pyc xref PYZ.pyz --kind name -m proxy --within "$MODULE_OR_CODE_AT"
+rxd pyc decompile PYZ.pyz --at "$MODULE_OR_CODE_AT"
 rxd pyc decompile module.pyc
+rxd pyc decompile module.pyc --at "$CODE_AT"
 ```
 
-Static navigation accepts the supported final CPython 3.8–3.13 formats, not every
-Python implementation or prerelease. Raw marshal requires `--version X.Y`. Use a
-strings row's `at`, then the owning `context_at` from `xref` for `get-code`.
-Constant occurrences remain distinct even when values/containers are shared.
-`codes`/`strings` do not imply that instructions have been scanned. `get-code`
-preserves instructions, caches, tables and location evidence; names are explicit
-bytecode facts, not resolved duck-typed calls. Whole-module source reconstruction
-is bounded: `decompile` prints Python source and fails when recovery is incomplete,
-so a partial module never reaches stdout.
+The same commands accept PYC and PyInstaller `PYZ\0`, detected by magic rather
+than filename. ZIP zipapps are a different format. PYZ searches cover every
+code-bearing member, not startup scripts/native libraries outside that archive.
+No unpacked directory or persistent index is needed.
+
+`modules` reads the PYZ directory without inflating members; its columns are
+`at, kind`, with kind `module`, `package` or `namespace`. Namespace packages
+have no executable body; data entries are excluded. For standalone PYC/raw marshal,
+the single module row is `code:0`, without guessing a module name from its path.
+`codes --within MODULE` parses only the exact selected module, including its root;
+omit `--within` for whole-input search. `codes --at` selects just one row and is
+exclusive with `--within`. Both listings support `-f` and `--case sensitive`.
+
+PYZ module roots use the full original module name, such as
+`yt_dlp.YoutubeDL`; nested code uses `yt_dlp.YoutubeDL::code:N`.
+Constant occurrences use `MODULE::const:N:PATH`. Standalone PYC retains
+`code:N` and `const:N:PATH`. Copy printed coordinates; code indices are local
+to their module and remain unchanged by filtering.
+
+A strings coordinate selects constant xref; equal strings in different modules
+remain distinct. Name xref searches explicit imports/loads/attributes, not
+resolved dynamic calls. `xref --within` accepts a whole-module coordinate or one
+code coordinate. Reference `context_at` selects the caller for reconstruction.
+PYZ reference `detail.entry` identifies its module; `start`/`end` refer to that
+member's uncompressed marshal payload, not ranges in the compressed archive.
+
+PYZ reconstruction requires `--at`. A module coordinate reconstructs that whole
+module; a code coordinate reconstructs its complete execution body as a source
+fragment. Enclosing bindings, defaults and decorators are outside a code-body
+selection, not guessed wrappers. A standalone PYC without `--at` retains
+whole-module reconstruction. Source/fallback labels use the listing coordinates.
+
+Unsupported bodies retain labelled original-bytecode comments while healthy
+siblings remain source. An unavailable enclosing binding leaves nested recovery
+as isolated comments. Partial reconstruction has markers and a stderr diagnostic;
+malformed input, incomplete reference scans and resource failures are explicit,
+without partial success output. Navigation and reconstruction share embedded
+magic/version rules; raw marshal still requires `--version X.Y`.
 
 ## Dart AOT (Flutter): snapshot info, functions, pseudocode
 
@@ -272,8 +306,8 @@ handle for related calls and `rxd_close` afterward. Targets fix input bytes but 
 not cache parser state. Backend tools retain original identity, reference and
 fallback semantics. Path grants and worker/capture/deadline/full-response budgets apply;
 consume `structuredContent` — `{text}` for printed source and table rows,
-`{records: [...]}` for JSON streams, and the record itself for `get-code`/`--raw`
-evidence — not a truncated text preview.
+`{records: [...]}` for JSON streams, and the record itself for class metadata
+under `--raw` — not a truncated text preview.
 
 ## Scope and maintenance
 

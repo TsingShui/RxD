@@ -7,7 +7,10 @@ Android APK/DEX (`rxd rasc`), JVM class/JAR (`rxd jar`), .NET IL (`rxd ilspy`),
 WebAssembly (`rxd wasm`), CPython bytecode (`rxd pyc`), Lua/LuaJIT/Luau
 bytecode (`rxd unluac-rs`) and native EVMole EVM bytecode (`rxd evmole`). Outer command names credit the engines a backend wraps;
 crates, modules, features and `backend` record labels keep their original names. CPython bytecode has bounded embedded source reconstruction
-and static navigation for CPython 3.8–3.13. Kuna has an optional directly linked
+and static navigation using the embedded parser's recognized formats. The same
+`rxd pyc` queries read PyInstaller PYZ directly, with module-qualified coordinates
+and module/code-body reconstruction; standalone PYC remains supported.
+`modules` reads the PYZ directory; `codes --within MODULE` parses only that module. Kuna has an optional directly linked
 CLI adapter and bundled specs. ASAR, ZIP (including HAP) and PyInstaller archives
 are unpacked into a directory. `rxd ark` can also read a selected dynamic ABC
 directly from HAP; it does not analyze the other archive payloads.
@@ -40,7 +43,7 @@ The current layout is:
 - `crates/rxd-zip/`: ZIP-family (including HAP) index and whole-archive
   Stored/Deflate extraction with CRC, length, duplicate-path and path-safety validation.
 - `crates/rxd-pyinstaller/`: PyInstaller CArchive/PYZ extraction with reconstructed
-  `.pyc` headers.
+  `.pyc` headers and immutable PYZ indexing/member reads shared with `rxd pyc`.
 - `crates/rxd-wxapkg/`: wxapkg index extraction and V1MMWX appid decryption.
 - `crates/rxd-dex/`: APK/DEX analysis behind `rxd rasc`, Manifest and Java
   emission; the shared typed service is provided by `src/mcp/`.
@@ -63,8 +66,8 @@ The current layout is:
   reconstruction through the pinned `unluac` crate (`unluac-rs`); listings read the proto tree
   without running the decompiler.
 - `crates/rxd-pyc/`: bounded PYC/marshal parsing, code/constant identities,
-  original instruction FETCH, explicit references and embedded pycdc source
-  reconstruction; `third_party/pycdc/` retains provenance and local safety
+  explicit references and whole-module pycdc reconstruction with function-local
+  bytecode fallbacks; `third_party/pycdc/` retains provenance and local safety
   patches.
 - Maintained third-party dependency forks and source snapshots (radguard,
   axmldecoder, pycdc) live under the top-level `third_party/`.
@@ -235,7 +238,7 @@ Source reconstruction prints the source itself, never a record: `decompile`
 commands emit one labelled block per unit, and `get-method`/`get-class`/
 `get-function` print the reconstructed Java, C# or C-like text. `--raw` prints the
 original instructions as text lines too. Only evidence that is not source
-(`get-code` inventories, class metadata under `--raw`) stays a JSON record. Do not add presentation columns,
+(such as class metadata under `--raw`) stays a JSON record. Do not add presentation columns,
 padding or per-backend dialects.
 
 `xref` is one command, not per-kind subcommands. Preserve argument errors for

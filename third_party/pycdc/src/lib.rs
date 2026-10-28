@@ -21,12 +21,14 @@ pub mod decompiler;
 pub mod disasm;
 pub mod error;
 pub mod evidence;
+mod filters;
 pub mod linetable;
 pub mod loader;
 pub mod marshal;
 pub mod object;
 pub mod opcode;
 pub mod pyc;
+pub mod recovery;
 pub mod version;
 
 pub use error::{PycError, Result};

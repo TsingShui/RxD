@@ -154,7 +154,10 @@ impl OpcodeTable {
     }
 
     pub fn is_jrel(&self, byte: u8) -> bool {
+        // END_ASYNC_FOR's operand names a monitoring source, not a branch destination.
         self.jrel[byte as usize]
+            && self.op(byte) != Op::END_ASYNC_FOR
+            && self.name(byte) != "INSTRUMENTED_END_ASYNC_FOR"
     }
 
     pub fn is_jabs(&self, byte: u8) -> bool {
