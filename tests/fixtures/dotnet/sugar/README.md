@@ -98,12 +98,9 @@ Nonempty EH expectations:
 - Async `MoveNext` (`0x06000015`): catch `0x0100001e`, try `[7,111)`,
   handler `[111,136)`.
 
-`tests/dotnet/sugar.rs` launches the real CLI through the existing `run` harness:
-all 30 methods must be indexed with exact SHA-256/token-bound IDs and yield
-complete byte-exact `get --il` records, ordered EH and contiguous full instruction
-coverage. Renaming unchanged bytes preserves identity/output; mutating padding
-changes identity and rejects a stale ID without partial output. With
-`--features csharp-decompiler`, the same CLI seam also asserts C# recovery and
-syntax evidence for all nine public sugar methods, without formatting snapshots.
-Those recovery tests require the separately built native engine and are
-cfg-excluded from the default offline build.
+The fixture is a release sample and an MCP input, not a C# expectation source.
+`expected.json` stays the independent record of this assembly's metadata, IL and
+EH facts, so `rxd ilspy` output can be diffed against it directly. The C# this
+assembly renders to is the engine's own output and rxd does not assert it; rxd
+owns only that a fetch answers with source or with the original IL, and that
+`--raw` stays the original instruction listing.

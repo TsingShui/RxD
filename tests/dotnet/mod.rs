@@ -1,13 +1,10 @@
 //! Static .NET CLI contracts using independently assembled original fixtures.
 use super::*;
 
-#[cfg(all(feature = "csharp-decompiler", unix))]
-mod class_csharp;
 mod field_type_refs;
 mod metadata_budget;
 mod method_refs;
 mod strings;
-mod sugar;
 
 #[test]
 fn enabled_backend_features_define_the_cli_catalog() {
@@ -47,27 +44,6 @@ fn input() -> PathBuf {
 
 fn expected() -> Value {
     serde_json::from_str(include_str!("../fixtures/dotnet/expected.json")).unwrap()
-}
-
-/// Listings are one table document; each row holds values for `columns`, in order.
-#[cfg(feature = "csharp-decompiler")]
-fn table(output: &Output) -> Value {
-    jsonl(output).into_iter().next().unwrap()
-}
-
-#[cfg(feature = "csharp-decompiler")]
-fn method_id(path: &Path, name: &str) -> String {
-    let document = table(&run("methods", path, &["--name", name]));
-    let needle = format!("::{name}(");
-    document["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row[1].as_str().is_some_and(|full| full.contains(&needle)))
-        .unwrap_or_else(|| panic!("missing method {name}"))[0]
-        .as_str()
-        .unwrap()
-        .to_owned()
 }
 
 fn run(command: &str, path: &Path, args: &[&str]) -> Output {

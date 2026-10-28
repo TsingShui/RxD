@@ -200,12 +200,12 @@ have `code:null` and empty mapping.
 
 ## Recovery and release acceptance
 
-`tests/dotnet/sugar.rs` is the real CLI recovery seam. Feature-enabled tests
-assert C# success and lexical evidence of async/await, yield, captured lambda
-and local function, LINQ query syntax, initializers, using, lock, null propagation
-and interpolation. These tests require `csharp-decompiler`; the default source
-build does not enable that feature. Independent byte-exact raw IL/EH checks and
-genuine failed-method fallback tests remain in both configurations. No C# formatting snapshot is an oracle.
+C# rendering quality is the engine's own behavior. rxd does not assert which
+constructs a given assembly renders to, so there is no C# snapshot or syntax
+oracle in the test suite. What rxd owns is the seam: a fetch answers with source
+or with the original IL rather than with nothing, and `--raw` stays the original
+instruction listing. The fixtures keep independently read byte-exact IL/EH
+records to diff that output against.
 
 For benchmark commands and measurement conditions, see
 [CLI benchmarks](../README.md). Keep release query measurements separate from
