@@ -206,7 +206,11 @@ impl Engine {
     }
 }
 
-pub(super) fn render(input: &Input, method: &Method, body: &MethodBody) -> Result<Decompilation> {
+pub(super) fn render(
+    input: &Input<'_>,
+    method: &Method,
+    body: &MethodBody,
+) -> Result<Decompilation> {
     static ENGINE: OnceLock<std::result::Result<Option<Engine>, String>> = OnceLock::new();
     let Some(engine) = ENGINE
         .get_or_init(Engine::load)
@@ -269,7 +273,7 @@ pub(super) fn render(input: &Input, method: &Method, body: &MethodBody) -> Resul
     })
 }
 
-pub(super) fn render_class(input: &Input, class: &ClassBody<'_>) -> Result<ClassDecompilation> {
+pub(super) fn render_class(input: &Input<'_>, class: &ClassBody<'_>) -> Result<ClassDecompilation> {
     static ENGINE: OnceLock<std::result::Result<Option<Engine>, String>> = OnceLock::new();
     let Some(engine) = ENGINE
         .get_or_init(Engine::load)

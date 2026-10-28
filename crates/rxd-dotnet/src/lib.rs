@@ -11,10 +11,9 @@ mod refs;
 mod scan;
 mod signature;
 mod strings;
-mod validation;
 
 pub use decompile::{render, render_class};
-pub use input::Input;
+pub use input::{Input, read_file};
 pub use model::*;
 
 pub use refs::{Reference, ReferenceResult, SemanticTarget, TargetResolver};

@@ -66,8 +66,8 @@ verify release source before adaptation. Literal checks catch simple stale
 registry entries but do not prove a fork/port implements that entire baseline.
 
 Initial coverage: Kuna; RadGuard and its DAD origin; axmldecoder; the imported
-Rust pycdc snapshot; JADX-derived JVM code; dotscope and its production validator;
-the product NativeAOT ILSpy baseline.
+Rust pycdc snapshot; JADX-derived JVM code; the product NativeAOT ILSpy
+baseline.
 The pycdc remote/full revision and the original DAD baseline are unknown and
 intentionally make an all-source run incomplete. Resolving provenance is work,
 not permission to invent a relationship or hide the source.

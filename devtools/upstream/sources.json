@@ -97,22 +97,6 @@
       "blocked": "RadGuard credits the DAD design, but records no exact Androguard baseline. Establish provenance before claiming a complete upstream delta; checking RadGuard does not check DAD."
     },
     {
-      "id": "dotscope",
-      "relationship": "dependency-and-adapted-validator",
-      "url": "https://github.com/ATRAPSLLC/dotscope",
-      "track": {
-        "kind": "head"
-      },
-      "pin": {
-        "revision": "3028b1ab92ec1b0ad15f046b3b70d5ee82336a00"
-      },
-      "local_paths": [
-        "crates/rxd-dotnet",
-        "crates/rxd-dotnet/vendor/dotscope-validation"
-      ],
-      "evidence": "crates/rxd-dotnet/vendor/dotscope-validation/NOTICE"
-    },
-    {
       "id": "ilspy-native",
       "relationship": "production-engine",
       "url": "https://github.com/icsharpcode/ILSpy.git",

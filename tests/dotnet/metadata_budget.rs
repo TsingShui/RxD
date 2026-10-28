@@ -5,7 +5,8 @@ use super::*;
 fn dotnet_metadata_budget_deferred_call_projection_keeps_generic_contexts_independent() {
     // resolve_call is a public library operation, not used by the current CLI's
     // ILSpy path. Exercise that seam directly rather than expose a test-only flag.
-    let mut parsed = rxd_dotnet::Input::read(&input(), rxd_dotnet::Limits::default()).unwrap();
+    let bytes = rxd_dotnet::read_file(&input(), rxd_dotnet::Limits::default()).unwrap();
+    let mut parsed = rxd_dotnet::Input::parse(&bytes, rxd_dotnet::Limits::default()).unwrap();
     parsed.resolve_method_token(0x06000021).unwrap();
     parsed.resolve_method_token(0x06000022).unwrap();
     parsed.resolve_method_token(0x06000024).unwrap();
@@ -43,7 +44,7 @@ fn dotnet_metadata_budget_deferred_call_projection_keeps_generic_contexts_indepe
             work: Some(work),
             ..rxd_dotnet::Limits::default()
         };
-        match rxd_dotnet::Input::read(&input(), limits) {
+        match rxd_dotnet::Input::parse(&bytes, limits) {
             Ok(_) => high = work,
             Err(error) => {
                 assert!(error.to_string().contains("RESOURCE_LIMIT"), "{error:#}");
@@ -55,7 +56,7 @@ fn dotnet_metadata_budget_deferred_call_projection_keeps_generic_contexts_indepe
         work: Some(high),
         ..rxd_dotnet::Limits::default()
     };
-    let exhausted = rxd_dotnet::Input::read(&input(), limits).unwrap();
+    let exhausted = rxd_dotnet::Input::parse(&bytes, limits).unwrap();
     let context = exhausted.method_by_id("0x06000022").unwrap();
     let error = exhausted.resolve_call(0x06000001, context).unwrap_err();
     assert!(error.to_string().contains("RESOURCE_LIMIT"), "{error:#}");

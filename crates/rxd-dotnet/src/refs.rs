@@ -5,15 +5,12 @@ use std::{
 };
 
 use anyhow::{Context, Result, ensure};
-use dotscope::metadata::tables::{
-    AssemblyRaw, AssemblyRefRaw, FieldRaw, MemberRefRaw, MethodDefRaw, MethodSpecRaw, ModuleRefRaw,
-    TypeRefRaw, TypeSpecRaw,
-};
+use cildec::TableId;
 use serde::Serialize;
 
 use crate::{
     Input,
-    input::{Work, WorkingSet},
+    input::{HeapIndex, Work, WorkingSet},
     signature::{self, MethodSignature, TypeSignature},
 };
 
@@ -72,7 +69,7 @@ struct Owner {
 }
 
 pub(crate) struct Resolver<'a> {
-    input: &'a Input,
+    input: &'a Input<'a>,
     pub(crate) work: Work,
     methods: BTreeMap<u32, Rc<SemanticTarget>>,
     fields: BTreeMap<u32, Rc<SemanticTarget>>,
@@ -86,7 +83,7 @@ pub(crate) struct Resolver<'a> {
     type_index: Option<TypeIndex>,
 }
 
-impl Input {
+impl<'a> Input<'a> {
     pub fn method_target(&self, token: u32) -> Result<SemanticTarget> {
         let mut resolver = Resolver::new(self, self.metadata_work)?;
         let target = resolver.method(token)?;
@@ -137,7 +134,7 @@ impl Owner {
 }
 
 impl<'a> Resolver<'a> {
-    pub(crate) fn new(input: &'a Input, used: usize) -> Result<Self> {
+    pub(crate) fn new(input: &'a Input<'a>, used: usize) -> Result<Self> {
         let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
         work.retain(used)?;
         Ok(Self {
@@ -257,13 +254,10 @@ impl<'a> Resolver<'a> {
         if token >> 24 == 43 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<MethodSpecRaw>())
-                .context("INVALID_INPUT: MethodSpec table")?
-                .get(token & 0xffffff)?
+                .method_spec(token & 0xffffff)
                 .context("INVALID_INPUT: MethodSpec row")?;
-            let base = self.method(row.method.token.value())?;
+            let base = self.method(row.method.value())?;
             base.charge_clone(&mut self.work)?;
             let mut target = (*base).clone();
             let arguments = signature::arguments(
@@ -287,11 +281,8 @@ impl<'a> Resolver<'a> {
         if token >> 24 == 6 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<MethodDefRaw>())
-                .context("INVALID_INPUT: MethodDef table")?
-                .get(token & 0xffffff)?
+                .method_def(token & 0xffffff)
                 .context("INVALID_INPUT: MethodDef row")?;
             let method = &self.input.methods[(token & 0xffffff) as usize - 1];
             let signature =
@@ -319,13 +310,10 @@ impl<'a> Resolver<'a> {
         );
         let row = self
             .input
-            .view
             .tables()
-            .and_then(|t| t.table::<MemberRefRaw>())
-            .context("INVALID_INPUT: MemberRef table")?
-            .get(token & 0xffffff)?
+            .member_ref(token & 0xffffff)
             .context("INVALID_INPUT: MemberRef row")?;
-        let owner_token = row.class.token.value();
+        let owner_token = row.class.value();
         let owner = if owner_token >> 24 == 6 {
             // A MethodDef parent denotes a vararg callsite; optional arguments are
             // preserved but no ordinary full-signature equality is inferred.
@@ -368,11 +356,8 @@ impl<'a> Resolver<'a> {
                 self.work.retain(1)?;
                 let row = self
                     .input
-                    .view
                     .tables()
-                    .and_then(|t| t.table::<MethodDefRaw>())
-                    .context("INVALID_INPUT: MethodDef table")?
-                    .get(candidate & 0xffffff)?
+                    .method_def(candidate & 0xffffff)
                     .context("INVALID_INPUT: candidate method")?;
                 let signature =
                     signature::method(self.input, self.input.blob(row.signature)?, &mut self.work)?;
@@ -403,11 +388,8 @@ impl<'a> Resolver<'a> {
         let (owner_token, name, bytes) = if token >> 24 == 4 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<FieldRaw>())
-                .context("INVALID_INPUT: Field table")?
-                .get(token & 0xffffff)?
+                .field(token & 0xffffff)
                 .context("INVALID_INPUT: Field row")?;
             let field = &self.input.fields[(token & 0xffffff) as usize - 1];
             (
@@ -422,14 +404,11 @@ impl<'a> Resolver<'a> {
             );
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<MemberRefRaw>())
-                .context("INVALID_INPUT: MemberRef table")?
-                .get(token & 0xffffff)?
+                .member_ref(token & 0xffffff)
                 .context("INVALID_INPUT: MemberRef row")?;
             (
-                row.class.token.value(),
+                row.class.value(),
                 self.input.name(row.name)?.to_owned(),
                 self.input.blob(row.signature)?,
             )
@@ -464,11 +443,8 @@ impl<'a> Resolver<'a> {
                 self.work.retain(1)?;
                 let row = self
                     .input
-                    .view
                     .tables()
-                    .and_then(|t| t.table::<FieldRaw>())
-                    .context("INVALID_INPUT: Field table")?
-                    .get(candidate & 0xffffff)?
+                    .field(candidate & 0xffffff)
                     .context("INVALID_INPUT: candidate field")?;
                 let signature =
                     signature::field(self.input, self.input.blob(row.signature)?, &mut self.work)?;
@@ -503,11 +479,8 @@ impl<'a> Resolver<'a> {
         let signature = if token >> 24 == 27 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<TypeSpecRaw>())
-                .context("INVALID_INPUT: TypeSpec table")?
-                .get(token & 0xffffff)?
+                .type_spec(token & 0xffffff)
                 .context("INVALID_INPUT: TypeSpec row")?;
             let signature =
                 signature::ty(self.input, self.input.blob(row.signature)?, &mut self.work)?;
@@ -592,11 +565,8 @@ impl<'a> Resolver<'a> {
         if token >> 24 == 26 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<ModuleRefRaw>())
-                .context("INVALID_INPUT: ModuleRef table")?
-                .get(token & 0xffffff)?
+                .module_ref(token & 0xffffff)
                 .context("INVALID_INPUT: ModuleRef row")?;
             let name = self.input.name(row.name)?.to_owned();
             self.work.retain(name.len())?;
@@ -611,11 +581,8 @@ impl<'a> Resolver<'a> {
         if token >> 24 == 27 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<TypeSpecRaw>())
-                .context("INVALID_INPUT: TypeSpec table")?
-                .get(token & 0xffffff)?
+                .type_spec(token & 0xffffff)
                 .context("INVALID_INPUT: TypeSpec row")?;
             let signature =
                 signature::ty(self.input, self.input.blob(row.signature)?, &mut self.work)?;
@@ -669,16 +636,13 @@ impl<'a> Resolver<'a> {
         self.input.check_token(token, &[1])?;
         let row = self
             .input
-            .view
             .tables()
-            .and_then(|t| t.table::<TypeRefRaw>())
-            .context("INVALID_INPUT: TypeRef table")?
-            .get(token & 0xffffff)?
+            .type_ref(token & 0xffffff)
             .context("INVALID_INPUT: TypeRef row")?;
         let name = self.input.name(row.type_name)?.to_owned();
         let namespace = self.input.name(row.type_namespace)?.to_owned();
         self.work.retain(name.len() + namespace.len())?;
-        let scope_token = row.resolution_scope.token.value();
+        let scope_token = row.resolution_scope.value();
         let (scope, parent, local, unresolved_status) = match scope_token >> 24 {
             0 if scope_token == 1 => (ScopeIdentity::Module, None, true, "unresolved"),
             1 => {
@@ -756,11 +720,8 @@ impl<'a> Resolver<'a> {
         } else if owner.token >> 24 == 1 {
             let row = self
                 .input
-                .view
                 .tables()
-                .and_then(|t| t.table::<TypeRefRaw>())
-                .context("INVALID_INPUT: owner TypeRef table")?
-                .get(owner.token & 0xffffff)?
+                .type_ref(owner.token & 0xffffff)
                 .context("INVALID_INPUT: owner TypeRef row")?;
             let namespace = self.input.name(row.type_namespace)?;
             let name = self.input.name(row.type_name)?;
@@ -792,45 +753,39 @@ impl<'a> Resolver<'a> {
     fn assembly_scope(&mut self, token: u32) -> Result<ScopeIdentity> {
         let row = self
             .input
-            .view
             .tables()
-            .and_then(|t| t.table::<AssemblyRefRaw>())
-            .context("INVALID_INPUT: AssemblyRef table")?
-            .get(token & 0xffffff)?
+            .assembly_ref(token & 0xffffff)
             .context("INVALID_INPUT: AssemblyRef row")?;
         self.scope(
             row.name,
             row.culture,
             [
-                row.major_version,
-                row.minor_version,
-                row.build_number,
-                row.revision_number,
+                row.major_version.into(),
+                row.minor_version.into(),
+                row.build_number.into(),
+                row.revision_number.into(),
             ],
             row.flags,
             row.public_key_or_token,
         )
     }
     fn own_assembly_scope(&mut self) -> Result<Option<ScopeIdentity>> {
-        let Some(row) = self
-            .input
-            .view
-            .tables()
-            .and_then(|t| t.table::<AssemblyRaw>())
-            .map(|t| t.get(1))
-            .transpose()?
-            .flatten()
-        else {
+        if self.input.tables().row_count(TableId::Assembly) == 0 {
             return Ok(None);
-        };
+        }
+        let row = self
+            .input
+            .tables()
+            .assembly(1)
+            .context("INVALID_INPUT: Assembly row")?;
         self.scope(
             row.name,
             row.culture,
             [
-                row.major_version,
-                row.minor_version,
-                row.build_number,
-                row.revision_number,
+                row.major_version.into(),
+                row.minor_version.into(),
+                row.build_number.into(),
+                row.revision_number.into(),
             ],
             row.flags,
             row.public_key,
@@ -839,15 +794,15 @@ impl<'a> Resolver<'a> {
     }
     fn scope(
         &mut self,
-        name: u32,
-        culture: u32,
+        name: impl HeapIndex,
+        culture: impl HeapIndex,
         version: [u32; 4],
         flags: u32,
-        key: u32,
+        key: impl HeapIndex,
     ) -> Result<ScopeIdentity> {
         let name = self.input.name(name)?.to_owned();
         let culture = self.input.name(culture)?.to_owned();
-        let key = if key == 0 {
+        let key = if key.raw() == 0 {
             Vec::new()
         } else {
             self.input.blob(key)?.to_vec()
@@ -898,11 +853,8 @@ impl<'a> Resolver<'a> {
                 self.enter(token)?;
                 let row = self
                     .input
-                    .view
                     .tables()
-                    .and_then(|t| t.table::<TypeSpecRaw>())
-                    .context("INVALID_INPUT: signature TypeSpec table")?
-                    .get(token & 0xffffff)?
+                    .type_spec(token & 0xffffff)
                     .context("INVALID_INPUT: signature TypeSpec row")?;
                 let signature =
                     signature::ty(self.input, self.input.blob(row.signature)?, &mut self.work)?;
@@ -1086,7 +1038,7 @@ impl TargetResolver<'_> {
     }
 }
 
-impl Input {
+impl<'a> Input<'a> {
     pub fn target_resolver(&self) -> Result<TargetResolver<'_>> {
         Ok(TargetResolver {
             resolver: Resolver::new(self, 0)?,
@@ -1105,7 +1057,7 @@ pub struct Reference {
     pub target: Option<Rc<SemanticTarget>>,
 }
 
-impl Input {
+impl<'a> Input<'a> {
     pub fn references(&mut self, token: u32, semantic: bool) -> Result<ReferenceResult> {
         if token >> 24 != 0x70 {
             self.validate_token(token)

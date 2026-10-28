@@ -127,14 +127,14 @@ impl TypeSignature {
     }
 }
 
-pub(crate) fn method(input: &Input, bytes: &[u8], work: &mut Work) -> Result<MethodSignature> {
+pub(crate) fn method(input: &Input<'_>, bytes: &[u8], work: &mut Work) -> Result<MethodSignature> {
     let mut parser = Parser::new(input, bytes, work);
     let result = parser.method(0)?;
     parser.end()?;
     Ok(result)
 }
 
-pub(crate) fn field(input: &Input, bytes: &[u8], work: &mut Work) -> Result<TypeSignature> {
+pub(crate) fn field(input: &Input<'_>, bytes: &[u8], work: &mut Work) -> Result<TypeSignature> {
     let mut parser = Parser::new(input, bytes, work);
     ensure!(parser.byte()? == 6, "INVALID_INPUT: field signature tag");
     let result = parser.ty(0, false)?;
@@ -142,7 +142,7 @@ pub(crate) fn field(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Type
     Ok(result)
 }
 
-pub(crate) fn ty(input: &Input, bytes: &[u8], work: &mut Work) -> Result<TypeSignature> {
+pub(crate) fn ty(input: &Input<'_>, bytes: &[u8], work: &mut Work) -> Result<TypeSignature> {
     let mut parser = Parser::new(input, bytes, work);
     let result = parser.ty(0, false)?;
     parser.end()?;
@@ -150,7 +150,7 @@ pub(crate) fn ty(input: &Input, bytes: &[u8], work: &mut Work) -> Result<TypeSig
 }
 
 pub(crate) fn arguments(
-    input: &Input,
+    input: &Input<'_>,
     bytes: &[u8],
     work: &mut Work,
 ) -> Result<Vec<TypeSignature>> {
@@ -168,7 +168,11 @@ pub(crate) fn arguments(
     Ok(arguments)
 }
 
-pub(crate) fn locals(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Vec<TypeSignature>> {
+pub(crate) fn locals(
+    input: &Input<'_>,
+    bytes: &[u8],
+    work: &mut Work,
+) -> Result<Vec<TypeSignature>> {
     let mut parser = Parser::new(input, bytes, work);
     ensure!(parser.byte()? == 7, "INVALID_INPUT: locals signature tag");
     let count = parser.count()?;
@@ -179,7 +183,11 @@ pub(crate) fn locals(input: &Input, bytes: &[u8], work: &mut Work) -> Result<Vec
     Ok(result)
 }
 
-pub(crate) fn property(input: &Input, bytes: &[u8], work: &mut Work) -> Result<MethodSignature> {
+pub(crate) fn property(
+    input: &Input<'_>,
+    bytes: &[u8],
+    work: &mut Work,
+) -> Result<MethodSignature> {
     let mut parser = Parser::new(input, bytes, work);
     let flags = parser.byte()?;
     ensure!(
@@ -310,7 +318,7 @@ impl TypeSignature {
 }
 
 struct Parser<'a, 'w> {
-    input: &'a Input,
+    input: &'a Input<'a>,
     bytes: &'a [u8],
     pos: usize,
     work: &'w mut Work,
@@ -323,7 +331,7 @@ impl<'a, 'w> Parser<'a, 'w> {
         );
         Ok(())
     }
-    fn new(input: &'a Input, bytes: &'a [u8], work: &'w mut Work) -> Self {
+    fn new(input: &'a Input<'a>, bytes: &'a [u8], work: &'w mut Work) -> Self {
         Self {
             input,
             bytes,

@@ -39,9 +39,6 @@ Apache License 2.0 components
 - third_party/kuna: optionally directly linked Kuna CLI (feature bundled-kuna).
   See third_party/kuna/LICENSE and third_party/kuna/NOTICE.
 
-- crates/rxd-dotnet/vendor/dotscope-validation: pinned validation fork.
-  See crates/rxd-dotnet/vendor/dotscope-validation/LICENSE and NOTICE.
-
 --------------------------------------------------------------------------------
 MIT License components
 --------------------------------------------------------------------------------

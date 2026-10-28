@@ -46,9 +46,9 @@ The current layout is:
   emission; the shared typed service is provided by `src/mcp/`.
 - `crates/rxd-jvm/`: class/JAR parsing and JVM stack front end; lifts bytecode
   into the vendored radguard backend IR and renders Java through it.
-- `crates/rxd-dotnet/`: managed-assembly metadata, IL and C# reconstruction via
-  the ILSpy NativeAOT shared library. Its pinned validation fork lives in
-  `crates/rxd-dotnet/vendor/`.
+- `crates/rxd-dotnet/`: managed-assembly metadata and original IL through the
+  pinned `cildec` ECMA-335 decoder, and C# reconstruction via the ILSpy NativeAOT
+  shared library.
 - `crates/rxd-evm/`: pinned EVMole Rust analysis behind `rxd evmole`, explicit
   raw/hex inputs, selector candidates, disassembly, PUSH literals and terminal
   CBOR metadata only; no CFG, storage or decompilation surface.

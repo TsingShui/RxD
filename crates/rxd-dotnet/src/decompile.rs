@@ -27,7 +27,7 @@ pub(super) fn class_fallback(reason: impl Into<String>) -> ClassDecompilation {
 }
 
 pub fn render_class(
-    input: &Input,
+    input: &Input<'_>,
     class: &ClassBody<'_>,
     limits: Limits,
 ) -> Result<ClassDecompilation> {
@@ -55,7 +55,7 @@ pub fn render_class(
 }
 
 pub fn render(
-    input: &Input,
+    input: &Input<'_>,
     method: &Method,
     body: &MethodBody,
     limits: Limits,
@@ -98,7 +98,7 @@ pub fn render(
 
 // Validate selected original operand signatures independently of engine availability.
 fn validate_operands(
-    input: &Input,
+    input: &Input<'_>,
     method: &Method,
     body: &MethodBody,
     work: &mut Work,

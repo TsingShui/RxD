@@ -24,7 +24,7 @@ pub struct TokenSite {
     pub target_token: u32,
 }
 
-impl Input {
+impl<'a> Input<'a> {
     pub fn scan_il(&mut self) -> Result<IlScan> {
         let mut work = Work::new(self.limits.work, self.limits.metadata_bytes);
         work.charge(self.metadata_work)?;

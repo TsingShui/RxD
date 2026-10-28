@@ -10,7 +10,7 @@ struct Scan {
     work_used: usize,
 }
 
-fn scan(input: &mut Input) -> Result<Scan> {
+fn scan(input: &mut Input<'_>) -> Result<Scan> {
     let crate::IlScan {
         strings: literals,
         mut sites,
@@ -25,7 +25,7 @@ fn scan(input: &mut Input) -> Result<Scan> {
 }
 
 pub(crate) fn uses(
-    input: &mut Input,
+    input: &mut Input<'_>,
     contains: Option<&str>,
     case_sensitive: bool,
 ) -> Result<StringUses> {
@@ -117,7 +117,7 @@ pub(crate) fn uses(
 
 /// Match decoded literals exactly for anchors or by case-controlled substring.
 pub(crate) fn references(
-    input: &mut Input,
+    input: &mut Input<'_>,
     pattern: &str,
     exact: bool,
     case_sensitive: bool,
@@ -159,7 +159,7 @@ pub(crate) fn references(
     Ok(matched)
 }
 
-pub(crate) fn token_references(input: &mut Input, token: u32) -> Result<Vec<StringReference>> {
+pub(crate) fn token_references(input: &mut Input<'_>, token: u32) -> Result<Vec<StringReference>> {
     let Scan {
         literals,
         sites,

@@ -1,11 +1,15 @@
 use std::{collections::BTreeMap, fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, bail, ensure};
-use dotscope::{CilAssemblyView, ValidationConfig};
+use cildec::{
+    Metadata, PeImage, TableId,
+    tables::ColumnKind,
+    token::{BlobIndex, GuidIndex, StringIndex},
+};
 
 use crate::{CallSignature, Field, Limits, Method, MethodBody, StringRecord, TypeInfo};
 
-pub struct Input {
+pub struct Input<'a> {
     pub source_id: String,
     pub file_bytes: usize,
     pub types: Vec<TypeInfo>,
@@ -13,7 +17,9 @@ pub struct Input {
     pub methods: Vec<Method>,
     pub properties: Vec<crate::Property>,
     pub events: Vec<crate::Event>,
-    pub(crate) view: CilAssemblyView,
+    pub(crate) bytes: &'a [u8],
+    pub(crate) image: PeImage<'a>,
+    pub(crate) metadata: Metadata<'a>,
     pub(crate) limits: Limits,
     pub(crate) rows: [u32; 64],
     pub(crate) metadata_work: usize,
@@ -25,60 +31,59 @@ pub struct Input {
     pub(crate) type_names: BTreeMap<u32, Arc<String>>,
 }
 
-impl Input {
-    pub fn read(path: &Path, limits: Limits) -> Result<Self> {
-        let mut options = OpenOptions::new();
-        options.read(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.custom_flags(libc::O_NONBLOCK);
-        }
-        let mut file = options
-            .open(path)
-            .with_context(|| format!("open {}", path.display()))?;
-        let meta = file.metadata()?;
-        ensure!(
-            meta.is_file(),
-            "INVALID_INPUT: input must be a regular file"
-        );
-        ensure!(
-            meta.len() <= limits.input_bytes as u64,
-            "RESOURCE_LIMIT: input bytes"
-        );
-        let mut bytes = Vec::new();
-        file.by_ref()
-            .take((limits.input_bytes as u64).saturating_add(1))
-            .read_to_end(&mut bytes)?;
-        ensure!(
-            bytes.len() <= limits.input_bytes,
-            "RESOURCE_LIMIT: input bytes"
-        );
+/// Read one untrusted regular file into a buffer the caller keeps alive.
+pub fn read_file(path: &Path, limits: Limits) -> Result<Vec<u8>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = options
+        .open(path)
+        .with_context(|| format!("open {}", path.display()))?;
+    let meta = file.metadata()?;
+    ensure!(
+        meta.is_file(),
+        "INVALID_INPUT: input must be a regular file"
+    );
+    ensure!(
+        meta.len() <= limits.input_bytes as u64,
+        "RESOURCE_LIMIT: input bytes"
+    );
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take((limits.input_bytes as u64).saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() <= limits.input_bytes,
+        "RESOURCE_LIMIT: input bytes"
+    );
+    Ok(bytes)
+}
+
+impl<'a> Input<'a> {
+    /// Parse one buffer. Rows and operands are decoded when a query reads them, so
+    /// unrelated corruption stays out of scope; `verify_module` checks the whole file.
+    pub fn parse(bytes: &'a [u8], limits: Limits) -> Result<Self> {
         let file_bytes = bytes.len();
-        let source_id = rxd_core::identity::input_id(&bytes);
-        let parsed_file = dotscope::File::from_mem(bytes).context("INVALID_INPUT: PE parsing")?;
-        ensure!(
-            parsed_file.repairs().is_empty(),
-            "INVALID_INPUT: automatic PE repair is unsupported"
-        );
-        // Validate queried rows/operands lazily; unrelated corruption stays out of scope.
-        // verify_module performs opt-in whole-module validation.
-        let mut deferred = ValidationConfig::minimal();
-        deferred.enable_cross_table_validation = true;
-        deferred.enable_raw_validation = false;
-        let view = CilAssemblyView::from_dotscope_file_with_validation(parsed_file, deferred)
+        let source_id = rxd_core::identity::input_id(bytes);
+        let image = PeImage::parse(bytes).context("INVALID_INPUT: PE parsing")?;
+        let metadata = image
+            .metadata()
             .context("INVALID_INPUT: metadata structure and references")?;
         let mut rows = [0; 64];
         let mut total = 0usize;
-        let tables = view
-            .tables()
-            .context("INVALID_INPUT: missing metadata tables")?;
-        for summary in tables.table_summary() {
-            let idx = summary.table_id as usize;
-            ensure!(idx < rows.len(), "INVALID_INPUT: table index");
-            rows[idx] = summary.row_count;
+        let tables = metadata.tables();
+        for raw in 0..rows.len() as u8 {
+            let Some(table) = TableId::from_u8(raw) else {
+                continue;
+            };
+            let count = tables.row_count(table);
+            rows[raw as usize] = count;
             total = total
-                .checked_add(summary.row_count as usize)
+                .checked_add(count as usize)
                 .context("RESOURCE_LIMIT: row count")?;
         }
         ensure!(
@@ -93,7 +98,9 @@ impl Input {
             methods: Vec::new(),
             properties: Vec::new(),
             events: Vec::new(),
-            view,
+            bytes,
+            image,
+            metadata,
             limits,
             rows,
             metadata_work: 0,
@@ -106,13 +113,97 @@ impl Input {
         Ok(input)
     }
 
-    /// Opt-in full-structure check (cross-table/heap/token validation). Normal queries
-    /// validate only what they read.
+    /// Opt-in whole-module check: every row, heap index and coded index in the file.
     pub fn verify_module(&self) -> Result<()> {
-        let mut config = ValidationConfig::minimal();
-        config.enable_cross_table_validation = true;
-        crate::validation::validate(&self.view, config)
-            .context("INVALID_INPUT: metadata structure and references")
+        ensure!(
+            self.image.diagnostics().is_empty() && self.metadata.diagnostics().is_empty(),
+            "INVALID_INPUT: PE or metadata deviation"
+        );
+        let tables = self.metadata.tables();
+        for raw in 0..self.rows.len() as u8 {
+            let Some(table) = TableId::from_u8(raw) else {
+                continue;
+            };
+            let columns = cildec::tables::columns_of(table);
+            for rid in 1..=tables.row_count(table) {
+                for (index, kind) in columns.iter().enumerate() {
+                    let value = tables
+                        .raw_column(table, rid, index)
+                        .context("INVALID_INPUT: metadata column")?;
+                    match *kind {
+                        ColumnKind::U16 | ColumnKind::U32 => {}
+                        ColumnKind::String => {
+                            self.metadata
+                                .strings()
+                                .str(StringIndex(value))
+                                .context("INVALID_INPUT: string heap index")?;
+                        }
+                        ColumnKind::Blob => {
+                            if value != 0 {
+                                self.metadata
+                                    .blobs()
+                                    .get(BlobIndex(value))
+                                    .context("INVALID_INPUT: blob heap index")?;
+                            }
+                        }
+                        ColumnKind::Guid => {
+                            if value != 0 {
+                                self.metadata
+                                    .guids()
+                                    .get(GuidIndex(value))
+                                    .context("INVALID_INPUT: guid heap index")?;
+                            }
+                        }
+                        ColumnKind::Rid(target) => {
+                            ensure!(
+                                value == 0 || value <= tables.row_count(target),
+                                "INVALID_INPUT: table index"
+                            );
+                        }
+                        ColumnKind::Coded(coded) => {
+                            let token = coded
+                                .decode(value, 0)
+                                .context("INVALID_INPUT: coded index")?;
+                            if !token.is_null() {
+                                let target = token.table().context("INVALID_INPUT: coded index")?;
+                                ensure!(
+                                    token.rid() <= tables.row_count(target),
+                                    "INVALID_INPUT: coded index"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn tables(&self) -> &cildec::Tables<'a> {
+        self.metadata.tables()
+    }
+
+    /// Translate a file offset back to the RVA that maps it.
+    pub(crate) fn offset_to_rva(&self, offset: usize) -> Result<u32> {
+        let offset = u32::try_from(offset).context("INVALID_INPUT: file offset")?;
+        ensure!(
+            offset < self.bytes.len() as u32,
+            "INVALID_INPUT: file offset"
+        );
+        if offset < self.image.size_of_headers() {
+            return Ok(offset);
+        }
+        for section in self.image.sections() {
+            let start = section.pointer_to_raw_data;
+            let size = section.size_of_raw_data.min(section.mapped_size());
+            if offset >= start && offset < start.saturating_add(size) {
+                return section
+                    .virtual_address
+                    .checked_add(offset - start)
+                    .context("INVALID_INPUT: RVA overflow");
+            }
+        }
+        bail!("INVALID_INPUT: file offset outside mapped sections")
     }
 
     pub fn unreadable_reason(&self, token: u32) -> Option<&str> {
@@ -175,13 +266,9 @@ impl Input {
             return Ok(None);
         }
         self.check_token(token, &[10])?;
-        use dotscope::metadata::tables::MemberRefRaw;
         let row = self
-            .view
             .tables()
-            .and_then(|tables| tables.table::<MemberRefRaw>())
-            .context("INVALID_INPUT: MemberRef table")?
-            .get(token & 0xffffff)?
+            .member_ref(token & 0xffffff)
             .context("INVALID_INPUT: MemberRef row")?;
         let bytes = self.blob(row.signature)?;
         let first = bytes
@@ -363,13 +450,9 @@ impl Input {
             ));
         }
         if token >> 24 == 27 {
-            use dotscope::metadata::tables::TypeSpecRaw;
             let row = self
-                .view
                 .tables()
-                .and_then(|t| t.table::<TypeSpecRaw>())
-                .context("UNSUPPORTED: missing TypeSpec table")?
-                .get(token & 0xffffff)?
+                .type_spec(token & 0xffffff)
                 .context("UNSUPPORTED: missing TypeSpec")?;
             return crate::metadata::type_signature(self, self.blob(row.signature)?, work);
         }
@@ -404,22 +487,18 @@ impl Input {
             return Ok((signature, Some(field.flags & 0x10 != 0)));
         }
         self.check_token(token, &[10])?;
-        use dotscope::metadata::tables::MemberRefRaw;
         let row = self
-            .view
             .tables()
-            .and_then(|t| t.table::<MemberRefRaw>())
-            .context("UNSUPPORTED: missing MemberRef table")?
-            .get(token & 0xffffff)?
+            .member_ref(token & 0xffffff)
             .context("UNSUPPORTED: missing field MemberRef")?;
         let signature = crate::metadata::field_signature(self, self.blob(row.signature)?, work)?;
         let signature = if signature.contains('!') {
-            let type_args = crate::metadata::type_arguments(self, row.class.token.value(), work)?;
+            let type_args = crate::metadata::type_arguments(self, row.class.value(), work)?;
             crate::metadata::instantiate(
                 &signature,
                 type_args.as_deref(),
                 None,
-                row.class.token.value() == context.declaring_type_token,
+                row.class.value() == context.declaring_type_token,
                 work,
             )?
         } else {
@@ -479,23 +558,20 @@ impl Input {
         Ok(())
     }
 
-    pub(crate) fn blob(&self, index: u32) -> Result<&[u8]> {
+    pub(crate) fn blob(&self, index: impl HeapIndex) -> Result<&[u8]> {
+        let index = index.raw();
         ensure!(index != 0, "INVALID_INPUT: missing signature blob");
-        self.view
+        self.metadata
             .blobs()
-            .context("INVALID_INPUT: missing blob heap")?
-            .get(index as usize)
+            .get(BlobIndex(index))
             .context("INVALID_INPUT: blob index")
     }
 
-    pub(crate) fn name(&self, index: u32) -> Result<&str> {
-        let name = self
-            .view
+    pub(crate) fn name(&self, index: impl HeapIndex) -> Result<&str> {
+        self.metadata
             .strings()
-            .context("INVALID_INPUT: missing string heap")?
-            .get(index as usize)
-            .context("INVALID_INPUT: string index")?;
-        Ok(name)
+            .str(StringIndex(index.raw()))
+            .context("INVALID_INPUT: string index")
     }
 
     pub fn type_name(&self, token: u32) -> Option<&str> {
@@ -547,6 +623,34 @@ impl Input {
             }
         }
     }
+}
+
+/// A heap column: a stored index or the typed index of one row field.
+pub(crate) trait HeapIndex: Copy {
+    fn raw(self) -> u32;
+}
+
+impl HeapIndex for BlobIndex {
+    fn raw(self) -> u32 {
+        self.get()
+    }
+}
+
+impl HeapIndex for StringIndex {
+    fn raw(self) -> u32 {
+        self.get()
+    }
+}
+
+impl HeapIndex for u32 {
+    fn raw(self) -> u32 {
+        self
+    }
+}
+
+/// The metadata token that names one row of `table`.
+pub(crate) fn token_of(table: TableId, rid: u32) -> u32 {
+    ((table.to_u8() as u32) << 24) | rid
 }
 
 fn hex_token(value: &str) -> Result<u32> {

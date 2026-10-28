@@ -18,7 +18,7 @@ serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
 sha2 = "0.11"
 strum = "0.28"
-dotscope = { git = "https://github.com/ATRAPSLLC/dotscope", rev = "3028b1ab92ec1b0ad15f046b3b70d5ee82336a00", default-features = false }
+cildec = "0.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

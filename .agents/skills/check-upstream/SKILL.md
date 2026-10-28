@@ -43,9 +43,8 @@ Keep these distinctions explicit:
 
 - **Kuna**: newest formal numeric `v...` tag; unchanged upstream submodule plus
   rxd's adapter/spec packaging. Never edit pinned submodule source.
-- **RadGuard / axmldecoder / dotscope validator**: maintained local divergences
-  must survive any adoption. Check DEX and JVM consumers for shared RadGuard
-  changes; dotscope has a Git dependency and the production adapted validator copy.
+- **RadGuard / axmldecoder**: maintained local divergences must survive any
+  adoption. Check DEX and JVM consumers for shared RadGuard changes.
 - **pycdc**: imported Rust snapshot, upstream remote/full revision unknown.
   Do not substitute the same-named C++ project. Report a provenance blocker.
 - **JADX → Rust JVM frontend**: changes matter only if their semantics apply to

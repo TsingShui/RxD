@@ -235,7 +235,8 @@ fn execute_inner(
             .unwrap()
             .insert("output_bytes", output_bytes);
     }
-    let mut input = perf.measure("read_parse", || Input::read(path, limits))?;
+    let bytes = perf.measure("read", || rxd_dotnet::read_file(path, limits))?;
+    let mut input = perf.measure("read_parse", || Input::parse(&bytes, limits))?;
     perf.source_id = Some(input.source_id.clone());
     perf.counters.input_bytes = Some(input.file_bytes);
     perf.counters.entities = Some(input.types.len() + input.fields.len() + input.methods.len());
@@ -527,7 +528,7 @@ fn fetch_record(
 }
 
 fn reference_record(
-    input: &Input,
+    input: &Input<'_>,
     site: &rxd_dotnet::TokenSite,
     target: Option<&rxd_dotnet::SemanticTarget>,
     // The decoded `#US` literal this site loads, when the query went through the string
@@ -578,7 +579,7 @@ fn describe_class_reason(reason: &str, methods: usize) -> String {
 
 /// Decode one `#US` literal by token so a record can carry the text, not just the token.
 /// Decoded `#US` literals keyed by their heap offset, for one query.
-fn literal_values(input: &Input) -> BTreeMap<u32, String> {
+fn literal_values(input: &Input<'_>) -> BTreeMap<u32, String> {
     input
         .strings()
         .map(|records| {
@@ -622,7 +623,7 @@ fn coordinate(token: u32) -> String {
     format!("0x{token:08x}")
 }
 
-fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<Value> {
+fn method_record(input: &Input<'_>, method: &rxd_dotnet::Method) -> anyhow::Result<Value> {
     let fields = detail(serde_json::to_value(method)?);
     let record_at = coordinate(method.token);
     Ok(envelope::record(
@@ -636,7 +637,7 @@ fn method_record(input: &Input, method: &rxd_dotnet::Method) -> anyhow::Result<V
     ))
 }
 
-fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value> {
+fn type_record(input: &Input<'_>, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value> {
     let mut fields = detail(serde_json::to_value(ty)?);
     fields.remove("id");
 
@@ -672,7 +673,7 @@ fn type_record(input: &Input, ty: &rxd_dotnet::TypeInfo) -> anyhow::Result<Value
     ))
 }
 
-fn field_record(input: &Input, field: &rxd_dotnet::Field) -> anyhow::Result<Value> {
+fn field_record(input: &Input<'_>, field: &rxd_dotnet::Field) -> anyhow::Result<Value> {
     let fields = detail(serde_json::to_value(field)?);
     // Nested references are copy-only coordinates, exactly as in `methods`/`classes`.
     let record_at = coordinate(field.token);
@@ -688,7 +689,7 @@ fn field_record(input: &Input, field: &rxd_dotnet::Field) -> anyhow::Result<Valu
 }
 
 fn class_method_record(
-    input: &Input,
+    input: &Input<'_>,
     item: &rxd_dotnet::ClassMethod<'_>,
     raw: bool,
 ) -> anyhow::Result<Value> {
@@ -731,7 +732,7 @@ fn class_method_record(
 }
 
 fn relationship_record<T: serde::Serialize>(
-    input: &Input,
+    input: &Input<'_>,
     kind: &str,
     owner: &str,
     token: u32,
@@ -753,7 +754,7 @@ fn relationship_record<T: serde::Serialize>(
 
 /// Per-row metadata: identity is carried once by the stream header, as in DEX and the
 /// JVM backend, so a row does not repeat the assembly's content id.
-fn metadata(_input: &Input) -> RecordMeta<'_> {
+fn metadata(_input: &Input<'_>) -> RecordMeta<'static> {
     RecordMeta::default()
 }
 
@@ -767,7 +768,7 @@ enum Listing {
 
 /// Print one member kind, grouped by declaring type in declaration order.
 fn list(
-    input: &mut Input,
+    input: &mut Input<'_>,
     command: &Command,
     output: &mut rxd_core::output::Output,
     records: &mut usize,

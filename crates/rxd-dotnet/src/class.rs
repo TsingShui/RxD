@@ -6,7 +6,7 @@ use anyhow::{Context, Result, ensure};
 
 /// Resolve only what this class query needs: property/event associations and the
 /// signatures of its own (and nested) methods. Unrelated rows are never parsed.
-pub(crate) fn prepare(input: &mut Input, root_token: u32) -> Result<()> {
+pub(crate) fn prepare(input: &mut Input<'_>, root_token: u32) -> Result<()> {
     {
         let root = input
             .types
@@ -37,7 +37,7 @@ pub(crate) fn prepare(input: &mut Input, root_token: u32) -> Result<()> {
 
 /// Field signatures are only needed when the caller emits the member inventory
 /// (`--raw`); the default C# answer never reads them.
-pub(crate) fn prepare_fields(input: &mut Input, root_token: u32) -> Result<()> {
+pub(crate) fn prepare_fields(input: &mut Input<'_>, root_token: u32) -> Result<()> {
     let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
     work.charge(input.metadata_work)?;
     let selected = selected_types(input, root_token, &mut work)?;
@@ -54,7 +54,7 @@ pub(crate) fn prepare_fields(input: &mut Input, root_token: u32) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn build<'a>(input: &'a Input, root_token: u32) -> Result<ClassBody<'a>> {
+pub(crate) fn build<'a>(input: &'a Input<'a>, root_token: u32) -> Result<ClassBody<'a>> {
     let mut work = Work::new(input.limits.work, input.limits.metadata_bytes);
     work.charge(input.metadata_work)?;
     let selected = selected_types(input, root_token, &mut work)?;
@@ -146,7 +146,7 @@ pub(crate) fn build<'a>(input: &'a Input, root_token: u32) -> Result<ClassBody<'
 }
 
 /// The selected type plus every type nested under it, with cycle detection.
-fn selected_types(input: &Input, root_token: u32, work: &mut Work) -> Result<BTreeSet<u32>> {
+fn selected_types(input: &Input<'_>, root_token: u32, work: &mut Work) -> Result<BTreeSet<u32>> {
     let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
     for ty in &input.types {
         work.charge(1)?;

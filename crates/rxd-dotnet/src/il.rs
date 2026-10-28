@@ -1,23 +1,19 @@
 use std::collections::BTreeSet;
 
 use anyhow::{Context, Result, bail, ensure};
-use dotscope::{
-    Parser,
-    assembly::{FlowType, Immediate, Operand as CilOperand, decode_instruction},
-    metadata::tables::StandAloneSigRaw,
-};
+use cildec::il::{Operand as CilOperand, decode_at};
 
 use crate::{
     ExceptionHandler, Input, Instruction, Method, MethodBody, Operand,
     input::{Work, WorkingSet},
 };
 
-pub(crate) fn body(input: &Input, method: &Method) -> Result<MethodBody> {
+pub(crate) fn body(input: &Input<'_>, method: &Method) -> Result<MethodBody> {
     body_with_budget(input, method, input.limits.work)
 }
 
 pub(crate) fn body_with_budget(
-    input: &Input,
+    input: &Input<'_>,
     method: &Method,
     work_limit: Option<usize>,
 ) -> Result<MethodBody> {
@@ -25,7 +21,7 @@ pub(crate) fn body_with_budget(
 }
 
 pub(crate) fn scan_body(
-    input: &Input,
+    input: &Input<'_>,
     method: &Method,
     work_limit: Option<usize>,
     strings: &BTreeSet<u32>,
@@ -34,7 +30,7 @@ pub(crate) fn scan_body(
 }
 
 fn decode_body(
-    input: &Input,
+    input: &Input<'_>,
     method: &Method,
     work_limit: Option<usize>,
     strings: Option<&BTreeSet<u32>>,
@@ -43,10 +39,10 @@ fn decode_body(
         method.has_body,
         "INVALID_QUERY: method has no ordinary IL body"
     );
-    let file = input.view.file();
-    let bytes = file.data();
-    let file_offset = file
-        .rva_to_offset(method.rva as usize)
+    let bytes = input.bytes;
+    let file_offset = input
+        .image
+        .rva_to_offset(method.rva)
         .context("INVALID_INPUT: method RVA")?;
     let first = *bytes
         .get(file_offset)
@@ -82,12 +78,19 @@ fn decode_body(
         "RESOURCE_LIMIT: method code work"
     );
     let code = slice(bytes, code_offset, code_size)?;
-    let last_rva = (method.rva as usize)
-        .checked_add(header_size)
-        .and_then(|v| v.checked_add(code_size - 1))
-        .context("INVALID_INPUT: method RVA overflow")?;
+    let last_rva = u32::try_from(
+        (method.rva as usize)
+            .checked_add(header_size)
+            .and_then(|v| v.checked_add(code_size - 1))
+            .context("INVALID_INPUT: method RVA overflow")?,
+    )
+    .context("INVALID_INPUT: method RVA overflow")?;
     ensure!(
-        file.rva_to_offset(last_rva)? == code_offset + code_size - 1,
+        input
+            .image
+            .rva_to_offset(last_rva)
+            .context("INVALID_INPUT: method RVA")?
+            == code_offset + code_size - 1,
         "INVALID_INPUT: method crosses noncontiguous PE sections"
     );
     let mut work = Work::new(work_limit, input.limits.metadata_bytes);
@@ -96,15 +99,12 @@ fn decode_body(
         Vec::new()
     } else {
         input.check_token(local_signature_token, &[17])?;
-        let tables = input.view.tables().context("INVALID_INPUT: tables")?;
-        let row = tables
-            .table::<StandAloneSigRaw>()
-            .context("INVALID_INPUT: locals table")?
-            .get(local_signature_token & 0xffffff)?
+        let row = input
+            .tables()
+            .stand_alone_sig(local_signature_token & 0xffffff)
             .context("INVALID_INPUT: locals signature")?;
         crate::metadata::locals(input, input.blob(row.signature)?, &mut work)?
     };
-    let mut parser = Parser::new(code);
     let mut instructions = Vec::new();
     let mut starts = BTreeSet::new();
     let mut forbidden_targets = BTreeSet::new();
@@ -115,7 +115,8 @@ fn decode_body(
     if strings.is_none() {
         footprint.add(code_size * 2)?;
     }
-    while parser.has_more_data() {
+    let mut offset: u32 = 0;
+    while (offset as usize) < code.len() {
         ensure!(
             input
                 .limits
@@ -124,87 +125,64 @@ fn decode_body(
             "RESOURCE_LIMIT: instructions"
         );
         work.charge(1)?;
-        let offset = parser.pos();
-        starts.insert(offset as u32);
+        let position = offset as usize;
+        starts.insert(offset);
         if prefixed {
-            forbidden_targets.insert(offset as u32);
+            forbidden_targets.insert(offset);
         }
         // Preflight switch reservation against the explicit work budget before the
-        // upstream decoder constructs its operand vector.
-        if code[offset] == 0x45 {
-            let count = read_u32(code, offset + 1)? as usize;
+        // decoder constructs its operand vector.
+        if code[position] == 0x45 {
+            let count = read_u32(code, position + 1)? as usize;
             work.charge(count)?;
         }
-        let cil =
-            decode_instruction(&mut parser, offset as u64).context("INVALID_INPUT: IL decoding")?;
-        let opcode = ((cil.prefix as u16) << 8) | cil.opcode as u16;
-        prefixed = matches!(opcode, 0xfe12 | 0xfe13 | 0xfe14 | 0xfe16 | 0xfe19 | 0xfe1e);
-        let size: u32 = cil.size.try_into()?;
-        let variable_op = matches!(opcode, 0x0e..=0x13 | 0xfe09..=0xfe0e);
-        let operand = if matches!(
-            cil.flow_type,
-            FlowType::ConditionalBranch | FlowType::UnconditionalBranch | FlowType::Leave
-        ) {
-            ensure!(
-                cil.branch_targets.len() == 1,
-                "INVALID_INPUT: branch target"
-            );
-            Operand::Branch(
-                cil.branch_targets[0]
-                    .try_into()
-                    .context("INVALID_INPUT: branch overflow")?,
-            )
-        } else if matches!(cil.flow_type, FlowType::Switch) {
-            let targets = cil
-                .branch_targets
-                .iter()
-                .map(|n| u32::try_from(*n).context("INVALID_INPUT: switch target overflow"))
-                .collect::<Result<Vec<_>>>()?;
-            footprint.add(
-                targets
-                    .len()
-                    .checked_mul(4)
-                    .context("RESOURCE_LIMIT: switch")?,
-            )?;
-            Operand::Switch(targets)
-        } else {
-            match cil.operand {
-                CilOperand::None => Operand::None,
-                CilOperand::Token(t) => {
-                    let token = t.value();
-                    validate_operand_token(input, opcode, token, &mut work)?;
-                    if opcode == 0x72 {
-                        user_strings.insert(token & 0xffffff);
-                    }
-                    Operand::Token(token)
-                }
-                CilOperand::Local(n) | CilOperand::Argument(n) => Operand::Variable(n),
-                CilOperand::Target(n) => Operand::Branch(n.try_into()?),
-                CilOperand::Switch(_) => bail!("INVALID_INPUT: switch flow mismatch"),
-                CilOperand::Immediate(value) => {
-                    if variable_op {
-                        Operand::Variable(match value {
-                            Immediate::UInt8(n) => n as u16,
-                            Immediate::UInt16(n) => n,
-                            Immediate::Int16(n) if n >= 0 => n as u16,
-                            _ => bail!("INVALID_INPUT: variable operand"),
-                        })
-                    } else {
-                        match value {
-                            Immediate::Int8(n) => Operand::I32(n as i32),
-                            Immediate::UInt8(n) => Operand::I32(n as i32),
-                            Immediate::Int16(n) => Operand::I32(n as i32),
-                            Immediate::UInt16(n) => Operand::I32(n as i32),
-                            Immediate::Int32(n) => Operand::I32(n),
-                            Immediate::UInt32(n) => Operand::I32(n as i32),
-                            Immediate::Int64(n) => Operand::I64(n),
-                            Immediate::UInt64(n) => Operand::I64(n as i64),
-                            Immediate::Float32(n) => Operand::F32Bits(n.to_bits()),
-                            Immediate::Float64(n) => Operand::F64Bits(n.to_bits()),
-                        }
-                    }
-                }
+        let cil = decode_at(code, offset).context("INVALID_INPUT: IL decoding")?;
+        let info = cil.info();
+        let opcode = match info.size {
+            1 => info.encoding[0] as u16,
+            _ => ((info.encoding[0] as u16) << 8) | info.encoding[1] as u16,
+        };
+        prefixed = cil.opcode.is_prefix();
+        let size = cil.size;
+        let operand = match cil.operand {
+            CilOperand::None => Operand::None,
+            CilOperand::I8(n) => Operand::I32(n as i32),
+            CilOperand::I32(n) => Operand::I32(n),
+            CilOperand::I64(n) => Operand::I64(n),
+            CilOperand::R32(n) => Operand::F32Bits(n.to_bits()),
+            CilOperand::R64(n) => Operand::F64Bits(n.to_bits()),
+            CilOperand::BranchTarget(n) => Operand::Branch(n),
+            CilOperand::Switch(targets) => {
+                footprint.add(
+                    targets
+                        .len()
+                        .checked_mul(4)
+                        .context("RESOURCE_LIMIT: switch")?,
+                )?;
+                Operand::Switch(targets)
             }
+            CilOperand::Var(n) => Operand::Variable(n),
+            CilOperand::Method(t)
+            | CilOperand::Field(t)
+            | CilOperand::Type(t)
+            | CilOperand::Tok(t)
+            | CilOperand::Sig(t) => {
+                let token = t.value();
+                validate_operand_token(input, opcode, token, &mut work)?;
+                if opcode == 0x72 {
+                    user_strings.insert(token & 0xffffff);
+                }
+                Operand::Token(token)
+            }
+            CilOperand::String(t) => {
+                let token = t.value();
+                validate_operand_token(input, opcode, token, &mut work)?;
+                if opcode == 0x72 {
+                    user_strings.insert(token & 0xffffff);
+                }
+                Operand::Token(token)
+            }
+            _ => bail!("INVALID_INPUT: IL operand"),
         };
         validate_variable(
             opcode,
@@ -214,16 +192,22 @@ fn decode_body(
         )?;
         footprint.add(96)?;
         instructions.push(Instruction {
-            offset: offset.try_into()?,
+            offset,
             size,
             opcode,
             mnemonic: if strings.is_none() || matches!(operand, Operand::Token(_)) {
-                cil.mnemonic.to_string()
+                info.name.to_string()
             } else {
                 String::new()
             },
             operand,
         });
+        offset = position
+            .checked_add(size as usize)
+            .context("INVALID_INPUT: instruction size")?
+            .try_into()
+            .context("INVALID_INPUT: instruction offset")?;
+        ensure!(offset as usize <= code.len(), "INVALID_INPUT: truncated IL");
     }
     ensure!(!prefixed, "INVALID_INPUT: unterminated IL prefix");
     for instr in &instructions {
@@ -314,7 +298,12 @@ fn validate_variable(opcode: u16, operand: &Operand, args: usize, locals: usize)
     );
     Ok(())
 }
-fn validate_operand_token(input: &Input, opcode: u16, token: u32, work: &mut Work) -> Result<()> {
+fn validate_operand_token(
+    input: &Input<'_>,
+    opcode: u16,
+    token: u32,
+    work: &mut Work,
+) -> Result<()> {
     if opcode == 0x72 {
         ensure!(
             token >> 24 == 0x70 && token & 0xffffff != 0,
@@ -345,30 +334,22 @@ fn validate_operand_token(input: &Input, opcode: u16, token: u32, work: &mut Wor
     }
     if opcode == 0x29 {
         let row = input
-            .view
             .tables()
-            .context("INVALID_INPUT: tables")?
-            .table::<StandAloneSigRaw>()
-            .context("INVALID_INPUT: calli signature table")?
-            .get(token & 0xffffff)?
+            .stand_alone_sig(token & 0xffffff)
             .context("INVALID_INPUT: calli signature")?;
         crate::metadata::method_signature(input, input.blob(row.signature)?, work)?;
     }
     Ok(())
 }
 pub(crate) fn validate_user_strings(
-    input: &Input,
+    input: &Input<'_>,
     requested: &BTreeSet<u32>,
     work: &mut Work,
 ) -> Result<()> {
     if requested.is_empty() {
         return Ok(());
     }
-    let heap = input
-        .view
-        .userstrings()
-        .context("INVALID_INPUT: missing user string heap")?;
-    let bytes = heap.data();
+    let bytes = input.metadata.user_strings().data();
     let mut remaining = requested.clone();
     let mut pos = 1usize;
     while pos < bytes.len() && !remaining.is_empty() {
@@ -392,15 +373,14 @@ pub(crate) fn validate_user_strings(
     Ok(())
 }
 fn handlers(
-    input: &Input,
+    input: &Input<'_>,
     bytes: &[u8],
     end: usize,
     code_size: usize,
     starts: &BTreeSet<u32>,
     work: &mut Work,
 ) -> Result<Vec<ExceptionHandler>> {
-    let file = input.view.file();
-    let rva_end = file
+    let rva_end = input
         .offset_to_rva(end - 1)?
         .checked_add(1)
         .context("INVALID_INPUT: EH RVA overflow")?;
@@ -428,14 +408,14 @@ fn handlers(
         );
         let data = slice(bytes, pos, size)?;
         let start_rva = rva_end
-            .checked_add(pos - end)
+            .checked_add((pos - end) as u32)
             .context("INVALID_INPUT: EH RVA overflow")?;
         let last_rva = start_rva
-            .checked_add(size - 1)
+            .checked_add((size - 1) as u32)
             .context("INVALID_INPUT: EH RVA overflow")?;
         ensure!(
-            file.rva_to_offset(start_rva)? == pos
-                && file.rva_to_offset(last_rva)? == pos + size - 1,
+            input.image.rva_to_offset(start_rva) == Some(pos)
+                && input.image.rva_to_offset(last_rva) == Some(pos + size - 1),
             "INVALID_INPUT: EH section crosses noncontiguous mapped data"
         );
         let count = (size - 4) / row_size;
