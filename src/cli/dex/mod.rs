@@ -113,11 +113,15 @@ fn run_command(
             // Unstable sort is deterministic because equal hits render identical rows.
             let sorted = scan_started.elapsed();
 
-            let mut payload = String::new();
+            let header = super::table::header(&["entry", "context", "match"]);
+            if limit.is_some_and(|limit| header.len() > limit) {
+                bail!("RESOURCE_LIMIT: query output byte budget exceeded");
+            }
+            let mut payload = header.to_owned();
             for hit in &hits {
                 push_reference(
                     &mut payload,
-                    &hit.dex_name,
+                    hit.has_entry.then_some(hit.dex_name.as_str()),
                     &hit.member,
                     &hit.matched,
                     limit,
@@ -126,7 +130,7 @@ fn run_command(
             if args.perf {
                 rxd_dex::diag::diagnose(format_args!(
                     "[xref] rows={} scan={:.2} ms sort={:.2} ms assemble={:.2} ms payload={} MiB",
-                    payload.lines().count(),
+                    hits.len(),
                     scanned.as_secs_f64() * 1e3,
                     (sorted - scanned).as_secs_f64() * 1e3,
                     (scan_started.elapsed() - sorted).as_secs_f64() * 1e3,
@@ -156,7 +160,7 @@ fn run_command(
             let listed = started.elapsed();
 
             const RENDER_CHUNK: usize = 8192;
-            let pieces: Vec<String> = classes
+            let mut pieces: Vec<String> = classes
                 .par_chunks(RENDER_CHUNK)
                 .map(|chunk| -> Result<_> {
                     let mut payload = String::with_capacity(chunk.len() * 256);
@@ -185,6 +189,7 @@ fn run_command(
                     Ok(payload)
                 })
                 .collect::<Result<_>>()?;
+            pieces.insert(0, super::table::header(&["at"]));
             emit(&pieces.concat(), args.output.as_deref(), sink)?;
             let payload_len = 0usize;
             if args.perf {
@@ -211,7 +216,7 @@ fn run_command(
                 args.limit,
                 args.offset,
             )?;
-            let mut payload = String::new();
+            let mut payload = super::table::header(&["at", "value", "entry"]);
             {
                 use rayon::prelude::*;
                 // Render a bounded batch at a time: a whole-output piece vector would
@@ -264,13 +269,14 @@ fn run_command(
                 exact_name: args.name.as_deref(),
                 case_sensitive: args.case.sensitive(),
             };
-            let (chunks, _) = apk::list_fields_with_policy(
+            let (mut chunks, _) = apk::list_fields_with_policy(
                 &args.apk_path,
                 archive_policy,
                 &selector,
                 args.threads,
                 args.perf,
             )?;
+            chunks.insert(0, super::table::header(&["at"]));
             emit(&chunks.concat(), args.output.as_deref(), sink)?;
         }
         Command::Methods(args) => {
@@ -280,13 +286,14 @@ fn run_command(
                 exact_name: args.name.as_deref(),
                 case_sensitive: args.case.sensitive(),
             };
-            let (chunks, _) = apk::list_methods_with_policy(
+            let (mut chunks, _) = apk::list_methods_with_policy(
                 &args.apk_path,
                 archive_policy,
                 &selector,
                 args.threads,
                 args.perf,
             )?;
+            chunks.insert(0, super::table::header(&["at"]));
             emit(&chunks.concat(), args.output.as_deref(), sink)?;
         }
         Command::Entries(args) => {
@@ -294,7 +301,12 @@ fn run_command(
                 apk::list_entries(&args.apk_path)
             })?;
             rxd_dex::profile::count(rxd_dex::profile::Counter::Entries, entries.len() as u64);
-            let mut payload = String::new();
+            let mut payload = super::table::header(&[
+                "name",
+                "compressed_size",
+                "uncompressed_size",
+                "compression",
+            ]);
             let pattern = args
                 .filter
                 .as_deref()
@@ -306,24 +318,17 @@ fn run_command(
                 {
                     continue;
                 }
-                let mut rendered = String::with_capacity(entry.name.len() + 48);
-                rendered.push('[');
-                push_json_string(&mut rendered, entry.name.as_str());
-                use std::fmt::Write as _;
-                let _ = write!(
-                    rendered,
-                    ",{},\"{}\",\"{}\"",
-                    entry.compressed_size,
-                    entry.uncompressed_size,
-                    match entry.compression {
+                use super::table::{self, Cell};
+                payload.push_str(&table::line(&[
+                    Cell::Text(&entry.name),
+                    Cell::Atom(&entry.compressed_size.to_string()),
+                    Cell::Atom(&entry.uncompressed_size.to_string()),
+                    Cell::Text(match entry.compression {
                         0 => "stored",
                         8 => "deflated",
                         _ => "other",
-                    }
-                );
-                rendered.push_str("]\n");
-                payload.push_str(&rendered);
-                let _ = limit;
+                    }),
+                ])?);
             }
             emit(&payload, args.output.as_deref(), sink)?;
         }
@@ -443,65 +448,27 @@ fn run_command(
     Ok(())
 }
 
-/// One FETCH result: the source is a field of a record, never the whole answer, so a
-/// consumer parses the same envelope as every other command.
-/// Append one caller/target reference row.
+/// Entry identity is retained even when the member coordinate is unambiguous.
 fn push_reference(
     payload: &mut String,
-    entry: &str,
+    entry: Option<&str>,
     caller: &str,
     matched: &str,
     limit: Option<usize>,
 ) -> Result<()> {
-    payload.push_str("{\"record\":\"");
-    payload.push_str(rxd_core::envelope::REFERENCE);
-    payload.push_str("\",\"context_at\":");
-    push_json_string(payload, caller);
-    payload.push_str(",\"detail\":{\"target\":");
-    push_json_string(payload, matched);
-    // Which DEX the hit lives in is the one fact the row coordinate cannot express; an
-    // APK can hold the same class name twice across DEX files.
-    payload.push_str(",\"entry\":");
-    push_json_string(payload, entry);
-    payload.push_str("}}\n");
-    if limit.is_some_and(|limit| payload.len() > limit) {
+    use super::table::{self, Cell};
+    let row = table::line(&[
+        entry.map_or(Cell::Null, Cell::Text),
+        Cell::Atom(caller),
+        Cell::Text(matched),
+    ])?;
+    if limit.is_some_and(|limit| row.len() > limit.saturating_sub(payload.len())) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
+    payload.push_str(&row);
     Ok(())
 }
-fn push_json_string(out: &mut String, value: &str) {
-    // Almost every DEX string is plain UTF-8 without an escape-worthy byte; one
-    // scan lets those skip the per-character match below.
-    if !value
-        .bytes()
-        .any(|byte| byte < 0x20 || byte == b'"' || byte == b'\\')
-    {
-        out.push('"');
-        out.push_str(value);
-        out.push('"');
-        return;
-    }
-    out.push('"');
-    for character in value.chars() {
-        match character {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            control if (control as u32) < 0x20 => {
-                use std::fmt::Write as _;
-                let _ = write!(out, "\\u{:04x}", control as u32);
-            }
-            other => out.push(other),
-        }
-    }
-    out.push('"');
-}
-
-/// Append one string row with constant keys and no temporary Value.
+/// Append a string-table row without an intermediate JSON record.
 fn push_string_row(
     payload: &mut String,
     entry: &str,
@@ -509,14 +476,13 @@ fn push_string_row(
     value: &str,
     limit: Option<usize>,
 ) -> Result<()> {
-    use std::fmt::Write as _;
-    let _ = write!(payload, "{index}\t");
-    let quoted =
-        serde_json::to_string(value).map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
-    payload.push_str(&quoted);
-    payload.push('\t');
-    payload.push_str(entry);
-    payload.push('\n');
+    use super::table::{self, Cell};
+    let row = table::line(&[
+        Cell::Atom(&index.to_string()),
+        Cell::Text(value),
+        Cell::Text(entry),
+    ])?;
+    payload.push_str(&row);
     if limit.is_some_and(|limit| payload.len() > limit) {
         bail!("RESOURCE_LIMIT: query output byte budget exceeded");
     }
@@ -575,55 +541,4 @@ fn append_json(payload: &mut String, value: &Value, limit: Option<usize>) -> Res
     payload.push_str(&encoded);
     payload.push('\n');
     Ok(())
-}
-
-#[cfg(test)]
-mod json_writer {
-    use super::*;
-
-    /// The hand-written writer must produce exactly the bytes `serde_json` would, for
-    /// every string a record can carry (entry names, descriptors, member names).
-    #[test]
-    fn json_string_writer_matches_serde_json() {
-        let mut cases = vec![
-            String::new(),
-            "plain".to_owned(),
-            "quote\"inside".to_owned(),
-            "back\\slash".to_owned(),
-            "tab\tnewline\ncr\r".to_owned(),
-            "bell\u{8}form\u{c}".to_owned(),
-            "low\u{1}controls\u{1f}".to_owned(),
-            "del\u{7f}keep".to_owned(),
-            "λ|🙂|世界".to_owned(),
-            "/slash/and;semicolon".to_owned(),
-            "line\u{2028}sep\u{2029}".to_owned(),
-            "classes|\"\n.dex".to_owned(),
-        ];
-        // Deterministic fuzz over the byte classes that matter for escaping.
-        let alphabet: Vec<char> = "\"\\/bfnrtu0123456789abcλ🙂\n\r\t\u{0}\u{1}\u{1f}\u{7f}\u{7e}"
-            .chars()
-            .collect();
-        let mut seed = 0x2545_f491_4f6c_dd1du64;
-        for _ in 0..2_000 {
-            let mut next = || {
-                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-                (seed >> 33) as usize
-            };
-            let len = next() % 24;
-            let mut value = String::new();
-            for _ in 0..len {
-                value.push(alphabet[next() % alphabet.len()]);
-            }
-            cases.push(value);
-        }
-        for case in cases {
-            let mut out = String::new();
-            push_json_string(&mut out, &case);
-            assert_eq!(
-                out,
-                serde_json::to_string(&case).unwrap(),
-                "escaped bytes differ for {case:?}"
-            );
-        }
-    }
 }

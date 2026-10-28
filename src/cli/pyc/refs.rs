@@ -1,12 +1,11 @@
 use super::{Output, static_commands};
 use clap::Args;
-use rxd_core::{Error, Result, envelope, perf::Perf};
+use rxd_core::{Error, Result, perf::Perf};
 use rxd_pyc::{
     references::{self, Scan},
     string_constants,
 };
-use serde::Serialize;
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 #[derive(Args)]
 #[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
@@ -27,20 +26,6 @@ pub struct Target {
 pub struct RefsOptions {
     #[command(flatten)]
     pub common: static_commands::Options,
-}
-#[derive(Serialize)]
-struct Record<'a> {
-    record: &'static str,
-    at: Option<&'a str>,
-    source_id: Option<&'a str>,
-    parent_at: Option<&'a str>,
-    context_at: String,
-    start: usize,
-    end: usize,
-    detail: &'a references::Hit,
-}
-fn append(out: &mut Output, value: &impl Serialize) -> Result<()> {
-    out.json_line(value)
 }
 pub fn run(
     input: PathBuf,
@@ -95,6 +80,7 @@ pub fn run(
         .as_deref()
         .map(|text| rxd_core::filter::Contains::new(text, target.case.sensitive()));
     let mut out = Output::new(options.common.budget.output_bytes);
+    out.write_all(crate::cli::table::header(&["entry", "context", "match"]).as_bytes())?;
     let mut records = 0usize;
     let mut instructions = 0usize;
     source.visit(constant_scope.or(within_scope), perf, |analysis, perf| {
@@ -139,11 +125,16 @@ pub fn run(
                 analysis.charge_work(1usize
                     .saturating_add(hit.constant_id.as_ref().map_or(0, String::len))
                     .saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
-                append(&mut out, &Record {
-                    record: envelope::REFERENCE, at: None, source_id: None, parent_at: None,
-                    context_at: analysis.code_id(hit.code_index),
-                    start: hit.start, end: hit.end, detail: hit,
-                })?;
+                use crate::cli::table::{self, Cell};
+                let matched = hit.target_name.as_deref().or(hit.constant_id.as_deref())
+                    .ok_or_else(|| Error::new("INVALID_INPUT", "reference has no lossless target"))?;
+                let context = analysis.code_id(hit.code_index);
+                let row = table::line(&[
+                    analysis.namespace.as_deref().map_or(Cell::Null, Cell::Text),
+                    Cell::Atom(&context),
+                    Cell::Text(matched),
+                ]).map_err(super::super::classify)?;
+                out.write_all(row.as_bytes())?;
             }
             Ok(())
         })

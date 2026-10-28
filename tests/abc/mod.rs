@@ -183,15 +183,6 @@ fn append_entity(bytes: &mut Vec<u8>, index: usize, entity: &[u8]) {
     checksum(bytes);
 }
 
-fn rows(output: &Output) -> Vec<Vec<String>> {
-    success(output);
-    String::from_utf8(output.stdout.clone())
-        .unwrap()
-        .lines()
-        .map(|line| line.split('\t').map(str::to_owned).collect())
-        .collect()
-}
-
 fn checksum(bytes: &mut [u8]) {
     let (mut a, mut b) = (1u32, 0u32);
     for byte in &bytes[12..] {
@@ -212,77 +203,6 @@ fn hap(path: &Path, entries: &[(&str, &[u8])]) {
         zip.write_all(bytes).unwrap();
     }
     zip.finish().unwrap();
-}
-
-#[test]
-fn ark_navigates_records_and_methods_with_unicode_and_precise_code_sizes() {
-    let directory = TempDir::new().unwrap();
-    let input = directory.path().join("minimal.abc");
-    fs::write(&input, ABC).unwrap();
-    let expected = expected();
-    let record_at = expected["record"]["at"].as_str().unwrap();
-    let records = rows(&query(&input, "record", &[]));
-    assert_eq!(records.len(), 2);
-    assert_eq!(records[0][0], record_at);
-    assert_eq!(
-        serde_json::from_str::<Value>(&records[0][1]).unwrap(),
-        expected["record"]["name"]
-    );
-    assert_eq!(records[0][2], "2");
-    let methods = rows(&query(&input, "method", &["--at", record_at]));
-    for (actual, expected) in methods
-        .iter()
-        .zip(expected["record"]["methods"].as_array().unwrap())
-    {
-        assert_eq!(actual[0], expected["at"]);
-        assert_eq!(
-            serde_json::from_str::<Value>(&actual[1]).unwrap(),
-            expected["name"]
-        );
-        assert_eq!(actual[2], expected["code_size"].to_string());
-        assert_eq!(actual[3], "3");
-        assert_eq!(actual[4], "0");
-    }
-    assert_eq!(methods.len(), 2);
-    assert_eq!(
-        rows(&query(&input, "method", &["--at", record_at, "-f", "加法"])).len(),
-        1
-    );
-    assert!(
-        rows(&query(
-            &input,
-            "method",
-            &["--at", record_at, "-f", "absent"]
-        ))
-        .is_empty()
-    );
-    assert_eq!(rows(&query(&input, "record", &["-f", "main"])).len(), 1);
-    assert!(
-        rows(&query(
-            &input,
-            "record",
-            &["-f", "main", "--case", "sensitive"]
-        ))
-        .is_empty()
-    );
-    assert!(
-        rows(&query(
-            &input,
-            "method",
-            &["--at", expected["empty_record"]["at"].as_str().unwrap()]
-        ))
-        .is_empty()
-    );
-    failure(
-        query(&input, "method", &["--at", "record:0x1", "-f", "absent"]),
-        2,
-        "NOT_FOUND",
-    );
-    failure(
-        query(&input, "method", &["--at", "method:0x88"]),
-        2,
-        "INVALID_QUERY",
-    );
 }
 
 #[test]

@@ -36,11 +36,14 @@ normally. A current discovery request can carry this metadata in `params._meta`:
 
 Command `--help` includes minimal examples, parameter sources and result routing.
 MCP descriptions inherit the same guidance; `tools/list` publishes required fields,
-exclusive selectors and enums. JSON output is automatic: omit `json`, `output` and
-`perf`. Invalid argument combinations fail with `INVALID_QUERY` before input capture.
+exclusive selectors and enums. Omit CLI-only `json`, `output` and `perf` options. Invalid argument combinations fail with `INVALID_QUERY` before input capture.
 Ordinary tools build argv from the clap definition and execute the same CLI handlers.
-Results go to an explicit bounded buffer, not thread-local stdout capture; JSON
-projection and Native/extraction adapters retain their existing behavior.
+Results go to an explicit bounded buffer, not thread-local stdout capture.
+Table tools return the same TAB-separated payload as the CLI in
+`structuredContent.text`, including its first `# ` column-header line.
+Skip that first line and use the listing coordinate or reference context column
+for the next fetch. A successful empty query returns the header alone as text.
+Metadata JSON and Native/extraction adapters keep their separate contracts.
 
 Use the exact schemas returned by `tools/list`. Tool names follow CLI namespaces (JVM uses
 `jar_*`); all tools supported by the build are exposed automatically. For codemode, this glue assumes
@@ -56,8 +59,8 @@ const opened = await call("rxd_open", {path: "/workspace/module.wasm", backend: 
 try {
   const input = {target_id: opened.target_id};
   const functions = await call("wasm_functions", {input});
-  // A stream is `{records: [...]}`; `at` identifies a row in this fixed snapshot.
-  const names = functions.records.map(record => record.detail.name);
+  const rows = functions.text.trimEnd().split("\n").slice(1);
+  const names = rows.map(row => JSON.parse(row.split("\t")[1]));
 } finally {
   await call("rxd_close", {target_id: opened.target_id});
 }
@@ -72,9 +75,10 @@ const out = await call("jar_methods", {
   input: {path: "/workspace/gson.jar"},
   class: "Lcom/google/gson/JsonPrimitive;", filter: "isNumber"
 });
-const method = out.records.find(row => row.record === "method");
+const at = out.text.trimEnd().split("\n").slice(1)[0];
+if (!at) throw new Error("No matching method");
 const body = await call("jar_get_method", {
-  input: {path: "/workspace/gson.jar"}, at: method.at, raw: true
+  input: {path: "/workspace/gson.jar"}, at, raw: true
 });
 ```
 

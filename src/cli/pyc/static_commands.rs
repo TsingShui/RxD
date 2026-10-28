@@ -49,6 +49,7 @@ pub fn modules(
         .as_deref()
         .map(|text| rxd_core::filter::Contains::new(text, case_sensitive));
     let mut writer = Output::new(options.budget.output_bytes);
+    writer.write_all(table::header(&["at", "kind"]).as_bytes())?;
     let mut records = 0usize;
     source.modules(filter.as_ref(), perf, |at, kind| {
         let line =
@@ -119,6 +120,8 @@ pub fn codes(
         .as_deref()
         .map(|f| rxd_core::filter::Contains::new(f, query.case_sensitive));
     let mut writer = Output::new(options.budget.output_bytes);
+    use std::io::Write as _;
+    writer.write_all(crate::cli::table::header(&["at", "qualname"]).as_bytes())?;
     let mut records = 0usize;
     input_source.visit(scope, perf, |analysis, perf| {
         let selected = perf.measure("query", || {

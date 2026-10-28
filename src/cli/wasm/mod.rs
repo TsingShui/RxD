@@ -4,7 +4,6 @@ use super::filter::CaseArgs;
 use super::xref::Selector;
 use clap::{Args, Subcommand};
 use rxd_core::Result;
-use rxd_core::envelope::RecordMeta;
 use rxd_core::perf::Perf;
 use rxd_wasm::{Limits, Module};
 use serde_json::{Map, Value, json};
@@ -15,7 +14,8 @@ use serde_json::{Map, Value, json};
 pub enum Command {
     /// List type-section signatures (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm types module.wasm\nOutput: type JSONL with func signatures and type:N coordinates; these are not functions."
+        long_about = "Columns: at, label\nList type-section signatures. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm types module.wasm\nOutput: TAB-separated at, label with function signatures and type:N coordinates."
     )]
     Types {
         /// The regular local `.wasm` file to read.
@@ -30,7 +30,8 @@ pub enum Command {
     },
     /// List imports (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm imports module.wasm -f env\nOutput: import JSONL; function imports have detail.target_at = func:N for xref.\nImports have no defined body to fetch."
+        long_about = "Columns: at, label\nList imports. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm imports module.wasm -f env\nOutput: TAB-separated at, label; at is import:N, label is module.name. Search function references with xref -m module.name --kind function.\nImports have no defined body to fetch."
     )]
     Imports {
         /// The regular local `.wasm` file to read.
@@ -45,7 +46,8 @@ pub enum Command {
     },
     /// List exports (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm exports module.wasm -f sum\nOutput: export JSONL; copy detail.target_at (func:N) for exported function FETCH/xref.\nExport names are aliases, not function identities."
+        long_about = "Columns: at, label\nList exports. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm exports module.wasm -f sum\nOutput: TAB-separated at, label; at is export:N and label is its export name. Function FETCH/xref uses functions.at (func:N).\nExport names are aliases, not function identities."
     )]
     Exports {
         /// The regular local `.wasm` file to read.
@@ -59,7 +61,7 @@ pub enum Command {
         options: Options,
     },
     /// List module-defined functions (columns: at, label).
-    #[command(after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nOutput: function JSONL; at is func:N in the combined imported/defined index space.\nNext: rxd wasm get-function module.wasm --at '<function.at>'.\n--name is exact, -f is a substring; --at optionally selects an existing function.", mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Optional existing functions.at coordinate, func:N; omit to list functions")))]
+    #[command(long_about = "Columns: at, label\nList module-defined functions after one # column header.", after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nOutput: TAB-separated at, label; at is func:N in the combined imported/defined index space.\nNext: rxd wasm get-function module.wasm --at '<function.at>'.\n--name is exact, -f is a substring; --at optionally selects an existing function.", mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Optional existing functions.at coordinate, func:N; omit to list functions")))]
     Functions {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
@@ -80,7 +82,8 @@ pub enum Command {
     },
     /// List tables (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm tables module.wasm\nOutput: table JSONL with table:N, limits and element types; not func:N."
+        long_about = "Columns: at, label\nList tables. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm tables module.wasm\nOutput: TAB-separated at, label; at is table:N, not func:N."
     )]
     Tables {
         /// The regular local `.wasm` file to read.
@@ -95,7 +98,8 @@ pub enum Command {
     },
     /// List memories (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm memories module.wasm\nOutput: memory JSONL with memory:N and page limits."
+        long_about = "Columns: at, label\nList memories. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm memories module.wasm\nOutput: TAB-separated at, label; at is memory:N."
     )]
     Memories {
         /// The regular local `.wasm` file to read.
@@ -110,7 +114,8 @@ pub enum Command {
     },
     /// List globals (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm globals module.wasm -f counter\nOutput: global JSONL with global:N, type, mutability and initializer evidence."
+        long_about = "Columns: at, label\nList globals. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm globals module.wasm -f counter\nOutput: TAB-separated at, label; at is global:N."
     )]
     Globals {
         /// The regular local `.wasm` file to read.
@@ -125,7 +130,8 @@ pub enum Command {
     },
     /// List data segments (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm data module.wasm\nOutput: data JSONL with data:N, original segment bytes/ranges and active/passive mode."
+        long_about = "Columns: at, label\nList data segments. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm data module.wasm\nOutput: TAB-separated at, label; at is data:N."
     )]
     Data {
         /// The regular local `.wasm` file to read.
@@ -140,7 +146,8 @@ pub enum Command {
     },
     /// List element segments (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm elements module.wasm\nOutput: element JSONL with element:N and explicit function indices/ref expressions.\nDo not infer resolved call_indirect targets from a table inventory."
+        long_about = "Columns: at, label\nList element segments. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm elements module.wasm\nOutput: TAB-separated at, label; at is element:N.\nDo not infer resolved call_indirect targets from a table inventory."
     )]
     Elements {
         /// The regular local `.wasm` file to read.
@@ -155,7 +162,8 @@ pub enum Command {
     },
     /// List decodable UTF-8 strings (columns: at, label).
     #[command(
-        after_long_help = "Examples:\nrxd wasm strings module.wasm -f hello\nOutput: string JSONL from data/name sections. These are not proven string-to-code uses.\nTo navigate code, list functions first and use func:N with xref/get-function."
+        long_about = "Columns: at, label\nList decodable UTF-8 strings. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd wasm strings module.wasm -f hello\nOutput: TAB-separated at, label from data/name sections. at is \\N; these are not proven string-to-code uses.\nTo navigate code, list functions first and use func:N with xref/get-function."
     )]
     Strings {
         /// The regular local `.wasm` file to read.
@@ -169,7 +177,7 @@ pub enum Command {
         options: Options,
     },
     /// Search functions that reference a function index.
-    #[command(after_long_help = "Examples:\nrxd wasm xref module.wasm --at 'func:1'\nrxd wasm xref module.wasm -m 'env.log' --kind function\nRequired: exactly one of --at/--match; --match requires --kind function.\nCopy functions.at or exports/imports.detail.target_at, not a type/table index.\nOutput: reference JSONL; context_at names the caller, detail.target the function.\nNext: rxd wasm get-function module.wasm --at '<reference.context_at>' --raw.\nOnly explicit call/ref.func; indirect calls remain unresolved.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])), mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Copy functions.at or exports/imports.detail.target_at: func:N")))]
+    #[command(long_about = "Columns: context, match\nList explicit references as TAB-separated rows after one # column header. Successful zero-hit queries retain the header.", after_long_help = "Examples:\nrxd wasm xref module.wasm --at 'func:1'\nrxd wasm xref module.wasm -m 'env.log' --kind function\nRequired: exactly one of --at/--match; --match requires --kind function.\nCopy functions.at, not a type/table index.\nOutput: TAB-separated context, match. context is the referencing func:N; match is the referenced func:N.\nNext: rxd wasm get-function module.wasm --at '<xref.context>' --raw.\nOnly explicit call/ref.func; indirect calls remain unresolved.", group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])), mut_arg("at", |arg| arg.value_name("FUNCTION_AT").help("Copy functions.at: func:N")))]
     Xref {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
@@ -187,7 +195,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one function as C-like or instructions.
-    #[command(name = "get-function", after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nrxd wasm get-function module.wasm --at 'func:1' --raw\nRequired: --at copied from functions.at or xref.context_at; use actual func:N.\nImported functions have no defined body. Not a function name or type:N coordinate.\nOutput: C-like reconstruction text; --raw or an unsupported body prints the\noriginal instruction listing as text.", mut_arg("at", |arg| arg.required(true).value_name("FUNCTION_AT").help("Copy functions.at or xref.context_at: func:N in this module")))]
+    #[command(name = "get-function", after_long_help = "Examples:\nrxd wasm functions module.wasm -f sum\nrxd wasm get-function module.wasm --at 'func:1' --raw\nRequired: --at copied from functions.at or xref.context; use actual func:N.\nImported functions have no defined body. Not a function name or type:N coordinate.\nOutput: C-like reconstruction text; --raw or an unsupported body prints the\noriginal instruction listing as text.", mut_arg("at", |arg| arg.required(true).value_name("FUNCTION_AT").help("Copy functions.at or xref.context: func:N in this module")))]
     Get {
         /// The regular local `.wasm` file to read.
         input: PathBuf,
@@ -555,28 +563,16 @@ fn execute_inner(
             let references = perf.measure("xref", || {
                 rxd_wasm::refs(&module, reference_targets.as_deref().unwrap())
             })?;
+            use crate::cli::table::{self, Cell};
+            use std::io::Write as _;
+            output.write_all(table::header(&["context", "match"]).as_bytes())?;
             for reference in references {
-                let mut detail = Map::new();
-                detail.insert(
-                    "target".into(),
-                    json!(coordinate("func", reference.target_index)),
-                );
-                detail.insert("caller_index".into(), json!(reference.caller_index));
-                detail.insert("caller_name".into(), json!(reference.caller_name));
-                detail.insert("offset".into(), json!(reference.offset));
-                detail.insert("opcode".into(), json!(reference.opcode));
-                detail.insert("target_index".into(), json!(reference.target_index));
-                push_limited(
-                    &mut output,
-                    &mut records,
-                    &rxd_core::envelope::reference(
-                        RecordMeta {
-                            context_at: Some(&reference.id),
-                            ..RecordMeta::default()
-                        },
-                        detail,
-                    ),
-                )?;
+                let row = table::line(&[
+                    Cell::Atom(&reference.id),
+                    Cell::Text(&coordinate("func", reference.target_index)),
+                ])?;
+                output.write_all(row.as_bytes())?;
+                records += 1;
             }
         }
         Command::Get { .. } => unreachable!(),
@@ -856,19 +852,16 @@ fn string_rows(strings: &[rxd_wasm::StringRecord]) -> Vec<Row> {
         .collect()
 }
 
-/// One listing line: coordinate, TAB, label. Text is left bare because wasm labels
-/// are name-section strings or section kinds, never free-form literals.
+/// Every listing keeps two cells, including strings without coordinates.
 fn push_line(
     output: &mut rxd_core::output::Output,
     records: &mut usize,
     at: Option<&str>,
     label: &str,
 ) -> anyhow::Result<()> {
+    use crate::cli::table::{self, Cell};
     use std::io::Write as _;
-    let line = match at {
-        Some(at) => format!("{at}\t{label}\n"),
-        None => format!("{label}\n"),
-    };
+    let line = table::line(&[at.map_or(Cell::Null, Cell::Atom), Cell::Text(label)])?;
     output.write_all(line.as_bytes())?;
     *records += 1;
     Ok(())
@@ -881,6 +874,8 @@ fn emit_rows(
     output: &mut rxd_core::output::Output,
     records: &mut usize,
 ) -> anyhow::Result<()> {
+    use std::io::Write as _;
+    output.write_all(crate::cli::table::header(&["at", "label"]).as_bytes())?;
     let needle = filter.map(|needle| rxd_core::filter::Contains::new(needle, case_sensitive));
     for row in rows {
         if let Some(needle) = &needle
@@ -891,21 +886,6 @@ fn emit_rows(
         let _ = (&row.kind, row.start, row.end, &row.detail);
         push_line(output, records, row.at.as_deref(), &row.label)?;
     }
-    Ok(())
-}
-
-fn push_limited(
-    output: &mut rxd_core::output::Output,
-    records: &mut usize,
-    value: &Value,
-) -> anyhow::Result<()> {
-    append(output, value)?;
-    *records += 1;
-    Ok(())
-}
-
-fn append(output: &mut rxd_core::output::Output, value: &Value) -> anyhow::Result<()> {
-    output.json_line(value)?;
     Ok(())
 }
 

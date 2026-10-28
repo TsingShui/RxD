@@ -11,7 +11,7 @@ impl<'a> Output<'a> {
             remaining: limit,
         }
     }
-    #[cfg(feature = "backend-dex")]
+    #[cfg(any(feature = "backend-dex", feature = "backend-jvm"))]
     pub fn remaining(&self) -> Option<usize> {
         self.remaining
     }

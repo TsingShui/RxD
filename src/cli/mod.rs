@@ -82,10 +82,11 @@ mod xref;
 #[command(
     version,
     about = "Analyze APK/DEX, Class/JAR, DLL/EXE, WASM, PYC, Lua, Ark ABC/HAP, Dart/Flutter, EVM bytecode and ELF/PE/Mach-O; unpack ASAR/ZIP/HAP/PyInstaller/wxapkg archives",
-    after_long_help = "Coordinates: at and context_at chain the next fetch (kuna selects by address_hex).
-Output: one record per line; exit 0 required; zero rows means no matches.
+    after_long_help = "Coordinates: listings.at and xref.context chain the next fetch (kuna selects by address).
+Output: one data record per line; exit 0 required; zero data rows means no matches.
+Tables: one # column header even with zero rows; then TAB-separated data.
 Filters: -f narrows listings; -m with --kind searches xref targets.
-Listings: TAB-separated columns per command help; text JSON-quoted; \\N absent.
+Cells: columns per command help; text JSON-quoted; \\N absent. Kuna keeps its native format.
 Raw: --raw selects original instructions where reconstruction exists.
 Details: rxd BACKEND COMMAND --help; typed tools through rxd mcp.
 Engines: source builds may omit Kuna/ILSpy."
@@ -132,7 +133,7 @@ enum Backend {
   rxd ilspy get-method app.dll --at '0x0600000b' --raw
   rxd ilspy strings app.dll -f Authorization
   rxd ilspy xref app.dll -m Authorization --kind string
-Copy methods.at into get-method; copy xref.context_at to fetch its caller.
+Copy methods.at into get-method; copy xref.context to fetch its caller.
 Tokens such as 0x0600000b are module-scoped; use actual returned values.
 C# requires ILSpy; missing/failed reconstruction returns original IL with a reason."
     )]
@@ -196,7 +197,7 @@ No entry selection, nested extraction beyond PYZ, links, or encrypted ASAR/ZIP/P
   rxd rasc strings app.apk -f Authorization
   rxd rasc xref app.apk -m Authorization --kind string
   rxd rasc manifest app.apk
-Copy methods.at into get-method; copy xref.context_at to fetch its caller.
+Copy methods.at into get-method; copy xref.context to fetch its caller.
 Method coordinates include parameters AND return type after ). Use actual returned values.
 classes.at selects get-class; -f filters names, --class is one exact owner.
 Input is one APK/ZIP with root DEX entries, or one bare DEX. Java may contain unsupported stubs."
@@ -218,7 +219,7 @@ Input is one APK/ZIP with root DEX entries, or one bare DEX. Java may contain un
   rxd jar get-method library.jar --at 'Lx/y;->parse(Ljava/lang/String;)I' --raw
   rxd jar strings library.jar -f Authorization
   rxd jar xref library.jar -m Authorization --kind string
-Copy methods.at or xref.context_at into get-method; classes.at selects get-class.
+Copy methods.at or xref.context into get-method; classes.at selects get-class.
 Coordinates retain JVM overload descriptors, including return type; use returned values.
 --release N selects multi-release JAR versions. No Java runtime or D8 conversion needed."
     )]
@@ -238,7 +239,7 @@ Coordinates retain JVM overload descriptors, including return type; use returned
   rxd pyc codes PYZ.pyz -f proxy
   rxd pyc strings PYZ.pyz -f Authorization
   rxd pyc xref PYZ.pyz --kind name -m getproxies
-  rxd pyc decompile PYZ.pyz --at '<codes.at or xref.context_at>'
+  rxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>'
   rxd pyc decompile module.pyc
 PYC and PyInstaller PYZ are detected by magic; raw marshal needs --version X.Y.
 modules reads the PYZ directory without inflating members; codes --within selects one module.
@@ -313,8 +314,8 @@ Decompile reconstructs the whole chunk; listings never run the decompiler.")]
     #[command(after_long_help = "Examples:
   rxd wasm functions module.wasm -f sum
   rxd wasm xref module.wasm --at '<function.at>'
-  rxd wasm get-function module.wasm --at '<reference.context_at>' --raw
-Copy functions.at (func:N) into xref/get-function; xref.context_at names the caller.
+  rxd wasm get-function module.wasm --at '<xref.context>' --raw
+Copy functions.at (func:N) into xref/get-function; xref.context names the caller.
 exports.detail.target_at also names the exported function; imported functions have no body.
 Input is a binary core module, not WAT or Component Model.
 Default FETCH attempts C-like reconstruction and falls back to original instructions.")]

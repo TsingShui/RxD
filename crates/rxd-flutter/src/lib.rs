@@ -128,7 +128,7 @@ impl Snapshot {
             out.push_str("class:0x");
             push_hex(out, *cid as u64);
             out.push('\t');
-            push_atom(out, &full);
+            push_text(out, &full)?;
             out.push('\t');
             out.push_str(&methods.get(name.as_str()).copied().unwrap_or(0).to_string());
             out.push('\n');
@@ -163,10 +163,7 @@ impl Snapshot {
             out.push_str("str:0x");
             push_hex(out, offset);
             out.push('\t');
-            out.push_str(
-                &serde_json::to_string(&value)
-                    .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
-            );
+            push_text(out, &value)?;
             out.push('\n');
             written += 1;
         }
@@ -296,11 +293,7 @@ impl Snapshot {
                     out.push_str("0x");
                     push_hex(out, entry.ep);
                     out.push('\t');
-                    push_atom(out, lib);
-                    out.push_str("::");
-                    push_atom(out, cls);
-                    out.push_str("::");
-                    push_atom(out, &entry.mangled);
+                    push_text(out, &format!("{lib}::{cls}::{}", entry.mangled))?;
                     out.push('\n');
                     written += 1;
                 }
@@ -452,16 +445,13 @@ fn push_hex(out: &mut String, value: u64) {
     out.push_str(std::str::from_utf8(&buffer[index..]).expect("hex is ASCII"));
 }
 
-/// Names come from the snapshot; quote them only when a cell would break the row.
-fn push_atom(out: &mut String, value: &str) {
-    if value
-        .bytes()
-        .any(|byte| byte == b'\t' || byte == b'\n' || byte == b'"' || byte == b'\\')
-    {
-        out.push_str(&serde_json::to_string(value).unwrap_or_default());
-    } else {
-        out.push_str(value);
-    }
+/// Quote the complete text cell so names cannot introduce extra rows or columns.
+fn push_text(out: &mut String, value: &str) -> Result<()> {
+    out.push_str(
+        &serde_json::to_string(value)
+            .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
+    );
+    Ok(())
 }
 
 /// The pool offset a load instruction names, if it is a `[PP + #imm]` access.

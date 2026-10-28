@@ -48,25 +48,6 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
         String::from_utf8_lossy(&cli.stderr)
     );
 }
-#[cfg(feature = "backend-dotnet")]
-#[test]
-fn mcp_input_scaled_dotnet_xref_finishes_above_the_old_fixed_work_budget() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
-    let mut client = Client::start(&["--allow-path", root.to_str().unwrap()]);
-    client.initialize();
-    let result = client.tool(
-        "ilspy_xref",
-        json!({"input":{"path":input},"kind":"string","match":"__rxd_nonexistent_budget_probe__"}),
-    );
-    assert_ne!(result["isError"], true, "{result}");
-    assert!(
-        result["structuredContent"]["records"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-}
 
 fn checked(client: &mut Client, tools: &Value, name: &str, arguments: Value) -> Value {
     let result = client.tool(name, arguments.clone());

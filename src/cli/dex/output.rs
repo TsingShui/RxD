@@ -8,6 +8,9 @@ use std::{
 
 /// Write identical payload bytes to the sink and an optional file.
 pub(super) fn emit(payload: &str, output: Option<&Path>, sink: &mut Output<'_>) -> Result<()> {
+    if sink.remaining().is_some_and(|limit| payload.len() > limit) {
+        anyhow::bail!("RESOURCE_LIMIT: query output byte budget exceeded");
+    }
     if let Some(path) = output {
         fs::write(path, payload).with_context(|| format!("write {}", path.display()))?;
     }

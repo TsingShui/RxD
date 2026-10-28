@@ -2,9 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 use rxd_core::Result;
-use rxd_core::envelope::RecordMeta;
 use rxd_jvm::{Input, Limits};
-use serde_json::json;
 
 use super::filter::CaseArgs;
 use super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
@@ -13,7 +11,8 @@ use super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
 pub enum Command {
     /// List class metadata (columns: at).
     #[command(
-        after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nOutput: class JSONL; at is Lx/y;. Copy at into get-class for Java.\n--class is an exact internal/dotted/descriptor name; -f is a substring."
+        long_about = "Columns: at\nList class metadata. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nOutput: class coordinates after # at; copy one into get-class for Java.\n--class is an exact internal/dotted/descriptor name; -f is a substring."
     )]
     Classes {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -31,7 +30,8 @@ pub enum Command {
     },
     /// List JAR/ZIP entries (columns: name, uncompressed_size, compression).
     #[command(
-        after_long_help = "Examples:\nrxd jar entries library.jar -f META-INF\nOutput: entry JSONL with names, compression and sizes. Entries are archive metadata,\nnot member coordinates. --release N controls multi-release class selection."
+        long_about = "Columns: name, uncompressed_size, compression\nList JAR/ZIP entries. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd jar entries library.jar -f META-INF\nOutput: TAB-separated name, uncompressed_size, compression. Entries are archive metadata,\nnot member coordinates. --release N controls multi-release class selection."
     )]
     Entries {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -46,7 +46,8 @@ pub enum Command {
     },
     /// List fields (columns: at).
     #[command(
-        after_long_help = "Examples:\nrxd jar fields library.jar --class x.y -f token\nOutput: field JSONL; at is Lx/y;->name:type. --name is exact, -f a substring.\nNext: rxd jar xref library.jar --at '<field.at>'."
+        long_about = "Columns: at\nList fields. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd jar fields library.jar --class x.y -f token\nOutput: field coordinates after # at; e.g. Lx/y;->name:type. --name is exact, -f a substring.\nNext: rxd jar xref library.jar --at '<field.at>'."
     )]
     Fields {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -67,7 +68,8 @@ pub enum Command {
     },
     /// List methods (columns: at).
     #[command(
-        after_long_help = "Examples:\nrxd jar methods library.jar --class x.y -f run\nOutput: method JSONL; at is Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads. Next: get-method --at '<method.at>'."
+        long_about = "Columns: at\nList methods. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd jar methods library.jar --class x.y -f run\nOutput: method coordinates after # at; e.g. Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads. Next: get-method --at '<method.at>'."
     )]
     Methods {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -87,7 +89,7 @@ pub enum Command {
         options: Options,
     },
     /// Fetch one method as Java or JVM instructions.
-    #[command(name = "get-method", after_long_help = "Examples:\nrxd jar methods library.jar -f run\nrxd jar get-method library.jar --at 'Lx/y;->run()V' --raw\nCopy methods.at or xref.context_at verbatim; include parameters AND return type.\nOutput: reconstructed Java text; --raw prints the original JVM instructions,\nbyte offsets and exception handlers as text.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context_at: JVM descriptor including return type, e.g. Lx/y;->run()V")))]
+    #[command(name = "get-method", after_long_help = "Examples:\nrxd jar methods library.jar -f run\nrxd jar get-method library.jar --at 'Lx/y;->run()V' --raw\nCopy methods.at or xref.context verbatim; include parameters AND return type.\nOutput: reconstructed Java text; --raw prints the original JVM instructions,\nbyte offsets and exception handlers as text.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context: JVM descriptor including return type, e.g. Lx/y;->run()V")))]
     Get {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
         input: PathBuf,
@@ -111,7 +113,8 @@ pub enum Command {
     },
     /// List constant-pool string literals (columns: at, value).
     #[command(
-        after_long_help = "Examples:\nrxd jar strings library.jar -f Authorization\nrxd jar xref library.jar -m Authorization --kind string\nOutput: string JSONL from CONSTANT_String literals, not every constant-pool Utf8 name.\nPool indices are not methods. xref.context_at routes to get-method for the caller."
+        long_about = "Columns: at, value\nList constant-pool string literals. One # column header precedes the data rows.",
+        after_long_help = "Examples:\nrxd jar strings library.jar -f Authorization\nrxd jar xref library.jar -m Authorization --kind string\nOutput: TAB-separated at, value from CONSTANT_String literals, not every constant-pool Utf8 name.\nPool indices are not methods. xref.context routes to get-method for the caller."
     )]
     Strings {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -129,7 +132,8 @@ pub enum Command {
     },
     /// Search references to a string, type, method or field.
     #[command(
-        after_long_help = "Examples:\nrxd jar xref library.jar --at 'Lx/y;->run()V'\nrxd jar xref library.jar -m Authorization --kind string\nrxd jar xref library.jar -m append --kind method --class java.lang.StringBuilder\nRequired: exactly one of --at/--match; --match requires --kind.\nCoordinates copy classes.at/methods.at/fields.at; literal --at needs --kind string.\n--class is one exact target owner, not caller filtering.\nOutput: reference JSONL; context_at names caller, detail.byte_offset/mnemonic the use.\nNext: rxd jar get-method library.jar --at '<reference.context_at>' --raw."
+        long_about = "Columns: entry, context, match\nList explicit references as TAB-separated rows after one # column header. Successful zero-hit queries retain the header.",
+        after_long_help = "Examples:\nrxd jar xref library.jar --at 'Lx/y;->run()V'\nrxd jar xref library.jar -m Authorization --kind string\nrxd jar xref library.jar -m append --kind method --class java.lang.StringBuilder\nRequired: exactly one of --at/--match; --match requires --kind.\nCoordinates copy classes.at/methods.at/fields.at; literal --at needs --kind string.\n--class is one exact target owner, not caller filtering.\nOutput: TAB-separated entry, context, match. entry is the class archive path (\\N for standalone class); context is the referencing method; match is the actual target.\nNext: rxd jar get-method library.jar --at '<xref.context>' --raw."
     )]
     Xref {
         /// One regular local .class or JAR/ZIP; nested archives are not scanned.
@@ -348,7 +352,7 @@ fn execute_inner(
         let needle = filter
             .as_deref()
             .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
-        let mut output = Vec::new();
+        let mut output = super::table::header(&["at", "value"]).into_bytes();
         for selected in &input.classes {
             if wanted
                 .as_ref()
@@ -393,26 +397,17 @@ fn execute_inner(
         if query.is_anchor() && !rxd_jvm::resolves(&input, &query) {
             anyhow::bail!("{}", query.anchor_not_found());
         }
-        let mut output = Vec::new();
+        use super::table::{self, Cell};
+        use std::io::Write as _;
+        let mut output = rxd_core::output::Output::new(sink.remaining());
+        output.write_all(table::header(&["entry", "context", "match"]).as_bytes())?;
         for hit in &hits {
-            append(
-                &mut output,
-                &rxd_core::envelope::reference(
-                    RecordMeta {
-                        context_at: Some(&hit.method_at),
-                        ..RecordMeta::default()
-                    },
-                    json!({
-                        "target": hit.target,
-
-                        "byte_offset": hit.byte_offset,
-                        "mnemonic": hit.mnemonic,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            )?;
+            let row = table::line(&[
+                hit.entry.as_deref().map_or(Cell::Null, Cell::Text),
+                Cell::Atom(&hit.method_at),
+                Cell::Text(&hit.target),
+            ])?;
+            output.write_all(row.as_bytes())?;
         }
         super::write_output(&output, options.output.as_deref(), sink)?;
         return Ok(());
@@ -426,8 +421,8 @@ fn execute_inner(
     {
         let limits = options.limits(&input, policy)?;
         let (_, _, entries) = Input::read_entries(&input, limits, options.release)?;
-        let mut output = Vec::new();
-        let mut rows_first = true;
+        let mut output =
+            super::table::header(&["name", "uncompressed_size", "compression"]).into_bytes();
         let pattern = filter.map(|value| rxd_core::filter::Contains::new(&value, case.sensitive()));
         for entry in &entries {
             if pattern
@@ -441,15 +436,15 @@ fn execute_inner(
                 8 => "deflated",
                 _ => "other",
             };
-            let _ = entry.compressed_size;
-            append_row(
-                &mut output,
-                &mut rows_first,
-                &format!(
-                    "{}\t{}\t{}",
-                    entry.name, entry.uncompressed_size, compression
-                ),
-            )?;
+            use super::table::{self, Cell};
+            output.extend_from_slice(
+                table::line(&[
+                    Cell::Text(&entry.name),
+                    Cell::Atom(&entry.uncompressed_size.to_string()),
+                    Cell::Text(compression),
+                ])?
+                .as_bytes(),
+            );
         }
         super::write_output(&output, options.output.as_deref(), sink)?;
         return Ok(());
@@ -579,6 +574,7 @@ fn execute_inner(
             super::write_output(source.as_bytes(), options.output.as_deref(), sink)?;
         }
     } else {
+        output.extend_from_slice(super::table::header(&["at"]).as_bytes());
         let class_name = class_filter.as_deref().map(rxd_jvm::normalize_class_name);
         let selected_classes: Vec<_> = input
             .classes
@@ -643,12 +639,5 @@ fn append_row(output: &mut Vec<u8>, first: &mut bool, row: &str) -> anyhow::Resu
     output.extend_from_slice(row.as_bytes());
     output.push(b'\n');
     *first = false;
-    Ok(())
-}
-
-fn append(output: &mut Vec<u8>, record: &serde_json::Value) -> anyhow::Result<()> {
-    serde_json::to_writer(&mut *output, record)
-        .map_err(|error| anyhow::anyhow!("INVALID_INPUT: {error}"))?;
-    output.push(b'\n');
     Ok(())
 }

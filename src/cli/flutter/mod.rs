@@ -20,22 +20,26 @@ pub enum Command {
     Info(Options),
     /// List recovered functions (columns: at, label).
     #[command(
+        long_about = "Columns: at, label\nList recovered functions. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd dae functions libapp.so\nrxd dae functions libapp.so -f fl_clash\nOutput: one row per function; at is the code entry offset, label is library::class::method.\nNames come from the snapshot's library and class tables, not from source.\nNext: rxd dae decompile libapp.so --lib <library prefix>."
     )]
     Functions(FunctionsOptions),
     /// List classes (columns: at, full_name, methods).
     #[command(
+        long_about = "Columns: at, full_name, methods\nList classes. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd dae classes libapp.so -f ClashConfig\nOutput: at is class:0x<class id>, full_name is library::Class.\nmethods counts the class's own function-table entries; inherited members are not included.\nThe superclass chain is not exposed yet. Next: functions --class or decompile --class."
     )]
     Classes(ClassesOptions),
     /// List pool strings (columns: at, value).
     #[command(
+        long_about = "Columns: at, value\nList pool strings. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd dae strings libapp.so -f token\nOutput: one row per decoded pool string; at is str:0x<object ref>.\nUndecodable entries are skipped; use xref to see which code loads one."
     )]
     Strings(StringsOptions),
     /// Search instructions that load a pool string.
     #[command(
-        after_long_help = "Examples:\nrxd dae xref libapp.so --at 'str:0x7f0123'\nrxd dae xref libapp.so -m Authorization\nRequired: exactly one of --at/--match; --match must resolve to one string.\nColumns: at, context_at, instruction, value. at is an instruction address,\ncontext_at the containing function entry; value is the loaded string.\nOnly pool loads are matched, by instruction encoding; matches are then decoded."
+        long_about = "Columns: context, match\nList explicit references as TAB-separated rows after one # column header. Successful zero-hit queries retain the header.",
+        after_long_help = "Examples:\nrxd dae xref libapp.so --at 'str:0x7f0123'\nrxd dae xref libapp.so -m Authorization\nRequired: exactly one of --at/--match; --match must resolve to one string.\nOutput: TAB-separated context, match. context is the containing function entry; match is the exact loaded string.\nOnly explicit pool loads are matched."
     )]
     Xref(XrefOptions),
     /// Reconstruct Dart-like pseudocode for whole libraries.
@@ -229,7 +233,7 @@ pub fn execute(
                     )?),
                     None => None,
                 };
-                let mut out = String::with_capacity(1 << 21);
+                let mut out = table::header(&["at", "label"]);
                 perf.measure("analyze", || {
                     snapshot.functions_into(&mut out, filter.as_ref(), class.as_deref())
                 })?;
@@ -239,7 +243,7 @@ pub fn execute(
                 let filter = classes.filter.as_deref().map(|needle| {
                     rxd_core::filter::Contains::new(needle, classes.case.sensitive())
                 });
-                let mut out = String::with_capacity(1 << 16);
+                let mut out = table::header(&["at", "full_name", "methods"]);
                 perf.measure("analyze", || {
                     snapshot.classes_into(&mut out, filter.as_ref())
                 })?;
@@ -249,7 +253,7 @@ pub fn execute(
                 let filter = strings.filter.as_deref().map(|needle| {
                     rxd_core::filter::Contains::new(needle, strings.case.sensitive())
                 });
-                let mut out = String::with_capacity(1 << 20);
+                let mut out = table::header(&["at", "value"]);
                 perf.measure("analyze", || {
                     snapshot.strings_into(&mut out, filter.as_ref())
                 })?;
@@ -264,16 +268,11 @@ pub fn execute(
                     _ => unreachable!("clap enforces exactly one xref anchor"),
                 };
                 let hits = perf.measure("analyze", || snapshot.xref(target))?;
-                let mut out = String::with_capacity(1 << 12);
+                let mut out = table::header(&["context", "match"]);
                 for hit in hits {
                     out.push_str(
-                        &table::line(&[
-                            Cell::Atom(&hit.at),
-                            Cell::Atom(&hit.context_at),
-                            Cell::Text(&hit.instruction),
-                            Cell::Text(&hit.value),
-                        ])
-                        .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
+                        &table::line(&[Cell::Atom(&hit.context_at), Cell::Text(&hit.value)])
+                            .map_err(|error| Error::new("INVALID_QUERY", error.to_string()))?,
                     );
                 }
                 out.into_bytes()

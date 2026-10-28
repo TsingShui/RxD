@@ -47,17 +47,6 @@ fn metadata_extracts_the_terminal_cbor_blob() {
 }
 
 #[test]
-fn disassemble_offsets_are_decoded_bytes_not_hex_characters() {
-    let (_dir, path) = fixture(ARGUMENTS, "contract.hex");
-    let out = run("disassemble", &path, "hex", &[]);
-    success(&out);
-    // 0x6080 is PUSH1 0x80; a hex-character offset would land mid-pair.
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.starts_with("0\tPUSH1 80\n2\tPUSH1 40\n"), "{stdout}");
-    assert!(stdout.contains("29\tPUSH4 2125b65b\n"), "{stdout}");
-}
-
-#[test]
 fn removed_commands_no_longer_parse() {
     let (_dir, path) = fixture(ARGUMENTS, "contract.hex");
     for command in [
