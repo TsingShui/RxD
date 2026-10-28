@@ -1,6 +1,13 @@
 fn main() {
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs/tags");
+    // rxd vendors this crate without its .git directory. Watching a missing
+    // path makes Cargo rerun this script (and rebuild dae-rs/rxd-flutter) on
+    // every invocation, so only register git metadata when it exists.
+    if std::path::Path::new(".git/HEAD").exists() {
+        println!("cargo:rerun-if-changed=.git/HEAD");
+        if std::path::Path::new(".git/refs/tags").exists() {
+            println!("cargo:rerun-if-changed=.git/refs/tags");
+        }
+    }
     println!("cargo:rerun-if-env-changed=DAE_VERSION");
 
     // 版本优先取 CI 触发时的 tag（DAE_VERSION = github.ref_name，如 v0.1.2）；

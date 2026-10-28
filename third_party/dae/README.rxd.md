@@ -1,7 +1,7 @@
 # dae (vendored)
 
 Upstream: https://github.com/ejfkdev/dae — crate `dae-rs` 0.1.14, MIT.
-This is the unmodified crates.io source except for one Cargo.toml edit.
+This is the crates.io source with the local changes listed below.
 
 **Changes:**
 
@@ -29,3 +29,7 @@ because whole-snapshot scans are independent per function.
 6. `profile::detect` no longer prints the detected profile to stderr. The host
 CLI owns diagnostics and reports the same facts from `rxd dae info`, so the
 library-level notice only added an unparsable line to every run.
+
+7. `build.rs` watches `.git/HEAD` and `.git/refs/tags` only when they exist. A
+vendored copy has no `.git`, and watching a missing path made Cargo rerun the
+script and rebuild `dae-rs`/`rxd-flutter` on every invocation.
