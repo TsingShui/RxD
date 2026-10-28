@@ -219,7 +219,7 @@ pub(super) fn render(
     else {
         return Ok(fallback("engine_unavailable"));
     };
-    let bytes = input.view.data();
+    let bytes = input.bytes;
     ensure!(
         bytes.len() <= 64 * 1024 * 1024,
         "RESOURCE_LIMIT: native input byte cap"
@@ -285,7 +285,7 @@ pub(super) fn render_class(input: &Input<'_>, class: &ClassBody<'_>) -> Result<C
     let Some(endpoint) = engine.class else {
         return Ok(class_fallback("class_abi_unavailable"));
     };
-    let bytes = input.view.data();
+    let bytes = input.bytes;
     ensure!(
         bytes.len() <= 64 * 1024 * 1024,
         "RESOURCE_LIMIT: native input byte cap"
