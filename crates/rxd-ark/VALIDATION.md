@@ -21,7 +21,7 @@ Dev-profile full-input scan:
 | Successful module records | 122 / 376 |
 | Independent Babel method parses / failures | 13,256 / 0 |
 | Independent Babel record parses / failures | 122 / 0 |
-| Emitted method-source bytes, including required nested definitions | 35,596,525 |
+| Emitted method-source bytes, including required nested definitions | 37,797,317 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
@@ -37,9 +37,8 @@ methods group as follows; failures do not produce source or invoke the old engin
 | `supercallspread` | 9 |
 | `ldsuperbyname` | 5 |
 
-`method:0x6af27` (`SandboxFinder.handleRequest`) now emits 511 bytes. Its source
-retains two distinct `requestHandler` reads, an explicit call receiver and await;
-ABC and HAP requests produce byte-identical source.
+`method:0x6af27` (`SandboxFinder.handleRequest`) now emits 528 bytes. Its source
+retains two distinct `requestHandler` reads, an explicit call receiver and await.
 
 No input or reconstructed code was executed. Coverage, decoding, static
 inspection and parseability are not a runtime-equivalence proof. There is no new
@@ -47,7 +46,56 @@ all-method string-content audit or release-latency claim. Performance measuremen
 and new tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Exception-state hardening milestone
+## Effect-order hardening milestone
+
+A concrete order-sensitive case is `method:0x6e6b3` in `record:0x6e613`.
+Bytecode executes `ldobjbyvalue` at PC 50 before `stobjbyvalue` at PC 53;
+the corresponding keys are both copies of the same argument. Prior output was:
+
+```js
+t11[p0] = t13[p0];
+```
+
+Current output snapshots the read at its instruction before the store:
+
+```js
+const t14 = t13[p0];
+t11[p0] = t14;
+```
+
+For an object-valued key, coercion may be observable. ECMAScript 2024 and 2025
+specify different key-coercion timing for a simple computed assignment; the old
+shape is therefore not universally wrong, but the snapshot avoids depending on
+that version difference. See `REFERENCE.md` for the specifications and runtime.
+
+Nested ordered IR definitions now materialize at their original events unless
+there is a single direct local-write or terminal-value sink with no surviving
+intervening ordered operation. The scheduling rules do not treat calls, getters,
+coercions, lexical loads or suspension points as pure. This change does not prove
+general runtime equivalence; generated intrinsic bridges still rely on JS globals.
+
+All 13,256 successful methods and 122 record outputs independently parse; the
+826 method and 254 record failure identities remain unchanged. A root-only syntax
+scan finds 32 dynamic-key assignments with a potentially effectful RHS in 29
+methods before this change and none afterward. This is a conservative syntactic
+pattern count, not 29 proven runtime bugs. Normalized static root string/member/
+call inventories match; dynamic keys, local callee aliases and constructor
+identities are grouped and cannot prove order or equivalence.
+
+The conservative rule changes 9,744 root sources: root `const tN` declarations
+increase from 83,954 to 124,348 and roots with PC dispatch from 443 to 533.
+Complete method-query source grows from 35,596,525 to 37,797,317 bytes, including
+required nested definitions. This is an explicit correctness-first tradeoff, not a
+latency measurement. `handleRequest` retains both reads, receiver and await;
+`method:0x6ea73` retains both throw-path stores; descriptor-copy semantics remain
+explicit. The selected dynamic-key method matches between ABC and HAP, and an
+unsupported record still fails with empty stdout.
+
+Evidence is under ignored `target/verification/ark/effect-order-final-*`. Scoped
+Clippy, formatting and whitespace checks passed. No new tests, analyzed-code
+execution or performance measurements were added. Production CLI is unchanged.
+
+## Exception-state hardening milestone (historical)
 
 The fixed sample exposed a concrete dead-store error in `method:0x6ea73` of
 `record:0x6e94d`: instruction PCs 89 and 149 store `true` into `v12`, then PCs

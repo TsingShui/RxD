@@ -1,4 +1,4 @@
-use crate::{ir::*, reader::resource};
+use crate::{cfg::unsupported, ir::*, reader::resource};
 use oxc_syntax::operator::{BinaryOperator as B, UnaryOperator as U};
 use rxd_core::Result;
 
@@ -18,6 +18,9 @@ fn slot_index(slot: Slot) -> usize {
         Slot::Resume => 1,
         Slot::Register(reg) => reg as usize + 2,
     }
+}
+fn plain_slot(slot: Slot, frame: &Frame) -> bool {
+    !matches!(slot, Slot::Register(reg) if Some(reg) == frame.func || Some(reg) == frame.new_target || Some(reg) == frame.this_reg)
 }
 fn merge(into: &mut [bool], from: &[bool], exceptional: bool) {
     for (index, (into, from)) in into.iter_mut().zip(from).enumerate() {
@@ -161,6 +164,12 @@ impl Values {
             stack.extend(function.values[id.0].op.inputs());
         }
         let mut uses = vec![0usize; function.values.len()];
+        // Only direct local writes and terminal values can delay an ordered operation safely.
+        let mut direct_sink = Vec::new();
+        direct_sink
+            .try_reserve_exact(function.values.len())
+            .map_err(|_| resource("Ark effect sink allocation failed"))?;
+        direct_sink.resize(function.values.len(), false);
         let mut def_positions = vec![0; function.values.len()];
         let mut last_use = vec![0; function.values.len()];
         for (index, block) in function.blocks.iter().enumerate() {
@@ -178,17 +187,30 @@ impl Values {
                     _ => Vec::new(),
                 };
                 for input in inputs {
+                    if function.values[input.0].block != index {
+                        return Err(unsupported("Ark value use crosses a block without a slot"));
+                    }
                     uses[input.0] += 1;
+                    direct_sink[input.0] = matches!(event,
+                        Event::Action { action: Action::Write(slot, _), .. }
+                            if plain_slot(*slot, &function.frame));
                     last_use[input.0] = position;
                 }
             }
             for input in block.end.inputs() {
+                if function.values[input.0].block != index {
+                    return Err(unsupported(
+                        "Ark terminator value crosses a block without a slot",
+                    ));
+                }
                 uses[input.0] +=
                     if matches!(block.end, Terminator::Branch { .. }) && !boolean[input.0] {
                         3
                     } else {
                         1
                     };
+                direct_sink[input.0] =
+                    matches!(block.end, Terminator::Return(_) | Terminator::Throw(_));
                 last_use[input.0] = block.events.len();
             }
         }
@@ -224,12 +246,13 @@ impl Values {
                     keep[value.block][first + 1 + offset] && matches!(event, Event::Action { action: Action::Write(target, _), .. } if target == slot)
                 }),
                 _ if uses[index] > 1 => true,
-                _ => value.effects.ordered() && block.events[first + 1..last.min(block.events.len())].iter().enumerate().any(|(offset, event)| {
+                // A nested use may evaluate a key, callee or assignment target before its value.
+                _ => value.effects.ordered() && (!direct_sink[index] || block.events[first + 1..last.min(block.events.len())].iter().enumerate().any(|(offset, event)| {
                     match event {
                         Event::Define(id) => needed[id.0] && function.values[id.0].effects.ordered(),
                         Event::Action { .. } => keep[value.block][first + 1 + offset],
                     }
-                }),
+                })),
             };
         }
         let ordinary = super::receivers::ordinary(function);

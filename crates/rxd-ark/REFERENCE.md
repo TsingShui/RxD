@@ -17,8 +17,10 @@ This is an independent rewrite milestone, not the production CLI cutover.
 - A worklist propagates must-equal parameter snapshots, primitive constants and
   boolean facts over normal and per-throw exception edges. Joins retain facts
   only when all paths agree; captured cells remain mutable. Exception-aware
-  liveness includes explicit throw terminators as well as throwing IR events;
-  dead stores and materialization preserve ordered operations.
+  liveness includes explicit throw terminators as well as throwing IR events.
+  Ordered definitions are materialized unless their single use is a direct local
+  write or terminal value without intervening observable events; this keeps
+  nested assignment targets, keys and callees from preceding earlier effects.
 - CHK dominators, reverse-CFG postdominators, natural loops and single-owner
   structured plans. Shared predicate tails become short-circuit conditions;
   single-write diamonds become select expressions, and dead boolean bridges
@@ -65,6 +67,12 @@ CLI migration.
   Apache-2.0: interpreter, runtime stubs and method call-frame conventions.
   `ecmascript/method.cpp::Method::FindCatchBlock` selects the first matching
   encoded try/catch entry; region-length sorting is not its selection rule.
+  `RuntimeLdObjByValue` and `RuntimeStObjByValue` perform property-key coercion
+  at their respective instructions, in bytecode order.
+- ECMAScript [2024](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-evaluate-property-access-with-expression-key)
+  converts a computed assignment key before the RHS; [2025](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-evaluate-property-access-with-expression-key)
+  specifies conversion after it. Emitting an earlier read as a separate statement
+  avoids relying on that version-dependent assignment detail.
   Descriptor copy follows `RuntimeCopyDataProperties`, not `Object.assign` or
   object spread. `jeqz`/`jnez` use boolean/numeric tests, not generic truthiness.
 - xpanda `8f27d3ce8b63581c7eb5203bbfdfbb92e28cfccf`, Apache-2.0:
