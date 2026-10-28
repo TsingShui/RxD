@@ -16,37 +16,80 @@ Dev-profile full-input scan:
 | --- | ---: |
 | Records admitted | 385 |
 | Methods with code | 14,082 |
-| Successful method reconstructions | 13,256 |
-| Explicit method failures | 826 |
-| Successful module records | 122 / 376 |
-| Independent Babel method parses / failures | 13,256 / 0 |
-| Independent Babel record parses / failures | 122 / 0 |
-| Emitted method-source bytes, including required nested definitions | 37,797,317 |
+| Successful method reconstructions | 13,061 |
+| Explicit method failures | 1,021 |
+| Successful module records | 96 / 376 |
+| Independent Babel method parses / failures | 13,061 / 0 |
+| Independent Babel record parses / failures | 96 / 0 |
+| Emitted method-source bytes, including required nested definitions | 35,454,451 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
 
-| First unsupported operation | Methods |
+| First unsupported operation | Method queries |
 | --- | ---: |
 | `defineclasswithbuffer` | 233 |
 | `throw.ifsupernotcorrectcall` | 229 |
+| `getiterator` runtime ambiguity | 198 |
 | `supercallthisrange` | 190 |
 | `starrayspread` | 114 |
 | `creategeneratorobj` | 35 |
-| for-in normalization | 11 |
 | `supercallspread` | 9 |
+| for-in normalization | 8 |
 | `ldsuperbyname` | 5 |
 
 `method:0x6af27` (`SandboxFinder.handleRequest`) now emits 528 bytes. Its source
 retains two distinct `requestHandler` reads, an explicit call receiver and await.
 
 No input or reconstructed code was executed. Coverage, decoding, static
-inspection and parseability are not a runtime-equivalence proof. There is no new
-all-method string-content audit or release-latency claim. Performance measurement
-and new tests were intentionally not added; the operator requested real-sample
-implementation work instead.
+inspection and parseability are not a runtime-equivalence proof. The current
+all-output comparison checks the intended error-message changes, not general
+semantics. Performance measurement and new tests were intentionally not added;
+the operator requested real-sample implementation work instead.
 
-## Effect-order hardening milestone
+## Runtime-semantics hardening milestone
+
+The pinned ordinary interpreter returns a non-callable `Symbol.iterator` property
+from `RuntimeGetIterator`, while the pinned ASM interpreter throws at the same
+opcode through `StubBuilder::GetIterator`. Both are present in the same runtime
+revision; the ABC and ISA do not select an interpreter mode. `getiterator` now
+fails explicitly at its method and PC rather than emitting either interpretation.
+In `record:0x6e94d`, `method:0x6ea73`, this occurs at PC 16; both ABC and HAP
+queries fail nonzero with empty stdout. A future supported shape must prove the
+property callable without relying on mutable builtins or choose a documented
+runtime contract; neither has been established here.
+
+`definemethod` also fails explicitly until its home object and length can be
+modelled. In this sample all 117 methods containing it fail earlier on class
+construction, so the new guard was not exercised by a successful sample query.
+The `throw.undefinedifholewithname` and `throw.ifnotobject` messages now match
+the pinned runtime; string concatenation preserves the original UTF-16 name.
+Per-method analysis and function lowering errors include the failing method
+coordinate, even for a nested dependency. For example, `method:0x757e6` reports its
+for-in dependency as `method:0x75802`.
+
+Compared with the prior milestone, 195 method queries and 26 record queries now
+fail on `getiterator` in a target or required dependency; no prior failure became
+a success. Three previously failing queries also report `getiterator` as their
+first error instead of for-in. All 13,061 remaining method outputs and 96 record
+outputs parse. An AST-guided projection of the previous outputs, changing only
+the two expected error messages, is byte-identical for every surviving method
+and record output; 4,467 method queries and 56 records changed. The 195 new
+failures were matched to actual `getiterator` PCs in their reported method.
+ABC/HAP parity holds for selected success and failure queries, including
+`method:0x7c07f`, `method:0x6ea73` and the nested for-in case.
+
+The final audit is byte-identical to the initial hardening audit for all method,
+record and audit outputs; its Babel and projection evidence was therefore reused.
+The ordinary interpreter, ASM stub source, raw bytecode, scripts and reports are
+retained under ignored `target/verification/ark/runtime-semantics-final-*` and
+`runtime-semantics-reference-stub_builder.cpp`. The latter SHA-256 is
+`b9360961050f7dd939da3cf4e27a6b3704264bb44262ac11397106cf3d172c38`.
+Scoped Clippy, workspace formatting and whitespace checks passed. No new tests,
+analyzed-code execution, performance measurements or production CLI changes were
+made.
+
+## Effect-order hardening milestone (historical)
 
 A concrete order-sensitive case is `method:0x6e6b3` in `record:0x6e613`.
 Bytecode executes `ldobjbyvalue` at PC 50 before `stobjbyvalue` at PC 53;
@@ -86,10 +129,10 @@ The conservative rule changes 9,744 root sources: root `const tN` declarations
 increase from 83,954 to 124,348 and roots with PC dispatch from 443 to 533.
 Complete method-query source grows from 35,596,525 to 37,797,317 bytes, including
 required nested definitions. This is an explicit correctness-first tradeoff, not a
-latency measurement. `handleRequest` retains both reads, receiver and await;
-`method:0x6ea73` retains both throw-path stores; descriptor-copy semantics remain
-explicit. The selected dynamic-key method matches between ABC and HAP, and an
-unsupported record still fails with empty stdout.
+latency measurement. At that milestone, `handleRequest` retained both reads,
+receiver and await; `method:0x6ea73` retained both throw-path stores; descriptor
+copy remained explicit. The selected dynamic-key method matched between ABC and
+HAP, and an unsupported record failed with empty stdout.
 
 Evidence is under ignored `target/verification/ark/effect-order-final-*`. Scoped
 Clippy, formatting and whitespace checks passed. No new tests, analyzed-code
@@ -100,7 +143,8 @@ execution or performance measurements were added. Production CLI is unchanged.
 The fixed sample exposed a concrete dead-store error in `method:0x6ea73` of
 `record:0x6e94d`: instruction PCs 89 and 149 store `true` into `v12`, then PCs
 93 and 153 throw to handler PC 237. That handler reads `v12` at PC 239 to select
-iterator cleanup. Previous output omitted both writes. Current output preserves:
+iterator cleanup. The original output omitted both writes; the corrected output
+at that milestone preserved:
 
 ```js
 v12 = true;
@@ -112,14 +156,14 @@ only the accumulator replaced by the exception. Protected-region selection also
 requires any earlier-priority handler to be a nested region; otherwise it retains
 residual dispatch. The pinned runtime uses the first matching encoded entry.
 
-The 13,256 method successes, 122 record outputs, 826 method failures and 254
-record failure identities are unchanged. Independent Babel parsing passed for
+At that milestone, the 13,256 method successes, 122 record outputs, 826 method
+failures and 254 record failure identities were unchanged. Babel parsing passed for
 all outputs. The correction changes 93 root sources; normalized static root
 string/member/call inventories remain unchanged. These counts do not prove
 runtime equivalence or exception-path correctness for arbitrary bytecode.
 
-The selected method has byte-identical ABC/HAP output, and an unsupported record
-still fails with empty stdout. The bytecode PCs and before/after sources are
+At that milestone, the selected method had byte-identical ABC/HAP output; it now
+fails closed on `getiterator`. The bytecode PCs and before/after sources are
 retained under ignored `target/verification/ark/safe-flow-v1-*`. Scoped Clippy,
 formatting and whitespace checks passed; no new tests, execution of analyzed
 code or performance measurements were added. Production CLI remains unchanged.

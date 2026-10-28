@@ -58,9 +58,14 @@ pub(crate) fn lower(
             budget,
             module_mode: main.is_some(),
         };
-        statements.push(lower.function()?);
+        statements.push(lower.function().map_err(|error| {
+            crate::decompile::method_context(unit.function.method.offset, error)
+        })?);
         if arena.used_bytes() > budget.metadata_bytes {
-            return Err(resource("Ark AST exceeds metadata admission"));
+            return Err(crate::decompile::method_context(
+                unit.function.method.offset,
+                resource("Ark AST exceeds metadata admission"),
+            ));
         }
     }
     if let Some(main) = main {
@@ -545,10 +550,11 @@ impl<'a> Lower<'_, 'a, '_> {
                 self.ast
                     .call(function, vec![self.value(*input, depth + 1)?])
             }
-            Op::Iterator(input) => {
-                let object = self.value(*input, depth + 1)?;
-                let key = self.ast.property(self.ast.id("Symbol"), "iterator");
-                self.ast.call(self.ast.member(object, key), Vec::new())
+            Op::Iterator(_) => {
+                return Err(unsupported(
+                    value.pc,
+                    "getiterator behavior differs between pinned runtime interpreters",
+                ));
             }
             Op::Keys(_) | Op::Next(_) => {
                 return Err(unsupported(
@@ -695,14 +701,14 @@ impl<'a> Lower<'_, 'a, '_> {
                 );
                 self.ast.if_(
                     test,
-                    vec![
-                        self.ast.throw(
-                            self.ast.construct(
-                                self.ast.id("ReferenceError"),
-                                vec![self.ast.name(name)],
-                            ),
-                        ),
-                    ],
+                    vec![self.ast.throw(self.ast.construct(
+                        self.ast.id("ReferenceError"),
+                        vec![self.ast.binary(
+                            self.ast.name(name),
+                            B::Addition,
+                            self.ast.string(" is not initialized"),
+                        )],
+                    ))],
                     None,
                 )
             }
@@ -735,7 +741,7 @@ impl<'a> Lower<'_, 'a, '_> {
                     test,
                     vec![self.ast.throw(self.ast.construct(
                         self.ast.id("TypeError"),
-                        vec![self.ast.string("value is not an object")],
+                        vec![self.ast.string("Inner return result is not object")],
                     ))],
                     None,
                 )

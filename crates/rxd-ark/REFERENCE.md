@@ -45,16 +45,20 @@ they cannot throw, and leave enclosing native handlers to their lexical scopes.
 Finally cleanup remains explicit control flow; native finally recognition and
 abrupt-completion cleanup merging are not implemented by this milestone.
 
-Class/super construction, generators, array spread and for-in normalization
-remain unsupported. Those targets return `DECOMPILE_FAILED`, including when a
-required nested definition is unsupported; no empty bodies or raw fallback are
-emitted. Class-sensitive own stores require a proven ordinary receiver.
+Class/super construction, `definemethod`, generators, array spread, `getiterator`
+and for-in normalization remain unsupported. Those targets return
+`DECOMPILE_FAILED`, including when a required nested definition is unsupported;
+no empty bodies or raw fallback are emitted. Per-method analysis and function
+lowering errors include the actual method coordinate. Class-sensitive own stores
+require a proven ordinary receiver.
 
 Recovered source uses explicit lexical/module contexts and JavaScript intrinsic
 bridges. Module aliases share binding identity; record contexts share an emitted
-hole sentinel. Output has not been executed or proved runtime-equivalent; cyclic
-module initialization and bridge behavior still require semantic review before
-CLI migration.
+`Symbol.for` hole sentinel. The sentinel is forgeable and mutable globals such as
+`Reflect` and `Object` affect bridges, so they are not equivalent to private VM
+intrinsics under arbitrary host mutation. Output has not been executed or proved
+runtime-equivalent; cyclic module initialization and bridge behavior still require
+semantic review before CLI migration.
 
 ## Reference pins and licenses
 
@@ -68,7 +72,11 @@ CLI migration.
   `ecmascript/method.cpp::Method::FindCatchBlock` selects the first matching
   encoded try/catch entry; region-length sorting is not its selection rule.
   `RuntimeLdObjByValue` and `RuntimeStObjByValue` perform property-key coercion
-  at their respective instructions, in bytecode order.
+  at their respective instructions, in bytecode order. The ordinary interpreter's
+  `RuntimeGetIterator` returns a non-callable iterator property; the ASM
+  interpreter's `StubBuilder::GetIterator` throws instead. The ISA does not
+  choose an interpreter mode, so reconstruction refuses `getiterator` rather
+  than selecting either behavior without proof.
 - ECMAScript [2024](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-evaluate-property-access-with-expression-key)
   converts a computed assignment key before the RHS; [2025](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-evaluate-property-access-with-expression-key)
   specifies conversion after it. Emitting an earlier read as a separate statement

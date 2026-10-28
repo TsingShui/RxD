@@ -4,7 +4,7 @@ use crate::{
     reader::{invalid, resource},
     structure,
 };
-use rxd_core::Result;
+use rxd_core::{Error, Result};
 use std::collections::HashSet;
 
 #[derive(Default)]
@@ -20,6 +20,11 @@ pub struct ReconstructionStats {
 pub struct Reconstruction {
     pub source: Vec<u8>,
     pub stats: ReconstructionStats,
+}
+
+pub(crate) fn method_context(offset: u32, mut error: Error) -> Error {
+    error.message = format!("method:0x{offset:x}: {}", error.message);
+    error
 }
 
 impl Abc<'_> {
@@ -61,15 +66,17 @@ impl Abc<'_> {
                 continue;
             }
             if current.record != method.record {
-                return Err(invalid("Ark nested definition crosses records"));
+                return Err(method_context(
+                    current.offset,
+                    invalid("Ark nested definition crosses records"),
+                ));
             }
-            let mut function = ir::lift::lift(self, &current).map_err(|mut error| {
-                error.message = format!("method:0x{:x}: {}", current.offset, error.message);
-                error
-            })?;
-            let values = analysis::Values::analyze(&mut function, self.budget)?;
-            let control = analysis::control(&function)?;
-            let body = structure::structure(&function, &control, &values, self.budget)?;
+            let context = |error| method_context(current.offset, error);
+            let mut function = ir::lift::lift(self, &current).map_err(context)?;
+            let values = analysis::Values::analyze(&mut function, self.budget).map_err(context)?;
+            let control = analysis::control(&function).map_err(context)?;
+            let body =
+                structure::structure(&function, &control, &values, self.budget).map_err(context)?;
             for (index, value) in function.values.iter().enumerate() {
                 if values.needed[index]
                     && let Op::Closure { method, .. } = value.op
@@ -77,7 +84,7 @@ impl Abc<'_> {
                     queue
                         .try_reserve(1)
                         .map_err(|_| resource("Ark definition queue allocation failed"))?;
-                    queue.push(self.method(method)?);
+                    queue.push(self.method(method).map_err(context)?);
                 }
             }
             stats.functions += 1;

@@ -334,19 +334,18 @@ impl Builder<'_, '_> {
                 let value = self.acc();
                 self.action(Action::StoreModule(instruction.unsigned(0)?, value));
             }
-            "definefunc" | "definemethod" => {
+            "definefunc" => {
                 let method = instruction.entity(1, EntityKind::Method)?;
                 self.result(
                     Op::Closure {
                         method,
-                        length: if name == "definefunc" {
-                            Some(instruction.unsigned(2)?)
-                        } else {
-                            None
-                        },
+                        length: Some(instruction.unsigned(2)?),
                     },
                     Effects::CALL,
                 );
+            }
+            "definemethod" => {
+                return Err(unsupported(self.pc, "definemethod home object and length"));
             }
             "callarg0" | "callarg1" | "callargs2" | "callargs3" | "callthis0" | "callthis1"
             | "callthis2" | "callthis3" => {
