@@ -507,7 +507,12 @@ pub fn execute(cli: Cli, output: &mut Output<'_>) -> Result<i32> {
     }
 }
 /// One analysis worker per available logical CPU.
-#[cfg(any(feature = "backend-dex", feature = "backend-abc", feature = "unpack"))]
+#[cfg(any(
+    feature = "backend-dex",
+    feature = "backend-abc",
+    feature = "backend-pyc",
+    feature = "unpack"
+))]
 pub(crate) fn default_threads() -> usize {
     std::thread::available_parallelism().map_or(8, std::num::NonZero::get)
 }
@@ -516,6 +521,7 @@ pub(crate) fn default_threads() -> usize {
     feature = "mcp",
     feature = "backend-dex",
     feature = "backend-abc",
+    feature = "backend-pyc",
     feature = "unpack"
 ))]
 pub(crate) fn positive(value: &str) -> std::result::Result<usize, String> {

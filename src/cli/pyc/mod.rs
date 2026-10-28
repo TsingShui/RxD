@@ -105,7 +105,7 @@ pub enum Command {
     },
     /// Reconstruct a PYZ, one module, or a code body as Python.
     #[command(
-        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile PYZ.pyz -o recovered/\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>' -o recovered.py\nWithout --at, a PYZ reconstructs every code-bearing module in directory order. With -o DIR it writes one source file per module (json/__init__.py, json/decoder.py) plus manifest.jsonl; without -o it prints # ===== <module> ===== blocks to stdout.\nA decompiler panic becomes a labelled PYC_FALLBACK file/block and is reported on stderr, while other failures abort atomically.\nWith --at, a full module name reconstructs that module and MODULE::code:N one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile PYZ.pyz -o recovered/\nrxd pyc decompile PYZ.pyz -o recovered/ --threads 8\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context>' -o recovered.py\nWithout --at, a PYZ reconstructs every code-bearing module in directory order. With -o DIR it writes one source file per module (json/__init__.py, json/decoder.py) plus manifest.jsonl; without -o it prints # ===== <module> ===== blocks to stdout.\n--threads controls parallel module reconstruction and file writes (default: logical CPUs); bounded budgets stay serial.\nA decompiler panic becomes a labelled PYC_FALLBACK file/block and is reported on stderr, while other failures abort atomically.\nWith --at, a full module name reconstructs that module and MODULE::code:N one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
     )]
     Decompile {
         /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
@@ -117,6 +117,9 @@ pub enum Command {
         version: Option<(u8, u8)>,
         #[command(flatten)]
         options: Options,
+        /// Parallel module workers for a whole-PYZ decompile.
+        #[arg(long, default_value_t = super::default_threads(), value_parser = super::positive)]
+        threads: usize,
     },
 }
 
@@ -269,11 +272,75 @@ fn report_fallback(modules: &[rxd_pyc::ModuleDecompilation]) {
     }
 }
 
+fn write_new_parts(path: &Path, bytes: &[u8], newline: bool) -> Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(bytes)?;
+    if newline {
+        file.write_all(b"\n")?;
+    }
+    Ok(())
+}
+
+fn write_module_files(
+    output: &Path,
+    items: &[(PathBuf, &rxd_pyc::ModuleDecompilation, usize)],
+    threads: usize,
+) -> Result<usize> {
+    if items.is_empty() {
+        return Ok(0);
+    }
+    let workers = threads.min(items.len()).max(1);
+    let chunk = items.len().div_ceil(workers);
+    let parts: Result<Vec<usize>> = std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for part in items.chunks(chunk) {
+            handles.push(scope.spawn(move || -> Result<usize> {
+                let mut bytes = 0usize;
+                for (relative, module, body_bytes) in part {
+                    let target = output.join(relative);
+                    if let Some(parent) = target.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    write_new_parts(
+                        &target,
+                        module.source.as_bytes(),
+                        !module.source.ends_with('\n'),
+                    )?;
+                    bytes = bytes.checked_add(*body_bytes).ok_or_else(|| {
+                        Error::new("RESOURCE_LIMIT", "PYZ output byte count overflow")
+                    })?;
+                }
+                Ok(bytes)
+            }));
+        }
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| Error::new("INTERNAL_ERROR", "PYC write worker panicked"))?
+            })
+            .collect()
+    });
+    let mut total = 0usize;
+    for part in parts? {
+        total = total
+            .checked_add(part)
+            .ok_or_else(|| Error::new("RESOURCE_LIMIT", "PYZ output byte count overflow"))?;
+    }
+    Ok(total)
+}
+
 fn decompile_directory(
     input: &Path,
     version: Option<(u8, u8)>,
     options: &Options,
     perf: &mut Perf,
+    threads: usize,
 ) -> Result<()> {
     let output = options
         .output
@@ -287,47 +354,43 @@ fn decompile_directory(
     }
     std::fs::create_dir(output)?;
     let result = (|| -> Result<()> {
-        let modules = rxd_pyc::run_input_modules(input, version, options.budget, perf)?;
+        let modules = rxd_pyc::run_input_modules(input, version, options.budget, perf, threads)?;
         let mut paths = std::collections::HashSet::new();
+        let mut items = Vec::new();
         let mut manifest = Vec::new();
-        let mut total = 0usize;
-        perf.measure("write", || -> Result<()> {
-            for module in &modules {
-                if !paths.insert(module.path.clone()) {
-                    return Err(Error::new(
-                        "INVALID_INPUT",
-                        format!("duplicate PYZ source path: {}", module.path),
-                    ));
-                }
-                let mut body = module.source.clone();
-                if !body.ends_with('\n') {
-                    body.push('\n');
-                }
-                let target = output.join(Path::new(&module.path));
-                if let Some(parent) = target.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                write_new(&target, body.as_bytes())?;
-                total = total.checked_add(body.len()).ok_or_else(|| {
-                    Error::new("RESOURCE_LIMIT", "PYZ output byte count overflow")
-                })?;
-                let line = json!({
-                    "module": module.name,
-                    "file": module.path,
-                    "bytes": body.len(),
-                    "complete": module.complete,
-                    "error": module.failed,
-                });
-                serde_json::to_writer(&mut manifest, &line)
-                    .map_err(|error| Error::new("INTERNAL_ERROR", error.to_string()))?;
-                manifest.push(b'\n');
+        for module in &modules {
+            if !paths.insert(module.path.clone()) {
+                return Err(Error::new(
+                    "INVALID_INPUT",
+                    format!("duplicate PYZ source path: {}", module.path),
+                ));
             }
-            write_new(&output.join("manifest.jsonl"), &manifest)?;
-            total = total
-                .checked_add(manifest.len())
+            let body_bytes = module
+                .source
+                .len()
+                .checked_add(usize::from(!module.source.ends_with('\n')))
                 .ok_or_else(|| Error::new("RESOURCE_LIMIT", "PYZ output byte count overflow"))?;
-            Ok(())
-        })?;
+            let line = json!({
+                "module": module.name,
+                "file": module.path,
+                "bytes": body_bytes,
+                "complete": module.complete,
+                "error": module.failed,
+            });
+            serde_json::to_writer(&mut manifest, &line)
+                .map_err(|error| Error::new("INTERNAL_ERROR", error.to_string()))?;
+            manifest.push(b'\n');
+            items.push((
+                PathBuf::from(&module.path),
+                module as &rxd_pyc::ModuleDecompilation,
+                body_bytes,
+            ));
+        }
+        let body_bytes = perf.measure("write", || write_module_files(output, &items, threads))?;
+        write_new(&output.join("manifest.jsonl"), &manifest)?;
+        let total = body_bytes
+            .checked_add(manifest.len())
+            .ok_or_else(|| Error::new("RESOURCE_LIMIT", "PYZ output byte count overflow"))?;
         if options
             .budget
             .output_bytes
@@ -422,13 +485,14 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
         version,
         selector,
         options,
+        threads,
     } = command
     else {
         unreachable!()
     };
     validate_output(&input, options.output.as_deref())?;
     if selector.at.is_none() && options.output.is_some() && is_pyz(&input) {
-        return decompile_directory(&input, version, &options, perf);
+        return decompile_directory(&input, version, &options, perf, threads);
     }
     let result = rxd_pyc::run_input(
         &input,
@@ -436,6 +500,7 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
         selector.at.as_deref(),
         options.budget,
         perf,
+        threads,
     )?;
     perf.source_id = Some(result.source_id.clone());
     perf.counters.input_bytes = Some(result.input_bytes);

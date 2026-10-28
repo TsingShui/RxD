@@ -93,7 +93,7 @@ use `pyc_modules` to locate modules, then `pyc_codes` with `within` set to a
 returned module coordinate. `pyc_strings` and `pyc_xref` can search the whole PYZ.
 `pyc_decompile` without `at` returns every code-bearing PYZ module as
 `# ===== <module> =====` blocks; CLI `-o DIR` instead writes one source file per module
-plus `manifest.jsonl`. `at` selects one returned module or code coordinate.
+plus `manifest.jsonl`, with optional `threads` parallel workers. `at` selects one returned module or code coordinate.
 
 A complete ambiguous candidate result is a
 domain error, not one arbitrarily chosen definition. EVM always requires explicit

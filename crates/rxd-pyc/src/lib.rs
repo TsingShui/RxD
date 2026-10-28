@@ -115,6 +115,7 @@ pub fn run_input(
     at: Option<&str>,
     budget: Budget,
     perf: &mut Perf,
+    threads: usize,
 ) -> Result<Decompilation> {
     let input = Input::load(path, version, budget, perf)?;
     match at {
@@ -122,7 +123,7 @@ pub fn run_input(
             let (namespace, local) = input.split(at)?;
             decompile_one(input, namespace, local, budget, perf)
         }
-        None if input.is_archive() => decompile_all(input, budget, perf),
+        None if input.is_archive() => decompile_all(input, budget, perf, threads),
         None => decompile_one(input, None, "code:0", budget, perf),
     }
 }
@@ -133,6 +134,7 @@ pub fn run_input_modules(
     version: Option<(u8, u8)>,
     budget: Budget,
     perf: &mut Perf,
+    threads: usize,
 ) -> Result<Vec<ModuleDecompilation>> {
     let input = Input::load(path, version, budget, perf)?;
     if !input.is_archive() {
@@ -141,7 +143,7 @@ pub fn run_input_modules(
             "per-module output requires a PYZ archive",
         ));
     }
-    decompile_modules(&input, budget, perf)
+    decompile_modules(&input, budget, perf, threads)
 }
 
 fn limits_for(input: &Input, budget: Budget) -> Limits {
@@ -217,6 +219,7 @@ fn decompile_modules(
     input: &Input,
     budget: Budget,
     perf: &mut Perf,
+    threads: usize,
 ) -> Result<Vec<ModuleDecompilation>> {
     let entries: Vec<(String, bool)> = input
         .code_modules()
@@ -228,6 +231,20 @@ fn decompile_modules(
     }
     let limits = limits_for(input, budget);
     record_limits(limits, perf);
+    if threads <= 1 || entries.len() <= 1 || budget.work.is_some() || budget.output_bytes.is_some()
+    {
+        decompile_modules_serial(input, entries, limits, perf)
+    } else {
+        decompile_modules_parallel(input, entries, limits, perf, threads)
+    }
+}
+
+fn decompile_modules_serial(
+    input: &Input,
+    entries: Vec<(String, bool)>,
+    limits: Limits,
+    perf: &mut Perf,
+) -> Result<Vec<ModuleDecompilation>> {
     let mut work = input.initial_work();
     let mut modules = Vec::new();
     for (name, package) in entries {
@@ -257,8 +274,88 @@ fn decompile_modules(
     Ok(modules)
 }
 
-fn decompile_all(input: Input, budget: Budget, perf: &mut Perf) -> Result<Decompilation> {
-    let modules = decompile_modules(&input, budget, perf)?;
+fn decompile_modules_parallel(
+    input: &Input,
+    entries: Vec<(String, bool)>,
+    limits: Limits,
+    perf: &mut Perf,
+    threads: usize,
+) -> Result<Vec<ModuleDecompilation>> {
+    let enabled = perf.enabled();
+    let workers = threads.min(entries.len()).max(1);
+    let chunk = entries.len().div_ceil(workers);
+    let parts: Result<Vec<Vec<(ModuleDecompilation, Perf)>>> = std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for part in entries.chunks(chunk) {
+            handles.push(
+                scope.spawn(move || -> Result<Vec<(ModuleDecompilation, Perf)>> {
+                    let mut out = Vec::new();
+                    for (name, package) in part {
+                        let path = module_source_path(name, *package)?;
+                        let mut local = Perf::new(enabled, "analysis", "pyc", "decompile");
+                        let data = input.data(Some(name), &mut local)?;
+                        let (source, complete, failed) =
+                            match recover(data, 0, limits, 0, &mut local) {
+                                Ok((module_complete, module_source)) => {
+                                    (module_source, module_complete, None)
+                                }
+                                Err(error) if error.code == "DECOMPILE_ERROR" => {
+                                    let message = error.message;
+                                    (
+                                        format!(
+                                            "# PYC_FALLBACK: {message}: module body unavailable\n"
+                                        ),
+                                        false,
+                                        Some(message),
+                                    )
+                                }
+                                Err(error) => return Err(error),
+                            };
+                        out.push((
+                            ModuleDecompilation {
+                                name: name.clone(),
+                                path,
+                                source,
+                                complete,
+                                failed,
+                            },
+                            local,
+                        ));
+                    }
+                    Ok(out)
+                }),
+            );
+        }
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| Error::new("INTERNAL_ERROR", "PYC module worker panicked"))?
+            })
+            .collect()
+    });
+    let parts = parts?;
+    let mut modules = Vec::new();
+    let mut max_depth = 0usize;
+    for part in parts {
+        for (module, local) in part {
+            max_depth = max_depth.max(local.counters.ast_depth.unwrap_or(0));
+            perf.merge(&local);
+            modules.push(module);
+        }
+    }
+    perf.counters.ast_depth = Some(max_depth);
+    Ok(modules)
+}
+
+fn decompile_all(
+    input: Input,
+    budget: Budget,
+    perf: &mut Perf,
+    threads: usize,
+) -> Result<Decompilation> {
+    let modules = decompile_modules(&input, budget, perf, threads)?;
     let mut source = String::new();
     let mut complete = true;
     let mut failed = Vec::new();

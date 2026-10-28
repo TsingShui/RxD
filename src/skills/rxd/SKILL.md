@@ -199,7 +199,8 @@ rxd pyc decompile module.pyc --at "$CODE_AT"
 `decompile` without `--at` reconstructs every code-bearing module. With `-o DIR` it
 writes one source file per module in the original package layout
 (`json/__init__.py`, `json/decoder.py`) plus `manifest.jsonl`; without `-o` it prints
-concatenated `# ===== <module> =====` blocks. A module whose decompiler panics becomes
+concatenated `# ===== <module> =====` blocks. `--threads` parallelizes module
+reconstruction and file writes; output stays in PYZ directory order. A module whose decompiler panics becomes
 a labelled `PYC_FALLBACK` file/block and is named on stderr; other failures abort
 atomically. Redirect `-o` and search with `rg` for a
 whole-archive text pass. `--at` still selects one module or code body.
