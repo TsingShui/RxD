@@ -38,10 +38,6 @@ mod kuna;
 #[path = "mcp/mod.rs"]
 mod mcp;
 
-#[cfg(feature = "backend-abc")]
-#[path = "abc/mod.rs"]
-mod abc;
-
 #[cfg(feature = "unpack")]
 #[path = "unpack/mod.rs"]
 mod unpack;

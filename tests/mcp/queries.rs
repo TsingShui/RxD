@@ -1,12 +1,10 @@
-#[cfg(feature = "backend-dex")]
-use super::super::dex::support as dex_inputs;
-use super::support::Client;
-use serde_json::{Value, json};
-use std::process::Command;
-
 #[cfg(feature = "backend-dotnet")]
 #[test]
 fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
+    use super::support::Client;
+    use serde_json::json;
+    use std::process::Command;
+
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = root.join("tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll");
     // CLI and MCP share the input-scaled analysis policy. A deliberately small
@@ -30,7 +28,6 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
         "{rejected}"
     );
 
-    // The same query through the CLI is complete under its input-scaled envelope.
     let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
         .args(["ilspy", "methods"])
         .arg(&input)
@@ -49,221 +46,46 @@ fn mcp_shared_inflight_storage_can_bound_an_input_scaled_query() {
     );
 }
 
-fn checked(client: &mut Client, tools: &Value, name: &str, arguments: Value) -> Value {
-    let result = client.tool(name, arguments.clone());
-    assert_ne!(result["isError"], true, "{name}: {result}");
-    let schema = &tools
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == name)
-        .unwrap()["outputSchema"];
-    super::support::assert_schema(&result["structuredContent"], schema);
-    compare_cli(name, &arguments, &result["structuredContent"]);
-    result["structuredContent"].clone()
-}
-
-/// Public CLI command matrix for every built-in tool. No internal argv/lift code
-/// participates in the oracle; only complete stdout at the other public entry.
-const CLI_ROUTES: &[(&str, &str, &str)] = &[
-    ("rasc_entries", "rasc", "entries"),
-    ("rasc_classes", "rasc", "classes"),
-    ("rasc_fields", "rasc", "fields"),
-    ("rasc_methods", "rasc", "methods"),
-    ("rasc_strings", "rasc", "strings"),
-    ("rasc_xref", "rasc", "xref"),
-    ("rasc_manifest", "rasc", "manifest"),
-    ("rasc_get_class", "rasc", "get-class"),
-    ("rasc_get_method", "rasc", "get-method"),
-    ("jar_classes", "jar", "classes"),
-    ("jar_entries", "jar", "entries"),
-    ("jar_fields", "jar", "fields"),
-    ("jar_methods", "jar", "methods"),
-    ("jar_strings", "jar", "strings"),
-    ("jar_xref", "jar", "xref"),
-    ("jar_get_method", "jar", "get-method"),
-    ("jar_get_class", "jar", "get-class"),
-    ("ilspy_classes", "ilspy", "classes"),
-    ("ilspy_fields", "ilspy", "fields"),
-    ("ilspy_methods", "ilspy", "methods"),
-    ("ilspy_strings", "ilspy", "strings"),
-    ("ilspy_xref", "ilspy", "xref"),
-    ("ilspy_get_method", "ilspy", "get-method"),
-    ("ilspy_get_class", "ilspy", "get-class"),
-    ("wasm_types", "wasm", "types"),
-    ("wasm_imports", "wasm", "imports"),
-    ("wasm_exports", "wasm", "exports"),
-    ("wasm_functions", "wasm", "functions"),
-    ("wasm_tables", "wasm", "tables"),
-    ("wasm_memories", "wasm", "memories"),
-    ("wasm_globals", "wasm", "globals"),
-    ("wasm_data", "wasm", "data"),
-    ("wasm_elements", "wasm", "elements"),
-    ("wasm_strings", "wasm", "strings"),
-    ("wasm_xref", "wasm", "xref"),
-    ("wasm_get_function", "wasm", "get-function"),
-    ("pyc_codes", "pyc", "codes"),
-    ("pyc_strings", "pyc", "strings"),
-    ("pyc_xref", "pyc", "xref"),
-    ("pyc_decompile", "pyc", "decompile"),
-    ("evm_strings", "evm", "strings"),
-    ("evm_interface", "evm", "interface"),
-    ("evm_disassemble", "evm", "disassemble"),
-    ("evm_metadata", "evm", "metadata"),
-];
-
-/// The CLI spelling of the same call: flags are derived from the argument names exactly
-/// as `reflect::argv` does, and reference-kind positionals come after `--`.
-fn cli_query(
-    name: &str,
-    arguments: &Value,
-    path: &str,
-    cwd: Option<&std::path::Path>,
-) -> std::process::Output {
-    let (_, backend, command) = CLI_ROUTES.iter().find(|route| route.0 == name).unwrap();
-    let mut argv = vec![backend.to_string(), command.to_string(), path.to_owned()];
-    let tail = Vec::new();
-    for (field, value) in arguments.as_object().unwrap() {
-        if matches!(field.as_str(), "input" | "include_bytes") {
-            continue;
-        }
-        let flag = field.replace('_', "-");
-        if value == true {
-            argv.push(format!("--{flag}"));
-        } else if value == false {
-            continue;
-        } else {
-            argv.push(format!(
-                "--{flag}={}",
-                value
-                    .as_str()
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| value.to_string())
-            ));
-        }
-    }
-    // `reflect::argv` always requests the machine-readable switch when the CLI declares one.
-    if name.starts_with("evm_") {
-        argv.push("--json".into());
-    }
-    if !tail.is_empty() {
-        argv.push("--".into());
-        argv.extend(tail);
-    }
-    let mut command = Command::new(env!("CARGO_BIN_EXE_rxd"));
-    command.args(argv);
-    if let Some(cwd) = cwd {
-        command.current_dir(cwd);
-    }
-    command.output().unwrap()
-}
-
-/// Compare MCP projection: JSON object, JSONL records, or source text.
-fn cli_projection(_name: &str, raw: &[u8]) -> Value {
-    let text = std::str::from_utf8(raw).unwrap().to_owned();
-    if let Ok(value) = serde_json::from_str::<Value>(&text)
-        && ((value.get("backend").is_some() && value.get("command").is_some())
-            || (value.get("columns").is_some() && value.get("rows").is_some()))
-    {
-        return value;
-    }
-    if text
-        .lines()
-        .filter(|line| !line.is_empty())
-        .any(|line| serde_json::from_str::<Value>(line).is_err())
-    {
-        return json!({"text": text});
-    }
-    let rows: Vec<Value> = text
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    json!({"records": rows})
-}
-
-fn compare_cli(name: &str, arguments: &Value, actual: &Value) {
-    let Some(path) = arguments["input"]["path"].as_str() else {
-        return;
-    };
-    if name.ends_with("_extract") {
-        compare_extract(name, arguments, path, actual);
-        return;
-    }
-    let cli = cli_query(name, arguments, path, None);
-    assert!(
-        cli.status.success(),
-        "{name}: {}",
-        String::from_utf8_lossy(&cli.stderr)
-    );
-    let expected = cli_projection(name, &cli.stdout);
-    assert_eq!(
-        *actual, expected,
-        "{name}: selected content/order/identity/units/representation/completeness equals CLI"
-    );
-}
-
-/// Extract tools return the CLI receipt with its host destination blanked and the
-/// extracted artifact published as `child_target`; everything else must match byte-exact.
-fn compare_extract(name: &str, arguments: &Value, path: &str, actual: &Value) {
-    let (_, backend, command) = CLI_ROUTES.iter().find(|route| route.0 == name).unwrap();
-    let temporary = tempfile::tempdir().unwrap();
-    let output = temporary.path().join("original-bytes");
-    let mut invocation = Command::new(env!("CARGO_BIN_EXE_rxd"));
-    invocation.args([
-        backend,
-        command,
-        path,
-        "--at",
-        arguments["at"].as_str().unwrap(),
-        "--output",
-        output.to_str().unwrap(),
-    ]);
-    if arguments["content"] == true {
-        invocation.arg("--content");
-    }
-    let cli = invocation.output().unwrap();
-    assert!(
-        cli.status.success(),
-        "{name}: {}",
-        String::from_utf8_lossy(&cli.stderr)
-    );
-    let mut expected: Value = serde_json::from_slice(&cli.stdout).unwrap();
-    expected["detail"]["path"] = Value::Null;
-    let mut receipt = actual.clone();
-    let _ = receipt.as_object_mut().unwrap().remove("child_target");
-    let bytes = std::fs::read(output).unwrap();
-    if let Some(encoded) = receipt.as_object_mut().unwrap().remove("bytes_base64") {
-        use base64::Engine;
-        assert_eq!(
-            base64::engine::general_purpose::STANDARD
-                .decode(encoded.as_str().unwrap())
-                .unwrap(),
-            bytes
-        );
-    }
-    assert_eq!(receipt, expected, "{name}: complete original CLI receipt");
-}
 #[cfg(feature = "backend-evm")]
 #[cfg(feature = "backend-dex")]
 #[test]
 fn mcp_typed_reference_selectors_cannot_become_native_output_flags() {
+    use super::super::dex::support as dex_inputs;
+    use super::support::Client;
+    use serde_json::json;
+    use std::process::Command;
+
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("input.dex");
     let victim = directory.path().join("victim.txt");
     std::fs::write(&input, dex_inputs::const_string_dex(1)).unwrap();
     let mut client = Client::start(&["--allow-path", directory.path().to_str().unwrap()]);
     client.initialize();
-    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
     let result=client.tool("rasc_xref",json!({"input":{"path":input},"kind":"method","class":"Fixture0","match":format!("--output={}",victim.display())}));
     assert!(
         !victim.exists(),
         "a typed filter was incorrectly interpreted as a host output destination: {result}"
     );
-    checked(
-        &mut client,
-        &tools,
+    let result = client.tool(
         "rasc_xref",
         json!({"input":{"path":input},"kind":"string","match":"-needle"}),
     );
+    assert_ne!(result["isError"], true, "{result}");
+    let cli = Command::new(env!("CARGO_BIN_EXE_rxd"))
+        .args(["rasc", "xref"])
+        .arg(&input)
+        .args(["--kind=string", "--match=-needle"])
+        .output()
+        .unwrap();
+    assert!(
+        cli.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    let expected = if cli.stdout.is_empty() {
+        json!({"records": []})
+    } else {
+        json!({"text": std::str::from_utf8(&cli.stdout).unwrap()})
+    };
+    assert_eq!(result["structuredContent"], expected);
 }

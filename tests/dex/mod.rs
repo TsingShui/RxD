@@ -1,6 +1,6 @@
 //! End-to-end contracts for the migrated rasc CLI, without MCP.
 pub(super) mod support;
-use super::{failure, fixture, refused, success};
+use super::{fixture, refused, success};
 use serde_json::Value;
 use std::{
     fs,

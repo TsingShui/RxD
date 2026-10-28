@@ -5,6 +5,33 @@ below predates the production cutover. Approximations carry source-local warning
 input-safety failures remain explicit errors. All pinned dynamic opcode encodings
 now have reconstruction paths; this is not a universal runtime-equivalence claim.
 
+## Whole ABC reconstruction
+
+`rxd ark decompile INPUT` emits every coded method in each code-bearing record;
+multiple records use scoped imports and namespaced exports with explicit warnings.
+A single ordinary record keeps its existing module form. Non-scalar module names
+use UTF-16-encoded aliases and warned namespace-property snapshots. Raw whole-ABC
+fetch, exact HAP entry selection, and the same optional selector through MCP are
+available without changing record/method coordinates.
+
+Static inspection covered 17 production ABC entries: 2,024 records and 73,879 coded
+methods all appeared once in their record section. Babel parsed each section; cross-
+section bindings and export names were checked for collisions. Debug outputs matched
+final release hashes. The original ClashBox sample contained 376 sections and 14,082
+methods with the same static checks, and its final release output matched the inspected
+source. Separate whole-program Babel parses, CLI/MCP parity, output-budget checks,
+late-error atomicity, orphan methods and non-scalar names were also checked. No analyzed
+or reconstructed code was executed; this does not establish runtime equivalence.
+Performance measurement remains paused. Evidence is under ignored
+`target/verification/ark/whole-abc/`.
+
+At the operator's request, the 16 Ark CLI tests and one Ark MCP test referenced in
+historical milestones below were removed; no new Rust tests were added. The unused
+MCP comparison and schema helpers were removed as requested. Native MCP scenarios
+still check schema presence but no longer validate output against that schema. Strict
+Clippy passed for the default and Ark/MCP all-target configurations; the optional
+bundled-Kuna compile check used a synthetic embed and reports two upstream warnings.
+
 ## Independent GitHub applications and version expansion
 
 Fourteen independently sourced releases contain 17 ABC entries: 12.0.2.0,
