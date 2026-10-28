@@ -21,7 +21,7 @@ Dev-profile full-input scan:
 | Successful module records | 122 / 376 |
 | Independent Babel method parses / failures | 13,256 / 0 |
 | Independent Babel record parses / failures | 122 / 0 |
-| Emitted method-source bytes, including required nested definitions | 37,294,887 |
+| Emitted method-source bytes, including required nested definitions | 36,105,587 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
@@ -48,6 +48,56 @@ inspection and parseability are not a runtime-equivalence proof. There is no new
 all-method string-content audit or release-latency claim. Performance measurement
 and new tests were intentionally not added; the operator requested real-sample
 implementation work instead.
+
+## Protected-region milestone
+
+The same input was scanned through the updated engine with unchanged method and
+record success/failure sets. IR value/elimination counts and owned-block totals
+also match the initial rewrite. Root-only Babel metrics exclude dependency
+factories and nested helpers:
+
+| Root observation | Initial rewrite | Protected regions |
+| --- | ---: | ---: |
+| Roots containing PC dispatch | 671 | 443 |
+| Exception roots containing PC dispatch | 429 | 201 |
+| Exception roots containing entry-PC dispatch | 429 | 105 |
+| Roots with native, non-forwarding catch | 0 | 292 |
+| Synthetic exception-forwarding catches | 6,608 | 2,306 |
+| Total catch clauses | 6,608 | 2,678 |
+| Native finally clauses | 0 | 0 |
+
+The 429 exception roots include compiler protocols, not just source-level user
+catches. Complex/shared-handler and multi-exit shapes still retain dispatch.
+Finally is intentionally not fabricated: existing cleanup paths and call counts
+remain explicit pending completion-aware reconstruction.
+
+All 13,256 method outputs and 122 record outputs independently parse. Root
+literal/member/call multisets match the baseline for all methods; all 423 changed
+roots previously contained catch. Every root without catch is byte-identical.
+These static checks do not prove execution order or runtime equivalence.
+
+Selected complete-query sizes (including their necessary nested definitions):
+
+| Target | Before | After |
+| --- | ---: | ---: |
+| `0x6b316` checkFileExists | 1,034 B / 50 lines | 548 B / 25 lines |
+| `0x29dfa` getJsonArrayType | 4,350 B / 197 lines | 1,822 B / 75 lines |
+| `0x7cbee` parseYAMLInBackground | 902 B / 40 lines | 618 B / 25 lines |
+| `0x7cf43` requestIpInfo | 5,126 B / 212 lines | 2,963 B / 108 lines |
+| `0x6af27` handleRequest | 652 B | 652 B, unchanged |
+
+ABC/HAP checkFileExists output is byte-identical. Unsupported BuildProfile record
+reconstruction still exits nonzero with empty stdout. The pinned runtime's
+encoded-table handler priority was checked against 2,737 protected segments in
+the fixed sample; the former length-order heuristic happens to agree there, but
+has been removed from lifting rather than assumed for other inputs.
+
+Evidence is under ignored `target/verification/ark/try-regions-v1-*`, with
+`exception-handler-order.json` and the pinned runtime `references/ets_runtime/method.cpp`.
+The full scan used the command below with fresh `try-regions-v1-methods.jsonl`
+and `try-regions-v1-records` paths. Scoped Clippy and formatting passed; no new
+tests or release benchmarks were run, as requested. The production CLI remains
+on its existing engine.
 
 ## Reproduction
 

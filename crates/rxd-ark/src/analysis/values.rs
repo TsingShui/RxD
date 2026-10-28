@@ -26,6 +26,23 @@ fn merge(into: &mut [bool], from: &[bool], exceptional: bool) {
 }
 
 impl Values {
+    pub fn may_throw(&self, function: &Function<'_>, block: usize) -> bool {
+        let block_ir = &function.blocks[block];
+        matches!(block_ir.end, Terminator::Throw(_))
+            || block_ir
+                .events
+                .iter()
+                .enumerate()
+                .any(|(position, event)| match event {
+                    Event::Define(id) => {
+                        self.needed[id.0] && function.values[id.0].effects.may_throw
+                    }
+                    Event::Action { action, .. } => {
+                        self.keep[block][position] && action.effects().may_throw
+                    }
+                })
+    }
+
     pub fn analyze(function: &mut Function<'_>, budget: rxd_core::Budget) -> Result<Self> {
         fold(function);
         function.graph.reachable.fill(false);

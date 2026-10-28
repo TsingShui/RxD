@@ -73,6 +73,7 @@ fn main() -> Result<()> {
     let mut bytes = 0;
     let mut blocks = 0;
     let mut residual = 0;
+    let mut structured_tries = 0;
     let mut values = 0;
     let mut eliminated = 0;
     let mut errors = BTreeMap::<String, usize>::new();
@@ -104,6 +105,7 @@ fn main() -> Result<()> {
                     bytes += reconstructed.source.len();
                     blocks += reconstructed.stats.blocks;
                     residual += reconstructed.stats.residual_blocks;
+                    structured_tries += reconstructed.stats.structured_tries;
                     values += reconstructed.stats.values;
                     eliminated += reconstructed.stats.eliminated_values;
                     if let Some(output) = &mut output {
@@ -133,7 +135,7 @@ fn main() -> Result<()> {
     println!(
         "{}",
         json!({"source_id":abc.source_id,"records":record_count,"source_records":source_records,"record_failures":record_failures,"methods":total,"successes":successes,"source_bytes":bytes,
-        "blocks":blocks,"residual_blocks":residual,"values":values,"eliminated_values":eliminated,"errors":errors,"failures":failures})
+        "blocks":blocks,"residual_blocks":residual,"structured_tries":structured_tries,"values":values,"eliminated_values":eliminated,"errors":errors,"failures":failures})
     );
     Ok(())
 }

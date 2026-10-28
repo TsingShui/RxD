@@ -614,14 +614,8 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
         };
         let pc = slice[0].pc;
         let mut handlers = Vec::new();
-        let mut protected: Vec<_> = decoded
-            .code
-            .tries
-            .iter()
-            .filter(|region| region.pc <= pc && pc < region.pc + region.length)
-            .collect();
-        protected.sort_by_key(|region| region.length);
-        for region in protected {
+        // The pinned dynamic runtime selects the first matching entry in encoded table order.
+        for region in &decoded.code.tries {
             if region.pc <= pc && pc < region.pc + region.length {
                 for handler in &region.catches {
                     if handler.type_index != 0 {

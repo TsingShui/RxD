@@ -1,27 +1,33 @@
-use super::{Builder, Condition, LoopContext};
-use crate::ir::{Event, Terminator, ValueId};
+use super::{Builder, Condition, LoopContext, Protected};
+use crate::ir::{Terminator, ValueId};
 
 impl Builder<'_, '_> {
     pub(super) fn condition(
         &mut self,
         value: ValueId,
         nonzero: bool,
-        mut yes: usize,
-        mut no: usize,
+        targets: (usize, usize),
         stop: Option<usize>,
         active: Option<LoopContext>,
+        scope: Option<&Protected>,
     ) -> (Condition, usize, usize) {
+        let (mut yes, mut no) = targets;
         let mut condition = Condition::Value(value, nonzero);
         for _ in 0..self.budget.ast_depth / 8 {
             let mut folded = false;
             for (candidate, all, shared) in [(no, false, yes), (yes, true, no)] {
                 if self.owned[candidate]
+                    || !self.in_scope(candidate, scope)
+                    || self.function.blocks[candidate].handlers.first()
+                        != self.function.blocks[self.function.values[value.0].block]
+                            .handlers
+                            .first()
                     || Some(candidate) == stop
                     || self.control.predecessors[candidate].len() != 1
                     || active.is_some_and(|active| {
                         candidate == active.header || Some(candidate) == active.exit
                     })
-                    || !self.expression_only(candidate)
+                    || !self.statement_free(candidate)
                 {
                     continue;
                 }
@@ -64,22 +70,5 @@ impl Builder<'_, '_> {
             }
         }
         (condition, yes, no)
-    }
-
-    // Only consume blocks whose surviving definitions can be evaluated inside the branch expression.
-    fn expression_only(&self, block: usize) -> bool {
-        self.function.blocks[block]
-            .events
-            .iter()
-            .enumerate()
-            .all(|(position, event)| match event {
-                Event::Action { .. } => !self.values.keep[block][position],
-                Event::Define(id) => {
-                    !self.values.needed[id.0]
-                        || (!self.values.materialize[id.0]
-                            && (!self.function.values[id.0].effects.ordered()
-                                || self.values.uses[id.0] != 0))
-                }
-            })
     }
 }

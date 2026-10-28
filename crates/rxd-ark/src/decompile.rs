@@ -14,6 +14,7 @@ pub struct ReconstructionStats {
     pub eliminated_values: usize,
     pub blocks: usize,
     pub residual_blocks: usize,
+    pub structured_tries: usize,
 }
 
 pub struct Reconstruction {
@@ -84,6 +85,7 @@ impl Abc<'_> {
             stats.eliminated_values += values.needed.iter().filter(|needed| !**needed).count();
             stats.blocks += body.owned.iter().filter(|owned| **owned).count();
             stats.residual_blocks += body.residual_blocks;
+            stats.structured_tries += body.structured_tries;
             units
                 .try_reserve(1)
                 .map_err(|_| resource("Ark function plan allocation failed"))?;

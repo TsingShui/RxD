@@ -7,7 +7,7 @@ use crate::{
     reader::{invalid, resource},
     structure::{Body, Condition, LoopContext, Node},
 };
-use oxc_allocator::{Allocator, ArenaBox};
+use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_codegen::{Codegen, CodegenOptions};
 use oxc_span::{GetSpanMut, SPAN, SourceType, Span};
@@ -820,6 +820,12 @@ impl<'a> Lower<'_, 'a, '_> {
                     );
                     statements.push(self.ast.label(&format!("__ark_loop_{header}"), loop_));
                 }
+                Node::Try { id, body, handler } => {
+                    let name = format!("__ark_exception_{id}");
+                    let mut catch = vec![self.ast.assign(self.ast.id("acc"), self.ast.id(&name))];
+                    catch.extend(self.nodes(handler)?);
+                    statements.push(self.ast.try_catch(self.nodes(body)?, &name, catch));
+                }
                 Node::Break(header) => {
                     statements.push(self.ast.jump(&format!("__ark_loop_{header}"), false))
                 }
@@ -836,7 +842,8 @@ impl<'a> Lower<'_, 'a, '_> {
                     blocks,
                     stop,
                     active,
-                } => statements.extend(self.residual(*entry, blocks, *stop, *active)?),
+                    caught_by,
+                } => statements.extend(self.residual(*entry, blocks, *stop, *active, *caught_by)?),
             }
         }
         Ok(statements)
@@ -847,6 +854,7 @@ impl<'a> Lower<'_, 'a, '_> {
         blocks: &[usize],
         stop: Option<usize>,
         active: Option<LoopContext>,
+        caught_by: Option<usize>,
     ) -> Result<Vec<Statement<'a>>> {
         let name = format!("__ark_pc_{entry}");
         let label = format!("__ark_flow_{entry}");
@@ -900,30 +908,23 @@ impl<'a> Lower<'_, 'a, '_> {
                 ),
                 Terminator::Throw(value) => body.push(self.ast.throw(self.value(*value, 0)?)),
             }
-            if let Some(handler) = block.handlers.first() {
+            let handler = match caught_by {
+                None => block.handlers.first(),
+                Some(outer) => block
+                    .handlers
+                    .iter()
+                    .position(|handler| *handler == outer)
+                    .filter(|position| *position != 0)
+                    .and_then(|_| block.handlers.first()),
+            };
+            let can_throw = self.unit.values.may_throw(&self.unit.function, *id);
+            if can_throw && let Some(handler) = handler {
                 let mut handler_body = vec![
                     self.ast
                         .assign(self.ast.id("acc"), self.ast.id("__ark_exception")),
                 ];
                 handler_body.extend(transfer(*handler)?);
-                let binding = BindingPattern::BindingIdentifier(ArenaBox::new_in(
-                    self.ast.binding("__ark_exception"),
-                    &self.ast.build,
-                ));
-                let param = CatchParameter::new(SPAN, binding, None, &self.ast.build);
-                let catch = CatchClause::boxed(
-                    SPAN,
-                    Some(param),
-                    BlockStatement::boxed(SPAN, self.ast.vec(handler_body), &self.ast.build),
-                    &self.ast.build,
-                );
-                body = vec![Statement::new_try_statement(
-                    SPAN,
-                    BlockStatement::boxed(SPAN, self.ast.vec(body), &self.ast.build),
-                    Some(catch),
-                    None,
-                    &self.ast.build,
-                )];
+                body = vec![self.ast.try_catch(body, "__ark_exception", handler_body)];
             }
             cases.push(SwitchCase::new(
                 Span::new(block.pc, block.pc + 1),

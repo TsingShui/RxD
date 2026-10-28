@@ -190,6 +190,27 @@ impl<'a> Ast<'a> {
     pub fn throw(&self, value: Expression<'a>) -> Statement<'a> {
         Statement::new_throw_statement(SPAN, value, &self.build)
     }
+    pub fn try_catch(
+        &self,
+        body: Vec<Statement<'a>>,
+        parameter: &str,
+        handler: Vec<Statement<'a>>,
+    ) -> Statement<'a> {
+        let param = CatchParameter::new(SPAN, self.pattern(parameter), None, &self.build);
+        let catch = CatchClause::boxed(
+            SPAN,
+            Some(param),
+            BlockStatement::boxed(SPAN, self.vec(handler), &self.build),
+            &self.build,
+        );
+        Statement::new_try_statement(
+            SPAN,
+            BlockStatement::boxed(SPAN, self.vec(body), &self.build),
+            Some(catch),
+            None,
+            &self.build,
+        )
+    }
     pub fn jump(&self, label: &str, is_continue: bool) -> Statement<'a> {
         let label = Some(LabelIdentifier::new(
             SPAN,
