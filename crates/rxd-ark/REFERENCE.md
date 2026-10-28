@@ -14,11 +14,14 @@ This is an independent rewrite milestone, not the production CLI cutover.
   metadata admission. Only dynamic ABC **12.0.6.0** is admitted.
 - Semantic IR with source PCs, block-local value IDs, explicit register and
   captured-cell reads/writes, receiver-bearing calls, effects and exception edges.
-- Constant propagation, exception-aware slot liveness, dead stores, use counts,
-  evaluation-order materialization and a must-analysis for ordinary receivers.
+- A worklist propagates must-equal parameter snapshots, primitive constants and
+  boolean facts over normal and per-throw exception edges. Joins retain facts
+  only when all paths agree; captured cells remain mutable. Exception-aware
+  liveness, dead stores and materialization preserve ordered operations.
 - CHK dominators, reverse-CFG postdominators, natural loops and single-owner
   structured plans. Shared predicate tails become short-circuit conditions;
-  difficult local regions use state dispatch without duplicating shared blocks.
+  single-write diamonds become select expressions, and dead boolean bridges
+  can merge with their following branch. Difficult regions use state dispatch.
   Validated protected regions emit native try/catch, including nested handlers;
   ambiguous/shared-entry regions retain scoped dispatch and last-resort whole-body fallback.
 - Direct Oxc AST construction and codegen, including imports/exports and closure

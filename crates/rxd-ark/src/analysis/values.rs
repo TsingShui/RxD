@@ -8,6 +8,8 @@ pub(crate) struct Values {
     pub materialize: Vec<bool>,
     pub uses: Vec<usize>,
     pub ordinary: Vec<bool>,
+    pub boolean: Vec<bool>,
+    live_in: Vec<Vec<bool>>,
 }
 
 fn slot_index(slot: Slot) -> usize {
@@ -26,6 +28,10 @@ fn merge(into: &mut [bool], from: &[bool], exceptional: bool) {
 }
 
 impl Values {
+    pub fn live_in(&self, block: usize, slot: Slot) -> bool {
+        self.live_in[block][slot_index(slot)]
+    }
+
     pub fn may_throw(&self, function: &Function<'_>, block: usize) -> bool {
         let block_ir = &function.blocks[block];
         matches!(block_ir.end, Terminator::Throw(_))
@@ -45,6 +51,13 @@ impl Values {
 
     pub fn analyze(function: &mut Function<'_>, budget: rxd_core::Budget) -> Result<Self> {
         fold(function);
+        let flow_boolean = super::flow::propagate(function, budget)?;
+        fold(function);
+        let boolean: Vec<_> = flow_boolean
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| value || function.boolean(ValueId(index)))
+            .collect();
         function.graph.reachable.fill(false);
         let mut pending = vec![0];
         while let Some(block) = pending.pop() {
@@ -165,7 +178,7 @@ impl Values {
             }
             for input in block.end.inputs() {
                 uses[input.0] +=
-                    if matches!(block.end, Terminator::Branch { .. }) && !function.boolean(input) {
+                    if matches!(block.end, Terminator::Branch { .. }) && !boolean[input.0] {
                         3
                     } else {
                         1
@@ -201,8 +214,8 @@ impl Values {
             let last = last_use[index];
             materialize[index] = match &value.op {
                 Op::Constant(_) | Op::This | Op::NewTarget | Op::Function => false,
-                Op::Read(slot) => block.events[first + 1..last.min(block.events.len())].iter().any(|event| {
-                    matches!(event, Event::Action { action: Action::Write(target, _), .. } if target == slot)
+                Op::Read(slot) => block.events[first + 1..last.min(block.events.len())].iter().enumerate().any(|(offset, event)| {
+                    keep[value.block][first + 1 + offset] && matches!(event, Event::Action { action: Action::Write(target, _), .. } if target == slot)
                 }),
                 _ if uses[index] > 1 => true,
                 _ => value.effects.ordered() && block.events[first + 1..last.min(block.events.len())].iter().enumerate().any(|(offset, event)| {
@@ -220,6 +233,8 @@ impl Values {
             materialize,
             uses,
             ordinary,
+            boolean,
+            live_in,
         })
     }
 }

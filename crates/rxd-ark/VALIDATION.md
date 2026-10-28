@@ -21,7 +21,7 @@ Dev-profile full-input scan:
 | Successful module records | 122 / 376 |
 | Independent Babel method parses / failures | 13,256 / 0 |
 | Independent Babel record parses / failures | 122 / 0 |
-| Emitted method-source bytes, including required nested definitions | 36,105,587 |
+| Emitted method-source bytes, including required nested definitions | 35,589,345 |
 
 Nine auxiliary records have no module initializer. The remaining unsupported
 methods group as follows; failures do not produce source or invoke the old engine:
@@ -37,11 +37,9 @@ methods group as follows; failures do not produce source or invoke the old engin
 | `supercallspread` | 9 |
 | `ldsuperbyname` | 5 |
 
-`method:0x6af27` (`SandboxFinder.handleRequest`) emits 652 bytes. Its source has
-two distinct `requestHandler` reads, an explicit call receiver and native await;
-its empty-value guard is structured rather than state-dispatched. ABC and HAP
-requests produce byte-identical source. Source SHA-256:
-`d22aab7bb11f53665d582bb60f55185d693adf9082c696ee645a7004777f5ed7`.
+`method:0x6af27` (`SandboxFinder.handleRequest`) now emits 511 bytes. Its source
+retains two distinct `requestHandler` reads, an explicit call receiver and await;
+ABC and HAP requests produce byte-identical source.
 
 No input or reconstructed code was executed. Coverage, decoding, static
 inspection and parseability are not a runtime-equivalence proof. There is no new
@@ -49,7 +47,50 @@ all-method string-content audit or release-latency claim. Performance measuremen
 and new tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Protected-region milestone
+## Value-flow milestone
+
+A worklist joins must-equal parameter snapshots, primitive constants and boolean
+facts across blocks. Exception handler input is joined at each potentially throwing
+IR event, with the exception replacing the accumulator. Rewrites use a parameter
+binding only while its current fact still matches the original snapshot. Captured
+lexical/module cells, heap reads, calls and coercions are not propagated as copies.
+This is not general cross-block SSA or arbitrary phi construction.
+
+Structured single-write diamonds become conditional assignments. Boolean joins can
+merge into a subsequent branch only when the slot is dead on both outgoing paths.
+Raw root-only Babel metrics, excluding nested definitions:
+
+| Observation | Protected regions | Value flow |
+| --- | ---: | ---: |
+| Empty then with nonempty else | 2,618 | 2,463 |
+| `const tN` declarations | 87,550 | 83,954 |
+| `Reflect.apply` calls | 29,968 | 29,968 |
+| Hole checks | 8,132 | 8,132 |
+| Native non-forwarding catch roots | 292 | 292 |
+| Roots with PC dispatch | 443 | 443 |
+
+All 13,256 successful methods and 122 source records parse independently; the
+826 method and 254 record failure identities are unchanged. A normalized static
+root inventory of strings, member operations and calls matches the prior milestone
+for all methods. Numeric/dynamic member keys and local callee aliases are grouped;
+this check does not prove identity, evaluation order, exception state or runtime
+equivalence. 2,768 root sources changed. No input/reconstructed source was executed.
+
+| Target | Protected regions | Value flow |
+| --- | ---: | ---: |
+| `0x6af27` handleRequest | 652 B / 34 lines | 511 B / 23 lines |
+| `0x2ab35` calculateFontSizeLinear | 816 B / 38 lines | 750 B / 30 lines |
+| `0x8f0f8` getResourceString | 1,230 B / 58 lines | 998 B / 41 lines |
+| `0x6b316` checkFileExists | 548 B / 25 lines | 527 B / 23 lines |
+
+Selected sizes are complete method queries including necessary nested definitions.
+The two requestHandler reads, receiver and await remain explicit; HAP/ABC output
+matches, and an unsupported record still fails with empty stdout. Evidence and
+samples are under ignored `target/verification/ark/value-flow-final-*`. Scoped
+Clippy and formatting passed; no new tests or performance measurements were run.
+The production CLI remains on the existing engine.
+
+## Protected-region milestone (historical)
 
 The same input was scanned through the updated engine with unchanged method and
 record success/failure sets. IR value/elimination counts and owned-block totals

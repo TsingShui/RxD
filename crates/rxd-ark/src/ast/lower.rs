@@ -5,7 +5,7 @@ use crate::{
     ir::lift::unsupported,
     ir::*,
     reader::{invalid, resource},
-    structure::{Body, Condition, LoopContext, Node},
+    structure::{Body, Choice, Condition, LoopContext, Node},
 };
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
@@ -743,7 +743,7 @@ impl<'a> Lower<'_, 'a, '_> {
         })
     }
     fn test(&self, value: ValueId, nonzero: bool) -> Result<Expression<'a>> {
-        if self.unit.function.boolean(value) {
+        if self.unit.values.boolean[value.0] {
             let value = self.value(value, 0)?;
             return Ok(if nonzero {
                 value
@@ -783,10 +783,28 @@ impl<'a> Lower<'_, 'a, '_> {
             &self.ast.build,
         ))
     }
+    fn truthy(&self, expression: Expression<'a>) -> Expression<'a> {
+        match expression {
+            Expression::UnaryExpression(outer)
+                if outer.operator == U::LogicalNot
+                    && matches!(&outer.argument, Expression::UnaryExpression(inner) if inner.operator == U::LogicalNot) =>
+            {
+                let outer = outer.unbox();
+                let Expression::UnaryExpression(inner) = outer.argument else {
+                    unreachable!()
+                };
+                inner.unbox().argument
+            }
+            expression => expression,
+        }
+    }
+    fn negate(&self, expression: Expression<'a>) -> Expression<'a> {
+        self.ast.unary(U::LogicalNot, self.truthy(expression))
+    }
     fn condition(&self, condition: &Condition) -> Result<Expression<'a>> {
         Ok(match condition {
             Condition::Value(value, nonzero) => self.test(*value, *nonzero)?,
-            Condition::Not(condition) => self.ast.unary(U::LogicalNot, self.condition(condition)?),
+            Condition::Not(condition) => self.negate(self.condition(condition)?),
             Condition::ShortCircuit { all, left, right } => Expression::new_logical_expression(
                 SPAN,
                 self.condition(left)?,
@@ -802,7 +820,7 @@ impl<'a> Lower<'_, 'a, '_> {
             match node {
                 Node::Block(block) => statements.extend(self.events(*block)?),
                 Node::If { condition, yes, no } => statements.push(self.ast.if_(
-                    self.condition(condition)?,
+                    self.truthy(self.condition(condition)?),
                     self.nodes(yes)?,
                     if no.is_empty() {
                         None
@@ -810,6 +828,37 @@ impl<'a> Lower<'_, 'a, '_> {
                         Some(self.nodes(no)?)
                     },
                 )),
+                Node::Select {
+                    condition,
+                    slot,
+                    yes,
+                    no,
+                } => {
+                    let value = |choice: &Choice| match choice {
+                        Choice::Value(value) => self.value(*value, 0),
+                        Choice::Existing => Ok(self.slot(*slot)),
+                    };
+                    let boolean = |choice: &Choice| match choice {
+                        Choice::Value(value) => match self.unit.function.values[value.0].op {
+                            Op::Constant(Constant::Bool(value)) => Some(value),
+                            _ => None,
+                        },
+                        Choice::Existing => None,
+                    };
+                    let condition = self.condition(condition)?;
+                    let result = match (boolean(yes), boolean(no)) {
+                        (Some(true), Some(false)) => condition,
+                        (Some(false), Some(true)) => self.negate(condition),
+                        _ => Expression::new_conditional_expression(
+                            SPAN,
+                            condition,
+                            value(yes)?,
+                            value(no)?,
+                            &self.ast.build,
+                        ),
+                    };
+                    statements.push(self.ast.assign(self.slot(*slot), result));
+                }
                 Node::Loop { header, body } => {
                     let body = self.ast.block(self.nodes(body)?);
                     let loop_ = Statement::new_while_statement(

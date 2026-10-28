@@ -5,7 +5,7 @@ use exceptions::{Exceptions, Protected};
 
 use crate::{
     analysis::{Control, Values},
-    ir::{Event, Function, Terminator, ValueId},
+    ir::{Event, Function, Slot, Terminator, ValueId},
     reader::resource,
 };
 use rxd_core::{Budget, Result};
@@ -20,12 +20,23 @@ pub(crate) enum Condition {
     },
 }
 
+pub(crate) enum Choice {
+    Value(ValueId),
+    Existing,
+}
+
 pub(crate) enum Node {
     Block(usize),
     If {
         condition: Condition,
         yes: Vec<Node>,
         no: Vec<Node>,
+    },
+    Select {
+        condition: Condition,
+        slot: Slot,
+        yes: Choice,
+        no: Choice,
     },
     Loop {
         header: usize,
@@ -159,7 +170,7 @@ impl Builder<'_, '_> {
         };
         self.depth -= 1;
         match structured {
-            Ok(nodes) => Ok(nodes),
+            Ok(nodes) => self.merge_boolean_joins(nodes),
             Err(_) => {
                 self.owned = before;
                 self.residual_blocks = residual_before;
@@ -290,11 +301,20 @@ impl Builder<'_, '_> {
                         self.condition(*value, *nonzero, (*yes, *no), join, active, scope);
                     let yes_nodes = self.region(yes, join, active, false, scope)?;
                     let no_nodes = self.region(no, join, active, false, scope)?;
-                    nodes.push(Node::If {
-                        condition,
-                        yes: yes_nodes,
-                        no: no_nodes,
-                    });
+                    if let Some((slot, yes, no)) = self.select(&yes_nodes, &no_nodes) {
+                        nodes.push(Node::Select {
+                            condition,
+                            slot,
+                            yes,
+                            no,
+                        });
+                    } else {
+                        nodes.push(Node::If {
+                            condition,
+                            yes: yes_nodes,
+                            no: no_nodes,
+                        });
+                    }
                     if let Some(join) = join {
                         if let Some(active) = active
                             && Some(join) == active.exit
