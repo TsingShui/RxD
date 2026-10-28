@@ -10,6 +10,7 @@
 //! * anything unhandled degrades gracefully into `Stmt::Unimplemented` and
 //!   sets `clean = false`, which the CLI reports as a warning comment
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -91,6 +92,43 @@ impl std::hash::Hasher for FxHasher {
 type FxBuildHasher = std::hash::BuildHasherDefault<FxHasher>;
 type FastMap<K, V> = HashMap<K, V, FxBuildHasher>;
 type FastSet<T> = HashSet<T, FxBuildHasher>;
+
+pub(crate) struct OffsetIndex {
+    entries: Vec<usize>,
+}
+impl OffsetIndex {
+    fn new(bytes: usize) -> crate::Result<Self> {
+        let count = bytes.checked_add(1).ok_or(crate::PycError::ResourceLimit(
+            "instruction offset index size overflow",
+        ))?;
+        crate::budget::charge(count);
+        let mut entries = Vec::new();
+        entries.try_reserve_exact(count).map_err(|_| {
+            crate::PycError::ResourceLimit("instruction offset index allocation failed")
+        })?;
+        entries.resize(count, usize::MAX);
+        Ok(Self { entries })
+    }
+    fn insert(&mut self, offset: usize, index: usize) {
+        crate::budget::charge(3);
+        self.entries[offset] = index;
+    }
+    pub(crate) fn get(&self, offset: &usize) -> Option<&usize> {
+        crate::budget::charge(3);
+        self.entries
+            .get(*offset)
+            .filter(|&&index| index != usize::MAX)
+    }
+    fn contains_key(&self, offset: &usize) -> bool {
+        self.get(offset).is_some()
+    }
+}
+impl std::ops::Index<&usize> for OffsetIndex {
+    type Output = usize;
+    fn index(&self, offset: &usize) -> &Self::Output {
+        self.get(offset).expect("missing instruction offset")
+    }
+}
 
 pub struct Decompiled {
     pub body: Vec<Stmt>,
@@ -392,7 +430,9 @@ struct Ctx<'a> {
     table: &'a OpcodeTable,
     version: PythonVersion,
     instrs: Vec<Instruction>,
-    idx_of: FastMap<usize, usize>,
+    idx_of: OffsetIndex,
+    finally_ends: RefCell<FastMap<usize, Option<usize>>>,
+    local_values: Vec<ExprRef>,
     targets: FastSet<usize>,
     stack: Vec<Sv>,
     blocks: Vec<Block>,
@@ -928,7 +968,7 @@ fn decompile_body(
     let instrs = crate::timing::scope("decode", || {
         crate::bytecode::decode_instructions(code, table, version)
     })?;
-    let mut idx_of = FastMap::default();
+    let mut idx_of = OffsetIndex::new(code.code.len())?;
     let mut targets = FastSet::default();
     for (i, inst) in instrs.iter().enumerate() {
         crate::budget::charge(1);
@@ -1255,6 +1295,18 @@ fn decompile_body(
         version,
         instrs,
         idx_of,
+        finally_ends: RefCell::new(FastMap::default()),
+        local_values: if version.major >= 3 {
+            code.varnames
+                .iter()
+                .map(|name| {
+                    crate::budget::charge(1);
+                    crate::budget::rc(Expr::Name(sanitize_varname(name)))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
         targets,
         stack: Vec::new(),
         blocks: vec![Block::new(BlockType::Main, 0, usize::MAX)],
@@ -2747,8 +2799,6 @@ fn decompile_body(
     let mut root = ctx.blocks.remove(0);
     let mut body = std::mem::take(&mut root.stmts);
 
-    crate::budget::statements(&body);
-
     // relocate the trapped tail return: pop it from wherever the EOF
     // fold sealed it (possibly nested through folded If/Else arms) and
     // re-append at function level. Only value returns are relocated — a
@@ -2789,7 +2839,7 @@ fn decompile_body(
     }
 
     let tail_pair = bytecode_tail_return_pair(code, &ctx.instrs, version);
-    let mut body = postprocess_body(body, code, version)?;
+    let mut body = postprocess_body(body, code, version, &ctx.instrs, &ctx.idx_of)?;
     strip_break_continue(&mut body);
     // `from __future__ import annotations` leaves NO bytecode — only the
     // CO_FUTURE_ANNOTATIONS flag. Re-emit it at the module head (after a
@@ -2870,21 +2920,23 @@ impl<'a> Ctx<'a> {
             crate::budget::charge(1);
             let inst = self.instrs[pc];
             let pos = inst.offset;
-            // tail-duplicated body copy: never walk into it (the jump
-            // that targeted it was redirected to the original)
-            if let Some(&(_s, e)) = self.dup_copy_skip.iter().find(|&&(s, _)| {
-                crate::budget::charge(1);
-                s == pos
-            }) {
-                if let Some(&ei) = self.idx_of.get(&e) {
-                    pc = ei;
-                    continue;
-                }
-                if e >= self.instrs.last().map_or(0, |x| {
+            if !self.dup_copy_skip.is_empty() {
+                // tail-duplicated body copy: never walk into it (the jump
+                // that targeted it was redirected to the original)
+                if let Some(&(_s, e)) = self.dup_copy_skip.iter().find(|&&(s, _)| {
                     crate::budget::charge(1);
-                    x.end()
+                    s == pos
                 }) {
-                    break;
+                    if let Some(&ei) = self.idx_of.get(&e) {
+                        pc = ei;
+                        continue;
+                    }
+                    if e >= self.instrs.last().map_or(0, |x| {
+                        crate::budget::charge(1);
+                        x.end()
+                    }) {
+                        break;
+                    }
                 }
             }
             // batch-111: skip the handler-side sunk copy of a tail
@@ -2898,7 +2950,10 @@ impl<'a> Ctx<'a> {
                     continue;
                 }
             }
-            if self.chain_heads.contains(&pos) && inst.op == Op::PUSH_EXC_INFO {
+            if inst.op == Op::PUSH_EXC_INFO
+                && !self.chain_heads.is_empty()
+                && self.chain_heads.contains(&pos)
+            {
                 // out-of-line handler chain head: fold any Try block
                 // ending here FIRST (its tail parses the chain), then
                 // skip the whole chain region — the walk resumes after
@@ -3897,7 +3952,6 @@ impl<'a> Ctx<'a> {
     }
 
     fn open_exception_blocks(&mut self, pos: usize) {
-        let _budget_frame = crate::budget::enter();
         if !self.version.at_least(3, 11) || self.inline_comp.is_some() {
             return;
         }
@@ -3907,6 +3961,7 @@ impl<'a> Ctx<'a> {
         if !tail_work && !open_work {
             return;
         }
+        let _budget_frame = crate::budget::enter();
         // stores before a try boundary must land in source order
         if !self.pending_stores.is_empty() {
             self.flushing = true;
@@ -4046,7 +4101,7 @@ impl<'a> Ctx<'a> {
         fn walk_expr(e: &mut ExprRef) {
             let _budget_frame = crate::budget::enter();
             fold(e);
-            match &mut *Rc::make_mut(e) {
+            match e.make_mut() {
                 Expr::BoolOp { values, .. } => {
                     for v in values.iter_mut() {
                         crate::budget::charge(1);
@@ -8981,6 +9036,16 @@ impl<'a> Ctx<'a> {
     /// and leaked to function level as a sibling).
     fn legacy_finally_chain_end(&self, hs: usize) -> Option<usize> {
         let _budget_frame = crate::budget::enter();
+        if let Some(&end) = self.finally_ends.borrow().get(&hs) {
+            return end;
+        }
+        let end = self.scan_legacy_finally_chain_end(hs);
+        self.finally_ends.borrow_mut().insert(hs, end);
+        end
+    }
+
+    fn scan_legacy_finally_chain_end(&self, hs: usize) -> Option<usize> {
+        let _budget_frame = crate::budget::enter();
         let mut i = *self.idx_of.get(&hs)?;
         let mut depth = 1usize;
         let mut saw_nested_setup = false;
@@ -9811,10 +9876,10 @@ impl<'a> Ctx<'a> {
 
     /// Drive the pre-3.11 try/except handler chain state machine.
     fn legacy_chain_step(&mut self, inst: &Instruction) {
-        let _budget_frame = crate::budget::enter();
-        if self.version.at_least(3, 11) {
+        if self.version.at_least(3, 11) || self.legacy_try.is_none() {
             return;
         }
+        let _budget_frame = crate::budget::enter();
         let pos = inst.offset;
         // consecutive SETUP_FINALLY nesting (3.8-3.10): handler regions
         // are laid out in source order, but the chains stash in nesting
@@ -12101,7 +12166,6 @@ impl<'a> Ctx<'a> {
     /// offset) and must not auto-close there; they are closed by the back
     /// edge.
     fn close_blocks_at(&mut self, pos: usize) {
-        let _budget_frame = crate::budget::enter();
         // A zero-size rotated-While on top blocks position-based closing;
         // it is closed by its back edge instead.
         if let Some(top) = self.blocks.last() {
@@ -12115,6 +12179,7 @@ impl<'a> Ctx<'a> {
                 return;
             }
         }
+        let _budget_frame = crate::budget::enter();
         // close every non-Main block whose region has ended (possibly
         // earlier than `pos` when control arrived here via a jump)
         while self.blocks.len() > 1 {
@@ -14607,19 +14672,20 @@ impl<'a> Ctx<'a> {
     // ----- stack helpers -----
 
     fn push(&mut self, e: ExprRef) {
-        let _budget_frame = crate::budget::enter();
+        crate::budget::charge(1);
         self.stack.push(Sv::E(e));
     }
 
     fn pop(&mut self) -> Option<Sv> {
-        let _budget_frame = crate::budget::enter();
+        crate::budget::charge(1);
         self.stack.pop()
     }
 
     fn pop_expr(&mut self) -> ExprRef {
-        let _budget_frame = crate::budget::enter();
+        let mut units = 2;
         loop {
-            crate::budget::charge(1);
+            crate::budget::charge(units);
+            units = 1;
             match self.stack.pop() {
                 Some(Sv::E(e)) => return e,
                 Some(Sv::Null) => continue,
@@ -14649,7 +14715,7 @@ impl<'a> Ctx<'a> {
     }
 
     fn pop_expr_raw(&mut self) -> Option<Sv> {
-        let _budget_frame = crate::budget::enter();
+        crate::budget::charge(1);
         self.stack.pop()
     }
 
@@ -14665,9 +14731,14 @@ impl<'a> Ctx<'a> {
                 if ident.is_empty() {
                     continue;
                 }
-                let prefix = crate::budget_format!("_{}__", ident);
-                if name.starts_with(&prefix) && name.len() > prefix.len() {
-                    return crate::budget_format!("__{}", &name[prefix.len()..]);
+                crate::budget::charge(ident.len().saturating_add(3));
+                if let Some(suffix) = name
+                    .strip_prefix('_')
+                    .and_then(|rest| rest.strip_prefix(ident))
+                    .and_then(|rest| rest.strip_prefix("__"))
+                    .filter(|rest| !rest.is_empty())
+                {
+                    return crate::budget_format!("__{}", suffix);
                 }
             }
         }
@@ -14677,10 +14748,11 @@ impl<'a> Ctx<'a> {
     /// Like `pop_expr`, but reports whether a NULL marker was skipped on
     /// the way to the expression (3.13 pushes NULL above the callable).
     fn pop_expr_skipped(&mut self) -> (ExprRef, bool) {
-        let _budget_frame = crate::budget::enter();
+        let mut units = 2;
         let mut skipped = false;
         loop {
-            crate::budget::charge(1);
+            crate::budget::charge(units);
+            units = 1;
             match self.stack.pop() {
                 Some(Sv::E(e)) => return (e, skipped),
                 Some(Sv::Null) => {
@@ -14747,23 +14819,21 @@ impl<'a> Ctx<'a> {
 
     fn const_name(&self, idx: usize) -> String {
         let _budget_frame = crate::budget::enter();
-        let n = self
-            .code
-            .names
-            .get(idx)
-            .and_then(|n| {
+        let n: std::borrow::Cow<'_, str> = match self.code.names.get(idx) {
+            Some(n) => {
                 crate::budget::charge(1);
                 match &**n {
-                    PyObject::Str(s) => Some(crate::budget_clone!(s)),
-                    PyObject::Bytes(b) => Some(crate::budget::utf8_lossy(b)),
-                    _ => None,
+                    PyObject::Str(s) => std::borrow::Cow::Borrowed(s.as_str()),
+                    PyObject::Bytes(b) => std::borrow::Cow::Owned(crate::budget::utf8_lossy(b)),
+                    _ => std::borrow::Cow::Owned(crate::budget_format!("/*bad-name-{idx}*/")),
                 }
-            })
-            .unwrap_or_else(|| {
+            }
+            None => {
                 crate::budget::charge(1);
-                crate::budget_format!("/*bad-name-{idx}*/")
-            });
-        self.unmangle(&n)
+                std::borrow::Cow::Owned(crate::budget_format!("/*bad-name-{idx}*/"))
+            }
+        };
+        self.unmangle(n.as_ref())
     }
 
     fn local_name(&self, idx: usize) -> String {
@@ -15288,27 +15358,33 @@ impl<'a> Ctx<'a> {
             | Op::LOAD_FAST_CHECK
             | Op::LOAD_FAST_AND_CLEAR
             | Op::LOAD_FAST_BORROW => {
-                let n = self.local_name(arg as usize);
-                // 2.6 function-level inline comprehension: the `_[N]`
-                // accumulator is a FAST local — same handling as the
-                // module-level STORE_NAME variant
-                if self.is_comp_temp_name(&n) {
-                    if self.inline_comp.is_some() {
+                if let Some(value) = self.local_values.get(arg as usize) {
+                    let value = crate::budget_clone!(value);
+                    self.push(value);
+                    true
+                } else {
+                    let n = self.local_name(arg as usize);
+                    // 2.6 function-level inline comprehension: the `_[N]`
+                    // accumulator is a FAST local — same handling as the
+                    // module-level STORE_NAME variant
+                    if self.is_comp_temp_name(&n) {
+                        if self.inline_comp.is_some() {
+                            return true;
+                        }
+                        if let Some(v) = self
+                            .py26_temps
+                            .get(&n)
+                            .map(|value| crate::budget_clone!(value))
+                        {
+                            self.stack.push(v);
+                        } else {
+                            self.push(self.name_expr(n));
+                        }
                         return true;
                     }
-                    if let Some(v) = self
-                        .py26_temps
-                        .get(&n)
-                        .map(|value| crate::budget_clone!(value))
-                    {
-                        self.stack.push(v);
-                    } else {
-                        self.push(self.name_expr(n));
-                    }
-                    return true;
+                    self.push(self.name_expr(n));
+                    true
                 }
-                self.push(self.name_expr(n));
-                true
             }
             Op::LOAD_FAST_BORROW_LOAD_FAST_BORROW => {
                 // 3.14: loads two locals, (arg >> 4) first then (arg & 0xF)
@@ -15695,7 +15771,7 @@ impl<'a> Ctx<'a> {
                     _ if self.version.at_least(3, 12) => ((arg >> 1) as usize, arg & 1 != 0),
                     _ => (arg as usize, false),
                 };
-                let attr = self.unmangle(&self.const_name(idx));
+                let attr = self.const_name(idx);
                 let value = self.pop_expr();
                 let e: ExprRef = crate::budget::rc(Expr::Attribute {
                     value: crate::budget_clone!(value),
@@ -15726,7 +15802,7 @@ impl<'a> Ctx<'a> {
                 } else {
                     arg as usize
                 };
-                let attr = self.unmangle(&self.const_name(idx));
+                let attr = self.const_name(idx);
                 // stack: [super-global, class, self] — the attribute name
                 // lives in co_names (arg), not on the stack
                 let self_e = self.pop_expr();
@@ -15953,7 +16029,7 @@ impl<'a> Ctx<'a> {
             Op::STORE_ATTR => {
                 // STORE_ATTR uses the plain name index in all versions
                 let idx = arg as usize;
-                let attr = self.unmangle(&self.const_name(idx));
+                let attr = self.const_name(idx);
                 // all CPython versions push value first, owner on top
                 let obj = self.pop_expr();
                 let val = self.pop_expr();
@@ -15962,7 +16038,7 @@ impl<'a> Ctx<'a> {
                 true
             }
             Op::DELETE_ATTR => {
-                let attr = self.unmangle(&self.const_name(arg as usize));
+                let attr = self.const_name(arg as usize);
                 let obj = self.pop_expr();
                 let target: ExprRef = crate::budget::rc(Expr::Attribute { value: obj, attr });
                 self.emit_delete(target);
@@ -16813,7 +16889,7 @@ impl<'a> Ctx<'a> {
                 // covers the TRAILING k values (like KW_NAMES), the leading
                 // total-k values are positional
                 if let Some(Sv::E(e)) = self.stack.last_mut() {
-                    if let Expr::Call { args, keywords, .. } = Rc::make_mut(e) {
+                    if let Expr::Call { args, keywords, .. } = e.make_mut() {
                         let total = args.len() + keywords.len();
                         let named: Vec<Option<String>> = crate::budget_clone!(names);
                         if !named.is_empty() && named.len() <= total {
@@ -22868,6 +22944,9 @@ impl<'a> Ctx<'a> {
                 true
             }
         };
+        if self.pending_stores.is_empty() && self.last_store_line.is_none() {
+            return cont;
+        }
         // statements flush any pending multi-store group; pure stack
         // manipulation and further stores do not. Container stores
         // (subscript/attr/slice) also join the group, and while one is
@@ -46094,6 +46173,9 @@ fn op_family_eq(a: Op, b: Op) -> bool {
 /// Shallow structural equality used for augmented-assign target matching.
 fn expr_eq(a: &ExprRef, b: &ExprRef) -> bool {
     let _budget_frame = crate::budget::enter();
+    if ExprRef::ptr_eq(a, b) {
+        return true;
+    }
     match (&**a, &**b) {
         (Expr::Name(x), Expr::Name(y)) => x == y,
         (
@@ -46203,7 +46285,7 @@ fn expr_eq(a: &ExprRef, b: &ExprRef) -> bool {
                     expr_eq(u, v)
                 })
         }
-        _ => Rc::ptr_eq(a, b),
+        _ => ExprRef::ptr_eq(a, b),
     }
 }
 
@@ -46282,7 +46364,6 @@ impl<'a> Ctx<'a> {
 }
 
 fn is_pure_value_op(op: Op) -> bool {
-    let _budget_frame = crate::budget::enter();
     matches!(
         op,
         Op::PUSH_NULL
@@ -46603,7 +46684,7 @@ impl<'a> Ctx<'a> {
         // rendered `for _ in code.co_lines()`).
         if let Some((remaining, _, _, fv)) = self.unpack_frames.last() {
             if *remaining > 0 {
-                let is_slot = matches!(self.stack.last(), Some(Sv::E(e)) if Rc::ptr_eq(e, fv));
+                let is_slot = matches!(self.stack.last(), Some(Sv::E(e)) if ExprRef::ptr_eq(e, fv));
                 if is_slot {
                     if let Some(Sv::E(_)) = self.stack.pop() {
                         self.collect_unpack_target(self.name_expr("_"));
@@ -52447,8 +52528,7 @@ impl<'a> Ctx<'a> {
                 if !d.clean {
                     self.mark_unclean();
                 }
-                let processed = postprocess_body(d.body, code, self.version);
-                let mut body = self.nested_result(processed)?;
+                let mut body = d.body;
                 // Function docstrings never appear in bytecode: CPython
                 // stores them in consts[0]. Up to 3.13 the compiler always
                 // reserves slot 0 (None when there is no docstring), so a
@@ -53725,13 +53805,8 @@ fn restore_pep649_annotations(body: &mut Vec<Stmt>) {
 /// <=3.10: does any SETUP_FINALLY cleanup region contain a RETURN_VALUE
 /// before its END_FINALLY, with only finally machinery (no except-handler
 /// material) in between? That is the `try: ... finally: return X` shape.
-fn legacy_finally_return_in_region(
-    code: &CodeObject,
-    version: PythonVersion,
-) -> crate::Result<bool> {
+fn legacy_finally_return_in_region(instrs: &[Instruction], indexes: &OffsetIndex) -> bool {
     let _budget_frame = crate::budget::enter();
-    let table = crate::opcode::table_for(version)?;
-    let instrs = crate::bytecode::decode_instructions(code, table, version)?;
     let mut i = 0;
     while i < instrs.len() {
         crate::budget::charge(1);
@@ -53743,10 +53818,7 @@ fn legacy_finally_return_in_region(
             i += 1;
             continue;
         };
-        let Some(hi) = instrs.iter().position(|x| {
-            crate::budget::charge(1);
-            x.offset == h
-        }) else {
+        let Some(&hi) = indexes.get(&h).filter(|&&index| instrs[index].offset == h) else {
             i += 1;
             continue;
         };
@@ -53769,11 +53841,11 @@ fn legacy_finally_return_in_region(
             }
         }
         if found_return && !blocked {
-            return Ok(true);
+            return true;
         }
         i += 1;
     }
-    Ok(false)
+    false
 }
 
 /// Fold `Try{no handlers, empty finally} + sibling Return` pairs into
@@ -53826,6 +53898,8 @@ fn postprocess_body(
     mut body: Vec<Stmt>,
     code: &CodeObject,
     version: PythonVersion,
+    instructions: &[Instruction],
+    indexes: &OffsetIndex,
 ) -> crate::Result<Vec<Stmt>> {
     let _budget_frame = crate::budget::enter();
     // 3.6+ evaluates module/class-body annotations into the scope's
@@ -53887,7 +53961,8 @@ fn postprocess_body(
             };
             if has_value {
                 body.remove(i - 1);
-                body[i - 1] = ann_stmt;
+                i -= 1;
+                body[i] = ann_stmt;
             } else {
                 body[i] = ann_stmt;
             }
@@ -53993,7 +54068,7 @@ fn postprocess_body(
     // emits it as a sibling after the try, dropping the swallow
     // semantics. The bytecode discriminator separates it from a real
     // post-try return (which lands after the END_FINALLY).
-    if !version.at_least(3, 11) && legacy_finally_return_in_region(code, version)? {
+    if !version.at_least(3, 11) && legacy_finally_return_in_region(instructions, indexes) {
         refold_legacy_finally_return(&mut body);
     }
     // trailing `return None` — including the tail-position copies the

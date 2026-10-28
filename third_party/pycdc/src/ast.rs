@@ -8,7 +8,52 @@ use std::rc::Rc;
 use crate::code::CodeObject;
 use crate::object::ObjectRef;
 
-pub type ExprRef = Rc<Expr>;
+#[derive(Clone)]
+pub struct ExprRef(Rc<ExprNode>);
+struct ExprNode {
+    value: Expr,
+    summary: crate::budget::Summary,
+}
+impl Clone for ExprNode {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            summary: crate::budget::Summary::default(),
+        }
+    }
+}
+impl ExprRef {
+    pub(crate) fn new(value: Expr, summary: crate::budget::Summary) -> Self {
+        Self(Rc::new(ExprNode { value, summary }))
+    }
+    pub fn ptr_eq(left: &Self, right: &Self) -> bool {
+        Rc::ptr_eq(&left.0, &right.0)
+    }
+    pub fn make_mut(&mut self) -> &mut Expr {
+        let node = Rc::make_mut(&mut self.0);
+        node.summary = crate::budget::Summary::default();
+        &mut node.value
+    }
+    pub(crate) fn summary(&self) -> Option<crate::budget::Summary> {
+        self.0.summary.valid()
+    }
+}
+impl std::ops::Deref for ExprRef {
+    type Target = Expr;
+    fn deref(&self) -> &Expr {
+        &self.0.value
+    }
+}
+impl AsRef<Expr> for ExprRef {
+    fn as_ref(&self) -> &Expr {
+        self
+    }
+}
+impl std::fmt::Debug for ExprRef {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.value.fmt(formatter)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {

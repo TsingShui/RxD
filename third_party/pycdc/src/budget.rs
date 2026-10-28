@@ -183,30 +183,158 @@ pub fn repeat(s: &str, n: usize) -> String {
     charge(bytes);
     s.repeat(n)
 }
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Summary {
+    work: usize,
+    depth: usize,
+    ready: bool,
+}
+impl Summary {
+    pub(crate) fn valid(self) -> Option<Self> {
+        (self.depth != 0).then_some(self)
+    }
+    fn edge(&mut self, child: Self) {
+        self.work = self.work.saturating_add(1).saturating_add(child.work);
+        self.depth = self.depth.max(child.depth.saturating_add(1));
+        self.ready &= child.ready;
+    }
+}
+fn expr_summary(expression: &Expr) -> Summary {
+    let mut summary = Summary {
+        work: 1,
+        depth: 1,
+        ready: true,
+    };
+    let mut add = |reference: &ExprRef| {
+        summary.edge(
+            reference
+                .summary()
+                .unwrap_or_else(|| inspect(Item::Expr(reference))),
+        );
+    };
+    match expression {
+        Expr::Const(_) => {}
+        Expr::Name(name) => {
+            summary.work = summary.work.saturating_add(name.len());
+            summary.ready = !name.as_bytes().contains(&0);
+        }
+        Expr::Attribute { value, .. }
+        | Expr::Unary { operand: value, .. }
+        | Expr::Starred(value)
+        | Expr::Await(value)
+        | Expr::YieldFrom(value)
+        | Expr::Backquote(value) => add(value),
+        Expr::Subscript { value, index }
+        | Expr::Binary {
+            left: value,
+            right: index,
+            ..
+        }
+        | Expr::Named {
+            target: value,
+            value: index,
+        } => {
+            add(value);
+            add(index);
+        }
+        Expr::Slice(slice) => {
+            for value in [&slice.start, &slice.stop, &slice.step]
+                .into_iter()
+                .flatten()
+            {
+                add(value);
+            }
+        }
+        Expr::Compare {
+            operands: values, ..
+        }
+        | Expr::BoolOp { values, .. }
+        | Expr::Tuple(values)
+        | Expr::List(values)
+        | Expr::Set(values) => {
+            for value in values {
+                add(value);
+            }
+        }
+        Expr::Dict(entries) => {
+            for (key, value) in entries {
+                add(key);
+                add(value);
+            }
+        }
+        Expr::Call {
+            func,
+            args,
+            keywords,
+            star_args,
+            star_kwargs,
+        } => {
+            add(func);
+            for value in args {
+                add(value);
+            }
+            for (_, value) in keywords {
+                add(value);
+            }
+            for value in [star_args, star_kwargs].into_iter().flatten() {
+                add(value);
+            }
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            add(cond);
+            add(then_expr);
+            add(else_expr);
+        }
+        Expr::Yield(value) => {
+            if let Some(value) = value {
+                add(value);
+            }
+        }
+        _ => return inspect(Item::Expr(expression)),
+    }
+    summary
+}
 pub trait Node {
+    type Reference;
     fn check(&self);
+    fn reference(self) -> Self::Reference;
 }
 impl Node for Expr {
+    type Reference = ExprRef;
     fn check(&self) {
         walk(Item::Expr(self));
     }
+    fn reference(self) -> ExprRef {
+        let summary = expr_summary(&self);
+        depth(summary.depth);
+        ExprRef::new(self, summary)
+    }
 }
 impl Node for FunctionDef {
+    type Reference = Rc<Self>;
     fn check(&self) {
         walk(Item::Function(self));
     }
+    fn reference(self) -> Rc<Self> {
+        Rc::new(self)
+    }
 }
 impl Node for PyObject {
+    type Reference = Rc<Self>;
     fn check(&self) {
         charge(1);
     }
+    fn reference(self) -> Rc<Self> {
+        Rc::new(self)
+    }
 }
-pub fn rc<T: Node>(node: T) -> Rc<T> {
-    // The node is folded into a statement, which is checked before it joins
-    // the body. Walking every intermediate wrapper would repeatedly traverse
-    // the same subtree while the expression is built bottom-up.
+pub fn rc<T: Node>(node: T) -> T::Reference {
     charge(1);
-    Rc::new(node)
+    node.reference()
 }
 pub fn pattern(pattern: &Pattern) {
     walk(Item::Pattern(pattern));
@@ -229,8 +357,10 @@ pub(crate) fn source_ready(stmts: &[Stmt]) -> bool {
     ready
 }
 
+#[derive(Clone, Copy)]
 enum Item<'a> {
     Expr(&'a Expr),
+    Reference(&'a ExprRef),
     Stmt(&'a Stmt),
     Pattern(&'a Pattern),
     Params(&'a Parameters),
@@ -238,34 +368,108 @@ enum Item<'a> {
     TypeParam(&'a TypeParam),
     FString(&'a FString),
 }
+struct WalkStack<'a> {
+    inline: [(Item<'a>, usize); 8],
+    len: usize,
+    spill: Vec<(Item<'a>, usize)>,
+}
+impl<'a> WalkStack<'a> {
+    fn new(root: Item<'a>) -> Self {
+        Self {
+            inline: [(root, 1); 8],
+            len: 1,
+            spill: Vec::new(),
+        }
+    }
+    fn push(&mut self, item: (Item<'a>, usize)) {
+        if self.len < self.inline.len() {
+            self.inline[self.len] = item;
+            self.len += 1;
+        } else {
+            self.spill.push(item);
+        }
+    }
+    fn pop(&mut self) -> Option<(Item<'a>, usize)> {
+        if let Some(item) = self.spill.pop() {
+            return Some(item);
+        }
+        if self.len == 0 {
+            return None;
+        }
+        self.len -= 1;
+        Some(self.inline[self.len])
+    }
+}
 fn walk(root: Item<'_>) -> bool {
-    // No recursive calls: even rejected instruction-built chains are inspected
-    // without consuming the native stack. Every scheduled edge is charged.
+    let summary = inspect(root);
+    charge(summary.work);
+    depth(summary.depth);
+    summary.ready
+}
+fn inspect(root: Item<'_>) -> Summary {
+    // Cache summaries inside live immutable expression nodes, never by raw
+    // pointer. Shared paths still contribute their full work and depth.
     let mut ready = true;
-    let mut todo = vec![(root, 1)];
+    let mut todo = WalkStack::new(root);
     let mut work = 0usize;
     let mut max_level = 1usize;
     while let Some((item, level)) = todo.pop() {
+        let item = if let Item::Reference(reference) = item {
+            if let Some(summary) = reference.summary() {
+                work = work.saturating_add(summary.work);
+                max_level = max_level.max(level.saturating_add(summary.depth.saturating_sub(1)));
+                ready &= summary.ready;
+                continue;
+            }
+            Item::Expr(reference)
+        } else {
+            item
+        };
         work = work.saturating_add(1);
         max_level = max_level.max(level);
+        if let Item::Expr(Expr::Name(name)) = item {
+            work = work.saturating_add(name.len());
+            ready &= !name.as_bytes().contains(&0);
+            continue;
+        }
+        if let Item::FString(string) = item {
+            work = work.saturating_add(string.parts.len());
+        }
         let mut edges = 0usize;
         let mut add = |item| {
             edges = edges.saturating_add(1);
-            todo.push((item, level + 1));
-        };
-        match item {
-            Item::Expr(e) => match e {
-                Expr::Const(_) => {}
-                Expr::Name(name) => {
-                    work = work.saturating_add(name.len());
+            match item {
+                Item::Reference(reference) => {
+                    if let Some(summary) = reference.summary() {
+                        work = work.saturating_add(summary.work);
+                        max_level = max_level.max(level.saturating_add(summary.depth));
+                        ready &= summary.ready;
+                    } else {
+                        todo.push((item, level + 1));
+                    }
+                }
+                Item::Expr(Expr::Const(_)) => {
+                    work = work.saturating_add(1);
+                    max_level = max_level.max(level + 1);
+                }
+                Item::Expr(Expr::Name(name)) => {
+                    work = work.saturating_add(1).saturating_add(name.len());
+                    max_level = max_level.max(level + 1);
                     ready &= !name.as_bytes().contains(&0);
                 }
+                _ => todo.push((item, level + 1)),
+            }
+        };
+        match item {
+            Item::Reference(_) => unreachable!(),
+            Item::Expr(e) => match e {
+                Expr::Const(_) | Expr::Name(_) => {}
                 Expr::Attribute { value, .. }
                 | Expr::Unary { operand: value, .. }
                 | Expr::Starred(value)
                 | Expr::Await(value)
                 | Expr::YieldFrom(value)
-                | Expr::Backquote(value) => add(Item::Expr(value)),
+                | Expr::Backquote(value) => add(Item::Reference(value)),
                 Expr::Subscript { value, index }
                 | Expr::Binary {
                     left: value,
@@ -276,17 +480,17 @@ fn walk(root: Item<'_>) -> bool {
                     target: value,
                     value: index,
                 } => {
-                    add(Item::Expr(value));
-                    add(Item::Expr(index));
+                    add(Item::Reference(value));
+                    add(Item::Reference(index));
                 }
                 Expr::Slice(s) => {
                     for e in [&s.start, &s.stop, &s.step].into_iter().flatten() {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 Expr::Compare { operands, .. } => {
                     for e in operands {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 Expr::BoolOp { values, .. }
@@ -294,13 +498,13 @@ fn walk(root: Item<'_>) -> bool {
                 | Expr::List(values)
                 | Expr::Set(values) => {
                     for e in values {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 Expr::Dict(items) => {
                     for (k, v) in items {
-                        add(Item::Expr(k));
-                        add(Item::Expr(v));
+                        add(Item::Reference(k));
+                        add(Item::Reference(v));
                     }
                 }
                 Expr::Call {
@@ -310,15 +514,15 @@ fn walk(root: Item<'_>) -> bool {
                     star_args,
                     star_kwargs,
                 } => {
-                    add(Item::Expr(func));
+                    add(Item::Reference(func));
                     for e in args {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                     for (_, e) in keywords {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                     for e in [star_args, star_kwargs].into_iter().flatten() {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 Expr::Comprehension {
@@ -327,21 +531,21 @@ fn walk(root: Item<'_>) -> bool {
                     generators,
                     ..
                 } => {
-                    add(Item::Expr(elt));
+                    add(Item::Reference(elt));
                     if let Some(e) = key {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                     for g in generators {
-                        add(Item::Expr(&g.target));
-                        add(Item::Expr(&g.iter));
+                        add(Item::Reference(&g.target));
+                        add(Item::Reference(&g.iter));
                         for e in &g.ifs {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                 }
                 Expr::Lambda { params, body } => {
                     add(Item::Params(params));
-                    add(Item::Expr(body));
+                    add(Item::Reference(body));
                 }
                 Expr::Function(f) => add(Item::Function(f)),
                 Expr::Ternary {
@@ -350,12 +554,12 @@ fn walk(root: Item<'_>) -> bool {
                     else_expr,
                 } => {
                     for e in [cond, then_expr, else_expr] {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 Expr::Yield(e) => {
                     if let Some(e) = e {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 Expr::FString(s) | Expr::TString(s) => add(Item::FString(s)),
@@ -368,7 +572,7 @@ fn walk(root: Item<'_>) -> bool {
                 Expr::TypeAliasValue {
                     type_params, value, ..
                 } => {
-                    add(Item::Expr(value));
+                    add(Item::Reference(value));
                     for p in type_params {
                         add(Item::TypeParam(p));
                     }
@@ -383,11 +587,11 @@ fn walk(root: Item<'_>) -> bool {
                     .chain(p.kwarg.iter())
                 {
                     if let Some(e) = &a.annotation {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 for e in &p.defaults {
-                    add(Item::Expr(e));
+                    add(Item::Reference(e));
                 }
                 for e in p
                     .kw_defaults
@@ -395,13 +599,13 @@ fn walk(root: Item<'_>) -> bool {
                     .flatten()
                     .chain(p.returns_annotation.iter())
                 {
-                    add(Item::Expr(e));
+                    add(Item::Reference(e));
                 }
             }
             Item::Function(f) => {
                 add(Item::Params(&f.params));
                 for e in f.decorators.iter().chain(f.returns.iter()) {
-                    add(Item::Expr(e));
+                    add(Item::Reference(e));
                 }
                 for p in &f.type_params {
                     add(Item::TypeParam(p));
@@ -410,23 +614,22 @@ fn walk(root: Item<'_>) -> bool {
             Item::TypeParam(p) => match p {
                 TypeParam::TypeVar { bound, default, .. } => {
                     for e in [bound, default].into_iter().flatten() {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
                 TypeParam::ParamSpec { default, .. } | TypeParam::TypeVarTuple { default, .. } => {
                     if let Some(e) = default {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                     }
                 }
             },
             Item::FString(s) => {
                 for p in &s.parts {
-                    charge(1);
                     if let FStringPart::Value {
                         value, format_spec, ..
                     } = p
                     {
-                        add(Item::Expr(value));
+                        add(Item::Reference(value));
                         if let Some(s) = format_spec {
                             add(Item::FString(s));
                         }
@@ -434,7 +637,7 @@ fn walk(root: Item<'_>) -> bool {
                 }
             }
             Item::Pattern(p) => match p {
-                Pattern::Value(e) => add(Item::Expr(e)),
+                Pattern::Value(e) => add(Item::Reference(e)),
                 Pattern::Capture(_) | Pattern::Wildcard => {}
                 Pattern::Or(ps) => {
                     for p in ps {
@@ -451,7 +654,7 @@ fn walk(root: Item<'_>) -> bool {
                 }
                 Pattern::Mapping { items, .. } => {
                     for (e, p) in items {
-                        add(Item::Expr(e));
+                        add(Item::Reference(e));
                         add(Item::Pattern(p));
                     }
                 }
@@ -460,7 +663,7 @@ fn walk(root: Item<'_>) -> bool {
                     patterns,
                     keywords,
                 } => {
-                    add(Item::Expr(cls));
+                    add(Item::Reference(cls));
                     for p in patterns {
                         add(Item::Pattern(p));
                     }
@@ -473,34 +676,34 @@ fn walk(root: Item<'_>) -> bool {
                 // Schedule expression and statement children explicitly. The
                 // nonrecursive walk charges repeated shared-reference paths.
                 match s {
-                    Stmt::Expr(e) => add(Item::Expr(e)),
+                    Stmt::Expr(e) => add(Item::Reference(e)),
                     Stmt::Assign { targets, value, .. } => {
                         for e in targets {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
-                        add(Item::Expr(value));
+                        add(Item::Reference(value));
                     }
                     Stmt::AugAssign { target, value, .. } => {
-                        add(Item::Expr(target));
-                        add(Item::Expr(value));
+                        add(Item::Reference(target));
+                        add(Item::Reference(value));
                     }
                     Stmt::AnnAssign {
                         target,
                         annotation,
                         value,
                     } => {
-                        add(Item::Expr(target));
-                        add(Item::Expr(annotation));
+                        add(Item::Reference(target));
+                        add(Item::Reference(annotation));
                         if let Some(e) = value {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::Print { dest, values, .. } => {
                         if let Some(e) = dest {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                         for e in values {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::Exec {
@@ -508,23 +711,23 @@ fn walk(root: Item<'_>) -> bool {
                         globals,
                         locals,
                     } => {
-                        add(Item::Expr(code));
+                        add(Item::Reference(code));
                         for e in [globals, locals].into_iter().flatten() {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::Return(e) => {
                         if let Some(e) = e {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::Delete(es) => {
                         for e in es {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::If { cond, body, orelse } | Stmt::While { cond, body, orelse } => {
-                        add(Item::Expr(cond));
+                        add(Item::Reference(cond));
                         for st in body.iter().chain(orelse) {
                             add(Item::Stmt(st));
                         }
@@ -536,8 +739,8 @@ fn walk(root: Item<'_>) -> bool {
                         orelse,
                         ..
                     } => {
-                        add(Item::Expr(target));
-                        add(Item::Expr(iter));
+                        add(Item::Reference(target));
+                        add(Item::Reference(iter));
                         for st in body.iter().chain(orelse) {
                             add(Item::Stmt(st));
                         }
@@ -553,7 +756,7 @@ fn walk(root: Item<'_>) -> bool {
                         }
                         for h in handlers {
                             for e in [&h.type_, &h.name].into_iter().flatten() {
-                                add(Item::Expr(e));
+                                add(Item::Reference(e));
                             }
                             for st in &h.body {
                                 add(Item::Stmt(st));
@@ -562,9 +765,9 @@ fn walk(root: Item<'_>) -> bool {
                     }
                     Stmt::With { items, body, .. } => {
                         for i in items {
-                            add(Item::Expr(&i.ctx));
+                            add(Item::Reference(&i.ctx));
                             if let Some(e) = &i.target {
-                                add(Item::Expr(e));
+                                add(Item::Reference(e));
                             }
                         }
                         for st in body {
@@ -578,13 +781,13 @@ fn walk(root: Item<'_>) -> bool {
                         py2_tb,
                     } => {
                         for e in [exc, cause, py2_inst, py2_tb].into_iter().flatten() {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::Assert { test, msg } => {
-                        add(Item::Expr(test));
+                        add(Item::Reference(test));
                         if let Some(e) = msg {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                     }
                     Stmt::FuncDef(f, body) => {
@@ -604,13 +807,13 @@ fn walk(root: Item<'_>) -> bool {
                         ..
                     } => {
                         for e in bases.iter().chain(decorators) {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                         for (_, e) in keywords {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                         for e in [star_args, star_kwargs].into_iter().flatten() {
-                            add(Item::Expr(e));
+                            add(Item::Reference(e));
                         }
                         for st in body {
                             add(Item::Stmt(st));
@@ -622,17 +825,17 @@ fn walk(root: Item<'_>) -> bool {
                     Stmt::TypeAlias {
                         type_params, value, ..
                     } => {
-                        add(Item::Expr(value));
+                        add(Item::Reference(value));
                         for p in type_params {
                             add(Item::TypeParam(p));
                         }
                     }
                     Stmt::Match { subject, cases } => {
-                        add(Item::Expr(subject));
+                        add(Item::Reference(subject));
                         for c in cases {
                             add(Item::Pattern(&c.pattern));
                             if let Some(e) = &c.guard {
-                                add(Item::Expr(e));
+                                add(Item::Reference(e));
                             }
                             for st in &c.body {
                                 add(Item::Stmt(st));
@@ -646,9 +849,11 @@ fn walk(root: Item<'_>) -> bool {
         drop(add);
         work = work.saturating_add(edges);
     }
-    charge(work);
-    depth(max_level);
-    ready
+    Summary {
+        work,
+        depth: max_level,
+        ready,
+    }
 }
 
 // Autoref fallback charges one shallow clone; concrete collection/string

@@ -1,5 +1,5 @@
 //! Recover comprehension filters from their actual keep/skip branches.
-use std::{collections::HashMap, hash::BuildHasher, rc::Rc};
+use std::collections::HashMap;
 
 use crate::{
     ast::{BoolOpKind, Expr, ExprRef, UnaryOp},
@@ -18,9 +18,9 @@ pub(crate) struct Guard {
     pub jump_if_true: bool,
 }
 
-struct Graph<'a, S> {
+struct Graph<'a> {
     instructions: &'a [Instruction],
-    indexes: &'a HashMap<usize, usize, S>,
+    indexes: &'a crate::decompiler::OffsetIndex,
     guards: HashMap<usize, usize>,
     destinations: HashMap<usize, usize>,
     loop_offset: usize,
@@ -30,7 +30,7 @@ struct Graph<'a, S> {
     skip: usize,
 }
 
-impl<S: BuildHasher> Graph<'_, S> {
+impl Graph<'_> {
     fn destination(&mut self, mut offset: usize) -> Option<usize> {
         let mut trail = Vec::new();
         let result = loop {
@@ -107,12 +107,12 @@ fn shared_suffix(expression: &ExprRef, suffix: &ExprRef) -> Option<(BoolOpKind, 
     let [prefix, tail] = values.as_slice() else {
         return None;
     };
-    Rc::ptr_eq(tail, suffix).then(|| (*op, crate::budget_clone!(prefix)))
+    ExprRef::ptr_eq(tail, suffix).then(|| (*op, crate::budget_clone!(prefix)))
 }
 
 // Factor shared suffixes instead of expanding the condition DAG into a tree.
 fn reconverge(condition: ExprRef, yes: ExprRef, no: ExprRef) -> Option<ExprRef> {
-    if Rc::ptr_eq(&yes, &no) {
+    if ExprRef::ptr_eq(&yes, &no) {
         let yes_value = budget::rc(Expr::Const(budget::rc(PyObject::True)));
         let probe = budget::rc(Expr::Ternary {
             cond: condition,
@@ -138,10 +138,10 @@ fn reconverge(condition: ExprRef, yes: ExprRef, no: ExprRef) -> Option<ExprRef> 
     None
 }
 
-pub(crate) fn reconstruct<S: BuildHasher>(
+pub(crate) fn reconstruct(
     guards: &[Guard],
     instructions: &[Instruction],
-    indexes: &HashMap<usize, usize, S>,
+    indexes: &crate::decompiler::OffsetIndex,
     loop_offset: usize,
     end: usize,
 ) -> Option<ExprRef> {

@@ -88,33 +88,27 @@ impl CodeObject {
     /// `co_localsplusnames` (3.11+) already split into varnames/cellvars/
     /// freevars by the marshal reader. Kept for reference in tests.
     pub fn is_generator(&self) -> bool {
-        let _budget_frame = crate::budget::enter();
         self.flags & CO_GENERATOR != 0
     }
 
     pub fn is_coroutine(&self) -> bool {
-        let _budget_frame = crate::budget::enter();
         self.flags & CO_COROUTINE != 0
     }
 
     pub fn is_async_generator(&self) -> bool {
-        let _budget_frame = crate::budget::enter();
         self.flags & CO_ASYNC_GENERATOR != 0
     }
 
     pub fn has_varargs(&self) -> bool {
-        let _budget_frame = crate::budget::enter();
         self.flags & CO_VARARGS != 0
     }
 
     pub fn has_varkeywords(&self) -> bool {
-        let _budget_frame = crate::budget::enter();
         self.flags & CO_VARKEYWORDS != 0
     }
 
     /// All cell + free variable names in LOAD_DEREF index order.
     pub fn deref_name(&self, i: usize) -> Option<&str> {
-        let _budget_frame = crate::budget::enter();
         self.deref_names.get(i).map(|s| {
             crate::budget::charge(1);
             s.as_str()
@@ -122,7 +116,6 @@ impl CodeObject {
     }
 
     pub fn exception_entries(&self) -> &[ExceptionEntry] {
-        let _budget_frame = crate::budget::enter();
         self.exception_entries.get_or_init(|| {
             crate::budget::charge(1);
             parse_exception_table(&self.exception_table)
@@ -131,7 +124,6 @@ impl CodeObject {
 
     /// (byte offset -> source line) pairs derived from the line table.
     pub fn line_starts(&self) -> &[(usize, u32)] {
-        let _budget_frame = crate::budget::enter();
         self.line_starts.get_or_init(|| {
             crate::budget::charge(1);
 

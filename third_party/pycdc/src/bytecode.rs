@@ -41,13 +41,11 @@ pub struct Instruction {
 
 impl Instruction {
     pub fn is_jump(&self) -> bool {
-        let _budget_frame = crate::budget::enter();
         self.target.is_some()
     }
 
     /// Offset immediately after this instruction (including caches).
     pub fn end(&self) -> usize {
-        let _budget_frame = crate::budget::enter();
         self.start + self.size
     }
 }
@@ -471,25 +469,22 @@ fn normalize_jump(
     jumps_in_words: bool,
     wordcode: bool,
 ) -> Option<usize> {
-    let _budget_frame = crate::budget::enter();
-    let name = table.name(opcode);
-    let backward = name.contains("BACKWARD");
+    let kind = table.jump_kind(opcode);
+    if kind == 0 {
+        return None;
+    }
     let unit = if jumps_in_words { 2usize } else { 1usize };
     let delta = arg as usize * unit;
-
-    if table.is_jabs(opcode) {
+    if kind == 1 {
         // absolute target; 3.10+ counted in words
         let _ = (next, wordcode);
         return Some(delta);
     }
-    if table.is_jrel(opcode) {
-        return if backward {
-            next.checked_sub(delta)
-        } else {
-            next.checked_add(delta)
-        };
+    if kind == 3 {
+        next.checked_sub(delta)
+    } else {
+        next.checked_add(delta)
     }
-    None
 }
 
 /// Render one instruction the way `dis` does, for the disassembler.

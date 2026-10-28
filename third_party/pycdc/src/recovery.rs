@@ -66,7 +66,16 @@ impl<'a> Module<'a> {
             self.add_code(code);
             return;
         }
-        if !visited.insert(object as *const PyObject as usize) {
+        if !matches!(
+            object,
+            PyObject::Tuple(_)
+                | PyObject::List(_)
+                | PyObject::Set(_)
+                | PyObject::FrozenSet(_)
+                | PyObject::Dict(_)
+                | PyObject::Slice(..)
+        ) || !visited.insert(object as *const PyObject as usize)
+        {
             return;
         }
         match object {

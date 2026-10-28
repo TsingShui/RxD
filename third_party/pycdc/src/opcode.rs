@@ -64,6 +64,8 @@ pub struct OpcodeTable {
     has_arg: Vec<bool>,
     jrel: Vec<bool>,
     jabs: Vec<bool>,
+    /// 0 = not a jump, 1 = absolute, 2 = relative forward, 3 = relative backward
+    jump_kind: Vec<u8>,
     compare: Vec<bool>,
     is_const: Vec<bool>,
     is_name: Vec<bool>,
@@ -103,6 +105,26 @@ impl OpcodeTable {
         } else {
             flags(256, &cfg.hasarg)
         };
+        let jrel = flags(256, &cfg.hasjrel);
+        let jabs = flags(256, &cfg.hasjabs);
+        let jump_kind = (0..256)
+            .map(|b| {
+                if jabs[b] {
+                    1
+                } else if jrel[b]
+                    && ops[b] != Op::END_ASYNC_FOR
+                    && names[b] != "INSTRUMENTED_END_ASYNC_FOR"
+                {
+                    if names[b].contains("BACKWARD") {
+                        3
+                    } else {
+                        2
+                    }
+                } else {
+                    0
+                }
+            })
+            .collect();
         let mut cache = vec![0u8; 256];
         for (k, n) in &cfg.cache_entries {
             if let Ok(b) = k.parse::<usize>() {
@@ -119,8 +141,9 @@ impl OpcodeTable {
             ops,
             byte_of,
             has_arg,
-            jrel: flags(256, &cfg.hasjrel),
-            jabs: flags(256, &cfg.hasjabs),
+            jrel,
+            jabs,
+            jump_kind,
             compare: flags(256, &cfg.hascompare),
             is_const: flags(256, &cfg.hasconst),
             is_name: flags(256, &cfg.hasname),
@@ -151,6 +174,11 @@ impl OpcodeTable {
 
     pub fn has_arg(&self, byte: u8) -> bool {
         self.has_arg[byte as usize]
+    }
+
+    #[inline]
+    pub fn jump_kind(&self, byte: u8) -> u8 {
+        self.jump_kind.get(byte as usize).copied().unwrap_or(0)
     }
 
     pub fn is_jrel(&self, byte: u8) -> bool {

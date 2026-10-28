@@ -79,7 +79,6 @@ struct Output {
 impl Output {
     fn reserve_write(&mut self, extra: usize) -> bool {
         crate::budget::charge(extra);
-        let _budget_frame = crate::budget::enter();
         if self.exceeded
             || self
                 .limit
@@ -94,21 +93,18 @@ impl Output {
     }
 
     fn push_str(&mut self, text: &str) {
-        let _budget_frame = crate::budget::enter();
         if self.reserve_write(text.len()) {
             self.text.push_str(text);
         }
     }
 
     fn push(&mut self, ch: char) {
-        let _budget_frame = crate::budget::enter();
         if self.reserve_write(ch.len_utf8()) {
             self.text.push(ch);
         }
     }
 
     fn insert(&mut self, index: usize, ch: char) {
-        let _budget_frame = crate::budget::enter();
         if self.reserve_write(ch.len_utf8()) {
             self.text.insert(index, ch);
         }
@@ -119,14 +115,12 @@ impl std::ops::Deref for Output {
     type Target = str;
 
     fn deref(&self) -> &str {
-        let _budget_frame = crate::budget::enter();
         &self.text
     }
 }
 
 impl std::fmt::Write for Output {
     fn write_str(&mut self, text: &str) -> std::fmt::Result {
-        let _budget_frame = crate::budget::enter();
         self.push_str(text);
         if self.exceeded {
             Err(std::fmt::Error)
@@ -167,7 +161,7 @@ pub fn generate_limited(
     clean: bool,
     limit: impl Into<Option<usize>>,
 ) -> crate::Result<String> {
-    generate_with_recovery(body, version, clean, limit.into(), None, 0)
+    generate_with_recovery(body, version, clean, limit.into(), None, 0, true)
 }
 
 pub(crate) fn generate_recovering(
@@ -184,6 +178,7 @@ pub(crate) fn generate_recovering(
         limit,
         Some(module),
         root_index,
+        false,
     )
 }
 
@@ -194,9 +189,12 @@ fn generate_with_recovery(
     limit: Option<usize>,
     recovery: Option<&crate::recovery::Module<'_>>,
     root_index: usize,
+    validate_ast: bool,
 ) -> crate::Result<String> {
     let _budget_frame = crate::budget::enter();
-    crate::budget::statements(body);
+    if validate_ast {
+        crate::budget::statements(body);
+    }
     let mut p = Printer {
         out: Output {
             text: String::new(),
@@ -368,7 +366,6 @@ impl Printer<'_> {
     }
 
     fn write(&mut self, s: &str) {
-        let _budget_frame = crate::budget::enter();
         if self.at_line_start && !s.is_empty() {
             for _ in 0..self.indent {
                 crate::budget::charge(1);
@@ -383,13 +380,11 @@ impl Printer<'_> {
     }
 
     fn newline(&mut self) {
-        let _budget_frame = crate::budget::enter();
         self.out.push('\n');
         self.at_line_start = true;
     }
 
     fn write_line(&mut self, s: &str) {
-        let _budget_frame = crate::budget::enter();
         self.write(s);
         self.newline();
     }
@@ -2201,25 +2196,34 @@ impl Printer<'_> {
             return;
         }
         self.write(quote);
-        for ch in s.chars() {
-            crate::budget::charge(1);
-            match ch {
-                '\n' => self.write("\\n"),
-                '\r' => self.write("\\r"),
-                '\t' => self.write("\\t"),
-                '\\' => self.write("\\\\"),
-                c if quote.starts_with(c) => {
+        let quote_byte = quote.as_bytes()[0];
+        let mut start = 0;
+        for (offset, &byte) in s.as_bytes().iter().enumerate() {
+            if byte >= 0x20 && byte != 0x7f && byte != b'\\' && byte != quote_byte {
+                continue;
+            }
+            let text = &s[start..offset];
+            crate::budget::charge(text.chars().count().saturating_add(1));
+            self.write(text);
+            match byte {
+                b'\n' => self.write("\\n"),
+                b'\r' => self.write("\\r"),
+                b'\t' => self.write("\\t"),
+                b'\\' => self.write("\\\\"),
+                c if c == quote_byte => {
                     self.write("\\");
-                    self.write(&crate::budget_string!(c));
-                }
-                c if (c as u32) < 0x20 || c as u32 == 0x7f => {
-                    let _ = write!(self.out, "\\x{:02x}", c as u32);
+                    crate::budget::charge(1);
+                    self.out.push(c as char);
                 }
                 c => {
-                    let _ = write!(self.out, "{c}");
+                    let _ = write!(self.out, "\\x{c:02x}");
                 }
             }
+            start = offset + 1;
         }
+        let text = &s[start..];
+        crate::budget::charge(text.chars().count());
+        self.write(text);
         self.write(quote);
     }
 
