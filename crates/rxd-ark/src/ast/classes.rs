@@ -408,28 +408,48 @@ fn class<'a>(ast: &Ast<'a>) -> Statement<'a> {
         ),
         ast.var(
             "fn",
-            Some(ast.call(
-                ast.id("__ark_method"),
-                vec![
-                    entry(1.0),
-                    entry(2.0),
-                    ast.id("home"),
-                    ast.id("context"),
-                    entry(0.0),
-                ],
+            Some(Expression::new_conditional_expression(
+                SPAN,
+                entry(4.0),
+                ast.call(
+                    ast.id("__ark_method"),
+                    vec![
+                        entry(1.0),
+                        entry(2.0),
+                        ast.id("home"),
+                        ast.id("context"),
+                        entry(0.0),
+                    ],
+                ),
+                entry(1.0),
+                &ast.build,
             )),
             true,
         ),
-        define(
-            ast,
-            ast.id("home"),
-            entry(0.0),
-            vec![
-                ("value", ast.id("fn")),
-                ("writable", ast.boolean(true)),
-                ("enumerable", ast.boolean(false)),
-                ("configurable", ast.boolean(true)),
-            ],
+        ast.if_(
+            entry(5.0),
+            vec![define(
+                ast,
+                ast.id("home"),
+                entry(0.0),
+                vec![
+                    ("get", ast.property(ast.id("fn"), "get")),
+                    ("set", ast.property(ast.id("fn"), "set")),
+                    ("enumerable", ast.boolean(false)),
+                    ("configurable", ast.boolean(true)),
+                ],
+            )],
+            Some(vec![define(
+                ast,
+                ast.id("home"),
+                entry(0.0),
+                vec![
+                    ("value", ast.id("fn")),
+                    ("writable", ast.boolean(true)),
+                    ("enumerable", ast.boolean(false)),
+                    ("configurable", ast.boolean(true)),
+                ],
+            )]),
         ),
     ];
     let binding = ForStatementLeft::new_variable_declaration(

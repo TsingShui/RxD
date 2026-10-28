@@ -102,7 +102,11 @@ pub(crate) fn structure(
         residual_blocks: 0,
         structured_tries: 0,
     };
-    let mut nodes = builder.region(0, None, None, false, None)?;
+    let mut nodes = if function.frame.residual_only {
+        vec![builder.residual(0, None, None, None)?]
+    } else {
+        builder.region(0, None, None, false, None)?
+    };
     if function
         .graph
         .reachable

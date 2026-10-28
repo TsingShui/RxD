@@ -26,6 +26,17 @@ pub enum ReconstructionWarning {
     ClassReconstruction,
     GeneratorReconstruction,
     ControlFlowReconstruction,
+    PrivateProperties,
+    RuntimeBindings,
+    JavaScriptIntrinsics,
+    AssumedBranchSemantics,
+    SendableSemantics,
+    LazyModuleTiming,
+    AsyncFrameApproximation,
+    ExceptionTypeSemantics,
+    CoroutineAliasing,
+    FrameConventions,
+    IteratorOperations,
 }
 
 impl ReconstructionWarning {
@@ -38,6 +49,17 @@ impl ReconstructionWarning {
             Self::ClassReconstruction => "ARK_CLASS_RECONSTRUCTION",
             Self::GeneratorReconstruction => "ARK_GENERATOR_RECONSTRUCTION",
             Self::ControlFlowReconstruction => "ARK_CONTROL_FLOW_RECONSTRUCTION",
+            Self::PrivateProperties => "ARK_PRIVATE_PROPERTIES",
+            Self::RuntimeBindings => "ARK_RUNTIME_BINDINGS",
+            Self::JavaScriptIntrinsics => "ARK_JS_INTRINSICS",
+            Self::AssumedBranchSemantics => "ARK_BRANCH_SEMANTICS",
+            Self::SendableSemantics => "ARK_SENDABLE_SEMANTICS",
+            Self::LazyModuleTiming => "ARK_LAZY_MODULE_TIMING",
+            Self::AsyncFrameApproximation => "ARK_ASYNC_FRAME",
+            Self::ExceptionTypeSemantics => "ARK_EXCEPTION_TYPES",
+            Self::CoroutineAliasing => "ARK_COROUTINE_ALIASING",
+            Self::FrameConventions => "ARK_FRAME_CONVENTIONS",
+            Self::IteratorOperations => "ARK_ITERATOR_OPERATIONS",
         }
     }
 
@@ -63,6 +85,39 @@ impl ReconstructionWarning {
             }
             Self::ControlFlowReconstruction => {
                 "original source structure was not recovered here; decoded branches and handlers are represented by state dispatch"
+            }
+            Self::PrivateProperties => {
+                "private fields use hidden per-object storage; Ark proxy unwrapping, inherited brands and AOT symbol identity may differ"
+            }
+            Self::RuntimeBindings => {
+                "runtime bindings use explicit context records and globalThis fallback; host lexical globals and patch lifecycle may differ"
+            }
+            Self::JavaScriptIntrinsics => {
+                "operation uses JavaScript intrinsics; Ark VM-specific behavior, reflection and modified globals may differ"
+            }
+            Self::AssumedBranchSemantics => {
+                "comparison follows the opcode spelling; the pinned interpreter does not implement this branch variant"
+            }
+            Self::SendableSemantics => {
+                "sendable state uses one JS realm; field layouts are retained but VM sharing, type enforcement, lexical class lookup and task scheduling are approximate"
+            }
+            Self::LazyModuleTiming => {
+                "lazy/sendable module access is reconstructed as an eager ordinary JS import; initialization timing and sharing may differ"
+            }
+            Self::AsyncFrameApproximation => {
+                "noncanonical async protocol uses explicit resume/promise state and JavaScript scheduling; VM promise identity and protocol-edge behavior may differ"
+            }
+            Self::ExceptionTypeSemantics => {
+                "typed catches follow the pinned dynamic interpreter's first encoded handler; no static-language type filter is inferred"
+            }
+            Self::CoroutineAliasing => {
+                "multiple generator identities share one reconstructed continuation; independent VM frame snapshots are NOT recovered"
+            }
+            Self::FrameConventions => {
+                "unclassified function kind uses the encoded call-type argument frame and an ordinary JS callable; VM callable-kind restrictions may differ"
+            }
+            Self::IteratorOperations => {
+                "iterator operations use JavaScript protocols; pending-exception precedence, async-from-sync edge cases and modified globals may differ"
             }
         }
     }
@@ -143,7 +198,7 @@ impl Abc<'_> {
                     } => {
                         constructors.insert(*constructor);
                         std::iter::once(*constructor)
-                            .chain(members.iter().map(|member| member.method))
+                            .chain(members.iter().filter_map(|member| member.method))
                             .collect()
                     }
                     _ => vec![],

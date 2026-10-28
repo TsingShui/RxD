@@ -7,7 +7,10 @@ not copied or called. Removing that crate does not remove this crate's sources.
 
 The production `rxd ark` CLI and reflected MCP tools use this engine directly.
 Best-effort semantic bridges and residual control flow carry source-local warnings;
-unmodelled operations still fail explicitly. There is no old-engine fallback.
+all 323 pinned opcode encodings have lowering paths, including legacy forms.
+There is no old-engine fallback. Listings use the shared `# ` TAB-column header,
+including empty successes; text cells are JSON-quoted. Source/raw FETCH remains
+plain, and CLI/MCP carry the same bytes.
 
 ## Pipeline
 
@@ -32,10 +35,15 @@ unmodelled operations still fail explicitly. There is no old-engine fallback.
   contexts. There is no generated-JS parser, old emitter, generic minifier or
   production Node/xpanda invocation. Cross-block phi construction is still pending.
 
-Async lowering requires the complete promise frame, matching await/resume
-sequence, rejection throw dispatch and unchanged exception coverage. Branches
-into a protocol's interior fail. Register snapshots and separate property reads
-are retained rather than assuming getters are pure.
+Canonical async lowering requires a complete promise frame, matching await/resume
+sequence, rejection throw dispatch and unchanged exception coverage. Other valid
+frames retain explicit promise/resume operations and carry `ARK_ASYNC_FRAME`.
+Async generators use a queued JS async-generator driver with separate internal
+suspension and externally yielded iterator results. Multiple generator identities
+share one continuation with an explicit `ARK_COROUTINE_ALIASING` warning; independent
+VM frame snapshots are not recovered. Unknown function kinds retain their encoded
+call-type frame and carry `ARK_FRAME_CONVENTIONS`.
+Register snapshots and separate property reads are retained, not assumed pure.
 
 Exception plans retain encoded handler priority, exception-to-accumulator writes,
 loop exits and one emission owner per block. A region is structured only when its
@@ -71,9 +79,32 @@ use JS iteration (`ARK_SPREAD_CALL`). Difficult control flow retains state dispa
 and handler priority with `ARK_CONTROL_FLOW_RECONSTRUCTION`; warning never means
 that an empty body or disassembly was substituted for source.
 
-Corrupt input, invalid references and resource failures remain explicit errors.
-Unmodelled instructions or literal layouts still return `DECOMPILE_FAILED`, with
-the actual method coordinate, including required nested dependencies.
+BigInt and regex literals, object rest, template objects, iterator closing and
+async iteration use directly constructed JS ASTs and focused intrinsic bridges.
+Regex flags follow the pinned VM bit assignments. Template arrays retain raw-array
+identity, descriptors and freezing. Object rest preserves key conversion, exclusions,
+getters and descriptors. Legacy forms retain their explicit register operands,
+function ranges, module bindings and definition environments rather than changing
+frame state to create a closure. Nested dynamic literal arrays are bounded and
+cycle-checked; class buffers accept method and scalar/accessor properties.
+
+Private fields use per-object hidden storage and explicit lexical keys; private
+getter/setter functions are called with their receiver. Sendable field metadata,
+local environments and concurrent results remain explicit, but VM sharing, field
+type enforcement, lexical class lookup and scheduling are approximate. Lazy module
+loads use ordinary eager JS imports. Global/patch operations retain explicit binding
+records; name collisions and non-scalar globals use a warned runtime-binding bridge.
+`ARK_PRIVATE_PROPERTIES`, `ARK_SENDABLE_SEMANTICS`, `ARK_LAZY_MODULE_TIMING`,
+`ARK_RUNTIME_BINDINGS`, `ARK_ITERATOR_OPERATIONS` and `ARK_JS_INTRINSICS` identify
+these limits at affected operations. The unimplemented comparison branches in the
+pinned runtime are reconstructed according to their opcode names with
+`ARK_BRANCH_SEMANTICS`. Typed catches follow that runtime's first encoded handler,
+not an invented type test (`ARK_EXCEPTION_TYPES`); overlapping ranges use dispatch.
+
+Corrupt input, invalid references, cyclic literal expansion and resource failures
+remain explicit errors. Static ABC/typed-array formats and versions other than
+12.0.6.0 remain outside admission. Per-encoding coverage is not proof of correct
+behavior for every instruction combination, runtime path or unusual program.
 
 `getiterator` is reconstructed using standard JavaScript iterator semantics. Its
 helper reads the iterator property once, calls it with the original receiver and
@@ -126,6 +157,8 @@ semantic review.
   `method_literal.cpp::ParseFunctionName` strips compiler name prefixes/suffixes.
   `js_generator_object.{h,cpp}` and `generator_helper.cpp` define resume modes,
   suspended-start abrupt completion and iterator-result wrapping.
+  `template_string.cpp`, `regexp/regexp_parser.h` and `global_env_constants.h`
+  supply template descriptors, regex flag bits and error-message constants.
 - Oxc **0.153.0**, MIT: allocator, AST, span/string, syntax and codegen.
   All six direct dependencies are pinned equally; source maps are disabled.
   Registry checksums are retained in `Cargo.lock`.

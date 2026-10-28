@@ -1,8 +1,12 @@
+mod async_frame;
 mod classes;
+mod extra;
 mod generator;
 mod intrinsics;
 mod iteration;
 mod lower;
 mod module;
 mod nodes;
+mod private;
+mod sendable;
 pub(crate) use lower::{Prepared, lower};

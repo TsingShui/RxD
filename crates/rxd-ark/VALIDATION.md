@@ -2,7 +2,8 @@
 
 `rxd ark` and its reflected MCP tools use **`rxd-ark`**. Older milestone evidence
 below predates the production cutover. Approximations carry source-local warnings;
-unmodelled operations and input-safety failures remain explicit errors.
+input-safety failures remain explicit errors. All pinned dynamic opcode encodings
+now have reconstruction paths; this is not a universal runtime-equivalence claim.
 
 ## Fixed input and observed coverage
 
@@ -22,8 +23,8 @@ Dev-profile full-input scan:
 | Successful module records | 376 / 376 |
 | Independent Babel method parses / failures | 14,082 / 0 |
 | Independent Babel record parses / failures | 376 / 0 |
-| Method queries / record outputs with any source warning | 1,407 / 303 |
-| Emitted method-source bytes, including required nested definitions and warnings | 65,133,201 |
+| Method queries / record outputs with any source warning | 1,412 / 303 |
+| Emitted method-source bytes, including required nested definitions and warnings | 65,250,568 |
 
 Nine auxiliary records have no module initializer. Before the best-effort expansion,
 the 826 method failures had these first errors; all now produce source, without
@@ -49,7 +50,61 @@ comparisons do not prove general semantics. Performance measurement and new
 tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Best-effort class, generator and iteration expansion
+## Complete pinned opcode surface
+
+All **323 encodings / 259 names** in the retained dynamic 12.0.6.0 ISA now have
+lowering paths. BigInt/regex, rest/template/iterator operations, private fields,
+sendable/lazy bindings, legacy register forms and async generators are represented
+by typed IR and directly built Oxc ASTs. Canonical async normalization remains the
+preferred path; a rejected optimization now retains explicit promise/resume state
+with `ARK_ASYNC_FRAME` instead of refusing the method. Unclassified function kinds,
+multiple generator identities, extra comparison branches and typed/overlapping
+catch regions each have explicit source warnings describing their chosen model.
+Private/sendable/legacy support does not use a generic opcode-dispatch placeholder.
+
+A real-process per-encoding scan independently generated checked ABC containers,
+verified each first raw opcode name, and obtained source with empty stderr for all
+323. Babel parsed all of them and found no unbound generated identifiers. Fourteen
+additional combinations exercised private initialization/access, sendable layouts,
+rest/template operations, async-generator yield/await, noncanonical async frames,
+multiple identities, unknown function kinds, arrow rest arguments, colliding and
+non-scalar global names, explicit legacy definition environments, overlapping typed
+catches and accessor literals. All produced source and expected warning markers;
+all parsed with no unbound generated identifiers. These inert fixtures were not
+executed; they validate reconstruction paths, not runtime outcomes or all possible
+opcode combinations.
+
+The full fixed production scan still reconstructs 14,082 methods and 376 source
+records. Every source parsed and its source-warning kind set matched the typed
+warning vector. 13,780 method sources were byte-identical to the preceding expansion;
+302 changed with generalized class literal metadata, generator bridges or retained
+runtime notification semantics. No successful target disappeared.
+
+The current output agreement is the shared format merged at `fa2a5fd`: listings
+start with one `# ` TAB-column header even for successful empty results; text cells
+are JSON-quoted. Source and raw FETCH stay plain, with approximation warnings only
+as source comments. Ark continues using `src/cli/table.rs` without a private format.
+74 selected CLI results, including ordinary/empty record/method tables and source/raw
+results, matched between debug/release and ABC/HAP; 21 real MCP results matched CLI.
+
+No new Rust tests were added. Existing assertions expecting now-supported inputs to
+fail were updated; checksum/index/region/MUTF8/HAP safety and atomic errors remain
+unchanged. The latest focused CLI/MCP suite has 17 checks after the separate shared
+output-format milestone, and passes in debug and release. Reduced-feature test
+builds emit existing unused-helper warnings. Package Clippy and product-bin Clippy
+pass with `-D warnings`; a broader all-targets attempt stopped on the unrelated
+unused `failure` import in `tests/dex/mod.rs` from the shared output-format change.
+That unrelated file was not changed here. Formatting and whitespace checks pass.
+
+Evidence and generators are retained under ignored
+`target/verification/ark/all-opcodes/`. Static typed-array/static ABC formats, other
+versions, invalid references, cyclic expansion and explicit resource failures remain
+outside successful reconstruction. Reflection, host lexical globals, VM sendability
+and rare coroutine/iterator semantics remain warned approximations. Nothing here
+claims exact behavior for every valid program. Analyzed and reconstructed code was
+not executed, and performance measurement remains paused.
+
+## Best-effort class, generator and iteration expansion (historical)
 
 The operator requested reconstruction in the new engine, including imperfect
 structure, with approximation warnings at the affected source sites. Class shells

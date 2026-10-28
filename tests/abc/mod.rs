@@ -251,7 +251,13 @@ fn ark_uses_declared_function_kinds_and_rejects_unproven_arrow_frames() {
     );
     let (bytes, at, _) = fixture_with_kind(0x308, 0, 3, &[0x65], &[]);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_FRAME_CONVENTIONS]")
+    );
 
     let (bytes, at, _) = fixture_with_kind(0x208, 3, 3, &[0x45, 0, 3, 0x64], &[]);
     fs::write(&input, bytes).unwrap();
@@ -570,12 +576,14 @@ fn ark_reconstructs_expressions_if_else_and_loops_without_executing_bytecode() {
     fs::write(&input, &bytes).unwrap();
     let output = directory.path().join("source.js");
     fs::write(&output, b"sentinel").unwrap();
-    failure(
-        source(&input, &at, &["-o", output.to_str().unwrap()]),
-        1,
-        "DECOMPILE_FAILED",
+    let result = source(&input, &at, &["-o", output.to_str().unwrap()]);
+    success(&result);
+    assert!(result.stdout.is_empty());
+    assert!(
+        fs::read_to_string(output)
+            .unwrap()
+            .contains("warning[ARK_ASYNC_FRAME]")
     );
-    assert_eq!(fs::read(output).unwrap(), b"sentinel");
 }
 
 #[test]
@@ -735,7 +743,13 @@ fn ark_reconstructs_nested_definitions_with_shared_lexical_cells() {
 
     let (bytes, parent, _) = fixture_with_nested(&[0x33, 0, 0, 0, 0, 0x64], &[0xad, 0x64]);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &parent, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &parent, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_JS_INTRINSICS]")
+    );
 
     let (bytes, parent, child) =
         fixture_with_nested(&[0x33, 0, 0, 0, 0, 0x64], &[0x33, 0, 1, 0, 0, 0x64]);
@@ -869,9 +883,15 @@ fn ark_reconstructs_a_proven_async_resolve_and_reject_wrapper() {
         &[3, 10, 1, 0, 13, 5],
     );
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_ASYNC_FRAME]")
+    );
 
-    // The promise cell must not escape through an implicit argument register range.
+    // Escaping promise cells retain the explicit frame instead of canonical async lowering.
     let (bytes, at, _) = fixture_with_kind(
         0x408,
         2,
@@ -882,7 +902,13 @@ fn ark_reconstructs_a_proven_async_resolve_and_reject_wrapper() {
         &[3, 8, 1, 0, 11, 5],
     );
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_ASYNC_FRAME]")
+    );
 }
 
 #[test]
@@ -913,12 +939,18 @@ fn ark_reconstructs_a_catch_all_without_executing_the_input() {
     assert!(text.contains("} catch (__ark_exception_0) {"), "{text}");
     assert!(text.contains("acc = __ark_exception_0;"), "{text}");
 
-    // A typed catch must fail rather than become an unconditional catch.
+    // The pinned dynamic interpreter ignores typed tags; make that choice explicit.
     let type_byte = bytes.len() - 3;
     bytes[type_byte] = 1;
     checksum(&mut bytes);
     fs::write(&input, &bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_EXCEPTION_TYPES]")
+    );
 
     let (mut bytes, at) = fixture_with_body(
         1,
@@ -964,7 +996,13 @@ fn ark_reconstructs_exact_global_bindings_and_scalar_literal_buffers() {
     let (mut bytes, at) = fixture_with_body(0, 3, &[0x3f, 0, 0, 0, 0x64]);
     append_entity(&mut bytes, 0, b"\x07acc\0");
     fs::write(&input, &bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("__ark_global_get(\"acc\")")
+    );
 
     let (mut bytes, at) = fixture_with_body(0, 3, &[0x07, 0, 0, 0, 0x64]);
     let expected = expected();
@@ -1005,7 +1043,13 @@ fn ark_reconstructs_exact_global_bindings_and_scalar_literal_buffers() {
     unsupported.extend_from_slice(&[8, 0]);
     append_entity(&mut bytes, 0, &unsupported);
     fs::write(&input, &bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_JS_INTRINSICS]")
+    );
 }
 
 #[test]

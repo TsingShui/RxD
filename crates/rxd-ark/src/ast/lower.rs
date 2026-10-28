@@ -2,7 +2,6 @@ use super::nodes::Ast;
 use crate::{
     Module,
     analysis::Values,
-    ir::lift::unsupported,
     ir::*,
     reader::{invalid, resource},
     structure::{Body, Choice, Condition, LoopContext, Node},
@@ -42,10 +41,21 @@ impl SourceWarnings {
         statement: &mut Statement<'_>,
         warning: crate::ReconstructionWarning,
     ) -> Result<()> {
-        let anchor = self.next_anchor;
-        self.next_anchor = anchor
-            .checked_add(1)
-            .ok_or_else(|| resource("Ark warning anchor exceeds span range"))?;
+        let current = statement.span_mut().start;
+        let anchor = if self
+            .comments
+            .last()
+            .is_some_and(|comment| comment.attached_to == current)
+        {
+            current
+        } else {
+            let anchor = self.next_anchor;
+            self.next_anchor = anchor
+                .checked_add(1)
+                .ok_or_else(|| resource("Ark warning anchor exceeds span range"))?;
+            *statement.span_mut() = Span::new(anchor, self.next_anchor);
+            anchor
+        };
         self.comments
             .len()
             .checked_add(1)
@@ -55,7 +65,6 @@ impl SourceWarnings {
         self.comments
             .try_reserve(1)
             .map_err(|_| resource("Ark warning allocation failed"))?;
-        *statement.span_mut() = Span::new(anchor, self.next_anchor);
         let text = format!("// warning[{}]: {}", warning.code(), warning.message());
         let start = u32::try_from(self.source.len())
             .map_err(|_| resource("Ark warning source exceeds span range"))?;
@@ -73,6 +82,7 @@ impl SourceWarnings {
         let mut comment = Comment::new(start, end, CommentKind::Line);
         comment.attached_to = anchor;
         comment.position = CommentPosition::Leading;
+        comment.newlines = CommentNewlines::Leading;
         self.comments.push(comment);
         Ok(())
     }
@@ -120,7 +130,78 @@ pub(crate) fn lower(
                 .any(|(id, value)| unit.values.needed[id] && predicate(&value.op))
         })
     };
-    if uses_standard_iterator || has_op(|op| matches!(op, Op::ArraySpread(..))) {
+    let mut intrinsic_kinds: BTreeSet<_> = units
+        .iter()
+        .flat_map(|unit| {
+            unit.function
+                .values
+                .iter()
+                .enumerate()
+                .filter_map(|(index, value)| {
+                    if unit.values.needed[index]
+                        && let Op::Intrinsic(kind, _) = value.op
+                    {
+                        Some(kind)
+                    } else {
+                        None
+                    }
+                })
+        })
+        .collect();
+    let global_records = intrinsic_kinds.iter().any(|kind| {
+        matches!(
+            kind,
+            Intrinsic::GlobalGet | Intrinsic::GlobalSet | Intrinsic::GlobalDeclare
+        )
+    }) || has_op(
+        |op| matches!(op,Op::Global(name) if name.scalar_text().is_none_or(|text| !identifier(text))),
+    );
+    if global_records {
+        intrinsic_kinds.insert(Intrinsic::GlobalGet);
+    }
+    if intrinsic_kinds.contains(&Intrinsic::ObjectRest)
+        || intrinsic_kinds.contains(&Intrinsic::OwnNamed)
+    {
+        intrinsic_kinds.insert(Intrinsic::PropertyKey);
+    }
+    if intrinsic_kinds.contains(&Intrinsic::AsyncIterator) {
+        intrinsic_kinds.insert(Intrinsic::CloseIterator);
+    }
+    if intrinsic_kinds.contains(&Intrinsic::CloseIterator)
+        || intrinsic_kinds.contains(&Intrinsic::AsyncIterator)
+    {
+        intrinsic_kinds.insert(Intrinsic::IteratorNext);
+    }
+    statements.extend(super::extra::helpers(&ast, &intrinsic_kinds));
+    if intrinsic_kinds.iter().any(|kind| {
+        matches!(
+            kind,
+            Intrinsic::SendableClass
+                | Intrinsic::SendableEnv
+                | Intrinsic::SendableGet
+                | Intrinsic::SendableSet
+                | Intrinsic::SendableLoadClass
+                | Intrinsic::ConcurrentResult
+        )
+    }) {
+        statements.extend(super::sendable::helpers(&ast));
+    }
+    if intrinsic_kinds.iter().any(|kind| {
+        matches!(
+            kind,
+            Intrinsic::PrivateGet
+                | Intrinsic::PrivateSet
+                | Intrinsic::PrivateDefine
+                | Intrinsic::PrivateHas
+                | Intrinsic::PrivateKeys
+        )
+    }) {
+        statements.extend(super::private::helpers(&ast));
+    }
+    if uses_standard_iterator
+        || has_op(|op| matches!(op, Op::ArraySpread(..)))
+        || intrinsic_kinds.contains(&Intrinsic::AsyncIterator)
+    {
         statements.push(super::intrinsics::get_iterator(&ast));
     }
     if has_op(|op| matches!(op, Op::ArraySpread(..))) {
@@ -129,8 +210,32 @@ pub(crate) fn lower(
     if has_op(|op| matches!(op, Op::Apply(..))) {
         statements.push(super::iteration::apply(&ast));
     }
-    if units.iter().any(|unit| unit.function.frame.generator) {
-        statements.extend(super::generator::helpers(&ast));
+    let async_intrinsics = intrinsic_kinds.iter().any(|kind| {
+        matches!(
+            kind,
+            Intrinsic::AsyncEnter
+                | Intrinsic::AsyncAwait
+                | Intrinsic::AsyncResolve
+                | Intrinsic::AsyncReject
+                | Intrinsic::AsyncGenReject
+                | Intrinsic::AsyncPause
+                | Intrinsic::GeneratorState
+        )
+    });
+    if units.iter().any(|unit| unit.function.frame.generator)
+        || has_op(|op| matches!(op, Op::GeneratorResume(..)))
+        || async_intrinsics
+    {
+        statements.extend(super::generator::helpers(&ast, false));
+    }
+    if units.iter().any(|unit| unit.function.frame.async_generator) {
+        statements.extend(super::generator::helpers(&ast, true));
+    }
+    if async_intrinsics {
+        statements.extend(super::async_frame::helpers(&ast));
+    }
+    if units.iter().any(|unit| unit.function.frame.multi_generator) {
+        statements.push(super::generator::alias(&ast));
     }
     if has_op(|op| matches!(op, Op::Keys(_))) {
         statements.push(super::iteration::property_iterator(&ast));
@@ -157,7 +262,7 @@ pub(crate) fn lower(
         &ast,
         has_op(|op| matches!(op, Op::Class { .. })),
         has_op(|op| matches!(op, Op::Method { .. })),
-        own,
+        own || intrinsic_kinds.contains(&Intrinsic::OwnNamed),
         accessors,
     ));
     if units.iter().any(|unit| {
@@ -181,6 +286,7 @@ pub(crate) fn lower(
             module,
             budget,
             module_mode: main.is_some(),
+            global_records,
             warnings: &warnings,
         };
         statements.push(lower.function().map_err(|error| {
@@ -322,6 +428,7 @@ struct Lower<'f, 'a, 's> {
     module: Option<&'f Module>,
     budget: Budget,
     module_mode: bool,
+    global_records: bool,
     warnings: &'f RefCell<SourceWarnings>,
 }
 
@@ -365,7 +472,11 @@ impl<'a> Lower<'_, 'a, '_> {
         let uses_env = function.values.iter().any(|value| {
             matches!(
                 value.op,
-                Op::LoadCell { .. } | Op::Closure { .. } | Op::Class { .. } | Op::Method { .. }
+                Op::LoadCell { .. }
+                    | Op::Environment
+                    | Op::Closure { .. }
+                    | Op::Class { .. }
+                    | Op::Method { .. }
             )
         }) || function
             .blocks
@@ -406,8 +517,20 @@ impl<'a> Lower<'_, 'a, '_> {
         let params: Vec<_> = (0..function.frame.params)
             .map(|index| format!("p{index}"))
             .collect();
+        let arrow_arguments = function.frame.arrow
+            && function.values.iter().any(|value| {
+                matches!(
+                    value.op,
+                    Op::RestArgs(_) | Op::Intrinsic(Intrinsic::Arguments, _)
+                )
+            });
         let expression = if function.frame.generator {
-            let mut inner = self.ast.function("__ark_run", params.clone(), body, false);
+            let mut inner = self.ast.function(
+                "__ark_run",
+                params.clone(),
+                body,
+                function.frame.async_generator,
+            );
             if let Expression::FunctionExpression(inner) = &mut inner {
                 inner.generator = true;
             }
@@ -431,12 +554,16 @@ impl<'a> Lower<'_, 'a, '_> {
                 self.ast
                     .var("__ark_generator", Some(self.ast.object(vec![])), true),
                 self.ast.ret(Some(self.ast.call(
-                    self.ast.id("__ark_drive"),
+                    self.ast.id(if function.frame.async_generator {
+                        "__ark_async_drive"
+                    } else {
+                        "__ark_drive"
+                    }),
                     vec![run, self.ast.id("__ark_generator")],
                 ))),
             ];
             self.ast.function(&function_name, params, wrapper, false)
-        } else if function.frame.arrow {
+        } else if function.frame.arrow && !arrow_arguments {
             let body = FunctionBody::boxed(
                 SPAN,
                 self.ast.vec([Directive::new_use_strict(&self.ast.build)]),
@@ -469,6 +596,42 @@ impl<'a> Lower<'_, 'a, '_> {
             self.warnings.borrow_mut().attach(
                 &mut declaration,
                 crate::ReconstructionWarning::ClassReconstruction,
+            )?;
+        }
+        if self.global_records {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::RuntimeBindings,
+            )?;
+        }
+        if arrow_arguments {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::JavaScriptIntrinsics,
+            )?;
+        }
+        if function.frame.raw_async || function.frame.async_generator {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::AsyncFrameApproximation,
+            )?;
+        }
+        if function.frame.typed_catches {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::ExceptionTypeSemantics,
+            )?;
+        }
+        if function.frame.multi_generator {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::CoroutineAliasing,
+            )?;
+        }
+        if function.frame.frame_warning {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::FrameConventions,
             )?;
         }
         Ok(declaration)
@@ -513,12 +676,15 @@ impl<'a> Lower<'_, 'a, '_> {
         }
     }
     fn context(&self) -> Expression<'a> {
+        self.context_env(self.ast.id("__ark_env"))
+    }
+    fn context_env(&self, env: Expression<'a>) -> Expression<'a> {
         self.ast.object(vec![
             (
                 self.ast.string("home"),
                 self.ast.property(self.ast.id("__ark_context"), "home"),
             ),
-            (self.ast.string("env"), self.ast.id("__ark_env")),
+            (self.ast.string("env"), env),
             (
                 self.ast.string("hole"),
                 self.ast.property(self.ast.id("__ark_context"), "hole"),
@@ -597,20 +763,18 @@ impl<'a> Lower<'_, 'a, '_> {
             Op::NewTarget => self.new_target(),
             Op::Function => self.current_function(),
             Op::Global(name) => {
-                let name = name
-                    .scalar_text()
-                    .ok_or_else(|| unsupported(value.pc, "non-scalar global binding"))?;
-                if !identifier(name) {
-                    return Err(unsupported(
-                        value.pc,
-                        "global binding conflicts with generated names",
-                    ));
+                if !self.global_records
+                    && let Some(text) = name.scalar_text().filter(|text| identifier(text))
+                {
+                    self.ast.id(text)
+                } else {
+                    self.ast
+                        .call(self.ast.id("__ark_global_get"), vec![self.ast.name(name)])
                 }
-                self.ast.id(name)
             }
             Op::GlobalObject => self.ast.id("globalThis"),
             Op::Unary(op, input) => self.ast.unary(*op, self.value(*input, depth + 1)?),
-            Op::Binary(op, left, right) => self.ast.binary(
+            Op::Binary(op, left, right) | Op::BranchCompare(op, left, right) => self.ast.binary(
                 self.value(*left, depth + 1)?,
                 *op,
                 self.value(*right, depth + 1)?,
@@ -671,13 +835,23 @@ impl<'a> Lower<'_, 'a, '_> {
                 index,
             } => self.cell(*parent, *index)?,
             Op::Environment => self.ast.id("__ark_env"),
+            Op::Home => self.ast.property(self.ast.id("__ark_context"), "home"),
             Op::Import(index) => self.ast.id(&format!("__ark_i_{index}")),
             Op::Namespace(index) => self.ast.id(&format!("__ark_ns_{index}")),
             Op::Module(index) => self.module(*index)?,
-            Op::Closure { method, length } => {
+            Op::Closure {
+                method,
+                length,
+                environment,
+            } => {
+                let context = if let Some(environment) = environment {
+                    self.context_env(self.value(*environment, depth + 1)?)
+                } else {
+                    self.context()
+                };
                 let call = self.ast.call(
                     self.ast.id(&format!("_ark_capture_{method:x}")),
-                    vec![self.context()],
+                    vec![context],
                 );
                 if let Some(length) = length {
                     self.ast.call(
@@ -699,20 +873,33 @@ impl<'a> Lower<'_, 'a, '_> {
                 constructor,
                 name,
                 base,
+                environment,
                 length,
                 members,
             } => {
                 let members = members
                     .iter()
                     .map(|member| {
-                        self.ast.array(vec![
-                            self.ast.name(&member.name),
-                            self.ast.id(&format!("_ark_capture_{:x}", member.method)),
+                        let value = if let Some(method) = member.method {
+                            self.ast.id(&format!("_ark_capture_{method:x}"))
+                        } else {
+                            self.value(
+                                member
+                                    .value
+                                    .ok_or_else(|| invalid("class member lacks a value"))?,
+                                depth + 1,
+                            )?
+                        };
+                        Ok(self.ast.array(vec![
+                            self.key(&member.name, depth + 1)?,
+                            value,
                             self.ast.number(f64::from(member.length)),
                             self.ast.boolean(member.is_static),
-                        ])
+                            self.ast.boolean(member.method.is_some()),
+                            self.ast.boolean(member.accessor),
+                        ]))
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>>>()?;
                 self.ast.call(
                     self.ast.id("__ark_class"),
                     vec![
@@ -720,7 +907,11 @@ impl<'a> Lower<'_, 'a, '_> {
                         self.value(*base, depth + 1)?,
                         self.ast.number(f64::from(*length)),
                         self.ast.array(members),
-                        self.context(),
+                        if let Some(environment) = environment {
+                            self.context_env(self.value(*environment, depth + 1)?)
+                        } else {
+                            self.context()
+                        },
                         self.ast.method_name(name),
                     ],
                 )
@@ -826,10 +1017,83 @@ impl<'a> Lower<'_, 'a, '_> {
                 self.ast
                     .call(function, vec![self.value(*input, depth + 1)?])
             }
+            Op::Intrinsic(kind, values) => {
+                let args = values
+                    .iter()
+                    .map(|value| self.value(*value, depth + 1))
+                    .collect::<Result<Vec<_>>>()?;
+                match kind {
+                    Intrinsic::AsyncAwait => self.ast.property(
+                        Expression::new_await_expression(
+                            SPAN,
+                            self.ast.call(self.ast.id("__ark_async_await"), args),
+                            &self.ast.build,
+                        ),
+                        "promise",
+                    ),
+                    Intrinsic::Accessor => self.ast.object(vec![
+                        (self.ast.string("get"), self.ast.undefined()),
+                        (self.ast.string("set"), self.ast.undefined()),
+                    ]),
+                    Intrinsic::SendableImport | Intrinsic::LazyImport => args
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| invalid("missing import binding"))?,
+                    Intrinsic::BigInt => self.ast.call(self.ast.id("BigInt"), args),
+                    Intrinsic::Symbol => self.ast.id("Symbol"),
+                    Intrinsic::Arguments => self.ast.id("arguments"),
+                    Intrinsic::ConstructSpread => {
+                        let mut args = args.into_iter();
+                        let constructor = args
+                            .next()
+                            .ok_or_else(|| invalid("missing spread constructor"))?;
+                        let values = args
+                            .next()
+                            .ok_or_else(|| invalid("missing spread arguments"))?;
+                        let values = Expression::new_array_expression(
+                            SPAN,
+                            self.ast.vec([ArrayExpressionElement::new_spread_element(
+                                SPAN,
+                                values,
+                                &self.ast.build,
+                            )]),
+                            &self.ast.build,
+                        );
+                        self.ast.call(
+                            self.ast.property(self.ast.id("Reflect"), "construct"),
+                            vec![constructor, values],
+                        )
+                    }
+                    _ => self
+                        .ast
+                        .call(self.ast.id(&format!("__ark_{}", kind.name())), args),
+                }
+            }
+            Op::NamedError(kind, prefix, value) => {
+                let message = if let Some(value) = value {
+                    self.ast.binary(
+                        self.ast.string(prefix),
+                        B::Addition,
+                        self.value(*value, depth + 1)?,
+                    )
+                } else {
+                    self.ast.string(prefix)
+                };
+                self.ast.construct(self.ast.id(kind), vec![message])
+            }
             Op::TypeError(message) => self
                 .ast
                 .construct(self.ast.id("TypeError"), vec![self.ast.string(message)]),
-            Op::Generator => self.ast.id("__ark_generator"),
+            Op::Generator => {
+                if self.unit.function.frame.multi_generator {
+                    self.ast.call(
+                        self.ast.id("__ark_generator_alias"),
+                        vec![self.ast.id("__ark_generator")],
+                    )
+                } else {
+                    self.ast.id("__ark_generator")
+                }
+            }
             Op::Suspend(generator, value) => {
                 let result = self.ast.call(
                     self.ast.id("__ark_suspend"),
@@ -839,7 +1103,30 @@ impl<'a> Lower<'_, 'a, '_> {
                         self.value(*value, depth + 1)?,
                     ],
                 );
+                let result = if self.unit.function.frame.async_generator {
+                    self.ast.object(vec![
+                        (self.ast.string("__ark_internal"), self.ast.boolean(true)),
+                        (self.ast.string("value"), result),
+                    ])
+                } else {
+                    result
+                };
                 Expression::new_yield_expression(SPAN, false, Some(result), &self.ast.build)
+            }
+            Op::AsyncYield(generator, value, done) => {
+                let payload = self.ast.object(vec![
+                    (self.ast.string("value"), self.value(*value, depth + 1)?),
+                    (self.ast.string("done"), self.value(*done, depth + 1)?),
+                ]);
+                let payload = self.ast.call(
+                    self.ast.id("__ark_suspend"),
+                    vec![
+                        self.ast.id("__ark_generator"),
+                        self.value(*generator, depth + 1)?,
+                        payload,
+                    ],
+                );
+                Expression::new_yield_expression(SPAN, false, Some(payload), &self.ast.build)
             }
             Op::GeneratorResume(generator, mode) => self.ast.property(
                 self.ast.call(
@@ -906,9 +1193,6 @@ impl<'a> Lower<'_, 'a, '_> {
                 ],
             ),
             Op::RestArgs(start) => {
-                if self.unit.function.frame.arrow {
-                    return Err(unsupported(value.pc, "arrow rest argument frame"));
-                }
                 let slice = self.ast.property(
                     self.ast.property(self.ast.id("Array"), "prototype"),
                     "slice",
@@ -970,6 +1254,23 @@ impl<'a> Lower<'_, 'a, '_> {
     fn action(&self, action: &Action) -> Result<Statement<'a>> {
         Ok(match action {
             Action::Write(slot, value) => self.ast.assign(self.slot(*slot), self.value(*value, 0)?),
+            Action::Debugger => Statement::new_debugger_statement(SPAN, &self.ast.build),
+            Action::CheckHoleValue(value, name) => self.ast.if_(
+                self.ast.binary(
+                    self.value(*value, 0)?,
+                    B::StrictEquality,
+                    self.ast.property(self.ast.id("__ark_context"), "hole"),
+                ),
+                vec![self.ast.throw(self.ast.construct(
+                    self.ast.id("ReferenceError"),
+                    vec![self.ast.binary(
+                        self.value(*name, 0)?,
+                        B::Addition,
+                        self.ast.string(" is not initialized"),
+                    )],
+                ))],
+                None,
+            ),
             Action::CheckSuper(value, already) => {
                 let empty = Expression::new_logical_expression(
                     SPAN,

@@ -35,14 +35,6 @@ impl Graph {
             .map_err(|_| resource("ABC exception index allocation failed"))?;
         regions.extend(decoded.code.tries.iter());
         regions.sort_unstable_by_key(|region| (region.pc, std::cmp::Reverse(region.length)));
-        if regions.windows(2).any(|pair| {
-            let (outer, inner) = (&pair[0], &pair[1]);
-            inner.pc < outer.pc + outer.length && outer.pc + outer.length < inner.pc + inner.length
-        }) {
-            return Err(unsupported(
-                "partially overlapping exception ranges need additional analysis",
-            ));
-        }
         let capacity = instructions
             .len()
             .checked_mul(2)

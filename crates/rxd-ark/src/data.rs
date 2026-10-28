@@ -6,7 +6,7 @@ use crate::{
 use rxd_core::{Error, Result};
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum LiteralValue {
     Byte(u8),
     Integer(u32),
@@ -18,7 +18,7 @@ pub enum LiteralValue {
     Affiliate(u16),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Literal {
     pub tag: u8,
     pub value: LiteralValue,

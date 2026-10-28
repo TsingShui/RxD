@@ -1,5 +1,7 @@
 mod async_frame;
 mod classes;
+mod intrinsic;
+pub(crate) use intrinsic::Intrinsic;
 pub(crate) mod lift;
 
 use crate::{Code, Method, Name, cfg::Graph};
@@ -74,6 +76,7 @@ pub(crate) enum Op {
     GlobalObject,
     Unary(UnaryOperator, ValueId),
     Binary(BinaryOperator, ValueId, ValueId),
+    BranchCompare(BinaryOperator, ValueId, ValueId),
     ToNumeric(ValueId),
     Update(ValueId, bool),
     Get(ValueId, Key),
@@ -93,12 +96,14 @@ pub(crate) enum Op {
         index: u32,
     },
     Environment,
+    Home,
     Import(u32),
     Module(u32),
     Namespace(u32),
     Closure {
         method: u32,
         length: Option<u32>,
+        environment: Option<ValueId>,
     },
     Await(ValueId),
     Iterator(ValueId),
@@ -113,6 +118,7 @@ pub(crate) enum Op {
         constructor: u32,
         name: Arc<Name>,
         base: ValueId,
+        environment: Option<ValueId>,
         length: u32,
         members: Vec<classes::ClassMember>,
     },
@@ -131,15 +137,20 @@ pub(crate) enum Op {
     Apply(ValueId, ValueId, ValueId),
     Generator,
     Suspend(ValueId, ValueId),
+    AsyncYield(ValueId, ValueId, ValueId),
     GeneratorResume(ValueId, bool),
     IterResult(ValueId, ValueId),
     TypeError(&'static str),
+    NamedError(&'static str, &'static str, Option<ValueId>),
+    Intrinsic(Intrinsic, Vec<ValueId>),
 }
 
 impl Op {
     pub fn warning(&self) -> Option<crate::ReconstructionWarning> {
         use crate::ReconstructionWarning as W;
         match self {
+            Self::Intrinsic(kind, _) => Some(kind.warning()),
+            Self::BranchCompare(..) => Some(W::AssumedBranchSemantics),
             Self::Iterator(_) => Some(W::IteratorRuntimeSemantics),
             Self::Keys(_) | Self::Next(_) => Some(W::PropertyEnumeration),
             Self::ArraySpread(..) => Some(W::ArraySpread),
@@ -147,10 +158,12 @@ impl Op {
             | Self::SuperCall {
                 spread: Some(_), ..
             } => Some(W::SpreadCall),
+            Self::AsyncYield(..) => Some(W::AsyncFrameApproximation),
             Self::Generator | Self::Suspend(..) | Self::GeneratorResume(..) => {
                 Some(W::GeneratorReconstruction)
             }
-            Self::Class { .. }
+            Self::Home
+            | Self::Class { .. }
             | Self::Method { .. }
             | Self::SuperCall { .. }
             | Self::SuperGet(..) => Some(W::ClassReconstruction),
@@ -167,14 +180,33 @@ impl Op {
             | Self::Keys(value)
             | Self::Next(value)
             | Self::DynamicImport(value) => vec![*value],
-            Self::Class { base, .. } => vec![*base],
+            Self::NamedError(_, _, value) => value.iter().copied().collect(),
+            Self::Closure { environment, .. } => environment.iter().copied().collect(),
+            Self::Class {
+                base,
+                environment,
+                members,
+                ..
+            } => {
+                let mut values = vec![*base];
+                values.extend(environment);
+                for member in members {
+                    values.extend(member.value);
+                    if let Key::Value(key) = member.name {
+                        values.push(key);
+                    }
+                }
+                values
+            }
             Self::Method { home, .. } => vec![*home],
             Self::SuperCall {
                 function,
                 args,
                 spread,
             } => function.iter().chain(args).chain(spread).copied().collect(),
-            Self::ArraySpread(dst, index, src) | Self::Apply(dst, index, src) => {
+            Self::ArraySpread(dst, index, src)
+            | Self::Apply(dst, index, src)
+            | Self::AsyncYield(dst, index, src) => {
                 vec![*dst, *index, *src]
             }
             Self::Suspend(generator, value) | Self::IterResult(generator, value) => {
@@ -182,6 +214,7 @@ impl Op {
             }
             Self::GeneratorResume(generator, _) => vec![*generator],
             Self::Binary(_, left, right)
+            | Self::BranchCompare(_, left, right)
             | Self::Delete(left, right)
             | Self::CopyData(left, right) => vec![*left, *right],
             Self::Get(object, key) | Self::SuperGet(object, key) => {
@@ -206,7 +239,7 @@ impl Op {
                 ids.extend(args);
                 ids
             }
-            Self::Array(values) => values.clone(),
+            Self::Array(values) | Self::Intrinsic(_, values) => values.clone(),
             Self::Object(entries) => entries
                 .iter()
                 .flat_map(|(key, value)| {
@@ -256,6 +289,8 @@ pub(crate) enum Action {
     PopEnv,
     CheckHole(ValueId, Arc<Name>),
     CheckObject(ValueId),
+    CheckHoleValue(ValueId, ValueId),
+    Debugger,
     CheckSuper(ValueId, bool),
     Accessors {
         object: ValueId,
@@ -279,6 +314,7 @@ impl Action {
             | Self::StoreModule(_, value)
             | Self::CheckHole(value, _) => vec![*value],
             Self::CheckObject(value) => vec![*value, *value, *value],
+            Self::CheckHoleValue(value, name) => vec![*value, *name],
             Self::CheckSuper(value, _) => vec![*value, *value],
             Self::Accessors {
                 object,
@@ -371,6 +407,12 @@ pub(crate) struct Frame {
     pub asynchronous: bool,
     pub constructor: bool,
     pub generator: bool,
+    pub async_generator: bool,
+    pub multi_generator: bool,
+    pub raw_async: bool,
+    pub frame_warning: bool,
+    pub typed_catches: bool,
+    pub residual_only: bool,
 }
 
 pub(crate) struct Function<'a> {
@@ -386,7 +428,8 @@ impl Function<'_> {
     pub fn boolean(&self, value: ValueId) -> bool {
         matches!(
             self.values[value.0].op,
-            Op::Unary(UnaryOperator::LogicalNot, _)
+            Op::BranchCompare(..)
+                | Op::Unary(UnaryOperator::LogicalNot, _)
                 | Op::Binary(
                     BinaryOperator::Equality
                         | BinaryOperator::Inequality

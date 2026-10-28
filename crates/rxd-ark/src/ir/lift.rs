@@ -6,6 +6,11 @@ use crate::{
 use rxd_core::{Error, Result};
 use std::collections::HashMap;
 
+#[path = "extra.rs"]
+mod extra;
+#[path = "legacy.rs"]
+mod legacy;
+
 pub(crate) fn unsupported(pc: u32, message: impl std::fmt::Display) -> Error {
     Error::new(
         "DECOMPILE_FAILED",
@@ -15,12 +20,16 @@ pub(crate) fn unsupported(pc: u32, message: impl std::fmt::Display) -> Error {
 
 struct Builder<'a, 's> {
     abc: &'s Abc<'a>,
+    method: &'s crate::Method,
     values: Vec<Value>,
     slots: HashMap<Slot, ValueId>,
     events: Vec<Event>,
     block: usize,
     pc: u32,
     generator: bool,
+    raw_protocol: bool,
+    literal_stack: Vec<u32>,
+    definition_env: Option<ValueId>,
 }
 
 impl Builder<'_, '_> {
@@ -86,6 +95,7 @@ impl Builder<'_, '_> {
             .abc
             .literals(instruction.entity(1, EntityKind::Literal)?)?;
         let mut entries = Vec::new();
+        let mut accessors = Vec::new();
         let mut values = Vec::new();
         let mut index = 0;
         while index < literals.len() {
@@ -93,7 +103,7 @@ impl Builder<'_, '_> {
                 let key = match &literals[index].value {
                     LiteralValue::String(name) => Key::Name(Arc::clone(name)),
                     LiteralValue::Integer(index) => Key::Index(*index),
-                    _ => return Err(unsupported(self.pc, "object literal key")),
+                    _ => Key::Value(self.literal(&literals[index])?),
                 };
                 index += 1;
                 Some(key)
@@ -102,7 +112,7 @@ impl Builder<'_, '_> {
             };
             let literal = literals
                 .get(index)
-                .ok_or_else(|| unsupported(self.pc, "object key without value"))?;
+                .ok_or_else(|| invalid("object key without value"))?;
             index += 1;
             let value = if let LiteralValue::Method(method) = literal.value {
                 let length = if let Some(crate::Literal {
@@ -115,17 +125,40 @@ impl Builder<'_, '_> {
                 } else {
                     None
                 };
-                self.value(Op::Closure { method, length }, Effects::READ)
+                self.value(
+                    Op::Closure {
+                        method,
+                        length,
+                        environment: self.definition_env,
+                    },
+                    Effects::READ,
+                )
             } else {
                 self.literal(literal)?
             };
             if let Some(key) = key {
+                accessors.push(literal.tag == 8);
                 entries.push((key, value));
             } else {
                 values.push(value);
             }
         }
-        Ok(if object {
+        Ok(if object && accessors.iter().any(|value| *value) {
+            let mut properties = Vec::new();
+            for ((key, value), accessor) in entries.into_iter().zip(accessors) {
+                let key = match key {
+                    Key::Name(name) => {
+                        self.value(Op::Constant(Constant::String(name)), Effects::PURE)
+                    }
+                    Key::Index(index) => self.number(index),
+                    Key::Value(value) => value,
+                };
+                let flag = self.value(Op::Constant(Constant::Bool(accessor)), Effects::PURE);
+                properties.push(self.value(Op::Array(vec![key, value, flag]), Effects::READ));
+            }
+            let properties = self.value(Op::Array(properties), Effects::READ);
+            Op::Intrinsic(Intrinsic::ObjectLiteral, vec![properties])
+        } else if object {
             Op::Object(entries)
         } else {
             Op::Array(values)
@@ -137,6 +170,10 @@ impl Builder<'_, '_> {
                 Op::Constant(Constant::Bool(*value != 0))
             }
             LiteralValue::Byte(_) if literal.tag == 0xff => Op::Constant(Constant::Null),
+            LiteralValue::Integer(value) if literal.tag == 0x17 => {
+                let offset = self.abc.literal_index.get(*value)?;
+                return self.literal_array(offset);
+            }
             LiteralValue::Integer(value) => {
                 Op::Constant(Constant::Number(f64::from(*value as i32)))
             }
@@ -145,22 +182,105 @@ impl Builder<'_, '_> {
                 Op::Constant(Constant::Number(f64::from(f32::from_bits(*bits))))
             }
             LiteralValue::String(name) => Op::Constant(Constant::String(Arc::clone(name))),
-            _ => {
-                return Err(unsupported(
-                    self.pc,
-                    format!("literal tag {:#x}", literal.tag),
-                ));
-            }
+            LiteralValue::Array(offset) => return self.literal_array(*offset),
+            LiteralValue::Method(method) => Op::Closure {
+                method: *method,
+                length: None,
+                environment: self.definition_env,
+            },
+            LiteralValue::Affiliate(length) => Op::Constant(Constant::Number(f64::from(*length))),
+            LiteralValue::Byte(_) if literal.tag == 8 => Op::Intrinsic(Intrinsic::Accessor, vec![]),
+            LiteralValue::Byte(value) => Op::Constant(Constant::Number(f64::from(*value))),
         };
-        Ok(self.value(op, Effects::PURE))
+        let effects = if matches!(op, Op::Closure { .. } | Op::Intrinsic(..)) {
+            Effects::CALL
+        } else {
+            Effects::PURE
+        };
+        Ok(self.value(op, effects))
+    }
+    fn literal_array(&mut self, offset: u32) -> Result<ValueId> {
+        if self.literal_stack.contains(&offset) {
+            return Err(invalid("cyclic Ark literal arrays"));
+        }
+        if self.literal_stack.len() >= self.abc.budget.ast_depth / 4 {
+            return Err(resource("Ark literal nesting exceeds depth guard"));
+        }
+        self.literal_stack.push(offset);
+        let literals = self.abc.literals(offset)?;
+        let mut values = Vec::new();
+        let mut index = 0;
+        while index < literals.len() {
+            let value = if let LiteralValue::Method(method) = literals[index].value {
+                let length = if let Some(crate::Literal {
+                    value: LiteralValue::Affiliate(length),
+                    ..
+                }) = literals.get(index + 1)
+                {
+                    index += 1;
+                    Some(u32::from(*length))
+                } else {
+                    None
+                };
+                self.value(
+                    Op::Closure {
+                        method,
+                        length,
+                        environment: self.definition_env,
+                    },
+                    Effects::CALL,
+                )
+            } else {
+                self.literal(&literals[index])?
+            };
+            values
+                .try_reserve(1)
+                .map_err(|_| resource("Ark expanded literal allocation failed"))?;
+            values.push(value);
+            index += 1;
+        }
+        self.literal_stack.pop();
+        Ok(self.value(Op::Array(values), Effects::READ))
+    }
+    fn class_members(
+        &mut self,
+        offset: u32,
+        sendable: bool,
+    ) -> Result<Vec<super::classes::ClassMember>> {
+        super::classes::members(self.abc, offset, sendable)?
+            .into_iter()
+            .map(|member| {
+                let name = match &member.key.value {
+                    LiteralValue::String(name) => Key::Name(Arc::clone(name)),
+                    LiteralValue::Integer(index) => Key::Index(*index),
+                    _ => Key::Value(self.literal(&member.key)?),
+                };
+                let (method, value) = if let LiteralValue::Method(method) = member.value.value {
+                    (Some(method), None)
+                } else {
+                    (None, Some(self.literal(&member.value)?))
+                };
+                Ok(super::classes::ClassMember {
+                    name,
+                    method,
+                    value,
+                    length: member.length,
+                    is_static: member.is_static,
+                    accessor: member.value.tag == 8,
+                })
+            })
+            .collect()
     }
     fn instruction(&mut self, instruction: &Instruction) -> Result<()> {
         use BinaryOperator as B;
         use UnaryOperator as U;
         self.pc = instruction.pc;
         let name = instruction.opcode.name;
+        if self.legacy(instruction)? || self.extended(instruction)? {
+            return Ok(());
+        }
         match name {
-            "nop" | "callruntime.notifyconcurrentresult" => {}
+            "nop" => {}
             "lda" => {
                 let value = self.reg(instruction, 0)?;
                 self.store(Slot::Acc, value);
@@ -286,12 +406,47 @@ impl Builder<'_, '_> {
                 self.result(Op::Environment, Effects::READ);
             }
             "poplexenv" => self.action(Action::PopEnv),
+            "asyncfunctionawaituncaught" if self.raw_protocol => {
+                let state = self.reg(instruction, 0)?;
+                let value = self.acc();
+                self.intrinsic(Intrinsic::AsyncAwait, vec![state, value], true);
+            }
+            "asyncfunctionenter" => self.intrinsic(Intrinsic::AsyncEnter, vec![], true),
+            "asyncfunctionresolve" | "asyncfunctionreject" | "asyncgeneratorreject" => {
+                let state = self.reg(instruction, 0)?;
+                let value = self.acc();
+                let kind = match name {
+                    "asyncfunctionresolve" => Intrinsic::AsyncResolve,
+                    "asyncfunctionreject" => Intrinsic::AsyncReject,
+                    _ => Intrinsic::AsyncGenReject,
+                };
+                self.intrinsic(kind, vec![state, value], true);
+            }
+            "asyncgeneratorresolve" => {
+                let state = self.reg(instruction, 0)?;
+                let value = self.reg(instruction, 1)?;
+                let done = self.reg(instruction, 2)?;
+                self.value(Op::AsyncYield(state, value, done), Effects::SUSPEND);
+                self.constant(Constant::Undefined);
+            }
+            "setgeneratorstate" => {
+                let state = self.acc();
+                let value = self.number(instruction.unsigned(0)?);
+                self.intrinsic(Intrinsic::GeneratorState, vec![state, value], false);
+            }
+            "suspendgenerator" if !self.generator => {
+                let state = self.reg(instruction, 0)?;
+                let value = self.acc();
+                self.intrinsic(Intrinsic::AsyncPause, vec![state, value], false);
+            }
             "asyncfunctionawaituncaught" => {
                 let value = self.acc();
                 let result = self.value(Op::Await(value), Effects::SUSPEND);
                 self.store(Slot::Resume, result);
             }
-            "creategeneratorobj" => self.result(Op::Generator, Effects::READ),
+            "creategeneratorobj" | "createasyncgeneratorobj" => {
+                self.result(Op::Generator, Effects::READ)
+            }
             "suspendgenerator" if self.generator => {
                 let generator = self.reg(instruction, 0)?;
                 let value = self.acc();
@@ -302,7 +457,7 @@ impl Builder<'_, '_> {
                 let done = self.reg(instruction, 1)?;
                 self.result(Op::IterResult(value, done), Effects::READ);
             }
-            "resumegenerator" | "getresumemode" if self.generator => {
+            "resumegenerator" | "getresumemode" if self.raw_protocol => {
                 let generator = self.acc();
                 self.result(
                     Op::GeneratorResume(generator, name == "getresumemode"),
@@ -365,6 +520,7 @@ impl Builder<'_, '_> {
                     Op::Closure {
                         method,
                         length: Some(instruction.unsigned(2)?),
+                        environment: None,
                     },
                     Effects::CALL,
                 );
@@ -372,13 +528,14 @@ impl Builder<'_, '_> {
             "defineclasswithbuffer" => {
                 let constructor = instruction.entity(1, EntityKind::Method)?;
                 let members =
-                    super::classes::members(self.abc, instruction.entity(2, EntityKind::Literal)?)?;
+                    self.class_members(instruction.entity(2, EntityKind::Literal)?, false)?;
                 let base = self.reg(instruction, 4)?;
                 self.result(
                     Op::Class {
                         constructor,
                         name: Arc::clone(&self.abc.method(constructor)?.name),
                         base,
+                        environment: self.definition_env,
                         length: instruction.unsigned(3)?,
                         members,
                     },
@@ -637,27 +794,59 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
     let mut decoded = abc.decode(method)?;
     let call_type = abc.method_call_type(method)?;
     let kind = ((method.flags >> 8) & 255) as u8;
-    if !matches!(kind, 0 | 1 | 2 | 4 | 6 | 7) {
-        return Err(unsupported(0, format!("function kind {kind}")));
-    }
-    let asynchronous = matches!(kind, 4 | 6);
+    let frame_warning = !matches!(kind, 0 | 1 | 2 | 4 | 6 | 7);
+    let async_generator = decoded.instructions.iter().any(|instruction| {
+        matches!(
+            instruction.opcode.name,
+            "createasyncgeneratorobj"
+                | "asyncgeneratorresolve"
+                | "asyncgeneratorreject"
+                | "deprecated.asyncgeneratorreject"
+        )
+    });
+    let asynchronous = matches!(kind, 4 | 6)
+        || decoded
+            .instructions
+            .iter()
+            .any(|instruction| instruction.opcode.name.contains("asyncfunction"));
     let generators = decoded
         .instructions
         .iter()
-        .filter(|instruction| instruction.opcode.name == "creategeneratorobj")
+        .filter(|instruction| {
+            matches!(
+                instruction.opcode.name,
+                "creategeneratorobj" | "createasyncgeneratorobj"
+            )
+        })
         .count();
-    if generators > 1 {
-        return Err(unsupported(0, "multiple generator identities in one frame"));
-    }
-    let generator = generators == 1;
-    if generator && asynchronous {
-        return Err(unsupported(0, "mixed async and sync generator frame"));
-    }
-    let protocol = if asynchronous {
-        Some(super::async_frame::normalize(&mut decoded)?)
+    let generator = generators != 0 || async_generator;
+    let protocol = if asynchronous && !generator {
+        match super::async_frame::normalize(&mut decoded) {
+            Ok(protocol) => Some(protocol),
+            Err(error) if error.code == "DECOMPILE_FAILED" => None,
+            Err(error) => return Err(error),
+        }
     } else {
         None
     };
+    let raw_async = asynchronous && protocol.is_none();
+    let raw_protocol = protocol.is_none();
+    let typed_catches = decoded
+        .code
+        .tries
+        .iter()
+        .any(|region| region.catches.iter().any(|catch| catch.type_index != 0));
+    let mut ranges: Vec<_> = decoded
+        .code
+        .tries
+        .iter()
+        .map(|region| (region.pc, region.pc + region.length))
+        .collect();
+    ranges.sort_unstable();
+    let residual_only = typed_catches
+        || ranges
+            .windows(2)
+            .any(|pair| pair[1].0 < pair[0].1 && pair[0].1 < pair[1].1);
     let graph = Graph::build(&decoded, abc.budget)?;
     let mut next = decoded.code.vregs;
     let func = (call_type & 8 != 0).then(|| {
@@ -697,15 +886,25 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
                 )
             }),
         generator,
+        async_generator: async_generator || generator && asynchronous,
+        multi_generator: generators > 1,
+        raw_async,
+        frame_warning,
+        typed_catches,
+        residual_only,
     };
     let mut builder = Builder {
         abc,
+        method,
         values: Vec::new(),
         slots: HashMap::new(),
         events: Vec::new(),
         block: 0,
         pc: 0,
         generator,
+        raw_protocol,
+        literal_stack: Vec::new(),
+        definition_env: None,
     };
     let mut blocks = Vec::new();
     for (index, block) in graph.blocks.iter().enumerate() {
@@ -722,18 +921,6 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
             {
                 continue;
             }
-            if !asynchronous
-                && !generator
-                && matches!(
-                    instruction.opcode.name,
-                    "asyncfunctionawaituncaught" | "resumegenerator" | "getresumemode"
-                )
-            {
-                return Err(unsupported(
-                    instruction.pc,
-                    "resume outside verified async frame",
-                ));
-            }
             builder.instruction(instruction)?;
         }
         builder.pc = last.pc;
@@ -744,12 +931,14 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
                     .ok_or_else(|| invalid("Ark jump lacks target"))?,
             )?;
             if last.opcode.is_conditional() {
-                if !matches!(last.opcode.name, "jeqz" | "jnez") {
-                    return Err(unsupported(last.pc, last.opcode.name));
-                }
+                let (value, nonzero) = if matches!(last.opcode.name, "jeqz" | "jnez") {
+                    (builder.acc(), last.opcode.name == "jnez")
+                } else {
+                    (builder.branch_compare(last)?, true)
+                };
                 Terminator::Branch {
-                    value: builder.acc(),
-                    nonzero: last.opcode.name == "jnez",
+                    value,
+                    nonzero,
                     yes,
                     no: index + 1,
                 }
@@ -765,8 +954,27 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
         } else if last.opcode.name == "throw.notexists" {
             let error = builder.value(Op::TypeError("Throw method is not defined"), Effects::CALL);
             Terminator::Throw(error)
+        } else if matches!(
+            last.opcode.name,
+            "throw.patternnoncoercible" | "throw.deletesuperproperty" | "throw.constassignment"
+        ) {
+            let (kind, message, value) = match last.opcode.name {
+                "throw.patternnoncoercible" => ("TypeError", "objectnotcoercible", None),
+                "throw.deletesuperproperty" => {
+                    ("ReferenceError", "Can not delete super property", None)
+                }
+                _ => (
+                    "TypeError",
+                    "Assignment to const variable ",
+                    Some(builder.reg(last, 0)?),
+                ),
+            };
+            let error = builder.value(Op::NamedError(kind, message, value), Effects::CALL);
+            Terminator::Throw(error)
         } else if terminal {
-            return Err(unsupported(last.pc, last.opcode.name));
+            return Err(invalid(
+                "Ark instruction has inconsistent terminal metadata",
+            ));
         } else {
             Terminator::Jump(index + 1)
         };
@@ -776,9 +984,6 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
         for region in &decoded.code.tries {
             if region.pc <= pc && pc < region.pc + region.length {
                 for handler in &region.catches {
-                    if handler.type_index != 0 {
-                        return Err(unsupported(pc, "typed exception handler"));
-                    }
                     handlers.push(graph.target(&decoded.instructions, handler.pc)?);
                 }
             }

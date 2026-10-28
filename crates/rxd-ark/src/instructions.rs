@@ -91,11 +91,27 @@ pub fn is_terminator(instruction: &Instruction) -> bool {
     instruction.opcode.is_return()
         || matches!(
             instruction.opcode.name,
-            "throw" | "throw.notexists" | "throw.patternnoncoercible" | "throw.deletesuperproperty"
+            "throw"
+                | "throw.notexists"
+                | "throw.patternnoncoercible"
+                | "throw.deletesuperproperty"
+                | "throw.constassignment"
         )
 }
 
 impl Instruction {
+    pub(crate) fn semantic_alias(&self, name: &str, operands: Vec<Operand>) -> Result<Self> {
+        let opcode = opcodes::OPCODES
+            .iter()
+            .find(|opcode| opcode.name == name)
+            .ok_or_else(|| invalid("unknown Ark semantic alias"))?;
+        Ok(Self {
+            pc: self.pc,
+            opcode,
+            operands,
+            branch: self.branch,
+        })
+    }
     pub fn end(&self) -> u32 {
         self.pc + u32::from(self.opcode.size)
     }
@@ -179,6 +195,7 @@ pub(crate) fn register_range(instruction: &Instruction) -> Result<Option<std::op
             | "supercallthisrange"
             | "supercallarrowrange"
             | "newobjrange"
+            | "createobjectwithexcludedkeys"
     ) {
         return Ok(None);
     }
@@ -198,7 +215,9 @@ pub(crate) fn register_range(instruction: &Instruction) -> Result<Option<std::op
         return Err(invalid("ABC newobjrange has no constructor register"));
     }
     let extra = u64::from(
-        base == "callthisrange" || base == "callrange" && name.starts_with("deprecated."),
+        base == "callthisrange"
+            || base == "callrange" && name.starts_with("deprecated.")
+            || base == "createobjectwithexcludedkeys",
     );
     let end = u64::from(*start)
         .checked_add(*count)
