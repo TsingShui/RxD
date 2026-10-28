@@ -9,7 +9,7 @@ use flate2::read::ZlibDecoder;
 use rxd_core::{Error, Limits, Result, perf::Perf};
 
 mod marshal;
-mod pyz;
+pub mod pyz;
 
 const MAGIC: [u8; 8] = [0x4d, 0x45, 0x49, 0x0c, 0x0b, 0x0a, 0x0b, 0x0e];
 const COOKIE_BYTES: u64 = 88;
@@ -337,8 +337,14 @@ fn parse_toc(
         if name.is_empty() {
             return Err(invalid("CArchive entry has an empty name"));
         }
-        if !names.insert(name.to_owned()) {
-            return Err(invalid(format!("duplicate CArchive entry name: {name}")));
+        let relative = match kind {
+            b'd' | b'o' => PathBuf::from(name),
+            b'z' | b'Z' => pyz_path(name)?,
+            b's' | b'm' | b'M' => pyc_path(name)?,
+            _ => safe_relative(name)?,
+        };
+        if !names.insert(relative) {
+            return Err(invalid(format!("duplicate CArchive entry path: {name}")));
         }
         if flag > 1 {
             return Err(unsupported(format!(
@@ -402,27 +408,44 @@ fn read_entry(file: &mut File, entry: &Entry, max_entry: usize) -> Result<Vec<u8
 }
 
 fn inflate(bytes: &[u8], cap: usize, reserve: Option<usize>) -> Result<Vec<u8>> {
+    inflate_optional(bytes, Some(cap), reserve)
+}
+
+fn inflate_optional(bytes: &[u8], cap: Option<usize>, reserve: Option<usize>) -> Result<Vec<u8>> {
     let mut data = Vec::new();
     if let Some(reserve) = reserve {
-        data.try_reserve_exact(reserve.min(cap))
+        data.try_reserve_exact(cap.map_or(reserve, |cap| reserve.min(cap)))
             .map_err(|_| resource("decompression allocation failed"))?;
     }
-    ZlibDecoder::new(bytes)
-        .take(cap as u64 + 1)
-        .read_to_end(&mut data)
-        .map_err(|_| unsupported("zlib decompression failed"))?;
-    if data.len() > cap {
-        return Err(resource("decompressed entry exceeds the output byte cap"));
+    let mut decoder = ZlibDecoder::new(bytes);
+    let mut chunk = [0; 32 * 1024];
+    loop {
+        let length = decoder.read(&mut chunk).map_err(|_| {
+            unsupported("zlib decompression failed; encrypted PYZ members are unsupported")
+        })?;
+        if length == 0 {
+            break;
+        }
+        if cap.is_some_and(|cap| length > cap.saturating_sub(data.len())) {
+            return Err(resource("decompressed entry exceeds the output byte cap"));
+        }
+        data.try_reserve(length)
+            .map_err(|_| resource("decompression allocation failed"))?;
+        data.extend_from_slice(&chunk[..length]);
+    }
+    if decoder.total_in() != bytes.len() as u64 {
+        return Err(invalid("trailing bytes after the zlib member"));
     }
     Ok(data)
 }
 
 fn safe_relative(name: &str) -> Result<PathBuf> {
-    if name.is_empty() || name.starts_with('/') || name.contains(['\0', '\\', ':']) {
+    if name.is_empty() || name.starts_with(['/', '\\']) || name.contains(['\0', ':']) {
         return Err(invalid(format!("unsafe archive entry name: {name}")));
     }
     let mut relative = PathBuf::new();
-    for part in name.split('/') {
+    // CArchives use the producer's path separator, independent of the reader OS.
+    for part in name.split(['/', '\\']) {
         if part.is_empty() || matches!(part, "." | "..") {
             return Err(invalid(format!("unsafe archive entry name: {name}")));
         }
@@ -510,7 +533,6 @@ mod tests {
             "../evil",
             "a/../b",
             "a//b",
-            "a\\b",
             "c:name",
             "a\0b",
         ] {

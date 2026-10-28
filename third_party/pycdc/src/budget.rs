@@ -64,8 +64,18 @@ pub fn charge(units: usize) {
         let Some(s) = state.as_mut() else {
             return false;
         };
-        if s.limits.work.is_some_and(|limit| units > limit.saturating_sub(s.usage.work)) { return true; }
-        if let Some(next) = s.usage.work.checked_add(units) { s.usage.work = next; false } else { true }
+        if s.limits
+            .work
+            .is_some_and(|limit| units > limit.saturating_sub(s.usage.work))
+        {
+            return true;
+        }
+        if let Some(next) = s.usage.work.checked_add(units) {
+            s.usage.work = next;
+            false
+        } else {
+            true
+        }
     });
     if exhausted {
         resume_unwind(Box::new(Cancel("decompile work budget exceeded")));
@@ -176,6 +186,15 @@ pub fn statements(stmts: &[Stmt]) {
     }
 }
 
+/// Check emitted ASTs without letting internal stack markers become source names.
+pub(crate) fn source_ready(stmts: &[Stmt]) -> bool {
+    let mut ready = true;
+    for stmt in stmts {
+        ready &= walk(Item::Stmt(stmt));
+    }
+    ready
+}
+
 enum Item<'a> {
     Expr(&'a Expr),
     Stmt(&'a Stmt),
@@ -185,9 +204,10 @@ enum Item<'a> {
     TypeParam(&'a TypeParam),
     FString(&'a FString),
 }
-fn walk(root: Item<'_>) {
+fn walk(root: Item<'_>) -> bool {
     // No recursive calls: even rejected instruction-built chains are inspected
     // without consuming the native stack. Every scheduled edge is charged.
+    let mut ready = true;
     let mut todo = vec![(root, 1)];
     while let Some((item, level)) = todo.pop() {
         charge(1);
@@ -198,7 +218,11 @@ fn walk(root: Item<'_>) {
         };
         match item {
             Item::Expr(e) => match e {
-                Expr::Const(_) | Expr::Name(_) => {}
+                Expr::Const(_) => {}
+                Expr::Name(name) => {
+                    charge(name.len());
+                    ready &= !name.as_bytes().contains(&0);
+                }
                 Expr::Attribute { value, .. }
                 | Expr::Unary { operand: value, .. }
                 | Expr::Starred(value)
@@ -583,6 +607,7 @@ fn walk(root: Item<'_>) {
             }
         }
     }
+    ready
 }
 
 // Autoref fallback charges one shallow clone; concrete collection/string

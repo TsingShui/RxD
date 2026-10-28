@@ -89,8 +89,6 @@ fn help_explains_parameter_sources_and_minimal_query_workflows() {
         ("ilspy", "get-method", "methods.at"),
         #[cfg(feature = "backend-wasm")]
         ("wasm", "get-function", "functions.at"),
-        #[cfg(feature = "backend-pyc")]
-        ("pyc", "get-code", "codes.at"),
     ];
     for (backend, command, source) in routes {
         let output = Command::new(binary)

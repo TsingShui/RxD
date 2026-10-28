@@ -20,6 +20,26 @@ for input-scaled CLI analysis, while default library loading retains its fixed l
 Recursion, cycle rejection, code-header allocation hints and quadratic numeric-work
 guards remain independent. Limits flow through both raw and header-bearing loaders.
 
+Whole-module recovery now isolates unsupported function/class bodies as explicit
+bytecode-comment fallbacks without discarding healthy siblings. Source labels reuse
+static navigation's code-object preorder. Fallbacks retain raw instructions (including
+prefix/cache bytes) and handlers; nested bodies whose enclosing bindings are unavailable
+are rendered as isolated source comments. Malformed bytecode and resource exhaustion
+remain errors, and generated fallback text uses the same bounded output writer.
+
+Static navigation and reconstruction share embedded format resolution without an
+adapter-maintained version whitelist. PEP 552 flags are validated in the shared header
+reader. Original instruction spans/caps also handle variable-width legacy bytecode.
+Comprehension filters follow their keep/skip branch graph; expanded calls retain the
+versioned kwargs slot and list-to-tuple conversions. Internal stack-marker names cannot
+be emitted as recovered source; unresolved bodies use the existing local fallbacks.
+
+Selected reconstruction now preserves module-local code ordinals and optional PYZ
+module namespaces. Non-root selections emit complete code-body fragments without
+inventing the enclosing binding/defaults/decorators. Partial markers are scoped to
+the selected subtree. BINARY_OP's subscription selector is handled before arithmetic
+rendering; END_ASYNC_FOR's monitoring source offset is not a control-flow branch.
+
 Upstream attribution and licensing remain unchanged. Any later local change belongs in
 this vendored copy and should be documented here. Tests and corpus provenance are in
 `tests/corpus/pyc/README.md` and `tests/fixtures/pyc/README.md`.

@@ -37,6 +37,9 @@ pub enum PycError {
     #[error("unknown opcode {0} for Python {1} at offset {2}")]
     UnknownOpcode(u8, String, usize),
 
+    #[error("no code:{0} in this module")]
+    CodeNotFound(usize),
+
     #[error("{0}")]
     ResourceLimit(&'static str),
 

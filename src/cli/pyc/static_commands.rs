@@ -1,12 +1,8 @@
 use super::Output;
 use clap::Args;
 use rxd_core::{Result, perf::Perf};
-use rxd_pyc::static_analysis::{Analysis, Limits};
-use serde::Serialize;
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use rxd_pyc::{input::Input, static_analysis::Analysis};
+use std::path::{Path, PathBuf};
 
 #[derive(Args)]
 pub struct Options {
@@ -19,225 +15,69 @@ pub struct Options {
     /// Enable backend diagnostic details on stderr.
     #[arg(long)]
     pub debug: bool,
-    /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
+    /// Input-scaled analysis admission supplied by dispatch.
     #[arg(skip)]
     pub(crate) budget: rxd_core::Budget,
 }
 
 impl Options {
-    pub(crate) fn limits(&self) -> Limits {
-        let budget = self.budget;
-        Limits {
-            input_bytes: budget.input_bytes,
-            // Every evidence occurrence consumes the selected work allowance;
-            // there is no separate CLI entity-count knob.
-            entities: budget.semantic_nodes,
-            metadata_bytes: budget.metadata_bytes,
-            marshal: rxd_pyc::marshal_limits(budget),
-            work: budget.work,
-        }
-    }
-
     pub(super) fn load(
         &self,
         input: &Path,
         version: Option<(u8, u8)>,
         perf: &mut Perf,
-    ) -> Result<Analysis> {
-        let loaded = Analysis::load(input, version, self.limits(), perf);
-        // Analysis owns parser limits; complete serialization is a CLI constraint.
-        if let Some(output_bytes) = self.budget.output_bytes
-            && let Some(limits) = &mut perf.resource_limits
-        {
-            limits.insert("output_bytes", output_bytes);
-        }
-        loaded
+    ) -> Result<Input> {
+        Input::load(input, version, self.budget, perf)
     }
 }
 
-#[derive(Serialize)]
-struct Field {
-    start: usize,
-    end: usize,
-    definition_start: Option<usize>,
-    definition_end: Option<usize>,
-    payload_start: Option<usize>,
-    payload_end: Option<usize>,
-    reference: bool,
-    tag: Option<u8>,
-}
-#[derive(Serialize)]
-struct Incoming<'a> {
-    owner_id: String,
-    constant_path: &'a [usize],
-    start: Option<usize>,
-    end: Option<usize>,
-    alias_start: Option<usize>,
-    alias_end: Option<usize>,
-    reference: bool,
-}
-#[derive(Serialize)]
-pub(crate) struct Detail<'a> {
-    index: usize,
-    name: Option<&'a str>,
-    qualname: Option<&'a str>,
-    filename: Option<&'a str>,
-    name_bytes: Option<String>,
-    qualname_bytes: Option<String>,
-    filename_bytes: Option<String>,
-    kind: &'static str,
-    arg_count: u32,
-    posonly_arg_count: u32,
-    kwonly_arg_count: u32,
-    n_locals: u32,
-    stack_size: u32,
-    flags: u32,
-    first_line: u32,
-    body_status: &'static str,
-    bytecode_bytes: Option<usize>,
-    consts_count: usize,
-    names_count: usize,
-    varnames_count: usize,
-    freevars_count: usize,
-    cellvars_count: usize,
-    localsplus_count: Option<usize>,
-    line_table_bytes: usize,
-    exception_table_bytes: usize,
-    fields: BTreeMap<&'static str, Field>,
-    incoming: Vec<Incoming<'a>>,
-    incoming_complete: bool,
-    ownership: &'static str,
-}
-#[derive(Serialize)]
-pub(crate) struct Record<'a> {
-    record: &'static str,
-    at: String,
-    source_id: Option<&'a str>,
-    parent_at: Option<String>,
-    context_at: Option<&'a str>,
-    start: usize,
-    end: usize,
-    pub(crate) detail: Detail<'a>,
-}
+pub fn modules(
+    input: PathBuf,
+    version: Option<(u8, u8)>,
+    filter: Option<String>,
+    case_sensitive: bool,
+    options: Options,
+    perf: &mut Perf,
+    sink: &mut crate::cli::Output<'_>,
+) -> Result<()> {
+    use crate::cli::table::{self, Cell};
+    use std::io::Write as _;
 
-fn raw_text(analysis: &Analysis, index: usize, name: &str) -> Option<String> {
-    if analysis.text_field(index, name).is_some() {
-        return None;
-    }
-    analysis
-        .payload(analysis.field_definition(index, name)?)
-        .map(|bytes| bytes.iter().map(|b| format!("{b:02x}")).collect())
-}
-
-pub(crate) fn record(analysis: &Analysis, index: usize) -> Result<Record<'_>> {
-    let entry = &analysis.codes[index];
-    let definition = &analysis.evidence.occurrences[entry.definition];
-    // Check unavoidable scalar payload size before allocating JSON detail or hex evidence.
-    let mut scalar_bytes = 0usize;
-    for name in ["name", "qualname", "filename"] {
-        if let Some(field) = analysis.field_definition(index, name) {
-            let length = analysis.payload(field).map_or(0, <[u8]>::len);
-            scalar_bytes =
-                scalar_bytes.saturating_add(if analysis.text_field(index, name).is_some() {
-                    length
-                } else {
-                    length.saturating_mul(2)
-                });
-        }
-    }
-    let fields = definition
-        .fields
-        .iter()
-        .map(|(&name, field)| {
-            let occurrence = field
-                .occurrence
-                .map(|id| &analysis.evidence.occurrences[id]);
-            let definition = occurrence.map(|row| &analysis.evidence.occurrences[row.definition]);
-            (
-                name,
-                Field {
-                    start: field.span.start,
-                    end: field.span.end,
-                    definition_start: definition.map(|row| row.span.start),
-                    definition_end: definition.map(|row| row.span.end),
-                    payload_start: definition.and_then(|row| row.payload.map(|span| span.start)),
-                    payload_end: definition.and_then(|row| row.payload.map(|span| span.end)),
-                    reference: occurrence.is_some_and(|row| row.is_reference),
-                    tag: occurrence.map(|row| row.tag),
-                },
-            )
-        })
-        .collect();
-    let incoming = entry
-        .incoming
-        .iter()
-        .map(|edge| Incoming {
-            owner_id: analysis.code_id(edge.owner),
-            constant_path: &edge.path,
-            start: edge.span.map(|span| span.start),
-            end: edge.span.map(|span| span.end),
-            alias_start: edge.alias.map(|span| span.start),
-            alias_end: edge.alias.map(|span| span.end),
-            reference: edge.is_reference,
-        })
-        .collect();
-    let code = &entry.code;
-    let body_status = analysis.body_status(index);
-    Ok(Record {
-        record: "code",
-        at: analysis.code_id(index),
-        source_id: None,
-        parent_at: entry.parent.map(|parent| analysis.code_id(parent)),
-        context_at: None,
-        start: definition.span.start,
-        end: definition.span.end,
-        detail: Detail {
-            index,
-            name: analysis.text_field(index, "name"),
-            qualname: analysis.text_field(index, "qualname"),
-            filename: analysis.text_field(index, "filename"),
-            name_bytes: raw_text(analysis, index, "name"),
-            qualname_bytes: raw_text(analysis, index, "qualname"),
-            filename_bytes: raw_text(analysis, index, "filename"),
-            kind: "unknown",
-            arg_count: code.arg_count,
-            posonly_arg_count: code.posonly_arg_count,
-            kwonly_arg_count: code.kwonly_arg_count,
-            n_locals: code.n_locals,
-            stack_size: code.stack_size,
-            flags: code.flags,
-            first_line: code.first_line,
-            body_status,
-            bytecode_bytes: (body_status != "unavailable").then_some(code.code.len()),
-            consts_count: code.consts.len(),
-            names_count: code.names.len(),
-            varnames_count: code.varnames.len(),
-            freevars_count: code.freevars.len(),
-            cellvars_count: code.cellvars.len(),
-            localsplus_count: analysis
-                .field_definition(index, "localsplus_names")
-                .and_then(|id| {
-                    analysis.evidence.occurrences[id]
-                        .object
-                        .as_deref()?
-                        .as_tuple()
-                        .map(<[_]>::len)
-                }),
-            line_table_bytes: code.line_table.len(),
-            exception_table_bytes: code.exception_table.len(),
-            fields,
-            incoming,
-            incoming_complete: false,
-            ownership: "first_containment",
-        },
+    super::validate_output(&input, options.output.as_deref())?;
+    let source = options.load(&input, version, perf)?;
+    let filter = filter
+        .as_deref()
+        .map(|text| rxd_core::filter::Contains::new(text, case_sensitive));
+    let mut writer = Output::new(options.budget.output_bytes);
+    let mut records = 0usize;
+    source.modules(filter.as_ref(), perf, |at, kind| {
+        let line =
+            table::line(&[Cell::Atom(at), Cell::Text(kind)]).map_err(super::super::classify)?;
+        writer.write_all(line.as_bytes())?;
+        records = records
+            .checked_add(1)
+            .ok_or_else(|| rxd_core::Error::new("RESOURCE_LIMIT", "PYC record counter overflow"))?;
+        Ok(())
+    })?;
+    perf.counters.matches = Some(records);
+    perf.counters.records = Some(records);
+    let bytes = writer.into_bytes();
+    perf.counters.output_bytes = Some(bytes.len());
+    perf.measure("write", || {
+        crate::cli::write_output(&bytes, options.output.as_deref(), sink)
     })
 }
 
 fn append_code(writer: &mut Output, analysis: &Analysis, index: usize) -> Result<()> {
     use std::io::Write as _;
     let at = analysis.code_id(index);
-    let qualname = analysis.text_field(index, "qualname").unwrap_or_default();
-    let line = format!("{at}\t{qualname}\n");
+    let qualname = analysis
+        .text_field(index, "qualname")
+        .or_else(|| analysis.text_field(index, "name"))
+        .unwrap_or_default();
+    use crate::cli::table::{self, Cell};
+    let line =
+        table::line(&[Cell::Atom(&at), Cell::Text(qualname)]).map_err(super::super::classify)?;
     writer.write_all(line.as_bytes())?;
     Ok(())
 }
@@ -247,6 +87,7 @@ pub struct CodeQuery {
     pub case_sensitive: bool,
     pub name: Option<String>,
     pub selector: super::super::xref::Selector,
+    pub within: Option<String>,
 }
 
 pub fn codes(
@@ -258,34 +99,48 @@ pub fn codes(
     sink: &mut crate::cli::Output<'_>,
 ) -> Result<()> {
     super::validate_output(&input, options.output.as_deref())?;
-    let mut analysis = options.load(&input, version, perf)?;
-    let at = if query.selector.at.is_some() {
-        Some(query.selector.resolve().map_err(super::super::classify)?)
+    let input_source = options.load(&input, version, perf)?;
+    let at = query
+        .selector
+        .at
+        .as_ref()
+        .map(|_| query.selector.resolve().map_err(super::super::classify))
+        .transpose()?;
+    let scope = if let Some(within) = query.within.as_deref() {
+        input_source.module_scope(within)?
     } else {
-        None
+        at.as_deref()
+            .map(|at| input_source.split(at))
+            .transpose()?
+            .and_then(|(namespace, _)| namespace)
     };
     let filter = query
         .filter
         .as_deref()
         .map(|f| rxd_core::filter::Contains::new(f, query.case_sensitive));
-    let selected = perf.measure("query", || {
-        let index = at
-            .as_deref()
-            .map(|at| analysis.parse_code_id(at))
-            .transpose()?;
-        analysis.select_codes(filter.as_ref(), query.name.as_deref(), index)
-    });
-    perf.counters.work = Some(analysis.evidence.work);
-    let selected = selected?;
-    perf.counters.matches = Some(selected.len());
-    perf.counters.records = Some(selected.len());
-    let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
-        let mut writer = Output::new(options.budget.output_bytes);
-        for &index in &selected {
-            append_code(&mut writer, &analysis, index)?;
-        }
-        Ok(writer.into_bytes())
+    let mut writer = Output::new(options.budget.output_bytes);
+    let mut records = 0usize;
+    input_source.visit(scope, perf, |analysis, perf| {
+        let selected = perf.measure("query", || {
+            let index = at
+                .as_deref()
+                .map(|at| analysis.parse_code_id(at))
+                .transpose()?;
+            analysis.select_codes(filter.as_ref(), query.name.as_deref(), index)
+        })?;
+        records = records
+            .checked_add(selected.len())
+            .ok_or_else(|| rxd_core::Error::new("RESOURCE_LIMIT", "PYC record counter overflow"))?;
+        perf.measure("serialize", || -> Result<()> {
+            for index in selected {
+                append_code(&mut writer, analysis, index)?;
+            }
+            Ok(())
+        })
     })?;
+    perf.counters.matches = Some(records);
+    perf.counters.records = Some(records);
+    let bytes = writer.into_bytes();
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {
         crate::cli::write_output(&bytes, options.output.as_deref(), sink)

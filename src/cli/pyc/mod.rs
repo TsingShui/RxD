@@ -1,4 +1,3 @@
-mod fetch_commands;
 mod refs;
 mod static_commands;
 mod strings;
@@ -11,20 +10,38 @@ use clap::{Args, Subcommand};
 use rxd_core::output::Output;
 use rxd_core::perf::Perf;
 use rxd_core::{Budget, Error, Result};
-use rxd_pyc::Limits;
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// List modules without decompressing PYZ members (columns: at, kind).
+    #[command(
+        long_about = "Columns: at, kind\nList modules, packages and namespace packages in original PYZ directory order, without decompressing members.",
+        after_long_help = "Examples:\nrxd pyc modules PYZ.pyz -f networking\nrxd pyc codes PYZ.pyz --within '<modules.at>'\nrxd pyc decompile PYZ.pyz --at '<modules.at>'\nkind is module, package or namespace; namespace packages have no executable body. Non-code data entries are excluded.\nStandalone PYC/raw marshal has one module, code:0; raw marshal requires --version X.Y."
+    )]
+    Modules {
+        /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
+        input: PathBuf,
+        /// Raw marshal format as X.Y; omit for PYC/PYZ.
+        #[arg(long, value_parser = parse_version)]
+        version: Option<(u8, u8)>,
+        /// Substring over full module coordinates, folded unless --case sensitive.
+        #[arg(short = 'f', long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
+        #[command(flatten)]
+        options: static_commands::Options,
+    },
     /// Search name and constant references.
     #[command(
-        after_long_help = "Examples:\nrxd pyc strings module.pyc -f token\nrxd pyc xref module.pyc --at '<string.at>'\nrxd pyc xref module.pyc --at token --kind name\nrxd pyc xref module.pyc -m token --kind name\nRequired: exactly one of --at/--match; --match requires --kind name.\nConstant coordinates copy strings.at (const:N:PATH), not codes.at; names are literal text.\n--within copies codes.at to restrict scanning. Output: reference JSONL; context_at names code.\nNext: rxd pyc get-code module.pyc --at '<reference.context_at>'."
+        after_long_help = "Examples:\nrxd pyc strings PYZ.pyz -f token\nrxd pyc xref PYZ.pyz --at '<strings.at>'\nrxd pyc xref PYZ.pyz -m token --kind name\nrxd pyc xref PYZ.pyz -m token --kind name --within yt_dlp.YoutubeDL\nRequired: exactly one of --at/--match; --match requires --kind name.\nConstant coordinates copy strings.at, not codes.at; names are literal text.\nPYZ scans all code-bearing modules unless --within or a constant coordinate selects a module.\nOutput: reference JSONL; context_at selects its caller with decompile --at.\nPYZ detail.entry identifies the module; start/end are offsets in its uncompressed marshal payload, not compressed archive offsets."
     )]
     Xref {
-        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
+        /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
         input: PathBuf,
         #[command(flatten)]
         target: refs::Target,
-        /// Copy codes.at (code:N) to restrict the bytecode scan to this owner.
+        /// Copy codes.at: a module scopes all its code; a code coordinate selects one owner.
         #[arg(long)]
         within: Option<String>,
         /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
@@ -35,10 +52,11 @@ pub enum Command {
     },
     /// List str/bytes constants (columns: at, value).
     #[command(
-        after_long_help = "Examples:\nrxd pyc strings module.pyc -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nOutput: string JSONL; at is const:N:PATH, context_at its code:N owner.\nUse xref --at '<string.at>' for loads, or get-code --at '<string.context_at>'.\nText and hexadecimal filters are exclusive. Non-UTF-8 bytes retain raw_bytes."
+        long_about = "Columns: at, value\nList str/bytes constant occurrences across PYC or PYZ code-bearing modules.",
+        after_long_help = "Examples:\nrxd pyc strings PYZ.pyz -f Authorization\nrxd pyc strings module.pyc --filter-hex ff00\nCoordinates: MODULE::const:N:PATH for PYZ; const:N:PATH for standalone PYC.\nUse xref --at '<strings.at>' for loads, then decompile --at '<xref.context_at>'.\nText and hexadecimal filters are exclusive; absent UTF-8 text is \\N."
     )]
     Strings {
-        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
+        /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
         input: PathBuf,
         /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
         #[arg(long, value_parser = parse_version)]
@@ -54,23 +72,14 @@ pub enum Command {
         #[command(flatten)]
         options: static_commands::Options,
     },
-    /// Fetch one code object as instructions and tables.
-    #[command(after_long_help = "Examples:\nrxd pyc codes module.pyc -f login\nrxd pyc get-code module.pyc --at 'code:0'\nRequired: --at copied from codes.at or xref.context_at; code:N, not const:N:PATH.\nOutput: one code_view JSON record with original instructions, caches, tables and ranges.\nNo source reconstruction here; use decompile for whole-module Python text.", mut_arg("at", |arg| arg.required(true).value_name("CODE_AT").help("Copy codes.at or xref.context_at: code:N, not a constant coordinate")))]
-    GetCode {
-        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
-        input: PathBuf,
-        #[command(flatten)]
-        selector: Selector,
-        /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
-        #[arg(long,value_parser=parse_version)]
-        version: Option<(u8, u8)>,
-        #[command(flatten)]
-        options: fetch_commands::FetchOptions,
-    },
     /// List code-object metadata (columns: at, qualname).
-    #[command(after_long_help = "Examples:\nrxd pyc codes module.pyc -f login\nrxd pyc codes module.pyc --at 'code:0'\nOutput: code JSONL in original depth-first order; at is code:N, parent_at first containment.\n--at is optional; --name exact and -f substring filters preserve original indices.\nNext: rxd pyc get-code module.pyc --at '<code.at>'. No instruction/source recovery during listing.", mut_arg("at", |arg| arg.value_name("CODE_AT").help("Optional codes.at coordinate, code:N; omit to enumerate all code objects")))]
+    #[command(
+        long_about = "Columns: at, qualname\nList code objects across PYC or PYZ code-bearing modules.",
+        after_long_help = "Examples:\nrxd pyc modules PYZ.pyz -f networking\nrxd pyc codes PYZ.pyz --within yt_dlp.networking._helper\nrxd pyc codes PYZ.pyz -f proxy\nrxd pyc codes module.pyc --at code:0\n--within copies modules.at and parses only that module; omit it for whole-input search.\n--at selects exactly one listed row; it is exclusive with --within.\nPYZ module roots use the full module name; nested code uses MODULE::code:N.\nStandalone PYC retains code:N; its module scope is code:0. Coordinates preserve per-module depth-first indices.\n-f searches module and qualified code names; --name selects an exact original code name.\nWithout a stored qualname, the name cell uses the original code name.\nNext: decompile --at '<codes.at>' or xref --within '<codes.at>'.",
+        mut_arg("at", |arg| arg.value_name("CODE_AT").help("Optional module or code coordinate copied from codes.at")),
+    )]
     Codes {
-        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
+        /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
         input: PathBuf,
         /// Raw marshal format as X.Y, e.g. 3.12; omit for a normal .pyc header.
         #[arg(long, value_parser = parse_version)]
@@ -83,19 +92,24 @@ pub enum Command {
         /// Exact code name; not a substring.
         #[arg(long)]
         name: Option<String>,
+        /// Copy modules.at to list only that module's code objects, including its root.
+        #[arg(long, conflicts_with = "at")]
+        within: Option<String>,
         #[command(flatten)]
         selector: Selector,
         #[command(flatten)]
         options: static_commands::Options,
     },
-    /// Reconstruct the whole module as Python.
+    /// Reconstruct one module or code body as Python.
     #[command(
-        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc decompile raw.marshal --version 3.12 -o recovered.py\nReconstruct the whole module, not a selected code:N.\nstdout is Python source; incomplete recovery fails without partial text.\nFor original selected bytecode use codes -> get-code --at instead."
+        after_long_help = "Examples:\nrxd pyc decompile module.pyc\nrxd pyc codes PYZ.pyz -f proxy\nrxd pyc decompile PYZ.pyz --at yt_dlp.YoutubeDL\nrxd pyc decompile PYZ.pyz --at '<codes.at or xref.context_at>' -o recovered.py\nPYZ requires --at: a full module name reconstructs that module; MODULE::code:N reconstructs one complete code body.\nStandalone PYC defaults to its whole module; --at code:N selects a code body.\nCode-body output is a source fragment; its enclosing binding, defaults and decorators are outside the selection.\nSource labels use the same coordinates as codes. Unrecoverable bodies retain labelled original-bytecode comments.\nRaw marshal requires --version X.Y; omit it for PYC/PYZ. Invalid input and resource failures are atomic errors."
     )]
     Decompile {
-        /// One regular .pyc file, or raw marshal with explicit --version X.Y.
+        /// One PYC, PyInstaller PYZ, or raw marshal with --version X.Y.
         input: PathBuf,
-        /// Interpret input as raw marshal for the exact Python version X.Y.
+        #[command(flatten)]
+        selector: Selector,
+        /// Interpret input as raw marshal for the Python format X.Y.
         #[arg(long, value_parser = parse_version)]
         version: Option<(u8, u8)>,
         #[command(flatten)]
@@ -113,17 +127,6 @@ pub struct Options {
     perf: bool,
     #[arg(skip)]
     budget: Budget,
-}
-
-fn decompile_limits(budget: Budget) -> Limits {
-    Limits {
-        input_bytes: budget.input_bytes,
-        work: budget.work,
-        // AST nesting is projected from the shared core limits the budget drives.
-        ast_depth: budget.ast_depth,
-        output_bytes: budget.output_bytes,
-        marshal: rxd_pyc::marshal_limits(budget),
-    }
 }
 
 /// Resolve input/output aliases before writing, including the parent of new destinations.
@@ -185,10 +188,10 @@ fn parse_version(value: &str) -> std::result::Result<(u8, u8), String> {
 impl Command {
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Modules { .. } => "modules",
             Self::Decompile { .. } => "decompile",
             Self::Codes { .. } => "codes",
             Self::Strings { .. } => "strings",
-            Self::GetCode { .. } => "get-code",
             Self::Xref { .. } => "xref",
         }
     }
@@ -196,9 +199,8 @@ impl Command {
     pub fn perf(&self) -> bool {
         match self {
             Self::Decompile { options, .. } => options.perf,
-            Self::Codes { options, .. } => options.perf,
+            Self::Codes { options, .. } | Self::Modules { options, .. } => options.perf,
             Self::Strings { options, .. } => options.perf,
-            Self::GetCode { options, .. } => options.common.perf,
             Self::Xref { options, .. } => options.common.perf,
         }
     }
@@ -211,10 +213,9 @@ pub fn execute(
 ) -> Result<()> {
     let (input, budget) = match &mut command {
         Command::Decompile { input, options, .. } => (input, &mut options.budget),
-        Command::Codes { input, options, .. } | Command::Strings { input, options, .. } => {
-            (input, &mut options.budget)
-        }
-        Command::GetCode { input, options, .. } => (input, &mut options.common.budget),
+        Command::Codes { input, options, .. }
+        | Command::Strings { input, options, .. }
+        | Command::Modules { input, options, .. } => (input, &mut options.budget),
         Command::Xref { input, options, .. } => (input, &mut options.common.budget),
     };
     *budget = policy.for_file(input)?;
@@ -226,6 +227,23 @@ pub fn execute(
 
 fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>) -> Result<()> {
     let command = match command {
+        Command::Modules {
+            input,
+            version,
+            filter,
+            case,
+            options,
+        } => {
+            return static_commands::modules(
+                input,
+                version,
+                filter,
+                case.sensitive(),
+                options,
+                perf,
+                sink,
+            );
+        }
         Command::Xref {
             input,
             target,
@@ -254,12 +272,6 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
                 sink,
             );
         }
-        Command::GetCode {
-            input,
-            selector,
-            version,
-            options,
-        } => return fetch_commands::fetch(input, selector, version, options, perf, sink),
         Command::Codes {
             input,
             version,
@@ -267,6 +279,7 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
             case,
             name,
             selector,
+            within,
             options,
         } => {
             let query = static_commands::CodeQuery {
@@ -274,6 +287,7 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
                 case_sensitive: case.sensitive(),
                 name,
                 selector,
+                within,
             };
             return static_commands::codes(input, version, query, options, perf, sink);
         }
@@ -282,22 +296,22 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
     let Command::Decompile {
         input,
         version,
+        selector,
         options,
     } = command
     else {
         unreachable!()
     };
     validate_output(&input, options.output.as_deref())?;
-    let limits = decompile_limits(options.budget);
-    let result = rxd_pyc::run(&input, version, limits, perf)?;
+    let result = rxd_pyc::run_input(
+        &input,
+        version,
+        selector.at.as_deref(),
+        options.budget,
+        perf,
+    )?;
     perf.source_id = Some(result.source_id.clone());
     perf.counters.input_bytes = Some(result.input_bytes);
-    if !result.complete {
-        return Err(Error::new(
-            "INCOMPLETE_DECOMPILATION",
-            "source reconstruction is incomplete; no partial source is written",
-        ));
-    }
     let bytes = perf.measure("serialize", || -> Result<Vec<u8>> {
         Ok(result.source.into_bytes())
     })?;
@@ -315,5 +329,11 @@ fn execute_inner(command: Command, perf: &mut Perf, sink: &mut super::Output<'_>
     perf.counters.records = Some(1);
     perf.measure("write", || {
         super::write_output(&bytes, options.output.as_deref(), sink)
-    })
+    })?;
+    if !result.complete {
+        eprintln!(
+            "PYC_FALLBACK: partial reconstruction; original bytecode is included in labelled comments"
+        );
+    }
+    Ok(())
 }

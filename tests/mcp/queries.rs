@@ -124,7 +124,6 @@ const CLI_ROUTES: &[(&str, &str, &str)] = &[
     ("pyc_codes", "pyc", "codes"),
     ("pyc_strings", "pyc", "strings"),
     ("pyc_xref", "pyc", "xref"),
-    ("pyc_get_code", "pyc", "get-code"),
     ("pyc_decompile", "pyc", "decompile"),
     ("evm_strings", "evm", "strings"),
     ("evm_interface", "evm", "interface"),

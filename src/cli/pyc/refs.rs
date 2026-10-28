@@ -6,7 +6,6 @@ use rxd_pyc::{
     string_constants,
 };
 use serde::Serialize;
-use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -53,126 +52,105 @@ pub fn run(
     sink: &mut crate::cli::Output<'_>,
 ) -> Result<()> {
     super::validate_output(&input, options.common.output.as_deref())?;
-    let loaded = options.common.load(&input, version, perf);
-    if let Some(instructions) = options.common.budget.instructions {
-        perf.resource_limits
-            .as_mut()
-            .unwrap()
-            .insert("instructions", instructions);
-    }
-    let mut analysis = loaded?;
     let at = if target.filter.is_none() {
         Some(target.selector.resolve().map_err(super::super::classify)?)
     } else {
         None
     };
     let kind = target.kind.as_deref().unwrap_or("constant");
-    if !matches!(kind, "name" | "constant") {
-        return Err(Error::failure(
-            rxd_core::Failure::Query,
-            format!("xref supports name or constant targets, got {kind}"),
+    if target.filter.is_some() && kind != "name" {
+        return Err(Error::new(
+            "INVALID_QUERY",
+            "--match requires --kind name; select constants with strings then --at",
         ));
     }
-    if target.filter.is_some() && kind != "name" {
-        return Err(Error::failure(
-            rxd_core::Failure::Query,
-            "--match requires --kind name; select a constant with strings then --at",
+    let source = options.common.load(&input, version, perf)?;
+    if let Some(instructions) = options.common.budget.instructions {
+        perf.resource_limits
+            .as_mut()
+            .unwrap()
+            .insert("instructions", instructions);
+    }
+    let constant_scope = if kind == "constant" {
+        source.split(at.as_deref().unwrap())?.0
+    } else {
+        None
+    };
+    let within_scope = within
+        .as_deref()
+        .map(|at| source.split(at))
+        .transpose()?
+        .and_then(|(name, _)| name);
+    if constant_scope
+        .zip(within_scope)
+        .is_some_and(|(left, right)| left != right)
+    {
+        return Err(Error::new(
+            "INVALID_QUERY",
+            "constant coordinate and --within select different PYZ modules",
         ));
     }
     let filter = target
         .filter
         .as_deref()
-        .map(|s| rxd_core::filter::Contains::new(s, target.case.sensitive()));
-    let mut scan = Scan::default();
-    let result = perf.measure("query", || -> Result<()> {
-        let selected = within
-            .as_deref()
-            .map(|id| analysis.parse_code_id(id))
-            .transpose()?;
-        let constant = if kind == "constant" {
-            let value = at.as_deref().unwrap();
-            let coordinate_kind = value.split(':').next().unwrap_or("");
-            if coordinate_kind != "const" {
-                return Err(Error::failure(rxd_core::Failure::Query, format!("expected constant coordinate (const), got {coordinate_kind}; use --kind name for literal names")));
-            }
-            Some(string_constants::resolve_id(
-                &mut analysis,
-                at.as_deref().unwrap(),
-            )?)
-        } else {
-            None
-        };
-        let query = if let Some(filter) = &filter {
-            analysis.charge_work(filter.text().len())?;
-            references::Query::NameFilter(filter)
-        } else if let Some(selected) = &constant {
-            references::Query::Constant {
-                id: at.as_deref().unwrap(),
-                selected,
-            }
-        } else {
-            let name = at.as_deref().unwrap();
-            analysis.charge_work(name.len())?;
-            references::Query::Name(name)
-        };
-        references::scan(
-            &mut analysis,
-            &query,
-            selected,
-            options.common.budget.instructions,
-            &mut scan,
-        )
-    });
-    perf.counters.work = Some(analysis.evidence.work);
-    perf.counters.instructions = Some(scan.instructions);
-    perf.counters.records = Some(scan.hits.len());
-    perf.counters.matches = Some(scan.hits.len());
-    result?;
-    let bytes = perf.measure("serialize", || -> Result<_> {
-        let mut out = Output::new(options.common.budget.output_bytes);
-        let mut query = json!({"kind": kind});
-        if let Some(at) = at.as_deref() {
-            query["at"] = json!(at);
-        }
-        if let Some(filter) = &target.filter {
-            query["match"] = json!(filter);
-            query["case"] = json!(if target.case.sensitive() {
-                "sensitive"
+        .map(|text| rxd_core::filter::Contains::new(text, target.case.sensitive()));
+    let mut out = Output::new(options.common.budget.output_bytes);
+    let mut records = 0usize;
+    let mut instructions = 0usize;
+    source.visit(constant_scope.or(within_scope), perf, |analysis, perf| {
+        let mut scan = Scan::default();
+        let result = perf.measure("query", || -> Result<()> {
+            let selected = within.as_deref()
+                .filter(|at| analysis.namespace.as_deref() != Some(*at))
+                .map(|id| analysis.parse_code_id(id)).transpose()?;
+            let constant = if kind == "constant" {
+                let id = at.as_deref().unwrap();
+                if !analysis.local_id(id)?.starts_with("const:") {
+                    return Err(Error::new("INVALID_QUERY", "expected a strings.at constant coordinate; literal names require --kind name"));
+                }
+                Some(string_constants::resolve_id(analysis, id)?)
+            } else { None };
+            let query = if let Some(filter) = &filter {
+                analysis.charge_work(filter.text().len())?;
+                references::Query::NameFilter(filter)
+            } else if let Some(selected) = &constant {
+                references::Query::Constant { id: at.as_deref().unwrap(), selected }
             } else {
-                "insensitive"
-            });
-        }
-        if let Some(within) = within.as_deref() {
-            query["within"] = json!(within);
-        }
-        if let Some((major, minor)) = version {
-            query["version"] = json!(format!("{major}.{minor}"));
-        }
-        for hit in &scan.hits {
-            analysis.charge_work(
-                1usize
+                let name = at.as_deref().unwrap();
+                analysis.charge_work(name.len())?;
+                references::Query::Name(name)
+            };
+            references::scan(analysis, &query, selected, options.common.budget.instructions, &mut scan)?;
+            if let Some(unsupported) = scan.unsupported.first() {
+                return Err(Error::new("UNSUPPORTED_INPUT", format!(
+                    "unsupported opcode {} at {} offset {}", unsupported.name, unsupported.context_at, unsupported.offset,
+                )));
+            }
+            Ok(())
+        });
+        instructions = instructions.checked_add(scan.instructions)
+            .ok_or_else(|| Error::new("RESOURCE_LIMIT", "PYC instruction counter overflow"))?;
+        perf.counters.instructions = Some(instructions);
+        result?;
+        records = records.checked_add(scan.hits.len())
+            .ok_or_else(|| Error::new("RESOURCE_LIMIT", "PYC record counter overflow"))?;
+        perf.measure("serialize", || -> Result<()> {
+            for hit in &scan.hits {
+                analysis.charge_work(1usize
                     .saturating_add(hit.constant_id.as_ref().map_or(0, String::len))
-                    .saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)),
-            )?;
-            append(
-                &mut out,
-                &Record {
-                    record: envelope::REFERENCE,
-                    at: None,
-                    source_id: None,
-                    parent_at: None,
+                    .saturating_add(hit.constant_path.as_ref().map_or(0, Vec::len)))?;
+                append(&mut out, &Record {
+                    record: envelope::REFERENCE, at: None, source_id: None, parent_at: None,
                     context_at: analysis.code_id(hit.code_index),
-                    start: hit.start,
-                    end: hit.end,
-                    detail: hit,
-                },
-            )?;
-        }
-        analysis.charge_work(scan.unsupported.len())?;
-        Ok(out.into_bytes())
-    });
-    perf.counters.work = Some(analysis.evidence.work);
-    let bytes = bytes?;
+                    start: hit.start, end: hit.end, detail: hit,
+                })?;
+            }
+            Ok(())
+        })
+    })?;
+    perf.counters.records = Some(records);
+    perf.counters.matches = Some(records);
+    let bytes = out.into_bytes();
     perf.counters.output_bytes = Some(bytes.len());
     perf.measure("write", || {
         crate::cli::write_output(&bytes, options.common.output.as_deref(), sink)

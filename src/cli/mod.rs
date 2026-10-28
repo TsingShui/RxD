@@ -231,20 +231,25 @@ Coordinates retain JVM overload descriptors, including return type; use returned
         command: jvm::Command,
     },
     #[cfg(feature = "backend-pyc")]
-    /// Analyze PYC.
+    /// Analyze PYC or PyInstaller PYZ.
     #[command(after_long_help = "Examples:
-  rxd pyc codes module.pyc -f token
-  rxd pyc strings module.pyc -f Authorization
-  rxd pyc xref module.pyc --at '<string.at>'
-  rxd pyc get-code module.pyc --at '<reference.context_at>'
+  rxd pyc modules PYZ.pyz -f networking
+  rxd pyc codes PYZ.pyz --within '<modules.at>'
+  rxd pyc codes PYZ.pyz -f proxy
+  rxd pyc strings PYZ.pyz -f Authorization
+  rxd pyc xref PYZ.pyz --kind name -m getproxies
+  rxd pyc decompile PYZ.pyz --at '<codes.at or xref.context_at>'
   rxd pyc decompile module.pyc
-Static navigation supports final CPython 3.8-3.13; raw marshal needs --version X.Y.
-code:N selects get-code; const:N:PATH selects constant xref, not get-code.
-Name xref is explicit bytecode evidence, not resolved Python runtime dispatch.
-Decompile prints the module's Python; get-code keeps the JSON code_view record.")]
+PYC and PyInstaller PYZ are detected by magic; raw marshal needs --version X.Y.
+modules reads the PYZ directory without inflating members; codes --within selects one module.
+Unscoped codes/strings/xref scan code-bearing modules. A full module name selects the whole module;
+MODULE::code:N selects one code body; MODULE::const:N:PATH selects a constant occurrence.
+Standalone PYC keeps code:N/const:N:PATH and defaults to whole-module reconstruction.
+Code-body reconstruction is a source fragment, without inventing enclosing bindings/defaults.
+Source/fallback labels match listing coordinates; name xref is explicit bytecode evidence.")]
     #[command(
         display_order = 50,
-        long_about = "Analyze PYC: codes, constants, Python reconstruction"
+        long_about = "Analyze PYC/PYZ: modules, codes, constants, references and Python reconstruction"
     )]
     Pyc {
         #[command(subcommand)]

@@ -28,7 +28,7 @@ pub enum Query<'a> {
     },
     Hex(&'a [u8]),
 }
-pub fn constant_id(_analysis: &Analysis, owner: usize, path: &[usize]) -> String {
+pub fn constant_id(analysis: &Analysis, owner: usize, path: &[usize]) -> String {
     let mut id = format!("const:{owner}:");
     for (position, index) in path.iter().enumerate() {
         if position != 0 {
@@ -36,7 +36,7 @@ pub fn constant_id(_analysis: &Analysis, owner: usize, path: &[usize]) -> String
         }
         write!(&mut id, "{index}").unwrap();
     }
-    id
+    analysis.qualify_id(&id)
 }
 /// Resolve one strings occurrence through parser definitions in O(path depth).
 /// Shared payloads retain the selected owner/path; no value search or alias expansion.
@@ -59,7 +59,10 @@ pub fn resolve_id(analysis: &mut Analysis, id: &str) -> Result<SelectedConstant>
         value.parse().map_err(|_| invalid())
     }
     analysis.charge_work(id.len())?;
-    let rest = id.strip_prefix("const:").ok_or_else(invalid)?;
+    let rest = analysis
+        .local_id(id)?
+        .strip_prefix("const:")
+        .ok_or_else(invalid)?;
     let (owner, encoded_path) = rest.split_once(':').ok_or_else(invalid)?;
     if encoded_path.contains(':') {
         return Err(invalid());

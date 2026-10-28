@@ -379,6 +379,9 @@ struct PartialGen {
     iter: ExprRef,
     ifs: Vec<ExprRef>,
     if_break: bool,
+    filters: Vec<crate::filters::Guard>,
+    loop_offset: usize,
+    loop_end: usize,
 }
 
 /// Per-unpack-frame collected targets (inner Vec per open frame).
@@ -394,6 +397,8 @@ struct Ctx<'a> {
     stack: Vec<Sv>,
     blocks: Vec<Block>,
     clean: bool,
+    recovery: Option<&'a crate::recovery::Module<'a>>,
+    first_unhandled: Option<usize>,
     nested_error: Option<crate::PycError>,
     /// unpack frames (remaining, count, star_at, value)
     unpack_frames: Vec<(usize, usize, Option<usize>, ExprRef)>,
@@ -877,6 +882,45 @@ pub fn decompile_in_scope(
     version: PythonVersion,
     class_scope: &[String],
 ) -> crate::Result<Decompiled> {
+    decompile_with_recovery(code, version, class_scope, None)
+}
+
+pub(crate) fn decompile_recovering(
+    code: &CodeObject,
+    version: PythonVersion,
+    class_scope: &[String],
+    module: &crate::recovery::Module<'_>,
+) -> crate::Result<Decompiled> {
+    decompile_with_recovery(code, version, class_scope, Some(module))
+}
+
+fn decompile_with_recovery(
+    code: &CodeObject,
+    version: PythonVersion,
+    class_scope: &[String],
+    recovery: Option<&crate::recovery::Module<'_>>,
+) -> crate::Result<Decompiled> {
+    if let Some(cached) = recovery.and_then(|module| module.cached_fallback(code)) {
+        return Ok(cached);
+    }
+    match decompile_body(code, version, class_scope, recovery) {
+        Err(error @ (crate::PycError::UnknownOpcode(..) | crate::PycError::Msg(_))) => {
+            if let Some(module) = recovery {
+                module.fallback(code, version, error.to_string())
+            } else {
+                Err(error)
+            }
+        }
+        result => result,
+    }
+}
+
+fn decompile_body(
+    code: &CodeObject,
+    version: PythonVersion,
+    class_scope: &[String],
+    recovery: Option<&crate::recovery::Module<'_>>,
+) -> crate::Result<Decompiled> {
     let _budget_frame = crate::budget::enter();
     let table = table_for(version)?;
     let instrs = crate::bytecode::decode_instructions(code, table, version)?;
@@ -1211,6 +1255,8 @@ pub fn decompile_in_scope(
         stack: Vec::new(),
         blocks: vec![Block::new(BlockType::Main, 0, usize::MAX)],
         clean: true,
+        recovery,
+        first_unhandled: None,
         nested_error: None,
         unpack_frames: Vec::new(),
         comp_target_store: false,
@@ -2511,6 +2557,14 @@ pub fn decompile_in_scope(
     if let Some(error) = ctx.nested_error.take() {
         return Err(error);
     }
+    if let Some(module) = recovery.filter(|_| !ctx.clean) {
+        let offset = ctx.first_unhandled.unwrap_or(ctx.cur_offset);
+        return module.fallback(
+            code,
+            version,
+            crate::budget_format!("unsupported reconstruction at offset {offset}"),
+        );
+    }
 
     // a legacy try whose emission stayed deferred for the else region:
     // the walk can end (function-tail return inside the else region)
@@ -2755,7 +2809,17 @@ pub fn decompile_in_scope(
             },
         );
     }
-    crate::budget::statements(&body);
+    if !crate::budget::source_ready(&body) {
+        ctx.mark_unclean();
+    }
+    if let Some(module) = recovery.filter(|_| !ctx.clean) {
+        let offset = ctx.first_unhandled.unwrap_or(ctx.cur_offset);
+        return module.fallback(
+            code,
+            version,
+            crate::budget_format!("unsupported reconstruction at offset {offset}"),
+        );
+    }
     Ok(Decompiled {
         body,
         clean: ctx.clean,
@@ -2787,7 +2851,10 @@ impl<'a> Ctx<'a> {
         self.prescan_dup_copies();
         let mut pc = 0usize;
         let mut past_chains = false;
-        while pc < self.instrs.len() && self.nested_error.is_none() {
+        while pc < self.instrs.len()
+            && self.nested_error.is_none()
+            && (self.recovery.is_none() || self.clean)
+        {
             crate::budget::charge(1);
             let inst = self.instrs[pc];
             let pos = inst.offset;
@@ -4382,7 +4449,17 @@ impl<'a> Ctx<'a> {
         }
         let tail_start = self.instrs[j].offset;
         if dbg_flag!("PYCDC_EG_DBG") {
-            eprintln!("EG armtail tc=({},{}) h={} j={} tail_start={} cur_offset={} jump_is_loop_exit={} span_ok={}", tc.start, tc.body_end, h, self.instrs[j].offset, tail_start, self.cur_offset, jump_is_loop_exit, span_ok);
+            eprintln!(
+                "EG armtail tc=({},{}) h={} j={} tail_start={} cur_offset={} jump_is_loop_exit={} span_ok={}",
+                tc.start,
+                tc.body_end,
+                h,
+                self.instrs[j].offset,
+                tail_start,
+                self.cur_offset,
+                jump_is_loop_exit,
+                span_ok
+            );
         }
         if tail_start <= self.cur_offset {
             if dbg_flag!("PYCDC_EG_DBG") {
@@ -4646,7 +4723,15 @@ impl<'a> Ctx<'a> {
         if dbg_flag!("PYCDC_EG_DBG") {
             eprintln!(
                 "EG tail [{}] tc start={} body_end={} region_end={} exc={:?} fin={:?} pos={} star_inline={} body_jf={:?}",
-                self.code.name, tc.start, tc.body_end, tc.region_end, tc.except_handler, tc.finally_handler, pos, star_inline, body_jf
+                self.code.name,
+                tc.start,
+                tc.body_end,
+                tc.region_end,
+                tc.except_handler,
+                tc.finally_handler,
+                pos,
+                star_inline,
+                body_jf
             );
         }
         // deferred nested tail: an enclosing merged same-handler region
@@ -5502,7 +5587,16 @@ impl<'a> Ctx<'a> {
                         // (b22 3.11 loop_try_mix decomposes correctly
                         // despite it)
                         if dbg_flag!("PYCDC_EG_DBG") {
-                            eprintln!("EG mirror [{}] pos={} fh={} ok={} sn={} si0off={} fin_span_stop={}", self.code.name, pos, tc.finally_handler.unwrap_or(0), ok, sn, self.instrs.get(si0).map(|x| x.offset).unwrap_or(0), fin_span_stop);
+                            eprintln!(
+                                "EG mirror [{}] pos={} fh={} ok={} sn={} si0off={} fin_span_stop={}",
+                                self.code.name,
+                                pos,
+                                tc.finally_handler.unwrap_or(0),
+                                ok,
+                                sn,
+                                self.instrs.get(si0).map(|x| x.offset).unwrap_or(0),
+                                fin_span_stop
+                            );
                         }
                         mirror_ok = ok || sn > 1;
                         if ok {
@@ -14997,6 +15091,7 @@ impl<'a> Ctx<'a> {
             }
         }
         self.clean = false;
+        self.first_unhandled.get_or_insert(self.cur_offset);
     }
 
     fn unimplemented(&mut self, inst: &Instruction, what: &str) {
@@ -15965,14 +16060,7 @@ impl<'a> Ctx<'a> {
             }
             Op::BINARY_OP => {
                 match binary_op_name(arg, self.version) {
-                    Some(name) => {
-                        if name.ends_with('=') {
-                            self.apply_inplace(name.trim_end_matches('='), arg);
-                        } else {
-                            self.apply_binary(name);
-                        }
-                    }
-                    None if self.version.at_least(3, 14) => {
+                    Some("[]") => {
                         // 3.14 folded BINARY_SUBSCR into BINARY_OP 26 (`[]`)
                         let idx = self.pop_expr();
                         let val = self.pop_expr();
@@ -15981,6 +16069,13 @@ impl<'a> Ctx<'a> {
                             value: val,
                             index: idx,
                         }));
+                    }
+                    Some(name) => {
+                        if name.ends_with('=') {
+                            self.apply_inplace(name.trim_end_matches('='), arg);
+                        } else {
+                            self.apply_binary(name);
+                        }
                     }
                     None => {
                         self.mark_unclean();
@@ -17463,7 +17558,10 @@ impl<'a> Ctx<'a> {
                                             })
                                             .all(is_pad2);
                                         if dbg_flag!("PYCDC_SWL_DBG") {
-                                            eprintln!("SWL span wtop={} wend={} count={} all_ok={} tail_pad={}", wtop, wend, count, all_ok, tail_pad);
+                                            eprintln!(
+                                                "SWL span wtop={} wend={} count={} all_ok={} tail_pad={}",
+                                                wtop, wend, count, all_ok, tail_pad
+                                            );
                                         }
                                         if all_ok && count >= 2 && tail_pad {
                                             if let Some(top) = self.blocks.last_mut() {
@@ -18194,7 +18292,7 @@ impl<'a> Ctx<'a> {
                                 break;
                             }
                             Op::STORE_FAST | Op::STORE_NAME | Op::STORE_DEREF | Op::YIELD_FROM => {
-                                break
+                                break;
                             }
                             _ => {}
                         }
@@ -26822,6 +26920,13 @@ impl<'a> Ctx<'a> {
                     let r = pop1(&mut st);
                     let l = pop1(&mut st);
                     match binary_op_name(arg as u32, self.version) {
+                        Some("[]") => {
+                            let idx = normalize_slice_call(r);
+                            st.push(crate::budget::rc(Expr::Subscript {
+                                value: l,
+                                index: idx,
+                            }));
+                        }
                         Some(name) => {
                             if name.ends_with('=') {
                                 return None;
@@ -26831,16 +26936,6 @@ impl<'a> Ctx<'a> {
                                 op,
                                 left: l,
                                 right: r,
-                            }));
-                        }
-                        // 3.14 folded BINARY_SUBSCR into BINARY_OP `[]`,
-                        // with constant slices as LOAD_CONST slice(...) —
-                        // mirror the main handler's subscript conversion
-                        None if self.version.at_least(3, 14) => {
-                            let idx = normalize_slice_call(r);
-                            st.push(crate::budget::rc(Expr::Subscript {
-                                value: l,
-                                index: idx,
                             }));
                         }
                         None => return None,
@@ -31888,6 +31983,13 @@ impl<'a> Ctx<'a> {
                     let r = pop1(&mut st);
                     let l = pop1(&mut st);
                     match binary_op_name(arg as u32, self.version) {
+                        Some("[]") => {
+                            let idx = normalize_slice_call(r);
+                            st.push(crate::budget::rc(Expr::Subscript {
+                                value: l,
+                                index: idx,
+                            }));
+                        }
                         Some(name) => {
                             if name.ends_with('=') {
                                 return None;
@@ -31897,13 +31999,6 @@ impl<'a> Ctx<'a> {
                                 op,
                                 left: l,
                                 right: r,
-                            }));
-                        }
-                        None if self.version.at_least(3, 14) => {
-                            let idx = normalize_slice_call(r);
-                            st.push(crate::budget::rc(Expr::Subscript {
-                                value: l,
-                                index: idx,
                             }));
                         }
                         None => return None,
@@ -34583,84 +34678,17 @@ impl<'a> Ctx<'a> {
                     }
                 }
                 comp.tern_chain_t = None;
-                // 3.12+ inline filters come in two layouts:
-                // - INVERTED (same-line 3.12; ALL of 3.13/3.14): the
-                //   jump lands ON the append (target is
-                //   LIST_APPEND/SET_ADD/MAP_ADD/YIELD after pads) and
-                //   the fall-through is the skip back edge. The jump
-                //   polarity IS the filter polarity: PJT->`if C`,
-                //   PJF->`if not C`.
-                // - CLASSIC (3.12 line-broken filters): PJF->shared
-                //   back edge (skip), fall-through appends:
-                //   PJF->`if C`, PJT->`if not C`.
-                // The old code treated every PJF as classic and every
-                // PJIT as inverted-by-construction, so 3.13/3.14
-                // `if not C` filters (PJF->append) lost their Not
-                // (cmd 3.14 columnize: `if not isinstance(list[i],
-                // str)` rendered positive - a semantic inversion).
-                // the raw jump must be FORWARD onto the append
-                // region: handle_cond_jump's 3.8+ threading retargets
-                // classic skip jumps (PJF->shared back edge) to the
-                // loop TOP, and scanning from there would wrap around
-                // and find the append after the filter again
-                // (_py_abc 3.12 __new__ line-broken setcomp)
-                let target_is_append = target > self.cur_offset
-                    && self.idx_of.get(&target).map_or(false, |&ti| {
-                        crate::budget::charge(1);
-
-                        // the inverted layout's target is the START OF
-                        // THE ELT/APPEND region (elt value ops may
-                        // precede the *_ADD); the classic layout's
-                        // target is the skip back edge itself or pure
-                        // glue before it. Scan until the append, a
-                        // backward jump, or the comp end.
-                        self.instrs[ti..]
-                            .iter()
-                            .take_while(|x| {
-                                crate::budget::charge(1);
-                                self.cur_offset < x.offset || x.offset < comp.end
-                            })
-                            .find(|x| {
-                                crate::budget::charge(1);
-
-                                matches!(
-                                    x.op,
-                                    Op::LIST_APPEND | Op::SET_ADD | Op::MAP_ADD | Op::YIELD_VALUE
-                                ) || x.is_backward
-                            })
-                            .map_or(false, |x| {
-                                crate::budget::charge(1);
-
-                                matches!(
-                                    x.op,
-                                    Op::LIST_APPEND | Op::SET_ADD | Op::MAP_ADD | Op::YIELD_VALUE
-                                )
-                            })
+                if let (Some(cur), Some(target)) = (&mut comp.cur, raw_t) {
+                    cur.if_break |= comp_if_break;
+                    cur.filters.push(crate::filters::Guard {
+                        offset: self.cur_offset,
+                        next: self.cur_next,
+                        target,
+                        condition: cond,
+                        jump_if_true,
                     });
-                let c = if target_is_append {
-                    if jump_if_true {
-                        cond
-                    } else {
-                        negate_cond(cond)
-                    }
-                } else if jump_if_true {
-                    negate_cond(cond)
                 } else {
-                    // classic skip-layout PJF: the item is kept exactly
-                    // when cond is true - the filter IS cond. Do NOT
-                    // simplify_not here: py2.7 materializes `if not A`
-                    // filters as UNARY_NOT + PJF, and the strip flipped
-                    // the filter (SimpleXMLRPCServer 2.7
-                    // list_public_methods lost the Not on
-                    // `not member.startswith('_')`, returning private
-                    // members instead of public ones)
-                    cond
-                };
-                if let Some(cur) = &mut comp.cur {
-                    if comp_if_break && !target_is_append {
-                        cur.if_break = true;
-                    }
-                    cur.ifs.push(c);
+                    self.mark_unclean();
                 }
                 return;
             }
@@ -36717,7 +36745,11 @@ impl<'a> Ctx<'a> {
                                 self.cur_next,
                                 t == cur,
                                 t == self.cur_next,
-                                if t < cur { self.is_cond_expr_top(t, cur) } else { false }
+                                if t < cur {
+                                    self.is_cond_expr_top(t, cur)
+                                } else {
+                                    false
+                                }
                             );
                         }
                         // the back edge must belong to THIS cond, not
@@ -38724,7 +38756,7 @@ impl<'a> Ctx<'a> {
             match inst.op {
                 Op::RAISE_VARARGS => return inst.arg == 2,
                 Op::LOAD_ASSERTION_ERROR | Op::POP_JUMP_IF_FALSE | Op::POP_JUMP_IF_TRUE => {
-                    return false
+                    return false;
                 }
                 _ => {
                     k += 1;
@@ -45786,7 +45818,7 @@ fn flatten_ex_args(e: ExprRef) -> (Vec<ExprRef>, Option<ExprRef>) {
             return (
                 Vec::new(),
                 Some(crate::budget::rc(crate::budget_clone!(other))),
-            )
+            );
         }
     };
     // a single TRAILING Starred is the Call model's star_args slot; a
@@ -47400,6 +47432,9 @@ impl<'a> Ctx<'a> {
                     crate::budget::charge(1);
                     extract_code(&val)
                 });
+                let coordinate = self
+                    .recovery
+                    .and_then(|module| body_src.as_ref().map(|code| module.index(code)));
                 let mut body = match body_src {
                     Some(code) => self.decompile_class_body(&code, cname).unwrap_or_else(|| {
                         crate::budget::charge(1);
@@ -47422,6 +47457,7 @@ impl<'a> Ctx<'a> {
                 }
                 let decorators = std::mem::take(&mut self.pending_class_decorators);
                 self.push_stmt(Stmt::ClassDef {
+                    coordinate,
                     name: crate::budget_clone!(cname),
                     bases,
                     keywords: Vec::new(),
@@ -47603,6 +47639,7 @@ impl<'a> Ctx<'a> {
                                 decorators
                                     .extend(std::mem::take(&mut self.pending_class_decorators));
                                 self.push_stmt(Stmt::ClassDef {
+                                    coordinate: self.recovery.map(|module| module.index(&fd.code)),
                                     name: class_name,
                                     bases: real_bases,
                                     keywords: real_kws,
@@ -50074,7 +50111,18 @@ impl<'a> Ctx<'a> {
                                     _ => true,
                                 };
                             if dbg_flag!("PYCDC_REC_DBG") {
-                                eprintln!("REC off={} targeted={} adjacent={} always={} body_term={} line_ok={} h={} end_at={} ltb={:?}", self.cur_offset, targeted, adjacent, chain_always_raises, body_terminal, line_ok, h, end_at, self.last_try_body_end);
+                                eprintln!(
+                                    "REC off={} targeted={} adjacent={} always={} body_term={} line_ok={} h={} end_at={} ltb={:?}",
+                                    self.cur_offset,
+                                    targeted,
+                                    adjacent,
+                                    chain_always_raises,
+                                    body_terminal,
+                                    line_ok,
+                                    h,
+                                    end_at,
+                                    self.last_try_body_end
+                                );
                             }
                             if !targeted
                                 && adjacent
@@ -52037,7 +52085,8 @@ impl<'a> Ctx<'a> {
             // returns the annotations dict
             if let Expr::Function(afd) = &*value {
                 if afd.code.name == "__annotate__" {
-                    let result = decompile(&afd.code, self.version);
+                    let result =
+                        decompile_with_recovery(&afd.code, self.version, &[], self.recovery);
                     if let Some(d) = self.nested_result(result) {
                         if !d.clean {
                             self.mark_unclean();
@@ -52113,7 +52162,7 @@ impl<'a> Ctx<'a> {
     ) -> Option<ExprRef> {
         let _budget_frame = crate::budget::enter();
         let scope = crate::budget_clone!(self.class_scope);
-        let result = decompile_in_scope(code, self.version, &scope);
+        let result = decompile_with_recovery(code, self.version, &scope, self.recovery);
         let d = self.nested_result(result)?;
         if !d.clean {
             self.mark_unclean();
@@ -52249,7 +52298,7 @@ impl<'a> Ctx<'a> {
             _ => return crate::budget_clone!(e),
         };
         if let Some(c) = code {
-            let result = decompile(&c, self.version);
+            let result = decompile_with_recovery(&c, self.version, &[], self.recovery);
             if let Some(d) = self.nested_result(result) {
                 if !d.clean {
                     self.mark_unclean();
@@ -52283,7 +52332,7 @@ impl<'a> Ctx<'a> {
     fn lambda_body(&mut self, code: &CodeObject) -> ExprRef {
         let _budget_frame = crate::budget::enter();
         // lambda code: build expression from the (short) instruction stream
-        let inner = decompile(code, self.version);
+        let inner = decompile_with_recovery(code, self.version, &[], self.recovery);
         match self.nested_result(inner) {
             Some(d) => {
                 if !d.clean {
@@ -52374,9 +52423,12 @@ impl<'a> Ctx<'a> {
         } else {
             crate::budget_clone!(self.class_scope)
         };
-        let result = decompile_in_scope(code, self.version, &scope);
+        let result = decompile_with_recovery(code, self.version, &scope, self.recovery);
         match self.nested_result(result) {
             Some(d) => {
+                if matches!(d.body.as_slice(), [Stmt::BytecodeFallback(_)]) {
+                    return Some(d.body);
+                }
                 if !d.clean {
                     self.mark_unclean();
                 }
@@ -56514,7 +56566,12 @@ impl<'a> Ctx<'a> {
                 | Op::END_ASYNC_FOR
                 | Op::GET_YIELD_FROM_ITER
                 | Op::PRECALL
+                | Op::RETURN_GENERATOR
+                | Op::COPY_FREE_VARS
+                | Op::MAKE_CELL
                 | Op::EXTENDED_ARG => {}
+                Op::CALL_INTRINSIC_1 if inst.arg == 3 => {}
+                Op::RERAISE if prev == Some((Op::CALL_INTRINSIC_1, 3)) => {}
                 // 3.14 `_` elision: the compiler replaces the store of a
                 // throwaway `_` unpack target with a POP_TOP discarding
                 // the slot (bdb 3.14 _lineno_in_frame `(lineno for _, _,
@@ -57181,6 +57238,13 @@ impl<'a> Ctx<'a> {
                             inst.arg,
                             self.version,
                         ) {
+                            Some("[]") => {
+                                let idx = normalize_slice_call(r);
+                                stack.push(crate::budget::rc(Expr::Subscript {
+                                    value: l,
+                                    index: idx,
+                                }));
+                            }
                             Some(name) => {
                                 let op = binop_from_text(name);
                                 stack.push(crate::budget::rc(Expr::Binary {
@@ -57189,27 +57253,9 @@ impl<'a> Ctx<'a> {
                                     right: r,
                                 }));
                             }
-                            // 3.14 folded BINARY_SUBSCR into BINARY_OP
-                            // 26 (`[]`), with constant slices as
-                            // LOAD_CONST slice(...) - mirror the main
-                            // handler instead of defaulting to `+`
-                            // (cmd 3.14 complete_help genexpr:
-                            // `a[5:]` rendered `a + slice(5, None,
-                            // None)` and `args[0]` rendered `args + 0`)
-                            None if self.version.at_least(3, 14) => {
-                                let idx = normalize_slice_call(r);
-                                stack.push(crate::budget::rc(Expr::Subscript {
-                                    value: l,
-                                    index: idx,
-                                }));
-                            }
                             None => {
-                                let op = binop_from_text("+");
-                                stack.push(crate::budget::rc(Expr::Binary {
-                                    op,
-                                    left: l,
-                                    right: r,
-                                }));
+                                self.mark_unclean();
+                                return None;
                             }
                         }
                     }
@@ -57355,35 +57401,43 @@ impl<'a> Ctx<'a> {
                     }));
                 }
                 Op::CALL_FUNCTION_EX => {
-                    // `f(*t)` / `f(*a, **k)` element: [callable(+marker),
-                    // args-iterable, (kwargs dict when arg&1)]
-                    let underflow = || { crate::budget::charge(1); crate::budget::rc(Expr::Name(crate::budget_string!("?"))) };
-                    let star_kw = if inst.arg & 1 != 0 {
-                        stack.pop()
+                    // 3.14 always has a kwargs slot, with NULL meaning no kwargs.
+                    let kwargs = if self.version.at_least(3, 14) || inst.arg & 1 != 0 {
+                        let Some(value) = stack.pop() else {
+                            self.mark_unclean();
+                            return None;
+                        };
+                        (!is_null_marker(&value)).then_some(value)
                     } else {
                         None
                     };
-                    let star = stack.pop().unwrap_or_else(underflow);
-                    let func = if self.version.at_least(3, 14) {
-                        if matches!(stack.last(), Some(m) if is_null_marker(m)) {
-                            stack.pop();
-                        }
-                        stack.pop().unwrap_or_else(underflow)
-                    } else if self.version.at_least(3, 11) {
-                        let f = stack.pop().unwrap_or_else(underflow);
-                        if matches!(stack.last(), Some(m) if is_null_marker(m)) {
-                            stack.pop();
-                        }
-                        f
-                    } else {
-                        stack.pop().unwrap_or_else(underflow)
+                    let Some(star) = stack.pop() else {
+                        self.mark_unclean();
+                        return None;
                     };
+                    if self.version.at_least(3, 13)
+                        && matches!(stack.last(), Some(value) if is_null_marker(value))
+                    {
+                        stack.pop();
+                    }
+                    let Some(func) = stack.pop() else {
+                        self.mark_unclean();
+                        return None;
+                    };
+                    if self.version.at_least(3, 11) && !self.version.at_least(3, 13)
+                        && matches!(stack.last(), Some(value) if is_null_marker(value))
+                    {
+                        stack.pop();
+                    }
+                    if is_null_marker(&func) || is_null_marker(&star) {
+                        self.mark_unclean();
+                        return None;
+                    }
+                    let (args, star_args) = flatten_ex_args(star);
+                    let (keywords, star_kwargs) = kwargs.map(flatten_ex_kwargs)
+                        .unwrap_or_else(|| (Vec::new(), None));
                     stack.push(crate::budget::rc(Expr::Call {
-                        func,
-                        args: Vec::new(),
-                        keywords: Vec::new(),
-                        star_args: Some(star),
-                        star_kwargs: star_kw,
+                        func, args, keywords, star_args, star_kwargs,
                     }));
                 }
                 // 3.13+ CALL_KW / <=3.12 CALL_FUNCTION_KW: [callable,
@@ -57668,6 +57722,39 @@ impl<'a> Ctx<'a> {
                     }
                     stack.push(crate::budget::rc(Expr::Dict(entries)));
                 }
+                Op::LIST_EXTEND => {
+                    let Some(iterable) = stack.pop() else {
+                        self.mark_unclean();
+                        return None;
+                    };
+                    let slot = (inst.arg as usize).checked_sub(1)
+                        .and_then(|depth| stack.len().checked_sub(depth + 1))
+                        .and_then(|index| stack.get_mut(index));
+                    let Some(slot) = slot else {
+                        self.mark_unclean();
+                        return None;
+                    };
+                    let Expr::List(items) = &**slot else {
+                        self.mark_unclean();
+                        return None;
+                    };
+                    let mut items = crate::budget_clone!(items);
+                    items.push(crate::budget::rc(Expr::Starred(iterable)));
+                    *slot = crate::budget::rc(Expr::List(items));
+                }
+                Op::LIST_TO_TUPLE | Op::CALL_INTRINSIC_1
+                    if inst.op == Op::LIST_TO_TUPLE || inst.arg == 6 =>
+                {
+                    let Some(list) = stack.pop() else {
+                        self.mark_unclean();
+                        return None;
+                    };
+                    let Expr::List(items) = &*list else {
+                        self.mark_unclean();
+                        return None;
+                    };
+                    stack.push(crate::budget::rc(Expr::Tuple(crate::budget_clone!(items))));
+                }
                 Op::TO_BOOL => {}
                 // slice construction inside a comprehension element:
                 // without this the operands stay on the stack and a
@@ -57749,7 +57836,10 @@ impl<'a> Ctx<'a> {
                 Op::PUSH_NULL => {
                     stack.push(crate::budget::rc(Expr::Name(crate::budget_string!("\u{0}null"))));
                 }
-                _ => {}
+                _ => {
+                    self.mark_unclean();
+                    return None;
+                }
             }
         }
 
@@ -58079,6 +58169,9 @@ impl<'a> Ctx<'a> {
                 iter,
                 ifs: Vec::new(),
                 if_break: false,
+                filters: Vec::new(),
+                loop_offset: inst.offset,
+                loop_end: inst.target.unwrap_or(0),
             }),
             elt: None,
             key: None,
@@ -58191,13 +58284,13 @@ impl<'a> Ctx<'a> {
                     if self.version.major == 2
                         && self.const_name(ins.arg as usize).starts_with("_[") =>
                 {
-                    continue
+                    continue;
                 }
                 Op::STORE_FAST
                     if self.version.major == 2
                         && self.local_name(ins.arg as usize).starts_with("_[") =>
                 {
-                    continue
+                    continue;
                 }
                 Op::BUILD_LIST | Op::BUILD_SET | Op::BUILD_MAP => {
                     return ins.arg == 0;
@@ -58216,7 +58309,7 @@ impl<'a> Ctx<'a> {
                             | Op::LOAD_ATTR
                     ) =>
                 {
-                    continue
+                    continue;
                 }
                 _ => return false,
             }
@@ -58254,28 +58347,52 @@ impl<'a> Ctx<'a> {
             // keep the iterator available for the loop-target store flow
             self.push(crate::budget_clone!(iter));
         }
-        if let Some(comp) = &mut self.inline_comp {
+        let loop_end = self
+            .idx_of
+            .get(&self.cur_offset)
+            .and_then(|&index| self.instrs[index].target)
+            .unwrap_or(0);
+        if let Some(mut comp) = self.inline_comp.take() {
             if let Some(done) = comp.cur.take() {
-                comp.gens.push(Comprehension {
-                    target: done.target.unwrap_or_else(|| {
-                        crate::budget::charge(1);
-                        crate::budget::rc(Expr::Name(crate::budget_string!("_")))
-                    }),
-                    iter: done.iter,
-                    ifs: done.ifs,
-                    is_async: false,
-                    if_line_break: done.if_break,
-                });
+                comp.gens.push(self.finish_comp_gen(done));
             }
             comp.cur = Some(PartialGen {
                 target: None,
                 iter,
                 ifs: Vec::new(),
                 if_break: false,
+                filters: Vec::new(),
+                loop_offset: self.cur_offset,
+                loop_end,
             });
             comp.target_seen = false;
+            self.inline_comp = Some(comp);
         }
         self.comp_target_store = true;
+    }
+
+    fn finish_comp_gen(&mut self, mut done: PartialGen) -> Comprehension {
+        if !done.filters.is_empty() {
+            match crate::filters::reconstruct(
+                &done.filters,
+                &self.instrs,
+                &self.idx_of,
+                done.loop_offset,
+                done.loop_end,
+            ) {
+                Some(condition) => done.ifs.push(condition),
+                None => self.mark_unclean(),
+            }
+        }
+        Comprehension {
+            target: done
+                .target
+                .unwrap_or_else(|| crate::budget::rc(Expr::Name(crate::budget_string!("_")))),
+            iter: done.iter,
+            ifs: done.ifs,
+            is_async: false,
+            if_line_break: done.if_break,
+        }
     }
 
     /// Called at the outermost END_FOR: build the comprehension expression.
@@ -58289,16 +58406,7 @@ impl<'a> Ctx<'a> {
             self.completed_comp_regions.push((comp.start, comp.end));
         }
         if let Some(done) = comp.cur.take() {
-            comp.gens.push(Comprehension {
-                target: done.target.unwrap_or_else(|| {
-                    crate::budget::charge(1);
-                    crate::budget::rc(Expr::Name(crate::budget_string!("_")))
-                }),
-                iter: done.iter,
-                ifs: done.ifs,
-                is_async: false,
-                if_line_break: done.if_break,
-            });
+            comp.gens.push(self.finish_comp_gen(done));
         }
         let elt = comp.elt.take().unwrap_or_else(|| {
             crate::budget::charge(1);

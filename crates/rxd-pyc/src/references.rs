@@ -1,12 +1,11 @@
 //! Explicit instruction references. No AST, source recovery or runtime dispatch inference.
 use crate::{
-    code_view::{Target, instruction_targets},
+    operands::{Target, instruction_targets},
     static_analysis::Analysis,
     string_constants::SelectedConstant,
 };
 use pycdc::{
-    bytecode::decode_evidence_limited,
-    object::PyObject,
+    bytecode::decode_evidence_capped,
     opcode::{Op, table_for},
 };
 use rxd_core::{Error, Result};
@@ -15,6 +14,8 @@ use std::collections::HashSet;
 
 #[derive(Serialize)]
 pub struct Hit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
     pub code_index: usize,
     pub offset: usize,
     pub opcode: u8,
@@ -62,7 +63,11 @@ fn operation(op: Op, position: usize) -> Option<&'static str> {
         Op::LOAD_GLOBAL => "global_read",
         Op::STORE_GLOBAL => "global_write",
         Op::DELETE_GLOBAL => "global_delete",
-        Op::LOAD_FAST | Op::LOAD_FAST_CHECK | Op::LOAD_FAST_LOAD_FAST => "local_read",
+        Op::LOAD_FAST
+        | Op::LOAD_FAST_CHECK
+        | Op::LOAD_FAST_LOAD_FAST
+        | Op::LOAD_FAST_BORROW
+        | Op::LOAD_FAST_BORROW_LOAD_FAST_BORROW => "local_read",
         Op::STORE_FAST_LOAD_FAST if position == 0 => "local_write",
         Op::STORE_FAST_LOAD_FAST => "local_read",
         Op::STORE_FAST | Op::STORE_FAST_STORE_FAST => "local_write",
@@ -129,13 +134,11 @@ pub fn scan(
             return Err(invalid("scanned code has no readable bytecode body"));
         }
         let code = a.codes[owner].code.clone();
-        let units = code.code.len() / 2;
-        if max_instructions.is_some_and(|limit| units > limit) {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "scanned code instruction budget exceeded",
-            ));
-        }
+        let units = if table.wordcode {
+            code.code.len() / 2
+        } else {
+            code.code.len()
+        };
         let span = a
             .field_definition(owner, "code")
             .and_then(|d| a.evidence.occurrences[d].payload)
@@ -143,7 +146,7 @@ pub fn scan(
         // All retained decoder state is bounded before allocation by the per-code cap
         // and invocation work; decoding does not construct unused code-view JSON.
         let mut decoded = 0usize;
-        let result = decode_evidence_limited(&code, table, a.version, |amount| {
+        let result = decode_evidence_capped(&code, table, a.version, max_instructions, |amount| {
             a.charge_work(amount).map_err(|_| {
                 pycdc::PycError::ResourceLimit("static instruction work budget exceeded")
             })?;
@@ -174,8 +177,15 @@ pub fn scan(
                     .target
                     .is_none_or(|t| t >= code.code.len() || !boundaries.contains(&t))
             {
-                return Err(invalid(
-                    "jump target is outside bytecode or not an instruction boundary",
+                return Err(Error::new(
+                    "INVALID_INPUT",
+                    format!(
+                        "{} offset {} {} targets {:?}, outside bytecode or not an instruction boundary",
+                        a.code_id(owner),
+                        ins.offset,
+                        table.name(ins.opcode),
+                        ins.target,
+                    ),
                 ));
             }
         }
@@ -185,11 +195,23 @@ pub fn scan(
         let kinds = a
             .field_definition(owner, "localsplus_kinds")
             .and_then(|d| a.payload(d));
-        if a.version.minor >= 11 && kinds.is_none_or(|k| k.len() != local_count) {
+        if a.version.at_least(3, 11) && kinds.is_none_or(|k| k.len() != local_count) {
             return Err(invalid("localsplus name/kind table lengths differ"));
         }
+        let mut raw_cursor = 0;
         for ins in &logical {
             a.charge_work(1)?;
+            while raw
+                .get(raw_cursor)
+                .is_some_and(|unit| unit.offset < ins.offset)
+            {
+                a.charge_work(1)?;
+                raw_cursor += 1;
+            }
+            let unit = raw
+                .get(raw_cursor)
+                .filter(|unit| unit.offset == ins.offset)
+                .ok_or_else(|| invalid("decoded instruction has no original span"))?;
             let opname = table.name(ins.opcode);
             if ins.op == Op::Unknown || opname == "RESERVED" || opname.starts_with("INSTRUMENTED_")
             {
@@ -199,7 +221,7 @@ pub fn scan(
                     context_at: a.code_id(owner),
                     offset: ins.offset,
                     start: span.start + ins.offset,
-                    end: span.start + ins.offset + 2,
+                    end: span.start + ins.offset + unit.size,
                     opcode: ins.opcode,
                     name: opname.into(),
                     status: "UNSUPPORTED_OPCODE",
@@ -207,10 +229,13 @@ pub fn scan(
                 continue;
             }
             // Resolve/validate every supported operand even for a zero-hit query.
-            let packed = a.version.minor == 13
+            let packed = a.version.at_least(3, 13)
                 && matches!(
                     ins.op,
-                    Op::LOAD_FAST_LOAD_FAST | Op::STORE_FAST_LOAD_FAST | Op::STORE_FAST_STORE_FAST
+                    Op::LOAD_FAST_LOAD_FAST
+                        | Op::LOAD_FAST_BORROW_LOAD_FAST_BORROW
+                        | Op::STORE_FAST_LOAD_FAST
+                        | Op::STORE_FAST_STORE_FAST
                 );
             let resolutions = usize::from(table.takes_const(ins.opcode))
                 + usize::from(table.takes_name(ins.opcode))
@@ -282,12 +307,6 @@ pub fn scan(
                             .ok_or_else(|| invalid("missing name operand table"))?;
                         let child = a.evidence.occurrences[definition].children[target.index];
                         let definition = a.evidence.occurrences[child].definition;
-                        if !matches!(
-                            a.evidence.occurrences[definition].object.as_deref(),
-                            Some(PyObject::Str(_))
-                        ) {
-                            return Err(invalid("name operand does not identify a string"));
-                        }
                         let length = a
                             .payload(definition)
                             .ok_or_else(|| invalid("name operand has no original payload"))?
@@ -326,11 +345,12 @@ pub fn scan(
                     }
                 };
                 scan.hits.push(Hit {
+                    entry: a.namespace.clone(),
                     code_index: owner,
                     offset: ins.offset,
                     opcode: ins.opcode,
                     name: opname.into(),
-                    raw_operand: raw[ins.offset / 2].raw_arg,
+                    raw_operand: unit.raw_arg,
                     operand: ins.has_arg.then_some(ins.arg),
                     target,
                     target_name,
@@ -341,7 +361,7 @@ pub fn scan(
                     literal_kind,
                     relation,
                     start: span.start + ins.offset,
-                    end: span.start + ins.offset + 2,
+                    end: span.start + ins.offset + unit.size,
                 });
             }
         }

@@ -3,10 +3,10 @@
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::Result;
 use crate::code::CodeObject;
-use crate::pyc::{PycHeader, PycModule, version_from_tuple};
+use crate::pyc::{version_from_tuple, PycHeader, PycModule};
 use crate::version::PythonVersion;
+use crate::Result;
 
 /// Load a pyc file; with `version_override` treat the file as a raw marshal
 /// stream for the given (major, minor) — matching pycdc's `-c -v X.Y` mode.
@@ -25,24 +25,28 @@ pub fn load_bytes_with_limits(
     version_override: Option<(u8, u8)>,
     limits: crate::marshal::Limits,
 ) -> Result<Loaded> {
+    let (version, header) = input_format(data, version_override)?;
+    let base = header.as_ref().map_or(0, |header| header.header_size);
+    let code = PycModule::unmarshal_with_limits(&data[base..], version, limits)?;
+    Ok(Loaded {
+        version,
+        code,
+        header,
+    })
+}
+
+/// Resolve the embedded format without constructing code or scanning instructions.
+pub fn input_format(
+    data: &[u8],
+    version_override: Option<(u8, u8)>,
+) -> Result<(PythonVersion, Option<PycHeader>)> {
     match version_override {
-        Some((maj, min)) => {
-            let version = version_from_tuple(maj, min)
-                .ok_or_else(|| crate::PycError::UnsupportedVersion(format!("{maj}.{min}")))?;
-            let code = PycModule::unmarshal_with_limits(&data, version, limits)?;
-            Ok(Loaded {
-                version,
-                code,
-                header: None,
-            })
-        }
+        Some((major, minor)) => version_from_tuple(major, minor)
+            .map(|version| (version, None))
+            .ok_or_else(|| crate::PycError::UnsupportedVersion(format!("{major}.{minor}"))),
         None => {
-            let module = PycModule::from_bytes_with_limits(&data, limits)?;
-            Ok(Loaded {
-                version: module.version(),
-                code: module.code.clone(),
-                header: Some(module.header.clone()),
-            })
+            let header = PycModule::parse_header(data)?;
+            Ok((header.version, Some(header)))
         }
     }
 }

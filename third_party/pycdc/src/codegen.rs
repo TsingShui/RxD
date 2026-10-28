@@ -81,7 +81,9 @@ impl Output {
         crate::budget::charge(extra);
         let _budget_frame = crate::budget::enter();
         if self.exceeded
-            || self.limit.is_some_and(|limit| extra > limit.saturating_sub(self.text.len()))
+            || self
+                .limit
+                .is_some_and(|limit| extra > limit.saturating_sub(self.text.len()))
             || self.text.try_reserve(extra).is_err()
         {
             self.exceeded = true;
@@ -134,8 +136,11 @@ impl std::fmt::Write for Output {
     }
 }
 
-pub struct Printer {
+pub struct Printer<'a> {
     out: Output,
+    recovery: Option<&'a crate::recovery::Module<'a>>,
+    error: Option<crate::PycError>,
+    commented: usize,
     indent: usize,
     version: PythonVersion,
     at_line_start: bool,
@@ -162,14 +167,45 @@ pub fn generate_limited(
     clean: bool,
     limit: impl Into<Option<usize>>,
 ) -> crate::Result<String> {
+    generate_with_recovery(body, version, clean, limit.into(), None, 0)
+}
+
+pub(crate) fn generate_recovering(
+    body: &[Stmt],
+    version: PythonVersion,
+    limit: Option<usize>,
+    module: &crate::recovery::Module<'_>,
+    root_index: usize,
+) -> crate::Result<String> {
+    generate_with_recovery(
+        body,
+        version,
+        module.complete_at(root_index),
+        limit,
+        Some(module),
+        root_index,
+    )
+}
+
+fn generate_with_recovery(
+    body: &[Stmt],
+    version: PythonVersion,
+    clean: bool,
+    limit: Option<usize>,
+    recovery: Option<&crate::recovery::Module<'_>>,
+    root_index: usize,
+) -> crate::Result<String> {
     let _budget_frame = crate::budget::enter();
     crate::budget::statements(body);
     let mut p = Printer {
         out: Output {
             text: String::new(),
-            limit: limit.into(),
+            limit,
             exceeded: false,
         },
+        recovery,
+        error: None,
+        commented: 0,
         indent: 0,
         version,
         at_line_start: true,
@@ -178,9 +214,22 @@ pub fn generate_limited(
         fstring_quotes: Vec::new(),
         loop_depth: 0,
     };
+    if recovery.is_some() {
+        p.code_label(root_index);
+        if root_index != 0 {
+            p.write_line("# Code body fragment; enclosing binding, defaults and decorators are outside this selection.");
+        }
+    }
     p.module(body);
-    if !clean {
-        p.write_line("# WARNING: Decompyle incomplete");
+    if recovery.map_or(!clean, |module| !module.complete_at(root_index)) {
+        p.write_line(if recovery.is_some() {
+            "# rxd: partial reconstruction; see bytecode fallback blocks"
+        } else {
+            "# WARNING: Decompyle incomplete"
+        });
+    }
+    if let Some(error) = p.error {
+        return Err(error);
     }
     if p.out.exceeded {
         return Err(crate::PycError::ResourceLimit(
@@ -200,13 +249,133 @@ pub fn generate_limited(
     Ok(p.out.text)
 }
 
-impl Printer {
+impl Printer<'_> {
+    fn code_label(&mut self, index: usize) {
+        if let Some(module) = self.recovery {
+            let code = module.code(index);
+            let name = if code.qualname.is_empty() {
+                &code.name
+            } else {
+                &code.qualname
+            };
+            crate::budget::charge(name.len());
+            let name = serde_json::to_string(name).unwrap();
+            self.write_line(&crate::budget_format!(
+                "# {} {name}",
+                module.coordinate(index)
+            ));
+        }
+    }
+
+    fn comment(&mut self, text: &str) {
+        for line in text.split(['\n', '\r']) {
+            self.write("# ");
+            self.write(line);
+            self.newline();
+        }
+    }
+
+    fn bytecode_fallback(&mut self, index: usize) {
+        let Some(module) = self.recovery else {
+            self.error = Some(crate::PycError::Msg(
+                "bytecode fallback requires module context".into(),
+            ));
+            return;
+        };
+        module.with_fallback(index, |fallback| {
+            self.comment(&crate::budget_format!(
+                "fallback {}: {}",
+                module.coordinate(index),
+                fallback.reason
+            ));
+            self.original_code(module.code(index), &fallback.logical, &fallback.raw);
+            for (child, body) in &fallback.children {
+                self.code_label(*child);
+                self.comment("isolated code body; enclosing binding and defaults unavailable");
+                let loop_depth = self.loop_depth;
+                self.loop_depth = 0;
+                self.commented += 1;
+                self.module(body);
+                self.commented -= 1;
+                self.loop_depth = loop_depth;
+            }
+        });
+        if self.indent != 0 {
+            let message = serde_json::to_string(&crate::budget_format!(
+                "bytecode fallback: {}",
+                module.coordinate(index),
+            ))
+            .unwrap();
+            self.write_line(&crate::budget_format!(
+                "raise NotImplementedError({message})"
+            ));
+        }
+    }
+
+    fn original_code(
+        &mut self,
+        code: &crate::code::CodeObject,
+        logical: &[crate::bytecode::Instruction],
+        raw: &[crate::bytecode::RawInstruction],
+    ) {
+        let table = match crate::opcode::table_for(self.version) {
+            Ok(table) => table,
+            Err(error) => {
+                self.error = Some(error);
+                return;
+            }
+        };
+        let mut instructions = logical.iter().peekable();
+        for unit in raw {
+            crate::budget::charge(1);
+            let operand = if instructions
+                .peek()
+                .is_some_and(|ins| ins.offset == unit.offset)
+            {
+                crate::bytecode::operand_repr(
+                    instructions.next().unwrap(),
+                    code,
+                    table,
+                    self.version,
+                )
+            } else {
+                unit.raw_arg
+                    .map(|arg| crate::budget_format!("{arg}"))
+                    .unwrap_or_default()
+            };
+            let bytes = &code.code[unit.offset..unit.offset + unit.size];
+            let hex: String = bytes
+                .iter()
+                .map(|byte| crate::budget_format!("{byte:02x}"))
+                .collect();
+            self.comment(&crate::budget_format!(
+                "{:04x}\t{}\t{}\t{hex}",
+                unit.offset,
+                table.name(unit.opcode),
+                operand
+            ));
+        }
+        for handler in code.exception_entries() {
+            self.comment(&crate::budget_format!(
+                "handler {}..{} -> {} depth={} lasti={}",
+                handler.start,
+                handler.end,
+                handler.target,
+                handler.depth,
+                handler.lasti
+            ));
+        }
+    }
+
     fn write(&mut self, s: &str) {
         let _budget_frame = crate::budget::enter();
         if self.at_line_start && !s.is_empty() {
             for _ in 0..self.indent {
                 crate::budget::charge(1);
                 self.out.push_str("    ");
+            }
+            for _ in 0..self.commented {
+                self.out.push_str("# ");
             }
             self.at_line_start = false;
         }
@@ -855,6 +1024,9 @@ impl Printer {
                 self.newline();
             }
             Stmt::FuncDef(fdef, body) => {
+                if let Some(module) = self.recovery {
+                    self.code_label(module.index(&fdef.code));
+                }
                 for d in &fdef.decorators {
                     crate::budget::charge(1);
                     self.write("@");
@@ -885,6 +1057,7 @@ impl Printer {
                 self.newline();
             }
             Stmt::ClassDef {
+                coordinate,
                 name,
                 bases,
                 keywords,
@@ -894,6 +1067,9 @@ impl Printer {
                 body,
                 type_params,
             } => {
+                if let Some(index) = coordinate {
+                    self.code_label(*index);
+                }
                 for d in decorators {
                     crate::budget::charge(1);
                     self.write("@");
@@ -972,6 +1148,7 @@ impl Printer {
                 }
                 self.indent -= 1;
             }
+            Stmt::BytecodeFallback(index) => self.bytecode_fallback(*index),
             Stmt::Unimplemented(text) => {
                 // source validity: the C-style marker would be a syntax
                 // error in Python — render as a comment plus `pass`
@@ -1207,7 +1384,15 @@ impl Printer {
             }
             Expr::TypeAliasValue { value, .. } => self.expr(value, 0),
             Expr::Const(o) => self.const_expr(o),
-            Expr::Name(n) => self.write(n),
+            Expr::Name(n) => {
+                if n.as_bytes().contains(&0) {
+                    self.error.get_or_insert_with(|| {
+                        crate::PycError::Msg("unresolved internal stack marker in source".into())
+                    });
+                } else {
+                    self.write(n);
+                }
+            }
             Expr::Attribute { value, attr } => {
                 // `0.attr` parses as a float literal — parenthesize numeric
                 // constant receivers

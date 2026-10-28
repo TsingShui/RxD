@@ -6,7 +6,7 @@ use crate::code::CodeObject;
 use crate::error::{PycError, Result};
 use crate::marshal::{Limits, MarshalReader};
 use crate::object::PyObject;
-use crate::version::{FLAG_HASH_BASED, HeaderKind, PythonVersion, header_kind, version_from_magic};
+use crate::version::{header_kind, version_from_magic, HeaderKind, PythonVersion, FLAG_HASH_BASED};
 
 #[derive(Debug, Clone)]
 pub struct PycHeader {
@@ -81,6 +81,9 @@ impl PycModule {
             }
             HeaderKind::Pep552 => {
                 header.flags = u32_at(data, 4)?;
+                if header.flags & !3 != 0 {
+                    return Err(PycError::Msg("invalid PEP 552 header flags".into()));
+                }
                 if header.flags & FLAG_HASH_BASED != 0 {
                     header.source_hash = u64_at(data, 8)?;
                 } else {
@@ -144,8 +147,7 @@ impl PycModule {
     }
 }
 
-/// Resolve a Python version for `-v X.Y` style overrides by finding the
-/// final-release magic number for that (major, minor).
+/// Resolve a raw-marshal X.Y override through the embedded CPython magic table.
 pub fn version_from_tuple(major: u8, minor: u8) -> Option<PythonVersion> {
     crate::version::magic_table()
         .values()
