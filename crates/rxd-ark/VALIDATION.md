@@ -48,6 +48,16 @@ for `--at` and `-m` on Copi (741 strings) and ClashBox (8,640 strings), HAP and 
 ABC produced identical bytes, real MCP `abc_strings`/`abc_xref` results matched CLI
 bytes, and an unreferenced `--at` coordinate fails with `NOT_FOUND`.
 
+HAP queries now use the same file-backed pattern as `rasc`: index the archive and
+inflate only the selected ABC. `ark list record` on the 107,951,762-byte ClashBox HAP
+fell from 121,208,832 to 11,190,272 bytes peak RSS (bare ABC: 12,910,592); the worker
+read stage dropped from 12.2 ms to 0, and analysis total from 30.5 ms to 23.2 ms. HAP
+and bare-ABC bytes remained identical for `list record`, `list method`, `strings`,
+`xref` and `decompile`; a symlinked HAP still produced identical output through the
+fallback, and ambiguous/missing-entry errors were unchanged. `rxd zip unpack` and Ark
+export already read archives from the file rather than a whole-buffer copy; the
+ClashBox HAP is entirely Stored, so inflate speed is not the export bottleneck.
+
 No new Rust tests were added; CLI help, the embedded skill and MCP documentation
 describe the CLI-only export and the search commands. Evidence is under ignored
 `target/verification/ark/export-test/` and `target/verification/ark/ark-search/`.

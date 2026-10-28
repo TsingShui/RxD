@@ -29,7 +29,12 @@ clones only the immutable record/region indexes and input slice; name/member/lit
 caches and budget counters stay per fork, so parallel scans share input bytes instead
 of re-parsing. Worker initialization must stay O(indexes): rayon's `map_init` calls its
 initializer per split, not per thread, so export and scans fork once per chunk instead
-of parsing inside the initializer. `list method` without `--at` walks every record. `strings` lists string
+of parsing inside the initializer. HAP queries read the archive in place: `rxd-zip` opens the file, parses the central
+directory and inflates only the selected `.abc`, instead of loading the whole
+container. Symlinked or non-UTF-8 paths keep the whole-buffer fallback because the ZIP
+reader accepts neither.
+
+`list method` without `--at` walks every record. `strings` lists string
 entities that a decoded instruction operand names; `xref` matches those operands by
 `str:0x...` coordinate or value substring, one row per method/string pair. Both are
 explicit-operand indexes: module requests and literal-array-only strings are excluded.

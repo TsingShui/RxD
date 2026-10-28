@@ -40,19 +40,25 @@ impl Input {
         perf: &mut Perf,
     ) -> Result<Self> {
         let outer = policy.for_file(path)?;
-        let bytes = perf.measure("read", || rxd_core::read_bytes(path, outer.input_bytes))?;
-        let (bytes, entry) = if bytes.starts_with(b"PK") {
-            let selected =
-                rxd_zip::read_unique_entry_from_bytes(bytes, entry, ".abc", outer, perf)?;
+        let (zip, file_backed) = container_kind(path)?;
+        let (bytes, entry) = if zip && file_backed {
+            let selected = rxd_zip::read_unique_entry(path, entry, ".abc", outer, perf)?;
             (selected.bytes, Some(selected.path))
         } else {
-            if entry.is_some() {
-                return Err(Error::new(
-                    "INVALID_QUERY",
-                    "--entry requires a HAP/ZIP container",
-                ));
+            let bytes = perf.measure("read", || rxd_core::read_bytes(path, outer.input_bytes))?;
+            if bytes.starts_with(b"PK") {
+                let selected =
+                    rxd_zip::read_unique_entry_from_bytes(bytes, entry, ".abc", outer, perf)?;
+                (selected.bytes, Some(selected.path))
+            } else {
+                if entry.is_some() {
+                    return Err(Error::new(
+                        "INVALID_QUERY",
+                        "--entry requires a HAP/ZIP container",
+                    ));
+                }
+                (bytes, None)
             }
-            (bytes, None)
         };
         let budget = match policy {
             BudgetPolicy::InputScaled => Budget::for_input_bytes(bytes.len())?,
@@ -64,6 +70,20 @@ impl Input {
             budget,
         })
     }
+}
+
+/// Detect a ZIP-family container and whether it can be read in place.
+///
+/// Symlinks and non-UTF-8 paths keep the whole-buffer fallback: the ZIP reader
+/// refuses both, while `read_bytes` still follows the admitted path.
+fn container_kind(path: &Path) -> Result<(bool, bool)> {
+    use std::io::Read;
+    let metadata = std::fs::symlink_metadata(path)?;
+    let file_backed = metadata.file_type().is_file() && path.to_str().is_some();
+    let mut file = std::fs::File::open(path)?;
+    let mut magic = [0u8; 4];
+    let read = file.read(&mut magic)?;
+    Ok((magic[..read].starts_with(b"PK"), file_backed))
 }
 
 #[derive(Clone, Copy)]
