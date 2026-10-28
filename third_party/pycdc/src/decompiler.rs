@@ -923,7 +923,9 @@ fn decompile_body(
 ) -> crate::Result<Decompiled> {
     let _budget_frame = crate::budget::enter();
     let table = table_for(version)?;
-    let instrs = crate::bytecode::decode_instructions(code, table, version)?;
+    let instrs = crate::timing::scope("decode", || {
+        crate::bytecode::decode_instructions(code, table, version)
+    })?;
     let mut idx_of = FastMap::default();
     let mut targets = FastSet::default();
     for (i, inst) in instrs.iter().enumerate() {

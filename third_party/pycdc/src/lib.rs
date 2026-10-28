@@ -29,6 +29,7 @@ pub mod object;
 pub mod opcode;
 pub mod pyc;
 pub mod recovery;
+pub mod timing;
 pub mod version;
 
 pub use error::{PycError, Result};

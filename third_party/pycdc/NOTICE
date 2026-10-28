@@ -7,7 +7,9 @@ JSON serializer enforce output budgets before appending beyond the limit. Versio
 overrides reuse the cached magic table. Nested lambda/annotation/type-parameter
 decompilation propagates detected incompleteness to the enclosing result.
 
-Local changes also bound reference-expanded object counts/depth, aggregate marshal byte
+Opt-in thread-local recovery phase timings separate index/decode/decompile/generate;
+the adapter enables them only for `--perf`. Local changes also bound reference-expanded
+object counts/depth, aggregate marshal byte
 copies, quadratic integer conversion work and code-header counts; add strict
 instruction/prefix/cache/exception validation; and provide bounded static code/constant/
 reference evidence. No analyzed code is executed, and worker isolation is not an OS

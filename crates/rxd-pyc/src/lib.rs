@@ -422,6 +422,7 @@ fn recover_inner(
 ) -> Result<(bool, String)> {
     perf.counters.work = Some(initial_work);
     perf.counters.ast_depth = Some(0);
+    pycdc::timing::enable(perf.enabled());
     let code = perf.measure("parse", || {
         pycdc::PycModule::unmarshal_with_limits(
             &data.bytes[data.base..],
@@ -436,9 +437,9 @@ fn recover_inner(
             ast_depth: limits.ast_depth,
         },
         || {
+            let module = perf.measure("index", || Module::new(&code).named(data.namespace));
             let (module, result) = perf.measure("decompile", || {
                 pycdc::budget::cancelled(|| {
-                    let module = Module::new(&code).named(data.namespace);
                     let result = module.decompile_at(index, data.version)?;
                     Ok((module, result))
                 })
@@ -451,6 +452,9 @@ fn recover_inner(
             Ok((module.complete_at(index), source))
         },
     );
+    for (stage, nanos) in pycdc::timing::take() {
+        perf.stage_ns(stage, nanos);
+    }
     perf.counters.work = Some(initial_work.saturating_add(usage.work));
     perf.counters.ast_depth = Some(usage.ast_depth);
     outcome.map_err(|error| match error {
