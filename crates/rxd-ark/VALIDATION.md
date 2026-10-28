@@ -5,28 +5,48 @@ below predates the production cutover. Approximations carry source-local warning
 input-safety failures remain explicit errors. All pinned dynamic opcode encodings
 now have reconstruction paths; this is not a universal runtime-equivalence claim.
 
-## Searchable whole-input export
+## Searchable export, method search and string references
 
 `rxd ark export INPUT -o DIR` writes the original container tree, one standalone JS
 module per code-bearing record, and a JSONL manifest; `--threads` reconstructs records
-in parallel and `--entry` narrows a HAP to one ABC. Batch export is a special workload,
-not an ordinary 150 ms query. Measured on Darwin arm64 release builds, 12 logical CPUs,
-warm caches, whole command including extraction, reconstruction, writes and manifest:
-ClashBox HAP (107,951,762 bytes, 152 archived files) produced 376 record files,
-14,082 coded methods, 23,305,116 source bytes and a 303-record warning set in
-1.55–1.93 s wall (5.9–6.6 s user). The
-edgemusic HAP (2 ABCs, 322 records, 6,758 methods) took 5.43 s in a debug build and
+in parallel, `--entry` narrows a HAP to one ABC, and each file opens with its record
+and method name/coordinate header. Batch export is a special workload, not an ordinary
+150 ms query. Measured on Darwin arm64 release builds, 12 logical CPUs, warm caches,
+whole command including extraction, reconstruction, writes and manifest: ClashBox HAP
+(107,951,762 bytes, 152 archived files) produced 376 record files, 14,082 coded
+methods, 23,880,029 source bytes and a 303-record warning set in 0.46 s wall
+(0.75 s at `--threads 1`). The edgemusic HAP (2 ABCs, 322 records, 6,758 methods)
 produced byte-identical trees at `--threads 1` and `--threads 8`. Copi's
 `record:0x8220` exported 36 coded methods, including methods that
 `decompile --at record:0x8220` does not reach, so export does not silently drop
-unreferenced code. Record files parsed with Babel for all 322 edgemusic and 376
-ClashBox records with no unbound generated identifiers; 303 ClashBox records carried
-warnings, matching the earlier 303 warned record outputs, and sampled records were
-byte-identical to `decompile --at record`. The final ClashBox tree had recursive
-SHA-256 `b1475b95…` and its ABC SHA-256 matches the fixed input. Existing directories and a bare ABC with `--entry` fail with `INVALID_QUERY`;
-a missing entry fails with `NOT_FOUND` and removes the new directory. No new Rust
-tests were added; CLI help, the embedded skill and MCP documentation describe the
-CLI-only export. Evidence is under ignored `target/verification/ark/export-test/`.
+unreferenced code. All 698 record files (322 edgemusic, 376 ClashBox) parsed with
+Babel with no unbound generated identifiers; 303 ClashBox records carried warnings,
+matching the earlier 303 warned record outputs. After stripping the name header,
+ClashBox `record:0x283a8` and Copi `record:0x2290` bodies were byte-identical to
+`decompile --at record`. The ClashBox tree had recursive SHA-256 `63e0b8c4…` and its
+ABC SHA-256 matches the fixed input. Existing directories and a bare ABC with
+`--entry` fail with `INVALID_QUERY`; a missing entry fails with `NOT_FOUND` and
+removes the new directory.
+
+`list method` without `--at` searches every record and reports the owning `record`
+column; ClashBox lists 14,082 rows and amcl 21,841 rows in 40–70 ms. `strings` lists
+`str:0x...` values named by decoded instruction operands, and `xref` returns one
+`context, match` row per method/string pair. Both decode all methods and scan in
+parallel with `Abc::fork()`: forks share the immutable indexes and input slice while
+caches stay per worker, so parallel scans do not re-parse or copy the ABC. ClashBox
+(7.2 MB, 8,640 strings) took 52 ms for `strings` and 51–52 ms for `xref` at 12
+workers (96 ms and 92 ms at `--threads 1`). The largest measured input, amcl
+(7,028,500 bytes, 21,841 methods), took 77 ms for `strings` and 64–70 ms for `xref`
+at 12 workers; serial values were 151 ms and 139–146 ms. Every tested query stays
+under 150 ms in the default parallel configuration; `--threads 1` can exceed it on
+that largest input. Exact-set checks against a raw-instruction scan matched `xref`
+for `--at` and `-m` on Copi (741 strings) and ClashBox (8,640 strings), HAP and bare
+ABC produced identical bytes, real MCP `abc_strings`/`abc_xref` results matched CLI
+bytes, and an unreferenced `--at` coordinate fails with `NOT_FOUND`.
+
+No new Rust tests were added; CLI help, the embedded skill and MCP documentation
+describe the CLI-only export and the search commands. Evidence is under ignored
+`target/verification/ark/export-test/` and `target/verification/ark/ark-search/`.
 
 ## Whole ABC reconstruction
 

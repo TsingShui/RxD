@@ -261,7 +261,7 @@ Source/fallback labels match listing coordinates; name xref is explicit bytecode
     #[command(
         display_order = 65,
         long_about = "Analyze dynamic Ark ABC/HAP: records, methods and original instructions",
-        after_long_help = "Examples:\n  rxd ark list record app.hap\n  rxd ark list method modules.abc --at '<record.at>'\n  rxd ark export app.hap -o recovered\n  rg -n 'Authorization' recovered/decompiled\nHAP inputs with multiple ABC entries require --entry PATH for list/decompile; coordinates belong to the selected ABC.\nexport writes the whole HAP tree plus one JS file per record and is CLI-only."
+        after_long_help = "Examples:\n  rxd ark list record app.hap\n  rxd ark list method modules.abc -f token\n  rxd ark strings app.hap --entry ets/modules.abc -f Authorization\n  rxd ark xref modules.abc --at '<strings.at>'\n  rxd ark export app.hap -o recovered\n  rg -n 'Authorization' recovered/decompiled\nHAP inputs with multiple ABC entries require --entry PATH for list/decompile/strings/xref; coordinates belong to the selected ABC.\nlist method without --at searches every record; strings/xref decode all methods and scan in parallel.\nexport writes the whole HAP tree plus one JS file per record and is CLI-only."
     )]
     Ark {
         #[command(subcommand)]

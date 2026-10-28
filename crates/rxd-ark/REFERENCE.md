@@ -24,17 +24,27 @@ contain lone surrogates. Explicit `--at` selects a per-record or per-method outp
 `--raw` without `--at` fetches instructions for the whole ABC. Records without a module initializer retain all coded methods as
 capture factories rather than inventing an initializer.
 
+Whole-ABC listing and string search decode methods through the same parser. `Abc::fork()`
+clones only the immutable record/region indexes and input slice; name/member/literal
+caches and budget counters stay per fork, so parallel scans share input bytes instead
+of re-parsing. `list method` without `--at` walks every record. `strings` lists string
+entities that a decoded instruction operand names; `xref` matches those operands by
+`str:0x...` coordinate or value substring, one row per method/string pair. Both are
+explicit-operand indexes: module requests and literal-array-only strings are excluded.
+
 `rxd ark export INPUT -o DIR` is the searchable whole-input form. It writes the
 complete container tree under `extracted/`, one standalone module per code-bearing
-record under `decompiled/<abc path>/0x<offset>.js`, and `manifest.jsonl`. Record
-files keep original export names and include every coded method. The manifest orders
+record under `decompiled/<abc path>/0x<offset>.js`, and `manifest.jsonl`. Each record
+file opens with its `// record:0x... "<name>"` line and one
+`// method:0x... "<name>"` line per coded method. Record files keep original export
+names and include every coded method. The manifest orders
 ABC entries by archive path and records by offset; a record row carries its
 coordinate, original name (`name_utf16` when non-scalar), coded-method count, warning
 codes and relative file, and an ABC row carries the full
 SHA-256. Export is atomic: it refuses an existing directory and removes the new tree
-on failure. Records reconstruct in parallel with `--threads`; each worker parses its
-own ABC copy because caches are thread-local, and output is independent of thread
-count. Batch export is a special workload, not an ordinary per-query latency target.
+on failure. Records reconstruct in parallel with `--threads`; workers use forked
+parsers that share the immutable indexes and input slice, and output is independent of
+thread count. Batch export is a special workload, not an ordinary per-query latency target.
 
 ## Pipeline
 

@@ -1,4 +1,5 @@
 //! Dynamic Ark ABC/HAP navigation; source records are not source-language classes.
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use super::{
@@ -7,7 +8,7 @@ use super::{
     table::{self, Cell},
 };
 use clap::{Args, Subcommand};
-use rxd_ark::{Abc, Coordinate, Input, ReconstructionWarning};
+use rxd_ark::{Abc, Coordinate, EntityKind, Input, Method, Name, Operand, ReconstructionWarning};
 use rxd_core::{Budget, BudgetPolicy, Error, Limits, Result, perf::Perf};
 use serde_json::json;
 
@@ -28,6 +29,18 @@ pub enum Command {
         after_long_help = "Examples:\n  rxd ark export app.hap -o recovered\n  rxd ark export modules.abc -o recovered\n  rxd ark export app.hap -o recovered --entry ets/widgets.abc\n  rg -n -C 3 'Authorization' recovered/decompiled\nOutput: a new directory with extracted/ (original HAP files), decompiled/<abc path>/<record>.js and manifest.jsonl.\nEach record file keeps its original module form and every coded method, including methods the initializer never references.\nmanifest.jsonl maps each record coordinate to its file, name, coded-method count and warning codes; the ABC line carries the full ABC SHA-256.\nOmit --entry to export every .abc entry; --entry restricts the export to one exact path.\nRecords decompile in parallel; each worker holds one parsed copy of its ABC, so memory scales with --threads.\nThe export is atomic: an existing output directory is refused and any failure removes the new directory.\nRecord sources remain best-effort reconstruction; follow warnings at affected operations and never execute them."
     )]
     Export(ExportOptions),
+    #[command(
+        about = "List strings referenced by decoded instruction operands.",
+        long_about = "Columns: at, value\nList referenced strings after one # column header.",
+        after_long_help = "Examples:\n  rxd ark strings app.hap --entry ets/modules.abc\n  rxd ark strings modules.abc -f Authorization\n  rxd ark xref modules.abc --at '<strings.at>'\nOutput: one row per distinct string referenced by a decoded instruction operand; at is str:0x<offset>.\nOnly explicit string operands are listed; metadata-only names and unreferenced literal-array entries are excluded.\nNext: xref --at '<strings.at>' or -m TEXT to find referencing methods."
+    )]
+    Strings(StringsOptions),
+    #[command(
+        about = "Search methods that reference a string operand.",
+        long_about = "Columns: context, match\nList explicit string references after one # column header.",
+        after_long_help = "Examples:\n  rxd ark xref modules.abc --at 'str:0x1234'\n  rxd ark xref modules.abc -m Authorization\nRequired: exactly one of --at/--match. --at copies strings.at.\nOutput: context, match. context is the referencing method:0x...; match is the actual string coordinate str:0x....\nOne row per method/string pair, ordered by method coordinate; read values with strings -f TEXT.\nOnly decoded string operands count, so this is not a runtime call graph or a metadata-name search."
+    )]
+    Xref(XrefOptions),
 }
 
 #[derive(Subcommand)]
@@ -40,8 +53,8 @@ pub enum ListCommand {
     Record(ListOptions),
     #[command(
         about = "List methods of one record.",
-        long_about = "Columns: at, name, code_size, args, vregs\nList methods after one # column header.",
-        after_long_help = "Examples:\n  rxd ark list record app.hap\n  rxd ark list method app.hap --at 'record:0x1234'\nRequired: --at copied from list record. code_size is bytecode bytes; args includes VM parameters.\nMissing code metadata is \\N; filtered zero hits are a complete empty result."
+        long_about = "Columns: at, name, record, code_size, args, vregs\nList methods after one # column header.",
+        after_long_help = "Examples:\n  rxd ark list method app.hap --entry ets/modules.abc\n  rxd ark list method modules.abc --at 'record:0x1234'\n  rxd ark list method modules.abc -f token\nWithout --at, searches every record in the selected ABC and reports the owning record column.\n--at restricts the search to one record copied from list record. code_size is bytecode bytes; args includes VM parameters.\nMissing code metadata is \\N; filtered zero hits are a complete empty result."
     )]
     Method(MethodOptions),
 }
@@ -76,9 +89,9 @@ pub struct ListOptions {
 pub struct MethodOptions {
     #[command(flatten)]
     list: ListOptions,
-    /// Copy an existing record coordinate from list record.
+    /// Optional record coordinate; omit to search every record in the selected ABC.
     #[arg(long)]
-    at: String,
+    at: Option<String>,
 }
 
 #[derive(Args)]
@@ -91,6 +104,38 @@ pub struct DecompileOptions {
     /// Return original instructions instead of reconstructed source.
     #[arg(long)]
     raw: bool,
+}
+
+#[derive(Args)]
+pub struct StringsOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Substring over string values, folded unless --case sensitive.
+    #[arg(short = 'f', long)]
+    filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
+    /// Parallel scan workers.
+    #[arg(long, default_value_t = super::default_threads(), value_parser = super::positive)]
+    threads: usize,
+}
+
+#[derive(Args)]
+#[command(group(clap::ArgGroup::new("anchor").required(true).args(["at", "filter"])))]
+pub struct XrefOptions {
+    #[command(flatten)]
+    options: Options,
+    /// Copy strings.at: str:0x<offset>.
+    #[arg(long, conflicts_with = "filter")]
+    at: Option<String>,
+    /// Substring over string values; matches every referenced string containing it.
+    #[arg(short = 'm', long = "match", conflicts_with = "at")]
+    filter: Option<String>,
+    #[command(flatten)]
+    case: CaseArgs,
+    /// Parallel scan workers.
+    #[arg(long, default_value_t = super::default_threads(), value_parser = super::positive)]
+    threads: usize,
 }
 
 #[derive(Args)]
@@ -116,6 +161,8 @@ impl Command {
         match self {
             Self::Decompile(options) => options.options.perf,
             Self::Export(options) => options.perf,
+            Self::Strings(options) => options.options.perf,
+            Self::Xref(options) => options.options.perf,
             Self::List {
                 command: ListCommand::Record(list),
             } => list.options.perf,
@@ -134,12 +181,16 @@ impl Command {
             } => "list-method",
             Self::Decompile(_) => "decompile",
             Self::Export(_) => "export",
+            Self::Strings(_) => "strings",
+            Self::Xref(_) => "xref",
         }
     }
     fn input(&self) -> &PathBuf {
         match self {
             Self::Decompile(options) => &options.options.input,
             Self::Export(options) => &options.input,
+            Self::Strings(options) => &options.options.input,
+            Self::Xref(options) => &options.options.input,
             Self::List {
                 command: ListCommand::Record(list),
             } => &list.options.input,
@@ -152,6 +203,8 @@ impl Command {
         match self {
             Self::Decompile(options) => options.options.entry.as_deref(),
             Self::Export(options) => options.entry.as_deref(),
+            Self::Strings(options) => options.options.entry.as_deref(),
+            Self::Xref(options) => options.options.entry.as_deref(),
             Self::List {
                 command: ListCommand::Record(list),
             } => list.options.entry.as_deref(),
@@ -164,6 +217,8 @@ impl Command {
         match self {
             Self::Decompile(options) => options.options.output.as_ref(),
             Self::Export(_) => None,
+            Self::Strings(options) => options.options.output.as_ref(),
+            Self::Xref(options) => options.options.output.as_ref(),
             Self::List {
                 command: ListCommand::Record(list),
             } => list.options.output.as_ref(),
@@ -219,8 +274,12 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
             } => table::header(&["at", "name", "methods"]).into_bytes(),
             Command::List {
                 command: ListCommand::Method(_),
-            } => table::header(&["at", "name", "code_size", "args", "vregs"]).into_bytes(),
+            } => {
+                table::header(&["at", "name", "record", "code_size", "args", "vregs"]).into_bytes()
+            }
             Command::Decompile(_) => Vec::new(),
+            Command::Strings(_) => table::header(&["at", "value"]).into_bytes(),
+            Command::Xref(_) => table::header(&["context", "match"]).into_bytes(),
             Command::Export(_) => unreachable!("export is handled before input selection"),
         };
         if input
@@ -311,38 +370,118 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
                 Command::List {
                     command: ListCommand::Method(methods),
                 } => {
-                    let Coordinate::Record(offset) = Coordinate::parse(&methods.at)? else {
-                        return Err(Error::new(
-                            "INVALID_QUERY",
-                            "list method --at requires a record coordinate",
-                        ));
-                    };
-                    let record = abc.record(offset)?;
                     let filter = methods.list.filter.as_deref().map(|needle| {
                         rxd_core::filter::Contains::new(needle, methods.list.case.sensitive())
                     });
-                    for method in &abc.members(&record)?.methods {
+                    let mut records = Vec::new();
+                    match methods.at.as_deref() {
+                        Some(at) => match Coordinate::parse(at)? {
+                            Coordinate::Record(offset) => records.push(offset),
+                            Coordinate::Method(_) => {
+                                return Err(Error::new(
+                                    "INVALID_QUERY",
+                                    "list method --at requires a record coordinate",
+                                ));
+                            }
+                        },
+                        None => {
+                            records.extend(abc.record_offsets());
+                            records.sort_unstable();
+                        }
+                    }
+                    for offset in records {
+                        let record = abc.record(offset)?;
+                        for method in &abc.members(&record)?.methods {
+                            if filter
+                                .as_ref()
+                                .is_some_and(|filter| !filter.matches(&method.name.text))
+                            {
+                                continue;
+                            }
+                            let code = method.code_offset.map(|_| abc.code(method)).transpose()?;
+                            let size = code.as_ref().map(|code| code.bytes.len().to_string());
+                            let args = code.as_ref().map(|code| code.args.to_string());
+                            let vregs = code.as_ref().map(|code| code.vregs.to_string());
+                            append(
+                                &mut bytes,
+                                &[
+                                    Cell::Atom(&format!("method:0x{:x}", method.offset)),
+                                    method
+                                        .name
+                                        .scalar_text()
+                                        .map_or(Cell::Atom(&method.name.quoted()), Cell::Text),
+                                    Cell::Atom(&format!("record:0x{offset:x}")),
+                                    size.as_deref().map_or(Cell::Null, Cell::Atom),
+                                    args.as_deref().map_or(Cell::Null, Cell::Atom),
+                                    vregs.as_deref().map_or(Cell::Null, Cell::Atom),
+                                ],
+                                input.budget,
+                            )?;
+                        }
+                    }
+                }
+                Command::Strings(strings) => {
+                    let filter = strings.filter.as_deref().map(|needle| {
+                        rxd_core::filter::Contains::new(needle, strings.case.sensitive())
+                    });
+                    let refs = scan_string_refs(&abc, strings.threads)?;
+                    let mut names: BTreeMap<u32, std::sync::Arc<Name>> = BTreeMap::new();
+                    for reference in refs {
+                        names.entry(reference.string).or_insert(reference.name);
+                    }
+                    for (offset, name) in names {
                         if filter
                             .as_ref()
-                            .is_some_and(|filter| !filter.matches(&method.name.text))
+                            .is_some_and(|filter| !filter.matches(&name.text))
                         {
                             continue;
                         }
-                        let code = method.code_offset.map(|_| abc.code(method)).transpose()?;
-                        let size = code.as_ref().map(|code| code.bytes.len().to_string());
-                        let args = code.as_ref().map(|code| code.args.to_string());
-                        let vregs = code.as_ref().map(|code| code.vregs.to_string());
+                        let quoted;
+                        let value = match name.scalar_text() {
+                            Some(text) => Cell::Text(text),
+                            None => {
+                                quoted = name.quoted();
+                                Cell::Atom(&quoted)
+                            }
+                        };
+                        append(
+                            &mut bytes,
+                            &[Cell::Atom(&format!("str:0x{offset:x}")), value],
+                            input.budget,
+                        )?;
+                    }
+                }
+                Command::Xref(xref) => {
+                    let target = xref.at.as_deref().map(parse_string_at).transpose()?;
+                    let filter = xref.filter.as_deref().map(|needle| {
+                        rxd_core::filter::Contains::new(needle, xref.case.sensitive())
+                    });
+                    let refs = scan_string_refs(&abc, xref.threads)?;
+                    if let Some(offset) = target
+                        && !refs.iter().any(|reference| reference.string == offset)
+                    {
+                        return Err(Error::new(
+                            "NOT_FOUND",
+                            format!(
+                                "str:0x{offset:x} is not referenced by any decoded instruction"
+                            ),
+                        ));
+                    }
+                    for reference in refs {
+                        let keep = match target {
+                            Some(offset) => reference.string == offset,
+                            None => filter
+                                .as_ref()
+                                .is_some_and(|filter| filter.matches(&reference.name.text)),
+                        };
+                        if !keep {
+                            continue;
+                        }
                         append(
                             &mut bytes,
                             &[
-                                Cell::Atom(&format!("method:0x{:x}", method.offset)),
-                                method
-                                    .name
-                                    .scalar_text()
-                                    .map_or(Cell::Atom(&method.name.quoted()), Cell::Text),
-                                size.as_deref().map_or(Cell::Null, Cell::Atom),
-                                args.as_deref().map_or(Cell::Null, Cell::Atom),
-                                vregs.as_deref().map_or(Cell::Null, Cell::Atom),
+                                Cell::Atom(&format!("method:0x{:x}", reference.method)),
+                                Cell::Atom(&format!("str:0x{:x}", reference.string)),
                             ],
                             input.budget,
                         )?;
@@ -439,6 +578,127 @@ fn units_hex(units: &[u16]) -> String {
     text
 }
 
+fn worker_pool(threads: usize) -> Result<Option<rayon::ThreadPool>> {
+    if threads <= 1 {
+        return Ok(None);
+    }
+    Ok(Some(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .map_err(|error| {
+                Error::new(
+                    "RESOURCE_LIMIT",
+                    format!("cannot start {threads} workers: {error}"),
+                )
+            })?,
+    ))
+}
+
+fn parse_string_at(at: &str) -> Result<u32> {
+    let value = at
+        .strip_prefix("str:0x")
+        .ok_or_else(|| Error::new("INVALID_QUERY", "expected a str:0x<offset> coordinate"))?;
+    let offset = u32::from_str_radix(value, 16)
+        .map_err(|_| Error::new("INVALID_QUERY", "invalid string coordinate"))?;
+    if format!("str:0x{offset:x}") != at {
+        return Err(Error::new(
+            "INVALID_QUERY",
+            "string coordinates must use the printed canonical spelling",
+        ));
+    }
+    Ok(offset)
+}
+
+struct ScanRef {
+    method: u32,
+    string: u32,
+    name: std::sync::Arc<Name>,
+}
+
+fn scan_method(abc: &Abc<'_>, method: &Method, out: &mut Vec<ScanRef>) -> Result<()> {
+    let decoded = abc.decode(method).map_err(|error| {
+        Error::new(
+            error.code,
+            format!("method:0x{:x}: {}", method.offset, error.message),
+        )
+    })?;
+    let mut seen = BTreeSet::new();
+    for instruction in &decoded.instructions {
+        for operand in &instruction.operands {
+            if let Operand::Id {
+                kind: EntityKind::String,
+                offset,
+                ..
+            } = operand
+                && seen.insert(*offset)
+            {
+                out.push(ScanRef {
+                    method: method.offset,
+                    string: *offset,
+                    name: abc.name(*offset)?,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn scan_string_refs(abc: &Abc<'_>, threads: usize) -> Result<Vec<ScanRef>> {
+    let mut records: Vec<u32> = abc.record_offsets().collect();
+    records.sort_unstable();
+    let mut methods = Vec::new();
+    for offset in records {
+        let record = abc.record(offset)?;
+        for method in &abc.members(&record)?.methods {
+            if method.code_offset.is_some() {
+                methods.push(method.clone());
+            }
+        }
+    }
+    if let Some(pool) = worker_pool(threads)?
+        && methods.len() > 1
+    {
+        parallel_scan(&pool, abc, &methods)
+    } else {
+        let mut out = Vec::new();
+        for method in &methods {
+            scan_method(abc, method, &mut out)?;
+        }
+        Ok(out)
+    }
+}
+
+fn parallel_scan<'a>(
+    pool: &rayon::ThreadPool,
+    abc: &Abc<'a>,
+    methods: &[Method],
+) -> Result<Vec<ScanRef>> {
+    use rayon::prelude::*;
+    let workers = methods.len().min(pool.current_num_threads()).max(1);
+    let mut forks: Vec<Abc<'a>> = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        forks.push(abc.fork());
+    }
+    let chunk = methods.len().div_ceil(workers);
+    let parts: Result<Vec<Vec<ScanRef>>> = pool.install(|| {
+        forks
+            .par_iter_mut()
+            .enumerate()
+            .map(|(index, worker)| {
+                let start = index.saturating_mul(chunk).min(methods.len());
+                let end = (start + chunk).min(methods.len());
+                let mut out = Vec::new();
+                for method in &methods[start..end] {
+                    scan_method(worker, method, &mut out)?;
+                }
+                Ok(out)
+            })
+            .collect()
+    });
+    Ok(parts?.into_iter().flatten().collect())
+}
+
 struct ExportedRecord {
     at: String,
     name: String,
@@ -447,6 +707,23 @@ struct ExportedRecord {
     warnings: Vec<&'static str>,
     output: String,
     bytes: usize,
+}
+
+fn record_header(record: &rxd_ark::Record, members: &[rxd_ark::Method]) -> Result<Vec<u8>> {
+    use std::io::Write as _;
+    let mut header = Vec::new();
+    write!(&mut header, "// record:0x{:x} ", record.offset).expect("header write");
+    record.name.write_quoted(&mut header)?;
+    header.push(b'\n');
+    for method in members {
+        if method.code_offset.is_none() {
+            continue;
+        }
+        write!(&mut header, "// method:0x{:x} ", method.offset).expect("header write");
+        method.name.write_quoted(&mut header)?;
+        header.push(b'\n');
+    }
+    Ok(header)
 }
 
 fn export_record(
@@ -466,8 +743,10 @@ fn export_record(
         return Ok(None);
     }
     let reconstruction = abc.decompile_record_all(&record)?;
+    let mut source = record_header(&record, &members.methods)?;
+    source.extend_from_slice(&reconstruction.source);
     let output_path = format!("{directory}/0x{offset:08x}.js");
-    write_file(&output.join(&output_path), &reconstruction.source)?;
+    write_file(&output.join(&output_path), &source)?;
     let scalar = record.name.scalar_text();
     Ok(Some(ExportedRecord {
         at: format!("record:0x{offset:x}"),
@@ -480,34 +759,39 @@ fn export_record(
             .map(|warning| warning.code())
             .collect(),
         output: output_path,
-        bytes: reconstruction.source.len(),
+        bytes: source.len(),
     }))
 }
 
 fn parallel_records<'a>(
     pool: &rayon::ThreadPool,
-    bytes: &'a [u8],
-    budget: Budget,
+    abc: &Abc<'a>,
     offsets: &[u32],
     directory: &str,
     output: &Path,
 ) -> Result<Vec<Option<ExportedRecord>>> {
     use rayon::prelude::*;
-    pool.install(|| {
-        offsets
-            .par_iter()
-            .map_init(
-                || None::<Abc<'a>>,
-                |worker, offset| -> Result<Option<ExportedRecord>> {
-                    if worker.is_none() {
-                        *worker = Some(Abc::parse(bytes, budget)?);
-                    }
-                    let abc = worker.as_ref().expect("worker ABC is initialized");
-                    export_record(abc, *offset, directory, output)
-                },
-            )
+    let workers = offsets.len().min(pool.current_num_threads()).max(1);
+    let mut forks: Vec<Abc<'a>> = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        forks.push(abc.fork());
+    }
+    let chunk = offsets.len().div_ceil(workers);
+    let parts: Result<Vec<Vec<Option<ExportedRecord>>>> = pool.install(|| {
+        forks
+            .par_iter_mut()
+            .enumerate()
+            .map(|(index, worker)| {
+                let start = index.saturating_mul(chunk).min(offsets.len());
+                let end = (start + chunk).min(offsets.len());
+                offsets[start..end]
+                    .iter()
+                    .map(|offset| export_record(worker, *offset, directory, output))
+                    .collect::<Result<Vec<_>>>()
+            })
             .collect()
-    })
+    });
+    Ok(parts?.into_iter().flatten().collect())
 }
 
 fn export(
@@ -539,21 +823,7 @@ fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -
     if !metadata.is_file() {
         return Err(Error::new("INVALID_QUERY", "expected a regular local file"));
     }
-    let pool = if options.threads > 1 {
-        Some(
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(options.threads)
-                .build()
-                .map_err(|error| {
-                    Error::new(
-                        "RESOURCE_LIMIT",
-                        format!("cannot start {} export workers: {error}", options.threads),
-                    )
-                })?,
-        )
-    } else {
-        None
-    };
+    let pool = worker_pool(options.threads)?;
     let container = read_head(&options.input)?.starts_with(b"PK");
     if !container && options.entry.is_some() {
         return Err(Error::new(
@@ -635,7 +905,7 @@ fn export_into(options: &ExportOptions, policy: BudgetPolicy, perf: &mut Perf) -
         offsets.sort_unstable();
         let exported = match &pool {
             Some(pool) if offsets.len() > 1 => perf.measure("decompile", || {
-                parallel_records(pool, &bytes, budget, &offsets, &directory_text, output)
+                parallel_records(pool, &abc, &offsets, &directory_text, output)
             })?,
             _ => perf.measure("decompile", || {
                 offsets

@@ -98,6 +98,7 @@ impl<'a> Index<'a> {
     }
 }
 
+#[derive(Clone)]
 struct Region<'a> {
     start: u32,
     end: u32,
@@ -113,6 +114,8 @@ pub struct Abc<'a> {
     literal_index: Index<'a>,
     line_index: Index<'a>,
     sorted_records: Vec<u32>,
+    /// Metadata admission already consumed by immutable indexes at parse time.
+    base_metadata: usize,
     foreign_start: u32,
     foreign_end: u32,
     names: RefCell<HashMap<u32, Arc<Name>>>,
@@ -371,6 +374,7 @@ impl<'a> Abc<'a> {
             regions,
             records,
             sorted_records,
+            base_metadata: allocation,
             foreign_start,
             foreign_end,
             names: RefCell::new(HashMap::new()),
@@ -497,6 +501,35 @@ impl<'a> Abc<'a> {
 
     pub fn record_offsets(&self) -> impl Iterator<Item = u32> + '_ {
         self.records.iter()
+    }
+
+    /// Independent caches over the same immutable input.
+    ///
+    /// Parallel scans use one fork per worker: the parsed indexes and input slice are
+    /// shared, while name/member/literal caches and budget counters stay thread-local.
+    pub fn fork(&self) -> Self {
+        Self {
+            data: self.data,
+            budget: self.budget,
+            regions: self.regions.clone(),
+            records: self.records,
+            literal_index: self.literal_index,
+            line_index: self.line_index,
+            sorted_records: self.sorted_records.clone(),
+            base_metadata: self.base_metadata,
+            foreign_start: self.foreign_start,
+            foreign_end: self.foreign_end,
+            names: RefCell::new(HashMap::new()),
+            member_cache: RefCell::new(HashMap::new()),
+            literal_cache: RefCell::new(HashMap::new()),
+            module_cache: RefCell::new(HashMap::new()),
+            validated_debug: RefCell::new(HashSet::new()),
+            metadata_bytes: Cell::new(self.base_metadata),
+            decoded_instructions: Cell::new(0),
+            decode_work: Cell::new(0),
+            version: self.version,
+            source_id: self.source_id.clone(),
+        }
     }
 
     pub fn record(&self, offset: u32) -> Result<Record> {
