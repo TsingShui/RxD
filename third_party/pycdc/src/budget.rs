@@ -5,7 +5,7 @@
 //! panics retain their payload and continue unwinding after restoring the scope.
 use crate::{ast::*, object::PyObject, PycError, Result};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
     rc::Rc,
 };
@@ -20,13 +20,48 @@ pub struct Usage {
     pub work: usize,
     pub ast_depth: usize,
 }
-struct State {
-    limits: Limits,
-    usage: Usage,
+#[derive(Clone, Copy)]
+struct Snapshot {
+    active: bool,
+    work: usize,
+    work_limit: usize,
+    ast_depth: usize,
+    max_depth: usize,
     frames: usize,
+    frame_limit: usize,
 }
 struct Cancel(&'static str);
-thread_local! { static STATE: RefCell<Option<State>> = const { RefCell::new(None) }; }
+thread_local! {
+    static ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static WORK: Cell<usize> = const { Cell::new(0) };
+    static WORK_LIMIT: Cell<usize> = const { Cell::new(usize::MAX) };
+    static AST_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static MAX_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static FRAMES: Cell<usize> = const { Cell::new(0) };
+    static FRAME_LIMIT: Cell<usize> = const { Cell::new(0) };
+}
+
+fn snapshot() -> Snapshot {
+    Snapshot {
+        active: ACTIVE.with(Cell::get),
+        work: WORK.with(Cell::get),
+        work_limit: WORK_LIMIT.with(Cell::get),
+        ast_depth: AST_DEPTH.with(Cell::get),
+        max_depth: MAX_DEPTH.with(Cell::get),
+        frames: FRAMES.with(Cell::get),
+        frame_limit: FRAME_LIMIT.with(Cell::get),
+    }
+}
+
+fn restore(snapshot: Snapshot) {
+    WORK.with(|cell| cell.set(snapshot.work));
+    WORK_LIMIT.with(|cell| cell.set(snapshot.work_limit));
+    AST_DEPTH.with(|cell| cell.set(snapshot.ast_depth));
+    MAX_DEPTH.with(|cell| cell.set(snapshot.max_depth));
+    FRAMES.with(|cell| cell.set(snapshot.frames));
+    FRAME_LIMIT.with(|cell| cell.set(snapshot.frame_limit));
+    ACTIVE.with(|cell| cell.set(snapshot.active));
+}
 
 pub fn cancelled<T>(action: impl FnOnce() -> Result<T>) -> Result<T> {
     match catch_unwind(AssertUnwindSafe(action)) {
@@ -39,15 +74,20 @@ pub fn cancelled<T>(action: impl FnOnce() -> Result<T>) -> Result<T> {
 }
 
 pub fn limited<T>(limits: Limits, action: impl FnOnce() -> Result<T>) -> (Result<T>, Usage) {
-    let previous = STATE.with(|s| {
-        s.replace(Some(State {
-            limits,
-            usage: Usage::default(),
-            frames: 0,
-        }))
-    });
+    let previous = snapshot();
+    WORK.with(|cell| cell.set(0));
+    WORK_LIMIT.with(|cell| cell.set(limits.work.unwrap_or(usize::MAX)));
+    AST_DEPTH.with(|cell| cell.set(0));
+    MAX_DEPTH.with(|cell| cell.set(limits.ast_depth));
+    FRAMES.with(|cell| cell.set(0));
+    FRAME_LIMIT.with(|cell| cell.set(limits.ast_depth.saturating_mul(4).saturating_add(32)));
+    ACTIVE.with(|cell| cell.set(true));
     let result = catch_unwind(AssertUnwindSafe(action));
-    let usage = STATE.with(|s| s.replace(previous).unwrap().usage);
+    let usage = Usage {
+        work: WORK.with(Cell::get),
+        ast_depth: AST_DEPTH.with(Cell::get),
+    };
+    restore(previous);
     let result = match result {
         Ok(value) => value,
         Err(payload) => match payload.downcast::<Cancel>() {
@@ -59,80 +99,71 @@ pub fn limited<T>(limits: Limits, action: impl FnOnce() -> Result<T>) -> (Result
 }
 
 pub fn charge(units: usize) {
-    let exhausted = STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        let Some(s) = state.as_mut() else {
-            return false;
-        };
-        if s.limits
-            .work
-            .is_some_and(|limit| units > limit.saturating_sub(s.usage.work))
-        {
-            return true;
-        }
-        if let Some(next) = s.usage.work.checked_add(units) {
-            s.usage.work = next;
-            false
-        } else {
-            true
-        }
-    });
-    if exhausted {
+    if !ACTIVE.with(Cell::get) {
+        return;
+    }
+    let limit = WORK_LIMIT.with(Cell::get);
+    let used = WORK.with(Cell::get);
+    if units > limit.saturating_sub(used) {
         resume_unwind(Box::new(Cancel("decompile work budget exceeded")));
     }
+    let Some(next) = used.checked_add(units) else {
+        resume_unwind(Box::new(Cancel("decompile work budget exceeded")));
+    };
+    WORK.with(|cell| cell.set(next));
 }
+
 fn depth(depth: usize) {
-    let exceeded = STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        let Some(s) = state.as_mut() else {
-            return false;
-        };
-        if depth > s.limits.ast_depth {
-            true
-        } else {
-            s.usage.ast_depth = s.usage.ast_depth.max(depth);
-            false
+    if !ACTIVE.with(Cell::get) {
+        return;
+    }
+    let limit = MAX_DEPTH.with(Cell::get);
+    let used = AST_DEPTH.with(Cell::get);
+    if depth > limit {
+        if limit > used {
+            AST_DEPTH.with(|cell| cell.set(limit));
         }
-    });
-    if exceeded {
         resume_unwind(Box::new(Cancel(
             "instruction-derived AST depth budget exceeded",
         )));
     }
+    if depth > used {
+        AST_DEPTH.with(|cell| cell.set(depth));
+    }
 }
+
 pub struct Frame(bool);
 impl Drop for Frame {
     fn drop(&mut self) {
         if self.0 {
-            STATE.with(|s| {
-                s.borrow_mut().as_mut().unwrap().frames -= 1;
-            });
+            FRAMES.with(|cell| cell.set(cell.get().saturating_sub(1)));
         }
     }
 }
 /// Bound recursive helper entry as well as AST structure. The constant factor
 /// accommodates fixed helper frames between adjacent AST nodes; it is finite.
 pub fn enter() -> Frame {
-    charge(1);
-    let (active, exceeded) = STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        let Some(s) = state.as_mut() else {
-            return (false, false);
-        };
-        let max = s.limits.ast_depth.saturating_mul(4).saturating_add(32);
-        if s.frames >= max {
-            (true, true)
-        } else {
-            s.frames += 1;
-            (true, false)
-        }
-    });
-    if exceeded {
+    if !ACTIVE.with(Cell::get) {
+        return Frame(false);
+    }
+    let limit = WORK_LIMIT.with(Cell::get);
+    let used = WORK.with(Cell::get);
+    if 1 > limit.saturating_sub(used) {
+        resume_unwind(Box::new(Cancel("decompile work budget exceeded")));
+    }
+    let Some(next) = used.checked_add(1) else {
+        resume_unwind(Box::new(Cancel("decompile work budget exceeded")));
+    };
+    WORK.with(|cell| cell.set(next));
+    let max = FRAME_LIMIT.with(Cell::get);
+    let frames = FRAMES.with(Cell::get);
+    if frames >= max {
         resume_unwind(Box::new(Cancel(
             "instruction-derived recovery nesting budget exceeded",
         )));
     }
-    Frame(active)
+    FRAMES.with(|cell| cell.set(frames + 1));
+    Frame(true)
 }
 /// Charge expansion before allocating, not after processing the new vector.
 pub fn capacity<T>(n: usize) -> Vec<T> {
@@ -171,7 +202,10 @@ impl Node for PyObject {
     }
 }
 pub fn rc<T: Node>(node: T) -> Rc<T> {
-    node.check();
+    // The node is folded into a statement, which is checked before it joins
+    // the body. Walking every intermediate wrapper would repeatedly traverse
+    // the same subtree while the expression is built bottom-up.
+    charge(1);
     Rc::new(node)
 }
 pub fn pattern(pattern: &Pattern) {
@@ -209,18 +243,21 @@ fn walk(root: Item<'_>) -> bool {
     // without consuming the native stack. Every scheduled edge is charged.
     let mut ready = true;
     let mut todo = vec![(root, 1)];
+    let mut work = 0usize;
+    let mut max_level = 1usize;
     while let Some((item, level)) = todo.pop() {
-        charge(1);
-        depth(level);
+        work = work.saturating_add(1);
+        max_level = max_level.max(level);
+        let mut edges = 0usize;
         let mut add = |item| {
-            charge(1);
+            edges = edges.saturating_add(1);
             todo.push((item, level + 1));
         };
         match item {
             Item::Expr(e) => match e {
                 Expr::Const(_) => {}
                 Expr::Name(name) => {
-                    charge(name.len());
+                    work = work.saturating_add(name.len());
                     ready &= !name.as_bytes().contains(&0);
                 }
                 Expr::Attribute { value, .. }
@@ -606,7 +643,11 @@ fn walk(root: Item<'_>) -> bool {
                 }
             }
         }
+        drop(add);
+        work = work.saturating_add(edges);
     }
+    charge(work);
+    depth(max_level);
     ready
 }
 
@@ -644,25 +685,25 @@ impl CopyWork for CopySize<&&String> {
 }
 impl CopyWork for CopySize<&Expr> {
     fn copy_work(self) -> usize {
-        self.0.check();
+        charge(1);
         1
     }
 }
 impl CopyWork for CopySize<&&Expr> {
     fn copy_work(self) -> usize {
-        self.0.check();
+        charge(1);
         1
     }
 }
 impl CopyWork for CopySize<&Stmt> {
     fn copy_work(self) -> usize {
-        statement(self.0);
+        charge(1);
         1
     }
 }
 impl CopyWork for CopySize<&&Stmt> {
     fn copy_work(self) -> usize {
-        statement(self.0);
+        charge(1);
         1
     }
 }

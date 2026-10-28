@@ -2856,8 +2856,11 @@ impl<'a> Ctx<'a> {
         self.pending_try_tail = None;
         self.pending_post_chain_stmt = None;
         self.active_try_stack.clear();
+        let prescan_start = std::time::Instant::now();
         self.prescan_while_true();
         self.prescan_dup_copies();
+        crate::timing::mark("prescan", prescan_start.elapsed());
+        let loop_start = std::time::Instant::now();
         let mut pc = 0usize;
         let mut past_chains = false;
         while pc < self.instrs.len()
@@ -3861,6 +3864,8 @@ impl<'a> Ctx<'a> {
             }
             pc += 1;
         }
+        crate::timing::mark("loop", loop_start.elapsed());
+        let teardown_start = std::time::Instant::now();
         // teardown lift: the loop never closed during the walk (3.14
         // multi-back-edge while-True) — close it (and any inner blocks)
         // first so the lifted return lands AFTER the loop, not inside it
@@ -3888,6 +3893,7 @@ impl<'a> Ctx<'a> {
             self.flush_pending_stores();
             self.push_stmt(Stmt::Return(Some(e)));
         }
+        crate::timing::mark("teardown", teardown_start.elapsed());
     }
 
     fn open_exception_blocks(&mut self, pos: usize) {

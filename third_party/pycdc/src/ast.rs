@@ -486,7 +486,6 @@ impl Clone for Pattern {
 impl Clone for Stmt {
     fn clone(&self) -> Self {
         let _budget_frame = crate::budget::enter();
-        crate::budget::statement(self);
         match self {
             Self::Expr(field_0) => Self::Expr(crate::budget_clone!(field_0)),
             Self::Assign {
