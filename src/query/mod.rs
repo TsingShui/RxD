@@ -132,8 +132,8 @@ fn reply(bytes: &[u8]) -> Result<Value, QueryError> {
     }
     if trimmed.starts_with('{')
         && let Ok(record) = lossless::parse(trimmed.as_bytes())
-        && ((record.get("backend").is_some() && record.get("command").is_some())
-            || (record.get("columns").is_some() && record.get("rows").is_some()))
+        && record.get("backend").is_some()
+        && record.get("command").is_some()
     {
         return Ok(record);
     }

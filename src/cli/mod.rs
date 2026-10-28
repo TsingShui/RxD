@@ -237,11 +237,11 @@ Coordinates retain JVM overload descriptors, including return type; use returned
   rxd pyc strings module.pyc -f Authorization
   rxd pyc xref module.pyc --at '<string.at>'
   rxd pyc get-code module.pyc --at '<reference.context_at>'
-  rxd pyc decompile module.pyc --json
+  rxd pyc decompile module.pyc
 Static navigation supports final CPython 3.8-3.13; raw marshal needs --version X.Y.
 code:N selects get-code; const:N:PATH selects constant xref, not get-code.
 Name xref is explicit bytecode evidence, not resolved Python runtime dispatch.
-Decompile reconstructs the whole module; JSON detail.complete reports recovery status.")]
+Decompile prints the module's Python; get-code keeps the JSON code_view record.")]
     #[command(
         display_order = 50,
         long_about = "Analyze PYC: codes, constants, Python reconstruction"

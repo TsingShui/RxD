@@ -53,11 +53,14 @@ beyond PYZ are unsupported.
   Read columns by position (`cut -f2`, `awk -F'\t'`), not by guessing.
   Require exit 0; zero rows is a complete empty result. Backend-specific
   completeness and inference flags still apply.
-- Fetch commands (`get-*`, `decompile`, `get-code`, `analyze`) return one JSON
-  record with schema v2 navigation (`at`, `parent_at`, `context_at`,
-  `source_id`, `start`, `end`) outside `detail` and format-specific fields
-  inside. `at` is the copy-only coordinate a listing prints and the value `--at`
-  accepts. Parse actual responses, never manufacture coordinates.
+- Fetch commands print the selected unit: `get-*` and `decompile` print the
+  reconstructed source text itself, and `--raw` prints original instructions as
+  text lines. Evidence that is not source — `get-code` inventories, class
+  metadata under `--raw` — is one JSON record with schema v2 navigation (`at`,
+  `parent_at`, `context_at`, `source_id`, `start`, `end`) outside `detail` and
+  format-specific fields inside. `at` is the copy-only coordinate a listing
+  prints and the value `--at` accepts. Parse actual responses, never manufacture
+  coordinates.
 - A coordinate names a range in the input you are querying, not the file itself: reuse
   it only with the same bytes and interpretation options. A coordinate copied from
   another input is not checked; re-run the listing for the file you are fetching.
@@ -96,9 +99,9 @@ rxd jar get-method library.jar --at "$METHOD_AT"
 rxd jar get-class library.jar --at "$CLASS_AT"
 ```
 
-Every `get-class`/`get-method` answers with one JSON record (`class_body` /
-`method_body`) whose `detail.code` is the source. JVM method FETCH supports
-`--raw` for original instructions; DEX FETCH emits Java and has no `--raw` flag.
+`get-method` and `get-class` print the reconstructed Java itself; `--raw`
+returns the original instructions instead. JVM method FETCH supports `--raw`;
+DEX FETCH emits Java and has no `--raw` flag.
 DEX records carry no per-row `source_id`: route `xref` rows with their
 `context_at` (the caller) and `detail.entry` (which DEX); reuse the unchanged
 archive. DEX strings have global table
@@ -125,8 +128,8 @@ rxd ilspy get-class library.dll --at "$TYPE_AT" --raw
 rxd ilspy xref library.dll --at "$TYPE_AT"
 ```
 
-A `classes` row carries `record: class`; copy its `at` to class FETCH or type
-XREF without rewriting it as `type`. Select a real type first: unfiltered listings
+A `classes` row's first cell is its `at`; copy it to class FETCH or type XREF
+without rewriting it as `type`. Select a real type first: unfiltered listings
 can start with the non-fetchable `<Module>` row.
 
 Use the `context_at`/`parent_at` a `strings` or `xref` row prints, and the `at` a
@@ -151,8 +154,8 @@ rxd wasm get-function module.wasm --at "$CALLER_AT" --raw
 
 Each listing emits one kind only: `types`, `imports`, `exports`, `functions`,
 `tables`, `memories`, `globals`, `data`, `elements`, `strings`. Select the merged
-function coordinate from `functions` (or `detail.target_at` from exports/imports),
-then use the caller coordinate in `xref`'s
+function coordinate from `functions` (match the export/import label), then use the
+caller coordinate in `xref`'s
 `context_at`. Strings inventory data/name sections; it does not prove
 string-to-code ownership. `xref` reports direct calls and `ref.func`; indirect
 calls remain unresolved.
@@ -268,7 +271,9 @@ restrict access to selected files/directories. `rxd_open` captures immutable byt
 handle for related calls and `rxd_close` afterward. Targets fix input bytes but do
 not cache parser state. Backend tools retain original identity, reference and
 fallback semantics. Path grants and worker/capture/deadline/full-response budgets apply;
-consume `structuredContent` (`{records: [...]}` for streams), not a truncated text preview.
+consume `structuredContent` — `{text}` for printed source and table rows,
+`{records: [...]}` for JSON streams, and the record itself for `get-code`/`--raw`
+evidence — not a truncated text preview.
 
 ## Scope and maintenance
 
