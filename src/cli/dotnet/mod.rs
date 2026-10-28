@@ -355,9 +355,29 @@ fn execute_inner(
             })?
         };
         if !*raw {
-            // A reconstruction is the answer: print it, keep the record for --raw.
-            let source = rendered.code.clone().unwrap_or_default();
-            output.write_all(source.as_bytes())?;
+            // A reconstruction is the answer; without an engine the member IL is, so a
+            // class fetch never succeeds with no output. The record stays on --raw.
+            let source = rendered.code.as_deref().unwrap_or_default();
+            if source.trim().is_empty() {
+                let reason = rendered.reason.as_deref().unwrap_or("no engine");
+                output
+                    .write_all(format!("// reconstruction unavailable: {reason}\n").as_bytes())?;
+                for item in &class.methods {
+                    let Some(body) = &item.body else {
+                        continue;
+                    };
+                    output.write_all(
+                        format!(
+                            "// method 0x{:08x} {}::{}\n",
+                            item.method.token, item.method.declaring_type, item.method.name
+                        )
+                        .as_bytes(),
+                    )?;
+                    write_il_text(&mut output, body)?;
+                }
+            } else {
+                output.write_all(source.as_bytes())?;
+            }
             perf.record("query", query_start);
             perf.counters.records = Some(1);
             perf.counters.output_bytes = Some(output.len());
