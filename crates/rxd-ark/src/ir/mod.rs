@@ -1,4 +1,5 @@
 mod async_frame;
+mod classes;
 pub(crate) mod lift;
 
 use crate::{Code, Method, Name, cfg::Graph};
@@ -107,9 +108,55 @@ pub(crate) enum Op {
     Delete(ValueId, ValueId),
     CopyData(ValueId, ValueId),
     RestArgs(u32),
+    ArraySpread(ValueId, ValueId, ValueId),
+    Class {
+        constructor: u32,
+        name: Arc<Name>,
+        base: ValueId,
+        length: u32,
+        members: Vec<classes::ClassMember>,
+    },
+    Method {
+        method: u32,
+        name: Arc<Name>,
+        length: u32,
+        home: ValueId,
+    },
+    SuperCall {
+        function: Option<ValueId>,
+        args: Vec<ValueId>,
+        spread: Option<ValueId>,
+    },
+    SuperGet(ValueId, Key),
+    Apply(ValueId, ValueId, ValueId),
+    Generator,
+    Suspend(ValueId, ValueId),
+    GeneratorResume(ValueId, bool),
+    IterResult(ValueId, ValueId),
+    TypeError(&'static str),
 }
 
 impl Op {
+    pub fn warning(&self) -> Option<crate::ReconstructionWarning> {
+        use crate::ReconstructionWarning as W;
+        match self {
+            Self::Iterator(_) => Some(W::IteratorRuntimeSemantics),
+            Self::Keys(_) | Self::Next(_) => Some(W::PropertyEnumeration),
+            Self::ArraySpread(..) => Some(W::ArraySpread),
+            Self::Apply(..)
+            | Self::SuperCall {
+                spread: Some(_), ..
+            } => Some(W::SpreadCall),
+            Self::Generator | Self::Suspend(..) | Self::GeneratorResume(..) => {
+                Some(W::GeneratorReconstruction)
+            }
+            Self::Class { .. }
+            | Self::Method { .. }
+            | Self::SuperCall { .. }
+            | Self::SuperGet(..) => Some(W::ClassReconstruction),
+            _ => None,
+        }
+    }
     pub fn inputs(&self) -> Vec<ValueId> {
         match self {
             Self::Unary(_, value)
@@ -120,10 +167,24 @@ impl Op {
             | Self::Keys(value)
             | Self::Next(value)
             | Self::DynamicImport(value) => vec![*value],
+            Self::Class { base, .. } => vec![*base],
+            Self::Method { home, .. } => vec![*home],
+            Self::SuperCall {
+                function,
+                args,
+                spread,
+            } => function.iter().chain(args).chain(spread).copied().collect(),
+            Self::ArraySpread(dst, index, src) | Self::Apply(dst, index, src) => {
+                vec![*dst, *index, *src]
+            }
+            Self::Suspend(generator, value) | Self::IterResult(generator, value) => {
+                vec![*generator, *value]
+            }
+            Self::GeneratorResume(generator, _) => vec![*generator],
             Self::Binary(_, left, right)
             | Self::Delete(left, right)
             | Self::CopyData(left, right) => vec![*left, *right],
-            Self::Get(object, key) => {
+            Self::Get(object, key) | Self::SuperGet(object, key) => {
                 let mut ids = vec![*object];
                 if let Key::Value(value) = key {
                     ids.push(*value);
@@ -195,6 +256,19 @@ pub(crate) enum Action {
     PopEnv,
     CheckHole(ValueId, Arc<Name>),
     CheckObject(ValueId),
+    CheckSuper(ValueId, bool),
+    Accessors {
+        object: ValueId,
+        key: ValueId,
+        getter: ValueId,
+        setter: ValueId,
+        set_name: ValueId,
+    },
+    SuperSet {
+        receiver: ValueId,
+        key: Key,
+        value: ValueId,
+    },
 }
 
 impl Action {
@@ -205,6 +279,25 @@ impl Action {
             | Self::StoreModule(_, value)
             | Self::CheckHole(value, _) => vec![*value],
             Self::CheckObject(value) => vec![*value, *value, *value],
+            Self::CheckSuper(value, _) => vec![*value, *value],
+            Self::Accessors {
+                object,
+                key,
+                getter,
+                setter,
+                set_name,
+            } => vec![*object, *key, *getter, *setter, *set_name],
+            Self::SuperSet {
+                receiver,
+                key,
+                value,
+            } => {
+                let mut values = vec![*receiver, *value];
+                if let Key::Value(key) = key {
+                    values.push(*key);
+                }
+                values
+            }
             Self::Set {
                 object, key, value, ..
             } => {
@@ -276,6 +369,8 @@ pub(crate) struct Frame {
     pub first_param: u32,
     pub arrow: bool,
     pub asynchronous: bool,
+    pub constructor: bool,
+    pub generator: bool,
 }
 
 pub(crate) struct Function<'a> {

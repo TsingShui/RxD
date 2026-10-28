@@ -30,13 +30,18 @@ pub(crate) struct Prepared<'a> {
 
 struct SourceWarnings {
     next_anchor: u32,
-    comment_len: u32,
+    source: String,
+    kinds: Vec<crate::ReconstructionWarning>,
     metadata_bytes: usize,
     comments: Vec<Comment>,
 }
 
 impl SourceWarnings {
-    fn attach(&mut self, statement: &mut Statement<'_>) -> Result<()> {
+    fn attach(
+        &mut self,
+        statement: &mut Statement<'_>,
+        warning: crate::ReconstructionWarning,
+    ) -> Result<()> {
         let anchor = self.next_anchor;
         self.next_anchor = anchor
             .checked_add(1)
@@ -51,7 +56,21 @@ impl SourceWarnings {
             .try_reserve(1)
             .map_err(|_| resource("Ark warning allocation failed"))?;
         *statement.span_mut() = Span::new(anchor, self.next_anchor);
-        let mut comment = Comment::new(0, self.comment_len, CommentKind::Line);
+        let text = format!("// warning[{}]: {}", warning.code(), warning.message());
+        let start = u32::try_from(self.source.len())
+            .map_err(|_| resource("Ark warning source exceeds span range"))?;
+        let end = start
+            .checked_add(text.len() as u32)
+            .filter(|end| *end as usize <= self.metadata_bytes)
+            .ok_or_else(|| resource("Ark warning source admission exceeded"))?;
+        self.source
+            .try_reserve(text.len())
+            .map_err(|_| resource("Ark warning source allocation failed"))?;
+        self.source.push_str(&text);
+        if !self.kinds.contains(&warning) {
+            self.kinds.push(warning);
+        }
+        let mut comment = Comment::new(start, end, CommentKind::Line);
         comment.attached_to = anchor;
         comment.position = CommentPosition::Leading;
         self.comments.push(comment);
@@ -64,7 +83,7 @@ pub(crate) fn lower(
     module: Option<&Module>,
     budget: Budget,
     main: Option<u32>,
-) -> Result<(Vec<u8>, bool)> {
+) -> Result<(Vec<u8>, Vec<crate::ReconstructionWarning>)> {
     let arena = Allocator::new();
     let ast = Ast::new(&arena);
     let mut statements = imports(&ast, units, module)?;
@@ -75,31 +94,72 @@ pub(crate) fn lower(
             .enumerate()
             .any(|(index, value)| unit.values.needed[index] && matches!(value.op, Op::Iterator(_)))
     });
-    let warning = crate::ReconstructionWarning::IteratorRuntimeSemantics;
-    let warning_source = format!("// warning[{}]: {}", warning.code(), warning.message());
     let max_code_len = units
         .iter()
         .map(|unit| unit.function.code.bytes.len())
         .max()
         .unwrap_or(0);
     // Bytecode PCs are below the code length, leaving unique synthetic comment anchors.
-    let next_anchor = if uses_standard_iterator {
-        u32::try_from(max_code_len)
-            .ok()
-            .and_then(|len| len.checked_add(1))
-            .ok_or_else(|| resource("Ark warning anchor exceeds span range"))?
-    } else {
-        0
-    };
+    let next_anchor = u32::try_from(max_code_len)
+        .ok()
+        .and_then(|len| len.checked_add(1))
+        .ok_or_else(|| resource("Ark warning anchor exceeds span range"))?;
     let warnings = RefCell::new(SourceWarnings {
         next_anchor,
-        comment_len: warning_source.len() as u32,
+        source: String::new(),
+        kinds: Vec::new(),
         metadata_bytes: budget.metadata_bytes,
         comments: Vec::new(),
     });
-    if uses_standard_iterator {
+    let has_op = |predicate: fn(&Op) -> bool| {
+        units.iter().any(|unit| {
+            unit.function
+                .values
+                .iter()
+                .enumerate()
+                .any(|(id, value)| unit.values.needed[id] && predicate(&value.op))
+        })
+    };
+    if uses_standard_iterator || has_op(|op| matches!(op, Op::ArraySpread(..))) {
         statements.push(super::intrinsics::get_iterator(&ast));
     }
+    if has_op(|op| matches!(op, Op::ArraySpread(..))) {
+        statements.push(super::iteration::array_spread(&ast));
+    }
+    if has_op(|op| matches!(op, Op::Apply(..))) {
+        statements.push(super::iteration::apply(&ast));
+    }
+    if units.iter().any(|unit| unit.function.frame.generator) {
+        statements.extend(super::generator::helpers(&ast));
+    }
+    if has_op(|op| matches!(op, Op::Keys(_))) {
+        statements.push(super::iteration::property_iterator(&ast));
+    }
+    let mut own = false;
+    let mut accessors = false;
+    for unit in units {
+        for (block, events) in unit.function.blocks.iter().enumerate() {
+            if !unit.body.owned[block] {
+                continue;
+            }
+            for (index, event) in events.events.iter().enumerate() {
+                if !unit.values.keep[block][index] {
+                    continue;
+                }
+                if let Event::Action { action, .. } = event {
+                    own |= matches!(action, Action::Set { object, own: StoreKind::ClassSensitive, .. } if !unit.values.ordinary[object.0]);
+                    accessors |= matches!(action, Action::Accessors { .. });
+                }
+            }
+        }
+    }
+    statements.extend(super::classes::helpers(
+        &ast,
+        has_op(|op| matches!(op, Op::Class { .. })),
+        has_op(|op| matches!(op, Op::Method { .. })),
+        own,
+        accessors,
+    ));
     if units.iter().any(|unit| {
         unit.function
             .values
@@ -140,13 +200,12 @@ pub(crate) fn lower(
             main,
         )?);
     }
-    let comments = warnings.into_inner().comments;
-    let emitted_warnings = !comments.is_empty();
+    let warnings = warnings.into_inner();
     let program = Program::new(
         SPAN,
         SourceType::mjs(),
-        &warning_source,
-        ast.vec(comments),
+        &warnings.source,
+        ast.vec(warnings.comments),
         None,
         ast.vec([]),
         ast.vec(statements),
@@ -158,7 +217,7 @@ pub(crate) fn lower(
         .code;
     let mut output = Output::new(budget.output_bytes);
     output.write_all(code.as_bytes())?;
-    Ok((output.into_bytes(), emitted_warnings))
+    Ok((output.into_bytes(), warnings.kinds))
 }
 
 pub(super) fn string_literal<'a>(ast: &Ast<'a>, name: &crate::Name) -> StringLiteral<'a> {
@@ -296,23 +355,31 @@ impl<'a> Lower<'_, 'a, '_> {
             }
         }
         let mut body = Vec::new();
-        let uses_env = function
-            .values
+        if function.frame.constructor {
+            body.push(self.ast.var(
+                "__ark_this",
+                Some(self.ast.property(self.ast.id("__ark_context"), "receiver")),
+                false,
+            ));
+        }
+        let uses_env = function.values.iter().any(|value| {
+            matches!(
+                value.op,
+                Op::LoadCell { .. } | Op::Closure { .. } | Op::Class { .. } | Op::Method { .. }
+            )
+        }) || function
+            .blocks
             .iter()
-            .any(|value| matches!(value.op, Op::LoadCell { .. } | Op::Closure { .. }))
-            || function
-                .blocks
-                .iter()
-                .flat_map(|block| &block.events)
-                .any(|event| {
-                    matches!(
-                        event,
-                        Event::Action {
-                            action: Action::StoreCell { .. } | Action::PushEnv(_) | Action::PopEnv,
-                            ..
-                        }
-                    )
-                });
+            .flat_map(|block| &block.events)
+            .any(|event| {
+                matches!(
+                    event,
+                    Event::Action {
+                        action: Action::StoreCell { .. } | Action::PushEnv(_) | Action::PopEnv,
+                        ..
+                    }
+                )
+            });
         if uses_env {
             body.push(self.ast.var(
                 "__ark_env",
@@ -336,10 +403,40 @@ impl<'a> Lower<'_, 'a, '_> {
         }
         body.extend(self.nodes(&self.unit.body.nodes)?);
         let function_name = format!("__ark_f_{:x}", function.method.offset);
-        let params = (0..function.frame.params)
+        let params: Vec<_> = (0..function.frame.params)
             .map(|index| format!("p{index}"))
             .collect();
-        let expression = if function.frame.arrow {
+        let expression = if function.frame.generator {
+            let mut inner = self.ast.function("__ark_run", params.clone(), body, false);
+            if let Expression::FunctionExpression(inner) = &mut inner {
+                inner.generator = true;
+            }
+            let run = self.ast.call(
+                self.ast.property(self.ast.id("Reflect"), "apply"),
+                vec![inner, self.this(), self.ast.id("arguments")],
+            );
+            let wrapper = vec![
+                self.ast.if_(
+                    self.ast.binary(
+                        Expression::new_new_target(SPAN, &self.ast.build),
+                        B::StrictInequality,
+                        self.ast.undefined(),
+                    ),
+                    vec![self.ast.throw(self.ast.construct(
+                        self.ast.id("TypeError"),
+                        vec![self.ast.string("Generator is not a constructor")],
+                    ))],
+                    None,
+                ),
+                self.ast
+                    .var("__ark_generator", Some(self.ast.object(vec![])), true),
+                self.ast.ret(Some(self.ast.call(
+                    self.ast.id("__ark_drive"),
+                    vec![run, self.ast.id("__ark_generator")],
+                ))),
+            ];
+            self.ast.function(&function_name, params, wrapper, false)
+        } else if function.frame.arrow {
             let body = FunctionBody::boxed(
                 SPAN,
                 self.ast.vec([Directive::new_use_strict(&self.ast.build)]),
@@ -363,11 +460,18 @@ impl<'a> Lower<'_, 'a, '_> {
             self.ast.var(&function_name, Some(expression), true),
             self.ast.ret(Some(self.ast.id(&function_name))),
         ];
-        Ok(self.ast.factory(
+        let mut declaration = self.ast.factory(
             &format!("_ark_capture_{:x}", function.method.offset),
             vec!["__ark_context".into()],
             factory_body,
-        ))
+        );
+        if function.frame.constructor {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::ClassReconstruction,
+            )?;
+        }
+        Ok(declaration)
     }
 
     fn slot(&self, slot: Slot) -> Expression<'a> {
@@ -375,9 +479,7 @@ impl<'a> Lower<'_, 'a, '_> {
         match slot {
             Slot::Acc => self.ast.id("acc"),
             Slot::Resume => self.ast.id("__ark_resume"),
-            Slot::Register(reg) if Some(reg) == frame.func => self
-                .ast
-                .id(&format!("__ark_f_{:x}", self.unit.function.method.offset)),
+            Slot::Register(reg) if Some(reg) == frame.func => self.current_function(),
             Slot::Register(reg) if Some(reg) == frame.this_reg => self.this(),
             Slot::Register(reg) if Some(reg) == frame.new_target => self.new_target(),
             Slot::Register(reg) if reg >= frame.first_param => {
@@ -386,15 +488,25 @@ impl<'a> Lower<'_, 'a, '_> {
             Slot::Register(reg) => self.ast.id(&format!("v{reg}")),
         }
     }
+    fn current_function(&self) -> Expression<'a> {
+        if self.unit.function.frame.constructor {
+            self.ast.property(self.ast.id("__ark_context"), "function")
+        } else {
+            self.ast
+                .id(&format!("__ark_f_{:x}", self.unit.function.method.offset))
+        }
+    }
     fn this(&self) -> Expression<'a> {
-        if self.unit.function.frame.arrow {
+        if self.unit.function.frame.constructor {
+            self.ast.id("__ark_this")
+        } else if self.unit.function.frame.arrow {
             self.ast.property(self.ast.id("__ark_context"), "receiver")
         } else {
             Expression::new_this_expression(SPAN, &self.ast.build)
         }
     }
     fn new_target(&self) -> Expression<'a> {
-        if self.unit.function.frame.arrow {
+        if self.unit.function.frame.arrow || self.unit.function.frame.constructor {
             self.ast.property(self.ast.id("__ark_context"), "newTarget")
         } else {
             Expression::new_new_target(SPAN, &self.ast.build)
@@ -402,6 +514,10 @@ impl<'a> Lower<'_, 'a, '_> {
     }
     fn context(&self) -> Expression<'a> {
         self.ast.object(vec![
+            (
+                self.ast.string("home"),
+                self.ast.property(self.ast.id("__ark_context"), "home"),
+            ),
             (self.ast.string("env"), self.ast.id("__ark_env")),
             (
                 self.ast.string("hole"),
@@ -479,9 +595,7 @@ impl<'a> Lower<'_, 'a, '_> {
             Op::Read(slot) => self.slot(*slot),
             Op::This => self.this(),
             Op::NewTarget => self.new_target(),
-            Op::Function => self
-                .ast
-                .id(&format!("__ark_f_{:x}", self.unit.function.method.offset)),
+            Op::Function => self.current_function(),
             Op::Global(name) => {
                 let name = name
                     .scalar_text()
@@ -581,6 +695,100 @@ impl<'a> Lower<'_, 'a, '_> {
                     call
                 }
             }
+            Op::Class {
+                constructor,
+                name,
+                base,
+                length,
+                members,
+            } => {
+                let members = members
+                    .iter()
+                    .map(|member| {
+                        self.ast.array(vec![
+                            self.ast.name(&member.name),
+                            self.ast.id(&format!("_ark_capture_{:x}", member.method)),
+                            self.ast.number(f64::from(member.length)),
+                            self.ast.boolean(member.is_static),
+                        ])
+                    })
+                    .collect();
+                self.ast.call(
+                    self.ast.id("__ark_class"),
+                    vec![
+                        self.ast.id(&format!("_ark_capture_{constructor:x}")),
+                        self.value(*base, depth + 1)?,
+                        self.ast.number(f64::from(*length)),
+                        self.ast.array(members),
+                        self.context(),
+                        self.ast.method_name(name),
+                    ],
+                )
+            }
+            Op::Method {
+                method,
+                name,
+                length,
+                home,
+            } => self.ast.call(
+                self.ast.id("__ark_method"),
+                vec![
+                    self.ast.id(&format!("_ark_capture_{method:x}")),
+                    self.ast.number(f64::from(*length)),
+                    self.value(*home, depth + 1)?,
+                    self.context(),
+                    self.ast.method_name(name),
+                ],
+            ),
+            Op::SuperCall {
+                function,
+                args,
+                spread,
+            } => {
+                let function = function
+                    .map(|id| self.value(id, depth + 1))
+                    .transpose()?
+                    .unwrap_or_else(|| self.current_function());
+                let args = if let Some(spread) = spread {
+                    Expression::new_array_expression(
+                        SPAN,
+                        self.ast.vec([ArrayExpressionElement::new_spread_element(
+                            SPAN,
+                            self.value(*spread, depth + 1)?,
+                            &self.ast.build,
+                        )]),
+                        &self.ast.build,
+                    )
+                } else {
+                    self.ast.array(
+                        args.iter()
+                            .map(|id| self.value(*id, depth + 1))
+                            .collect::<Result<Vec<_>>>()?,
+                    )
+                };
+                self.ast.call(
+                    self.ast.property(self.ast.id("Reflect"), "construct"),
+                    vec![
+                        self.ast.call(
+                            self.ast.property(self.ast.id("Object"), "getPrototypeOf"),
+                            vec![function],
+                        ),
+                        args,
+                        self.new_target(),
+                    ],
+                )
+            }
+            Op::SuperGet(receiver, key) => self.ast.call(
+                self.ast.property(self.ast.id("Reflect"), "get"),
+                vec![
+                    self.ast.call(
+                        self.ast.property(self.ast.id("Object"), "getPrototypeOf"),
+                        vec![self.ast.property(self.ast.id("__ark_context"), "home")],
+                    ),
+                    self.key(key, depth + 1)?,
+                    self.value(*receiver, depth + 1)?,
+                ],
+            ),
             Op::Await(input) => Expression::new_await_expression(
                 SPAN,
                 self.value(*input, depth + 1)?,
@@ -618,16 +826,64 @@ impl<'a> Lower<'_, 'a, '_> {
                 self.ast
                     .call(function, vec![self.value(*input, depth + 1)?])
             }
+            Op::TypeError(message) => self
+                .ast
+                .construct(self.ast.id("TypeError"), vec![self.ast.string(message)]),
+            Op::Generator => self.ast.id("__ark_generator"),
+            Op::Suspend(generator, value) => {
+                let result = self.ast.call(
+                    self.ast.id("__ark_suspend"),
+                    vec![
+                        self.ast.id("__ark_generator"),
+                        self.value(*generator, depth + 1)?,
+                        self.value(*value, depth + 1)?,
+                    ],
+                );
+                Expression::new_yield_expression(SPAN, false, Some(result), &self.ast.build)
+            }
+            Op::GeneratorResume(generator, mode) => self.ast.property(
+                self.ast.call(
+                    self.ast
+                        .property(self.ast.id("__ark_generator_state"), "get"),
+                    vec![self.value(*generator, depth + 1)?],
+                ),
+                if *mode { "mode" } else { "value" },
+            ),
+            Op::IterResult(value, done) => self.ast.object(vec![
+                (self.ast.string("value"), self.value(*value, depth + 1)?),
+                (self.ast.string("done"), self.value(*done, depth + 1)?),
+            ]),
+            Op::Apply(function, receiver, args) => self.ast.call(
+                self.ast.id("__ark_apply"),
+                vec![
+                    self.value(*function, depth + 1)?,
+                    self.value(*receiver, depth + 1)?,
+                    self.value(*args, depth + 1)?,
+                ],
+            ),
             Op::Iterator(input) => self.ast.call(
                 self.ast.id("__ark_get_iterator"),
                 vec![self.value(*input, depth + 1)?],
             ),
-            Op::Keys(_) | Op::Next(_) => {
-                return Err(unsupported(
-                    value.pc,
-                    "for-in iterator requires loop normalization",
-                ));
-            }
+            Op::Keys(input) => self.ast.call(
+                self.ast.id("__ark_property_iterator"),
+                vec![self.value(*input, depth + 1)?],
+            ),
+            Op::Next(input) => self.ast.property(
+                self.ast.call(
+                    self.ast.property(self.value(*input, depth + 1)?, "next"),
+                    vec![],
+                ),
+                "value",
+            ),
+            Op::ArraySpread(dst, index, src) => self.ast.call(
+                self.ast.id("__ark_array_spread"),
+                vec![
+                    self.value(*dst, depth + 1)?,
+                    self.value(*index, depth + 1)?,
+                    self.value(*src, depth + 1)?,
+                ],
+            ),
             Op::DynamicImport(input) => Expression::new_import_expression(
                 SPAN,
                 self.value(*input, depth + 1)?,
@@ -685,15 +941,25 @@ impl<'a> Lower<'_, 'a, '_> {
                         None
                     };
                     if let Some(mut statement) = statement {
-                        if matches!(value.op, Op::Iterator(_)) {
-                            self.warnings.borrow_mut().attach(&mut statement)?;
+                        if let Some(warning) = value.op.warning() {
+                            self.warnings.borrow_mut().attach(&mut statement, warning)?;
                         }
                         statements.push(statement);
                     }
                 }
                 Event::Action { pc, action } if self.unit.values.keep[block][index] => {
+                    let warned = matches!(
+                        action,
+                        Action::Accessors { .. } | Action::SuperSet { .. }
+                    ) || matches!(action, Action::Set { object, own: StoreKind::ClassSensitive, .. } if !self.unit.values.ordinary[object.0]);
                     let mut action = self.action(action)?;
                     *action.span_mut() = Span::new(*pc, *pc + 1);
+                    if warned {
+                        self.warnings.borrow_mut().attach(
+                            &mut action,
+                            crate::ReconstructionWarning::ClassReconstruction,
+                        )?;
+                    }
                     statements.push(action);
                 }
                 _ => {}
@@ -704,6 +970,82 @@ impl<'a> Lower<'_, 'a, '_> {
     fn action(&self, action: &Action) -> Result<Statement<'a>> {
         Ok(match action {
             Action::Write(slot, value) => self.ast.assign(self.slot(*slot), self.value(*value, 0)?),
+            Action::CheckSuper(value, already) => {
+                let empty = Expression::new_logical_expression(
+                    SPAN,
+                    self.ast.binary(
+                        self.value(*value, 0)?,
+                        B::StrictEquality,
+                        self.ast.undefined(),
+                    ),
+                    L::Or,
+                    self.ast.binary(
+                        self.value(*value, 0)?,
+                        B::StrictEquality,
+                        self.ast.property(self.ast.id("__ark_context"), "hole"),
+                    ),
+                    &self.ast.build,
+                );
+                let test = if *already {
+                    self.ast.unary(U::LogicalNot, empty)
+                } else {
+                    empty
+                };
+                self.ast.if_(
+                    test,
+                    vec![self.ast.throw(self.ast.construct(
+                        self.ast.id("ReferenceError"),
+                        vec![self.ast.string(if *already {
+                            "super() forbidden re-bind 'this'"
+                        } else {
+                            "sub-class must call super before use 'this'"
+                        })],
+                    ))],
+                    None,
+                )
+            }
+            Action::Accessors {
+                object,
+                key,
+                getter,
+                setter,
+                set_name,
+            } => self.ast.expr(self.ast.call(
+                self.ast.id("__ark_accessors"),
+                vec![
+                    self.value(*object, 0)?,
+                    self.value(*key, 0)?,
+                    self.value(*getter, 0)?,
+                    self.value(*setter, 0)?,
+                    self.value(*set_name, 0)?,
+                ],
+            )),
+            Action::SuperSet {
+                receiver,
+                key,
+                value,
+            } => {
+                let set = self.ast.call(
+                    self.ast.property(self.ast.id("Reflect"), "set"),
+                    vec![
+                        self.ast.call(
+                            self.ast.property(self.ast.id("Object"), "getPrototypeOf"),
+                            vec![self.ast.property(self.ast.id("__ark_context"), "home")],
+                        ),
+                        self.key(key, 0)?,
+                        self.value(*value, 0)?,
+                        self.value(*receiver, 0)?,
+                    ],
+                );
+                self.ast.if_(
+                    self.ast.unary(U::LogicalNot, set),
+                    vec![self.ast.throw(self.ast.construct(
+                        self.ast.id("TypeError"),
+                        vec![self.ast.string("Cannot assign super property")],
+                    ))],
+                    None,
+                )
+            }
             Action::Set {
                 object,
                 key,
@@ -712,10 +1054,14 @@ impl<'a> Lower<'_, 'a, '_> {
             } => {
                 if *own != StoreKind::Assign {
                     if *own == StoreKind::ClassSensitive && !self.unit.values.ordinary[object.0] {
-                        return Err(unsupported(
-                            self.unit.function.values[object.0].pc,
-                            "class-sensitive receiver is not proven ordinary",
-                        ));
+                        return Ok(self.ast.expr(self.ast.call(
+                            self.ast.id("__ark_define_own"),
+                            vec![
+                                self.value(*object, 0)?,
+                                self.key(key, 0)?,
+                                self.value(*value, 0)?,
+                            ],
+                        )));
                     }
                     let descriptor = self.ast.object(vec![
                         (self.ast.string("value"), self.value(*value, 0)?),
@@ -1074,11 +1420,14 @@ impl<'a> Lower<'_, 'a, '_> {
             self.ast.block(vec![switch]),
             &self.ast.build,
         );
-        Ok(vec![
-            self.ast
-                .var(&name, Some(self.ast.number(entry as f64)), false),
-            self.ast.label(&label, loop_),
-        ])
+        let mut state = self
+            .ast
+            .var(&name, Some(self.ast.number(entry as f64)), false);
+        self.warnings.borrow_mut().attach(
+            &mut state,
+            crate::ReconstructionWarning::ControlFlowReconstruction,
+        )?;
+        Ok(vec![state, self.ast.label(&label, loop_)])
     }
 }
 

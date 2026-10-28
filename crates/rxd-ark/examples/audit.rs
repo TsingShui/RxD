@@ -73,6 +73,7 @@ fn main() -> Result<()> {
     if let Some(directory) = &record_directory {
         fs::create_dir(directory)?;
     }
+    let mut warnings = Vec::new();
     let mut record_count = 0;
     let mut source_records = 0;
     let mut record_warning_offsets = Vec::new();
@@ -97,6 +98,11 @@ fn main() -> Result<()> {
         {
             match abc.decompile_record(&record) {
                 Ok(reconstructed) => {
+                    for warning in &reconstructed.warnings {
+                        if !warnings.contains(warning) {
+                            warnings.push(*warning);
+                        }
+                    }
                     if !reconstructed.warnings.is_empty() {
                         record_warning_offsets.try_reserve(1).map_err(|_| {
                             Error::new("RESOURCE_LIMIT", "Ark warning index allocation failed")
@@ -121,6 +127,11 @@ fn main() -> Result<()> {
             match abc.reconstruct(method) {
                 Ok(reconstructed) => {
                     successes += 1;
+                    for warning in &reconstructed.warnings {
+                        if !warnings.contains(warning) {
+                            warnings.push(*warning);
+                        }
+                    }
                     if !reconstructed.warnings.is_empty() {
                         method_warnings += 1;
                     }
@@ -165,9 +176,7 @@ fn main() -> Result<()> {
     if let Some(output) = &mut output {
         output.flush()?;
     }
-    if method_warnings != 0 || !record_warning_offsets.is_empty() {
-        write_warnings(&[ReconstructionWarning::IteratorRuntimeSemantics])?;
-    }
+    write_warnings(&warnings)?;
     println!(
         "{}",
         json!({"source_id":abc.source_id,"records":record_count,"source_records":source_records,"record_warnings":record_warning_offsets.len(),"record_warning_offsets":record_warning_offsets,"record_failures":record_failures,"methods":total,"successes":successes,"method_warnings":method_warnings,"source_bytes":bytes,

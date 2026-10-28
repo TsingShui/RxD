@@ -61,6 +61,28 @@ impl<'a> Ast<'a> {
             &self.build,
         ))
     }
+    pub fn method_name(&self, name: &Name) -> Expression<'a> {
+        if name.units.first() != Some(&u16::from(b'#')) {
+            return self.name(name);
+        }
+        let start = name
+            .units
+            .iter()
+            .rposition(|unit| *unit == u16::from(b'#'))
+            .unwrap()
+            + 1;
+        let suffix = &name.units[start..];
+        let end = suffix
+            .iter()
+            .rposition(|unit| *unit == u16::from(b'^'))
+            .unwrap_or(suffix.len());
+        self.name(&Name {
+            offset: name.offset,
+            end: name.end,
+            units: suffix[..end].to_vec(),
+            text: String::from_utf16_lossy(&suffix[..end]),
+        })
+    }
     pub fn number(&self, value: f64) -> Expression<'a> {
         if value.is_nan() {
             return self.binary(self.number(0.0), BinaryOperator::Division, self.number(0.0));

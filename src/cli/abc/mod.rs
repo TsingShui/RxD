@@ -19,7 +19,7 @@ pub enum Command {
     },
     #[command(
         about = "Reconstruct one method or fetch record/method instructions (--raw).",
-        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals} context.\nIterator runtime differences are marked at affected operations in the source.\nUnsupported source constructs fail explicitly instead of falling back to disassembly."
+        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals, home, function} context.\nBest-effort runtime semantics and unrecovered source structure are marked with warning comments at affected operations.\nUnmodelled operations fail explicitly instead of substituting empty bodies or disassembly."
     )]
     Decompile(DecompileOptions),
 }
@@ -159,7 +159,13 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
                         for warning in reconstruction.warnings {
                             match warning {
                                 // The warning is already attached to each operation in source.
-                                ReconstructionWarning::IteratorRuntimeSemantics => {}
+                                ReconstructionWarning::IteratorRuntimeSemantics
+                                | ReconstructionWarning::PropertyEnumeration
+                                | ReconstructionWarning::ArraySpread
+                                | ReconstructionWarning::SpreadCall
+                                | ReconstructionWarning::ClassReconstruction
+                                | ReconstructionWarning::GeneratorReconstruction
+                                | ReconstructionWarning::ControlFlowReconstruction => {}
                             }
                         }
                         reconstruction.source

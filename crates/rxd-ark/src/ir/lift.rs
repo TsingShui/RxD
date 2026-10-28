@@ -20,6 +20,7 @@ struct Builder<'a, 's> {
     events: Vec<Event>,
     block: usize,
     pc: u32,
+    generator: bool,
 }
 
 impl Builder<'_, '_> {
@@ -290,11 +291,35 @@ impl Builder<'_, '_> {
                 let result = self.value(Op::Await(value), Effects::SUSPEND);
                 self.store(Slot::Resume, result);
             }
+            "creategeneratorobj" => self.result(Op::Generator, Effects::READ),
+            "suspendgenerator" if self.generator => {
+                let generator = self.reg(instruction, 0)?;
+                let value = self.acc();
+                self.value(Op::Suspend(generator, value), Effects::SUSPEND);
+            }
+            "createiterresultobj" => {
+                let value = self.reg(instruction, 0)?;
+                let done = self.reg(instruction, 1)?;
+                self.result(Op::IterResult(value, done), Effects::READ);
+            }
+            "resumegenerator" | "getresumemode" if self.generator => {
+                let generator = self.acc();
+                self.result(
+                    Op::GeneratorResume(generator, name == "getresumemode"),
+                    Effects::READ,
+                );
+            }
             "resumegenerator" => {
                 let value = self.read(Slot::Resume);
                 self.store(Slot::Acc, value);
             }
             "getresumemode" => self.constant(Constant::Number(0.0)),
+            "apply" => {
+                let function = self.acc();
+                let receiver = self.reg(instruction, 1)?;
+                let args = self.reg(instruction, 2)?;
+                self.result(Op::Apply(function, receiver, args), Effects::CALL);
+            }
             "ldlexvar" | "wide.ldlexvar" => self.result(
                 Op::LoadCell {
                     depth: instruction.unsigned(0)?,
@@ -344,8 +369,111 @@ impl Builder<'_, '_> {
                     Effects::CALL,
                 );
             }
+            "defineclasswithbuffer" => {
+                let constructor = instruction.entity(1, EntityKind::Method)?;
+                let members =
+                    super::classes::members(self.abc, instruction.entity(2, EntityKind::Literal)?)?;
+                let base = self.reg(instruction, 4)?;
+                self.result(
+                    Op::Class {
+                        constructor,
+                        name: Arc::clone(&self.abc.method(constructor)?.name),
+                        base,
+                        length: instruction.unsigned(3)?,
+                        members,
+                    },
+                    Effects::CALL,
+                );
+            }
             "definemethod" => {
-                return Err(unsupported(self.pc, "definemethod home object and length"));
+                let home = self.acc();
+                let method = instruction.entity(1, EntityKind::Method)?;
+                self.result(
+                    Op::Method {
+                        method,
+                        name: Arc::clone(&self.abc.method(method)?.name),
+                        length: instruction.unsigned(2)?,
+                        home,
+                    },
+                    Effects::CALL,
+                );
+            }
+            "definegettersetterbyvalue" => {
+                let object = self.reg(instruction, 0)?;
+                let key = self.reg(instruction, 1)?;
+                let getter = self.reg(instruction, 2)?;
+                let setter = self.reg(instruction, 3)?;
+                let set_name = self.acc();
+                self.action(Action::Accessors {
+                    object,
+                    key,
+                    getter,
+                    setter,
+                    set_name,
+                });
+                self.store(Slot::Acc, object);
+            }
+            "throw.ifsupernotcorrectcall" => {
+                let index = instruction.unsigned(0)?;
+                if index > 1 {
+                    return Err(invalid("invalid Ark super check"));
+                }
+                let value = self.acc();
+                self.action(Action::CheckSuper(value, index == 1));
+            }
+            "supercallthisrange"
+            | "wide.supercallthisrange"
+            | "supercallarrowrange"
+            | "wide.supercallarrowrange" => {
+                let wide = name.starts_with("wide.");
+                let count = instruction.unsigned(usize::from(!wide))?;
+                let start = instruction.register(if wide { 1 } else { 2 })?;
+                let args = self.range(start, count)?;
+                let function = name.ends_with("supercallarrowrange").then(|| self.acc());
+                self.result(
+                    Op::SuperCall {
+                        function,
+                        args,
+                        spread: None,
+                    },
+                    Effects::CALL,
+                );
+            }
+            "supercallspread" => {
+                let function = Some(self.acc());
+                let spread = Some(self.reg(instruction, 1)?);
+                self.result(
+                    Op::SuperCall {
+                        function,
+                        args: vec![],
+                        spread,
+                    },
+                    Effects::CALL,
+                );
+            }
+            "ldsuperbyname" | "ldsuperbyvalue" => {
+                let (receiver, key) = if name == "ldsuperbyname" {
+                    (self.acc(), self.key(instruction, 1)?)
+                } else {
+                    (self.reg(instruction, 1)?, Key::Value(self.acc()))
+                };
+                self.result(Op::SuperGet(receiver, key), Effects::CALL);
+            }
+            "stsuperbyname" | "stsuperbyvalue" => {
+                let (receiver, key) = if name == "stsuperbyname" {
+                    (self.reg(instruction, 2)?, self.key(instruction, 1)?)
+                } else {
+                    (
+                        self.reg(instruction, 1)?,
+                        Key::Value(self.reg(instruction, 2)?),
+                    )
+                };
+                let value = self.acc();
+                self.action(Action::SuperSet {
+                    receiver,
+                    key,
+                    value,
+                });
             }
             "callarg0" | "callarg1" | "callargs2" | "callargs3" | "callthis0" | "callthis1"
             | "callthis2" | "callthis3" => {
@@ -476,6 +604,12 @@ impl Builder<'_, '_> {
                 let source = self.acc();
                 self.result(Op::CopyData(target, source), Effects::WRITE);
             }
+            "starrayspread" => {
+                let dst = self.reg(instruction, 0)?;
+                let index = self.reg(instruction, 1)?;
+                let src = self.acc();
+                self.result(Op::ArraySpread(dst, index, src), Effects::CALL);
+            }
             "copyrestargs" | "wide.copyrestargs" => {
                 self.result(Op::RestArgs(instruction.unsigned(0)?), Effects::READ)
             }
@@ -507,6 +641,18 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
         return Err(unsupported(0, format!("function kind {kind}")));
     }
     let asynchronous = matches!(kind, 4 | 6);
+    let generators = decoded
+        .instructions
+        .iter()
+        .filter(|instruction| instruction.opcode.name == "creategeneratorobj")
+        .count();
+    if generators > 1 {
+        return Err(unsupported(0, "multiple generator identities in one frame"));
+    }
+    let generator = generators == 1;
+    if generator && asynchronous {
+        return Err(unsupported(0, "mixed async and sync generator frame"));
+    }
     let protocol = if asynchronous {
         Some(super::async_frame::normalize(&mut decoded)?)
     } else {
@@ -543,6 +689,14 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
         first_param: next,
         arrow: matches!(kind, 2 | 6),
         asynchronous,
+        constructor: !matches!(kind, 2 | 6)
+            && decoded.instructions.iter().any(|instruction| {
+                matches!(
+                    instruction.opcode.name,
+                    "supercallthisrange" | "wide.supercallthisrange" | "supercallspread"
+                )
+            }),
+        generator,
     };
     let mut builder = Builder {
         abc,
@@ -551,6 +705,7 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
         events: Vec::new(),
         block: 0,
         pc: 0,
+        generator,
     };
     let mut blocks = Vec::new();
     for (index, block) in graph.blocks.iter().enumerate() {
@@ -568,6 +723,7 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
                 continue;
             }
             if !asynchronous
+                && !generator
                 && matches!(
                     instruction.opcode.name,
                     "asyncfunctionawaituncaught" | "resumegenerator" | "getresumemode"
@@ -606,6 +762,9 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
             Terminator::Return(None)
         } else if last.opcode.name == "throw" {
             Terminator::Throw(builder.acc())
+        } else if last.opcode.name == "throw.notexists" {
+            let error = builder.value(Op::TypeError("Throw method is not defined"), Effects::CALL);
+            Terminator::Throw(error)
         } else if terminal {
             return Err(unsupported(last.pc, last.opcode.name));
         } else {

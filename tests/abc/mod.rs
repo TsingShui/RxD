@@ -743,7 +743,13 @@ fn ark_distinguishes_own_literal_properties_from_unknown_receivers() {
 
     let (bytes, at) = fixture_with_body(0, 4, &[0x62, 7, 0, 0, 0, 0x79, 0, 3, 2, 0, 0x64]);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("warning[ARK_CLASS_RECONSTRUCTION]")
+    );
 
     let branch = [
         0x60, 4, 0x4f, 8, 0x05, 0, 0x61, 0, 0x4d, 6, 0x60, 4, 0x61, 0, 0x62, 7, 0, 0, 0, 0x79, 0,
@@ -751,7 +757,13 @@ fn ark_distinguishes_own_literal_properties_from_unknown_receivers() {
     ];
     let (bytes, at) = fixture_with_body(1, 4, &branch);
     fs::write(&input, bytes).unwrap();
-    failure(source(&input, &at, &[]), 1, "DECOMPILE_FAILED");
+    let result = source(&input, &at, &[]);
+    success(&result);
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("__ark_define_own(")
+    );
     let mut both_fresh = branch;
     both_fresh[10] = 0x05;
     both_fresh[11] = 0;

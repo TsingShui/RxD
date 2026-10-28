@@ -245,8 +245,8 @@ impl Values {
                 Op::Read(slot) => block.events[first + 1..last.min(block.events.len())].iter().enumerate().any(|(offset, event)| {
                     keep[value.block][first + 1 + offset] && matches!(event, Event::Action { action: Action::Write(target, _), .. } if target == slot)
                 }),
-                // Iterator calls need their own statement for a source-local warning.
-                _ if uses[index] > 1 || matches!(value.op, Op::Iterator(_)) => true,
+                // Warned operations need their own statement for source-local diagnostics.
+                _ if uses[index] > 1 || value.op.warning().is_some() => true,
                 // A nested use may evaluate a key, callee or assignment target before its value.
                 _ => value.effects.ordered() && (!direct_sink[index] || block.events[first + 1..last.min(block.events.len())].iter().enumerate().any(|(offset, event)| {
                     match event {

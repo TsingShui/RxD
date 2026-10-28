@@ -6,7 +6,8 @@ from the RxD tree at `0091440`; the old reconstructor and JS postprocessor were
 not copied or called. Removing that crate does not remove this crate's sources.
 
 The production `rxd ark` CLI and reflected MCP tools use this engine directly.
-Unsupported semantics fail explicitly; there is no old-engine fallback.
+Best-effort semantic bridges and residual control flow carry source-local warnings;
+unmodelled operations still fail explicitly. There is no old-engine fallback.
 
 ## Pipeline
 
@@ -45,12 +46,34 @@ they cannot throw, and leave enclosing native handlers to their lexical scopes.
 Finally cleanup remains explicit control flow; native finally recognition and
 abrupt-completion cleanup merging are not implemented by this milestone.
 
-Class/super construction, `definemethod`, generators, array spread and for-in
-normalization remain unsupported. Those targets return `DECOMPILE_FAILED`,
-including when a required nested definition is unsupported; no empty bodies or
-raw fallback are emitted. Per-method analysis and function lowering errors include
-the actual method coordinate. Class-sensitive own stores require a proven ordinary
-receiver.
+Class literals retain constructor/member dependencies, instance/static order and
+lengths. Native JS class shells validate heritage and delegate to recovered bodies
+with explicit function, receiver, new-target and home-object contexts. Super calls
+use `Reflect.construct`; super property access uses the retained home object.
+`definemethod`, accessors and class-sensitive stores retain descriptors; emitted
+class markers are tracked in WeakSets. External class markers, method constructibility,
+reflection, VM error details and modified globals remain best-effort, not equivalent.
+`ARK_CLASS_RECONSTRUCTION` marks the affected statements and constructor factories.
+
+Synchronous generators retain the bytecode's explicit next/throw/return branches.
+A native generator carries the reconstructed frame; a driver primes the initial
+suspension at call time and supplies Ark resume modes 2/1/0. Yielded iterator-result
+objects pass through, while completion is wrapped once. `ARK_GENERATOR_RECONSTRUCTION`
+marks frame creation, suspension and resume reads: private VM identity, prototypes,
+reflection and cross-generator method borrowing are not reproduced exactly.
+
+For-in uses a suspended native enumeration rather than an eager own-key array.
+`ARK_PROPERTY_ENUMERATION` warns about enumeration timing, proxies and mutations.
+Array spread preserves UTF-16 code-unit strings, target writes, result descriptors
+and the returned insertion index; non-string input uses JS iterator selection,
+not unobservable Ark fast-path tags (`ARK_ARRAY_SPREAD`). Apply and super spread
+use JS iteration (`ARK_SPREAD_CALL`). Difficult control flow retains state dispatch
+and handler priority with `ARK_CONTROL_FLOW_RECONSTRUCTION`; warning never means
+that an empty body or disassembly was substituted for source.
+
+Corrupt input, invalid references and resource failures remain explicit errors.
+Unmodelled instructions or literal layouts still return `DECOMPILE_FAILED`, with
+the actual method coordinate, including required nested dependencies.
 
 `getiterator` is reconstructed using standard JavaScript iterator semantics. Its
 helper reads the iterator property once, calls it with the original receiver and
@@ -60,7 +83,8 @@ comment immediately before every affected iterator operation. `decompile_target`
 `decompile_method` and `decompile_record` return `Reconstruction { source, stats,
 warnings }`; raw instructions are unaffected. This contract
 does not promise identical behavior for every Ark runtime's edge cases or modified
-JS globals.
+JS globals. Warning kinds are also returned as a deterministic per-query vector;
+CLI and MCP preserve the comments in source, without diagnostic lines on stderr.
 
 Recovered source uses explicit lexical/module contexts and JavaScript intrinsic
 bridges. Module aliases share binding identity; record contexts share an emitted
@@ -97,6 +121,11 @@ semantic review.
 - xpanda `8f27d3ce8b63581c7eb5203bbfdfbb92e28cfccf`, Apache-2.0:
   architectural reference for semantic/value graphs and structure analysis,
   not an implementation dependency or a correctness oracle.
+- Pinned `jspandafile/class_info_extractor.cpp` and `literal_data_extractor.cpp`
+  define class property partitioning and method-affiliate lengths;
+  `method_literal.cpp::ParseFunctionName` strips compiler name prefixes/suffixes.
+  `js_generator_object.{h,cpp}` and `generator_helper.cpp` define resume modes,
+  suspended-start abrupt completion and iterator-result wrapping.
 - Oxc **0.153.0**, MIT: allocator, AST, span/string, syntax and codegen.
   All six direct dependencies are pinned equally; source maps are disabled.
   Registry checksums are retained in `Cargo.lock`.

@@ -1,7 +1,8 @@
 # Ark semantic-IR validation
 
 `rxd ark` and its reflected MCP tools use **`rxd-ark`**. Older milestone evidence
-below predates the production cutover. Unsupported semantics remain explicit failures.
+below predates the production cutover. Approximations carry source-local warnings;
+unmodelled operations and input-safety failures remain explicit errors.
 
 ## Fixed input and observed coverage
 
@@ -16,16 +17,17 @@ Dev-profile full-input scan:
 | --- | ---: |
 | Records admitted | 385 |
 | Methods with code | 14,082 |
-| Successful method reconstructions | 13,256 |
-| Explicit method failures | 826 |
-| Successful module records | 122 / 376 |
-| Independent Babel method parses / failures | 13,256 / 0 |
-| Independent Babel record parses / failures | 122 / 0 |
-| Method queries / record outputs with iterator warning | 195 / 26 |
-| Emitted method-source bytes, including required nested definitions and warnings | 38,401,176 |
+| Successful method reconstructions | 14,082 |
+| Explicit method failures | 0 |
+| Successful module records | 376 / 376 |
+| Independent Babel method parses / failures | 14,082 / 0 |
+| Independent Babel record parses / failures | 376 / 0 |
+| Method queries / record outputs with any source warning | 1,407 / 303 |
+| Emitted method-source bytes, including required nested definitions and warnings | 65,133,201 |
 
-Nine auxiliary records have no module initializer. The remaining unsupported
-methods group as follows; failures do not produce source or invoke the old engine:
+Nine auxiliary records have no module initializer. Before the best-effort expansion,
+the 826 method failures had these first errors; all now produce source, without
+calling the removed engine or substituting empty bodies:
 
 | First unsupported operation | Method queries |
 | --- | ---: |
@@ -47,7 +49,55 @@ comparisons do not prove general semantics. Performance measurement and new
 tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Production cutover
+## Best-effort class, generator and iteration expansion
+
+The operator requested reconstruction in the new engine, including imperfect
+structure, with approximation warnings at the affected source sites. Class shells
+are native Oxc class ASTs; bodies retain explicit constructor/home-object contexts.
+Generators retain bytecode resume dispatch in a native suspended frame with an
+explicit next/throw/return driver. Spread preserves target writes and insertion
+indices; for-in uses suspended native enumeration. State dispatch is retained
+rather than guessing an unproven high-level structure. None is an empty placeholder.
+
+The final full-input audit restored all 826 previously failing methods and 254
+records. Babel parsed every source; scope traversal found no unbound generated
+identifiers, and source warning kinds matched the typed diagnostic vector. Static
+checks confirmed that warnings precede affected operations. Removing warning lines
+and the added home-object context field made all 13,256 previously successful
+method sources byte-identical to the cutover baseline.
+
+An independent read of the pinned instruction traces and class-literal bytes
+matched all 351 class definitions (constructor, lengths, member names/identities,
+instance/static partition), 3,519 method definitions, 2,658 accessor definitions,
+141 array spreads, 48 apply calls, 166 synchronous-generator suspensions and nine
+property-enumeration creations in their root method outputs. The 653 suspensions
+in async functions remain normalized into await by the existing async front end.
+These counts and syntax checks do not prove runtime equivalence.
+
+Source warnings explicitly cover VM iteration fast paths, enumeration timing and
+mutation, external class markers, method constructibility/reflection/error details,
+generator identity and borrowed methods, and unrecovered original control structure.
+Unknown instructions/literal layouts, invalid input and exhausted budgets still fail;
+100% coverage here is for this fixed sample, not every dynamic ABC program.
+
+Validation on Darwin arm64, Rust/Cargo 1.98.0, with two build/test threads:
+
+- Existing feature-scoped Ark CLI/MCP checks passed in debug and release: 18 each.
+  Only obsolete own-property refusal expectations were changed; no tests were added.
+- 56 real CLI queries matched across debug/release and ABC/HAP for selected classes,
+  derived constructors, generators, spread, nested for-in and an unaffected async
+  method; seven real MCP source results matched CLI bytes. Source stderr was empty;
+  raw output contained no warnings. Input-safety checks remained passing.
+- Package/doc-test commands passed (zero package/doc tests); strict default-feature
+  `cargo clippy -p rxd-ark -p rxd --all-targets -- -D warnings`, formatting and
+  whitespace checks passed. Reduced-feature CLI builds retain existing unused
+  helper warnings, not new product warnings.
+
+Evidence and independent scripts: ignored `target/verification/ark/coverage-next/`.
+No analyzed input or reconstructed program was executed. Performance measurement
+remains paused; there is no new latency claim or approval.
+
+## Production cutover (historical)
 
 The old crate was removed; `backend-abc` now selects `rxd-ark`. CLI and MCP use
 identical source bytes, including an `ARK_ITERATOR_SEMANTICS` JS comment directly
@@ -56,8 +106,8 @@ The typed library warning remains available; selected source queries do not emit
 warnings on stderr. Existing CLI checks were updated for the new emitter without
 adding new tests.
 
-A full debug audit produced the counts above. Its success and failure identities
-matched the preceding iterator milestone. Babel parsed all 13,256 method sources
+The cutover debug audit produced 13,256 successful methods and 122 records. Its
+success and failure identities matched the preceding iterator milestone. Babel parsed all 13,256 method sources
 and 122 record sources; static traversal found 312 and 61 annotated iterator
 operations respectively, with each warning immediately before its call. Removing
 only the warning comment lines made every output byte-identical to that baseline.

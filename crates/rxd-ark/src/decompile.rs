@@ -20,12 +20,24 @@ pub struct ReconstructionStats {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReconstructionWarning {
     IteratorRuntimeSemantics,
+    PropertyEnumeration,
+    ArraySpread,
+    SpreadCall,
+    ClassReconstruction,
+    GeneratorReconstruction,
+    ControlFlowReconstruction,
 }
 
 impl ReconstructionWarning {
     pub const fn code(self) -> &'static str {
         match self {
             Self::IteratorRuntimeSemantics => "ARK_ITERATOR_SEMANTICS",
+            Self::PropertyEnumeration => "ARK_PROPERTY_ENUMERATION",
+            Self::ArraySpread => "ARK_ARRAY_SPREAD",
+            Self::SpreadCall => "ARK_SPREAD_CALL",
+            Self::ClassReconstruction => "ARK_CLASS_RECONSTRUCTION",
+            Self::GeneratorReconstruction => "ARK_GENERATOR_RECONSTRUCTION",
+            Self::ControlFlowReconstruction => "ARK_CONTROL_FLOW_RECONSTRUCTION",
         }
     }
 
@@ -34,6 +46,24 @@ impl ReconstructionWarning {
             Self::IteratorRuntimeSemantics => {
                 "getiterator uses standard JavaScript semantics; Ark runtime edge cases or modified globals may differ"
             }
+            Self::PropertyEnumeration => {
+                "property enumeration uses a suspended JavaScript for-in; Ark snapshot timing, proxies and mutation edge cases may differ"
+            }
+            Self::ArraySpread => {
+                "array spread preserves UTF-16 strings and result descriptors; non-string iterator selection uses JavaScript rather than Ark internal fast paths"
+            }
+            Self::SpreadCall => {
+                "spread arguments use JavaScript iteration; Ark array fast paths and modified globals may differ"
+            }
+            Self::ClassReconstruction => {
+                "class behavior uses explicit constructor/home-object contexts; method constructibility/names, external class markers and VM error details may differ"
+            }
+            Self::GeneratorReconstruction => {
+                "generator protocol uses an explicit resume adapter; VM identity, cross-generator method borrowing, reflection and modified globals may differ"
+            }
+            Self::ControlFlowReconstruction => {
+                "original source structure was not recovered here; decoded branches and handlers are represented by state dispatch"
+            }
         }
     }
 }
@@ -41,7 +71,7 @@ impl ReconstructionWarning {
 pub struct Reconstruction {
     pub source: Vec<u8>,
     pub stats: ReconstructionStats,
-    pub warnings: &'static [ReconstructionWarning],
+    pub warnings: Vec<ReconstructionWarning>,
 }
 
 pub(crate) fn method_context(offset: u32, mut error: Error) -> Error {
@@ -80,6 +110,7 @@ impl Abc<'_> {
         let method = self.method(method.offset)?;
         let mut queue = vec![method.clone()];
         let mut seen = HashSet::new();
+        let mut constructors = HashSet::new();
         let mut units = Vec::new();
         let mut stats = ReconstructionStats::default();
         let module = self.module(&self.record(method.record)?)?;
@@ -100,12 +131,27 @@ impl Abc<'_> {
             let body =
                 structure::structure(&function, &control, &values, self.budget).map_err(context)?;
             for (index, value) in function.values.iter().enumerate() {
-                if values.needed[index]
-                    && let Op::Closure { method, .. } = value.op
-                {
-                    queue
-                        .try_reserve(1)
-                        .map_err(|_| resource("Ark definition queue allocation failed"))?;
+                if !values.needed[index] {
+                    continue;
+                }
+                let dependencies = match &value.op {
+                    Op::Closure { method, .. } | Op::Method { method, .. } => vec![*method],
+                    Op::Class {
+                        constructor,
+                        members,
+                        ..
+                    } => {
+                        constructors.insert(*constructor);
+                        std::iter::once(*constructor)
+                            .chain(members.iter().map(|member| member.method))
+                            .collect()
+                    }
+                    _ => vec![],
+                };
+                queue
+                    .try_reserve(dependencies.len())
+                    .map_err(|_| resource("Ark definition queue allocation failed"))?;
+                for method in dependencies {
                     queue.push(self.method(method).map_err(context)?);
                 }
             }
@@ -124,18 +170,16 @@ impl Abc<'_> {
                 body,
             });
         }
+        for unit in &mut units {
+            unit.function.frame.constructor |= constructors.contains(&unit.function.method.offset);
+        }
         units.sort_by_key(|unit| unit.function.method.offset);
-        let (source, uses_standard_iterator) = ast::lower(
+        let (source, warnings) = ast::lower(
             &units,
             module.as_deref(),
             self.budget,
             record.then_some(method.offset),
         )?;
-        let warnings = if uses_standard_iterator {
-            &[ReconstructionWarning::IteratorRuntimeSemantics][..]
-        } else {
-            &[]
-        };
         Ok(Reconstruction {
             source,
             stats,

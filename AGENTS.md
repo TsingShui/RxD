@@ -35,8 +35,8 @@ The current layout is:
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
 - `crates/rxd-ark/`: dynamic Ark ABC 12.0.6.0 parsing and navigation, semantic IR,
-  value/control analyses and direct Oxc AST emission. Unsupported class/super,
-  generator, spread and other semantics fail explicitly without an old-engine fallback.
+  value/control analyses and direct Oxc AST emission. Class/super, generator,
+  spread and enumeration bridges mark approximations in source; no old-engine fallback.
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.
 - `crates/rxd-zip/`: ZIP-family (including HAP) index and whole-archive
   Stored/Deflate extraction with CRC, length, duplicate-path and path-safety validation.
