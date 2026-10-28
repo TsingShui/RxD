@@ -12,7 +12,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 1,
@@ -21,7 +21,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 2,
@@ -30,7 +30,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 3,
@@ -39,7 +39,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 4,
@@ -143,6 +143,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             "acc_write",
             "eight_sixteen_bit_ic",
             "ic_slot",
+            "range_0",
             "two_slot",
         ],
     },
@@ -1077,6 +1078,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             "acc_write",
             "eight_bit_ic",
             "jit_ic_slot",
+            "range_0",
             "two_slot",
         ],
     },
@@ -1105,6 +1107,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             "acc_write",
             "eight_bit_ic",
             "jit_ic_slot",
+            "range_0",
             "two_slot",
         ],
     },
@@ -2109,7 +2112,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 107,
@@ -2118,7 +2121,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 108,
@@ -2163,7 +2166,7 @@ pub(super) const OPCODES: &[Opcode] = &[
         size: 1,
         flags: 16,
         parameters: &[],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "no_side_effect"],
     },
     Opcode {
         code: 113,
@@ -2248,6 +2251,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             "acc_write",
             "eight_bit_ic",
             "jit_ic_slot",
+            "range_0",
             "two_slot",
         ],
     },
@@ -2611,6 +2615,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             "acc_write",
             "eight_sixteen_bit_ic",
             "ic_slot",
+            "range_0",
             "two_slot",
         ],
     },
@@ -3472,7 +3477,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_1"],
     },
     Opcode {
         code: 180,
@@ -3651,6 +3656,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             "acc_write",
             "eight_bit_ic",
             "jit_ic_slot",
+            "range_0",
             "two_slot",
         ],
     },
@@ -4179,7 +4185,13 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Unsigned,
             bits: 8,
         }],
-        properties: &["acc_read", "acc_write", "eight_bit_ic", "ic_slot"],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "ic_slot",
+            "two_slot",
+        ],
     },
     Opcode {
         code: 216,
@@ -4328,6 +4340,180 @@ pub(super) const OPCODES: &[Opcode] = &[
         ],
     },
     Opcode {
+        code: 221,
+        name: "callthis0withname",
+        format: "op_imm_8_id_16_v_8",
+        size: 5,
+        flags: 24,
+        parameters: &[
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Id(EntityKind::String),
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+        ],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "jit_ic_slot",
+            "string_id",
+            "two_slot",
+        ],
+    },
+    Opcode {
+        code: 222,
+        name: "callthis1withname",
+        format: "op_imm_8_id_16_v1_8_v2_8",
+        size: 6,
+        flags: 24,
+        parameters: &[
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Id(EntityKind::String),
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+        ],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "jit_ic_slot",
+            "string_id",
+            "two_slot",
+        ],
+    },
+    Opcode {
+        code: 223,
+        name: "callthis2withname",
+        format: "op_imm_8_id_16_v1_8_v2_8_v3_8",
+        size: 7,
+        flags: 24,
+        parameters: &[
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Id(EntityKind::String),
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+        ],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "jit_ic_slot",
+            "string_id",
+            "two_slot",
+        ],
+    },
+    Opcode {
+        code: 224,
+        name: "callthis3withname",
+        format: "op_imm_8_id_16_v1_8_v2_8_v3_8_v4_8",
+        size: 8,
+        flags: 24,
+        parameters: &[
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Id(EntityKind::String),
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+        ],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "jit_ic_slot",
+            "string_id",
+            "two_slot",
+        ],
+    },
+    Opcode {
+        code: 225,
+        name: "callthisrangewithname",
+        format: "op_imm1_8_imm2_8_id_16_v_8",
+        size: 6,
+        flags: 24,
+        parameters: &[
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 8,
+            },
+            Parameter {
+                kind: OperandType::Id(EntityKind::String),
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+        ],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "jit_ic_slot",
+            "range_0",
+            "string_id",
+            "two_slot",
+        ],
+    },
+    Opcode {
         code: 251,
         name: "callruntime.notifyconcurrentresult",
         format: "pref_op_none",
@@ -4365,7 +4551,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_1"],
     },
     Opcode {
         code: 254,
@@ -4429,7 +4615,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_0"],
     },
     Opcode {
         code: 510,
@@ -4601,7 +4787,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_0"],
     },
     Opcode {
         code: 1278,
@@ -4675,7 +4861,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_1"],
     },
     Opcode {
         code: 1534,
@@ -4687,7 +4873,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Register,
             bits: 8,
         }],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "conditional_throw"],
     },
     Opcode {
         code: 1787,
@@ -4741,7 +4927,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_0"],
     },
     Opcode {
         code: 1790,
@@ -4759,7 +4945,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "conditional_throw"],
     },
     Opcode {
         code: 2043,
@@ -4827,7 +5013,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_0"],
     },
     Opcode {
         code: 2046,
@@ -4839,7 +5025,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Unsigned,
             bits: 8,
         }],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "conditional_throw"],
     },
     Opcode {
         code: 2299,
@@ -4887,7 +5073,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Unsigned,
             bits: 16,
         }],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "conditional_throw"],
     },
     Opcode {
         code: 2555,
@@ -4941,7 +5127,7 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Id(EntityKind::String),
             bits: 16,
         }],
-        properties: &["acc_read", "acc_write", "string_id"],
+        properties: &["acc_read", "acc_write", "conditional_throw", "string_id"],
     },
     Opcode {
         code: 2811,
@@ -5217,7 +5403,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_0"],
     },
     Opcode {
         code: 4093,
@@ -5317,7 +5503,7 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
-        properties: &["acc_read", "acc_write"],
+        properties: &["acc_read", "acc_write", "range_1"],
     },
     Opcode {
         code: 4605,
@@ -5401,7 +5587,13 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Unsigned,
             bits: 8,
         }],
-        properties: &["acc_read", "acc_write", "eight_bit_ic", "ic_slot"],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "ic_slot",
+            "one_slot",
+        ],
     },
     Opcode {
         code: 5116,
@@ -5437,7 +5629,13 @@ pub(super) const OPCODES: &[Opcode] = &[
             kind: OperandType::Unsigned,
             bits: 8,
         }],
-        properties: &["acc_read", "acc_write", "eight_bit_ic", "ic_slot"],
+        properties: &[
+            "acc_read",
+            "acc_write",
+            "eight_bit_ic",
+            "ic_slot",
+            "one_slot",
+        ],
     },
     Opcode {
         code: 5372,
@@ -5450,6 +5648,28 @@ pub(super) const OPCODES: &[Opcode] = &[
             bits: 8,
         }],
         properties: &["acc_read", "acc_write"],
+    },
+    Opcode {
+        code: 5373,
+        name: "wide.callthisrangewithname",
+        format: "pref_op_imm_16_id_16_v_8",
+        size: 7,
+        flags: 24,
+        parameters: &[
+            Parameter {
+                kind: OperandType::Unsigned,
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Id(EntityKind::String),
+                bits: 16,
+            },
+            Parameter {
+                kind: OperandType::Register,
+                bits: 8,
+            },
+        ],
+        properties: &["acc_read", "acc_write", "range_1", "string_id"],
     },
     Opcode {
         code: 5627,
@@ -5566,6 +5786,18 @@ pub(super) const OPCODES: &[Opcode] = &[
         properties: &["acc_read", "acc_write"],
     },
     Opcode {
+        code: 6651,
+        name: "callruntime.supercallforwardallargs",
+        format: "pref_op_v_8",
+        size: 3,
+        flags: 16,
+        parameters: &[Parameter {
+            kind: OperandType::Register,
+            bits: 8,
+        }],
+        properties: &["acc_read", "acc_write"],
+    },
+    Opcode {
         code: 6652,
         name: "deprecated.copydataproperties",
         format: "pref_op_v1_8_v2_8",
@@ -5584,6 +5816,18 @@ pub(super) const OPCODES: &[Opcode] = &[
         properties: &["acc_read", "acc_write"],
     },
     Opcode {
+        code: 6907,
+        name: "callruntime.ldsendablelocalmodulevar",
+        format: "pref_op_imm_8",
+        size: 3,
+        flags: 16,
+        parameters: &[Parameter {
+            kind: OperandType::Unsigned,
+            bits: 8,
+        }],
+        properties: &["acc_read", "acc_write"],
+    },
+    Opcode {
         code: 6908,
         name: "deprecated.setobjectwithproto",
         format: "pref_op_v1_8_v2_8",
@@ -5599,6 +5843,18 @@ pub(super) const OPCODES: &[Opcode] = &[
                 bits: 8,
             },
         ],
+        properties: &["acc_read", "acc_write"],
+    },
+    Opcode {
+        code: 7163,
+        name: "callruntime.wideldsendablelocalmodulevar",
+        format: "pref_op_imm_16",
+        size: 4,
+        flags: 16,
+        parameters: &[Parameter {
+            kind: OperandType::Unsigned,
+            bits: 16,
+        }],
         properties: &["acc_read", "acc_write"],
     },
     Opcode {

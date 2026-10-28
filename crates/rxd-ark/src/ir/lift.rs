@@ -882,7 +882,10 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
             && decoded.instructions.iter().any(|instruction| {
                 matches!(
                     instruction.opcode.name,
-                    "supercallthisrange" | "wide.supercallthisrange" | "supercallspread"
+                    "supercallthisrange"
+                        | "wide.supercallthisrange"
+                        | "supercallspread"
+                        | "callruntime.supercallforwardallargs"
                 )
             }),
         generator,
@@ -998,6 +1001,13 @@ pub(crate) fn lift<'a>(abc: &Abc<'a>, method: &Method) -> Result<Function<'a>> {
             end,
             handlers,
         });
+    }
+    if let Some(register) = frame.new_target {
+        for value in &mut builder.values {
+            if matches!(value.op, Op::NewTarget) {
+                value.op = Op::Read(Slot::Register(register));
+            }
+        }
     }
     Ok(Function {
         method: method.clone(),

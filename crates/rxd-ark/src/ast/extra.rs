@@ -114,10 +114,48 @@ pub(super) fn helpers<'a>(a: &Ast<'a>, needed: &BTreeSet<I>) -> Vec<Statement<'a
             | I::SendableSet
             | I::SendableLoadClass
             | I::SendableImport
+            | I::SendableLocal
             | I::LazyImport
             | I::ConcurrentResult => continue,
             I::PrivateGet | I::PrivateSet | I::PrivateDefine | I::PrivateHas | I::PrivateKeys => {
                 continue;
+            }
+            I::NamedCall => {
+                let message = a.binary(
+                    a.binary(
+                        a.binary(a.id("name"), B::Addition, a.string(" is not callable, ")),
+                        B::Addition,
+                        a.id("name"),
+                    ),
+                    B::Addition,
+                    a.binary(
+                        a.string(" is "),
+                        B::Addition,
+                        a.call(a.id("String"), vec![a.id("callee")]),
+                    ),
+                );
+                helper(
+                    a,
+                    *kind,
+                    &["callee", "receiver", "name", "args"],
+                    vec![
+                        a.if_(
+                            a.binary(
+                                a.unary(U::Typeof, a.id("callee")),
+                                B::StrictInequality,
+                                a.string("function"),
+                            ),
+                            vec![a.throw(a.construct(a.id("TypeError"), vec![message]))],
+                            None,
+                        ),
+                        a.ret(Some(call(
+                            a,
+                            "Reflect",
+                            "apply",
+                            vec![a.id("callee"), a.id("receiver"), a.id("args")],
+                        ))),
+                    ],
+                )
             }
             I::ObjectLiteral => {
                 let field = |index| a.member(a.id("entry"), a.number(index));

@@ -1,21 +1,21 @@
 # Standalone Ark reconstruction
 
 `rxd-ark` owns its parser, metadata reader, decoder and reconstruction. It has
-no dependency on `rxd-abc`. The validated format code and ISA table were copied
+no dependency on `rxd-abc`. The format code and initial ISA table were copied
 from the RxD tree at `0091440`; the old reconstructor and JS postprocessor were
 not copied or called. Removing that crate does not remove this crate's sources.
 
 The production `rxd ark` CLI and reflected MCP tools use this engine directly.
 Best-effort semantic bridges and residual control flow carry source-local warnings;
-all 323 pinned opcode encodings have lowering paths, including legacy forms.
+all 332 pinned opcode encodings have lowering paths, including legacy forms.
 There is no old-engine fallback. Listings use the shared `# ` TAB-column header,
 including empty successes; text cells are JSON-quoted. Source/raw FETCH remains
 plain, and CLI/MCP carry the same bytes.
 
 ## Pipeline
 
-- Immutable ABC/HAP input, identity/checksum/version validation and bounded
-  metadata admission. Only dynamic ABC **12.0.6.0** is admitted.
+- Immutable ABC/HAP input, identity/checksum/format validation and bounded
+  metadata admission. Dynamic versions are not gated by an exact version number.
 - Semantic IR with source PCs, block-local value IDs, explicit register and
   captured-cell reads/writes, receiver-bearing calls, effects and exception edges.
 - A worklist propagates must-equal parameter snapshots, primitive constants and
@@ -44,6 +44,9 @@ share one continuation with an explicit `ARK_COROUTINE_ALIASING` warning; indepe
 VM frame snapshots are not recovered. Unknown function kinds retain their encoded
 call-type frame and carry `ARK_FRAME_CONVENTIONS`.
 Register snapshots and separate property reads are retained, not assumed pure.
+Writable implicit function, new-target and receiver registers have independent
+mutable shadows initialized from their call frame. `ldthis` still reads the VM
+frame receiver; `ldnewtarget` reads its actual register when one is present.
 
 Exception plans retain encoded handler priority, exception-to-accumulator writes,
 loop exits and one emission owner per block. A region is structured only when its
@@ -101,10 +104,18 @@ pinned runtime are reconstructed according to their opcode names with
 `ARK_BRANCH_SEMANTICS`. Typed catches follow that runtime's first encoded handler,
 not an invented type test (`ARK_EXCEPTION_TYPES`); overlapping ranges use dispatch.
 
-Corrupt input, invalid references, cyclic literal expansion and resource failures
-remain explicit errors. Static ABC/typed-array formats and versions other than
-12.0.6.0 remain outside admission. Per-encoding coverage is not proof of correct
-behavior for every instruction combination, runtime path or unusual program.
+Dynamic ABC versions use the structure and opcode definitions, not a fixed-version
+admission list. The older header literal index and the newer reserved sentinel are
+both recognized. Version labels outside the pinned runtime's declared compatibility
+range carry `ARK_VERSION_SEMANTICS` on each source factory. Unknown instructions
+and unmodelled layouts fail explicitly; static ABC and typed-array formats require
+a different decoder. Named-call error formatting and sendable-local module timing
+use warned JavaScript bridges. Corrupt input, invalid references, cyclic literal
+expansion and resource failures remain explicit errors. Line-number index bounds
+are checked at admission; a method's debug entry and target offset are validated
+when its instructions are fetched or reconstructed. Unrelated methods and
+unreferenced stale debug entries are not traversed for that query. Per-encoding coverage is not proof of correct behavior for every
+instruction combination, runtime path or unusual program.
 
 `getiterator` is reconstructed using standard JavaScript iterator semantics. Its
 helper reads the iterator property once, calls it with the original receiver and
@@ -127,13 +138,16 @@ semantic review.
 
 ## Reference pins and licenses
 
-- OpenHarmony runtime-core `b4b18c9800ed567f840572eebe94307a47ec48a6`,
-  Apache-2.0: file-format/accessor definitions and `isa/isa.yaml`.
+- OpenHarmony runtime-core `6b3a0de5e971b667a1e46e17283595df67a99f0b`,
+  Apache-2.0: current format/accessor definitions and `isa/isa.yaml`.
   The retained `resources/isa.yaml` SHA-256 is
-  `3743c6782ef254e14f32b27b7f23cbb87ae2aa035e5a543021724bbf41f8b66b`.
-  Its Huawei Device notices are retained; `src/opcodes.rs` contains 323 encodings.
-- OpenHarmony ets_runtime `930f00041dff23e3ca97e18cabf8d7b9b2c4ca2e`,
-  Apache-2.0: interpreter, runtime stubs and method call-frame conventions.
+  `690d960793e07d18c94d81a644e916592bb29962c48c7e2f5f48376989f530f9`;
+  its Huawei Device notices are retained, and `src/opcodes.rs` has 332 encodings.
+  Earlier format and interpreter evidence also uses runtime-core
+  `b4b18c9800ed567f840572eebe94307a47ec48a6`.
+- OpenHarmony ets_runtime `930f00041dff23e3ca97e18cabf8d7b9b2c4ca2e` and
+  `edc5231fdbc81d0d7477d03347c0ea44408f6726`, Apache-2.0: interpreter, runtime
+  stubs, named calls, sendable-local bindings and method call-frame conventions.
   `ecmascript/method.cpp::Method::FindCatchBlock` selects the first matching
   encoded try/catch entry; region-length sorting is not its selection rule.
   `RuntimeLdObjByValue` and `RuntimeStObjByValue` perform property-key coercion

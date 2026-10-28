@@ -19,7 +19,7 @@ pub enum Command {
     },
     #[command(
         about = "Reconstruct one method or fetch record/method instructions (--raw).",
-        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals, home, function} context.\nBest-effort runtime semantics and unrecovered source structure are marked with warning comments at affected operations.\nPinned dynamic opcodes, including legacy and runtime forms, are reconstructed without substituting empty bodies or disassembly."
+        after_long_help = "Examples:\n  rxd ark decompile app.hap --at '<method.at>'\n  rxd ark decompile modules.abc --at '<record.at>' --raw\nOutput: reconstructed JS-like source, or original instructions with --raw.\nA record decompiles its module initializer and required definitions with imports and exports.\nMethods are returned as capture factories with {env, hole, receiver, newTarget, locals, home, function} context.\nBest-effort runtime semantics and unrecovered source structure are marked with warning comments at affected operations.\nDynamic ABC versions are admitted by format; uncertain version semantics carry a source warning.\nPinned dynamic opcodes, including legacy and runtime forms, are reconstructed without substituting empty bodies or disassembly."
     )]
     Decompile(DecompileOptions),
 }
@@ -42,7 +42,7 @@ pub enum ListCommand {
 
 #[derive(Args)]
 pub struct Options {
-    /// Dynamic ABC 12.0.6.0 file or HAP/ZIP containing ABC entries.
+    /// Dynamic ABC file or HAP/ZIP containing ABC entries.
     input: PathBuf,
     /// Exact ABC path inside HAP; required when more than one ABC exists.
     #[arg(long)]
@@ -196,7 +196,9 @@ pub fn execute(command: Command, policy: BudgetPolicy, sink: &mut Output<'_>) ->
                                 | ReconstructionWarning::ExceptionTypeSemantics
                                 | ReconstructionWarning::CoroutineAliasing
                                 | ReconstructionWarning::FrameConventions
-                                | ReconstructionWarning::IteratorOperations => {}
+                                | ReconstructionWarning::IteratorOperations
+                                | ReconstructionWarning::SendableLocalModule
+                                | ReconstructionWarning::VersionSemantics => {}
                             }
                         }
                         reconstruction.source

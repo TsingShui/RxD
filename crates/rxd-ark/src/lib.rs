@@ -18,14 +18,13 @@ use rxd_core::{Budget, BudgetPolicy, Error, Result, perf::Perf};
 use sha2::{Digest, Sha256};
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     mem::size_of,
     path::Path,
     sync::Arc,
 };
 
 const HEADER: usize = 60;
-const VERSION: [u8; 4] = [12, 0, 6, 0];
 
 pub struct Input {
     pub bytes: Vec<u8>,
@@ -112,6 +111,7 @@ pub struct Abc<'a> {
     regions: Vec<Region<'a>>,
     records: Index<'a>,
     literal_index: Index<'a>,
+    line_index: Index<'a>,
     sorted_records: Vec<u32>,
     foreign_start: u32,
     foreign_end: u32,
@@ -119,9 +119,11 @@ pub struct Abc<'a> {
     member_cache: RefCell<HashMap<u32, Arc<Members>>>,
     literal_cache: RefCell<HashMap<u32, Arc<Vec<Literal>>>>,
     module_cache: RefCell<HashMap<u32, Arc<Module>>>,
+    validated_debug: RefCell<HashSet<u32>>,
     metadata_bytes: Cell<usize>,
     decoded_instructions: Cell<usize>,
     decode_work: Cell<usize>,
+    pub version: [u8; 4],
     pub source_id: String,
 }
 
@@ -249,13 +251,11 @@ impl<'a> Abc<'a> {
         if data.len() < HEADER || &data[..8] != b"PANDA\0\0\0" {
             return Err(invalid("expected a complete PANDA bytecode header"));
         }
-        if data[12..16] != VERSION {
+        let version: [u8; 4] = data[12..16].try_into().unwrap();
+        if version[1] == 1 || version == [0, 0, 0, 6] {
             return Err(Error::new(
                 "UNSUPPORTED_INPUT",
-                format!(
-                    "unsupported dynamic ABC version {}.{}.{}.{}; supported: 12.0.6.0",
-                    data[12], data[13], data[14], data[15]
-                ),
+                "static Ark ABC requires a different instruction and metadata format",
             ));
         }
         if word(data, 4) as usize != data.len() {
@@ -274,14 +274,22 @@ impl<'a> Abc<'a> {
             .checked_add(foreign_size)
             .ok_or_else(|| invalid("ABC foreign region overflow"))?;
         let records = Index::new(data, word(data, 8), word(data, 7))?;
-        for (count, offset) in [
-            (word(data, 9), word(data, 10)),
-            (word(data, 11), word(data, 12)),
-        ] {
-            let index = Index::new(data, offset, count)?;
-            for target in index.iter() {
-                validate_offset(data, target)?;
-            }
+        let line_index = Index::new(data, word(data, 10), word(data, 9))?;
+        let literal_header = (word(data, 11), word(data, 12));
+        let reserved_literals = literal_header == (u32::MAX, u32::MAX);
+        if ([0, 0, 0, 2]..=[24, 0, 0, 0]).contains(&version)
+            && reserved_literals != (version > [12, 0, 6, 0])
+        {
+            return Err(invalid(
+                "ABC literal index does not match its declared layout",
+            ));
+        }
+        let literal_index = match literal_header {
+            (u32::MAX, u32::MAX) => Index::new(data, 0, 0)?,
+            (count, offset) => Index::new(data, offset, count)?,
+        };
+        for target in literal_index.iter() {
+            validate_offset(data, target)?;
         }
         let count = word(data, 13);
         if count as usize > budget.entries || records.len() > budget.entries {
@@ -334,8 +342,9 @@ impl<'a> Abc<'a> {
                 word(bytes, 9),
             ] != [u32::MAX; 4]
             {
-                return Err(invalid(
-                    "dynamic ABC 12.0.6.0 requires disabled field/proto region indexes",
+                return Err(Error::new(
+                    "UNSUPPORTED_INPUT",
+                    "ABC field/proto region indexes are not supported by the dynamic decoder",
                 ));
             }
             regions.push(Region {
@@ -354,10 +363,10 @@ impl<'a> Abc<'a> {
         if sorted_records.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err(invalid("duplicate global ABC record offset"));
         }
-        let literal_index = Index::new(data, word(data, 12), word(data, 11))?;
         let result = Self {
             data,
             literal_index,
+            line_index,
             budget,
             regions,
             records,
@@ -368,19 +377,16 @@ impl<'a> Abc<'a> {
             member_cache: RefCell::new(HashMap::new()),
             literal_cache: RefCell::new(HashMap::new()),
             module_cache: RefCell::new(HashMap::new()),
+            validated_debug: RefCell::new(HashSet::new()),
             metadata_bytes: Cell::new(allocation),
             decoded_instructions: Cell::new(0),
             decode_work: Cell::new(0),
+            version,
             source_id: format!("{:x}", Sha256::digest(data)),
         };
         for offset in result.records.iter() {
             validate_offset(data, offset)?;
-            let region = result.region(offset)?;
-            if !region.classes.iter().any(|target| target == offset) {
-                return Err(invalid(
-                    "global ABC record is absent from its region class index",
-                ));
-            }
+            result.region(offset)?;
         }
         Ok(result)
     }
@@ -394,6 +400,38 @@ impl<'a> Abc<'a> {
             .and_then(|index| self.regions.get(index))
             .filter(|region| offset < region.end)
             .ok_or_else(|| invalid(format!("ABC entity {offset:#x} is outside index regions")))
+    }
+
+    fn validate_method_debug(&self, method: &Method) -> Result<()> {
+        let Some(offset) = method.debug_offset else {
+            return Ok(());
+        };
+        if self.validated_debug.borrow().contains(&offset) {
+            return Ok(());
+        }
+        validate_offset(self.data, offset)?;
+        let mut reader = Reader::new(self.data, offset, self.data.len())?;
+        reader.uleb()?;
+        let count = reader.uleb()?;
+        if count as usize > reader.remaining() {
+            return Err(invalid("ABC debug parameter count exceeds input"));
+        }
+        for _ in 0..count {
+            let name = reader.uleb()?;
+            if name != 0 {
+                self.name(name)?;
+            }
+        }
+        let size = reader.uleb()?;
+        reader.take(size as usize)?;
+        validate_offset(self.data, self.line_index.get(reader.uleb()?)?)?;
+        self.charge_bytes(size_of::<u32>() + 16)?;
+        let mut checked = self.validated_debug.borrow_mut();
+        checked
+            .try_reserve(1)
+            .map_err(|_| resource("ABC debug index allocation failed"))?;
+        checked.insert(offset);
+        Ok(())
     }
 
     fn check_storage<T>(&self, count: usize) -> Result<()> {
@@ -685,9 +723,7 @@ impl<'a> Abc<'a> {
                     source_lang = Some(reader.u8()?);
                 }
                 5 => {
-                    let offset = reader.u32()?;
-                    validate_offset(self.data, offset)?;
-                    debug_offset = Some(offset);
+                    debug_offset = Some(reader.u32()?);
                 }
                 3 | 4 | 6..=9 => {
                     validate_offset(self.data, reader.u32()?)?;

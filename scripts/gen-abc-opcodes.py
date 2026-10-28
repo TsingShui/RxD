@@ -10,7 +10,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'crates/rxd-ark/resources/isa.yaml'
 OUTPUT = ROOT / 'crates/rxd-ark/src/opcodes.rs'
-SHA256 = '3743c6782ef254e14f32b27b7f23cbb87ae2aa035e5a543021724bbf41f8b66b'
+SHA256 = '690d960793e07d18c94d81a644e916592bb29962c48c7e2f5f48376989f530f9'
 
 
 def parse(text):
@@ -62,7 +62,7 @@ def generate(source):
     raw = source.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == SHA256, 'ISA pin changed; review the source and update the generator explicitly'
     text = raw.decode()
-    assert re.search(r'^version: 12\.0\.6\.0$', text, re.M)
+    assert re.search(r'^version: 24\.0\.0\.0$', text, re.M)
     prefixes, groups = parse(text)
     entries = []
     seen = set()
@@ -143,7 +143,7 @@ def main():
         assert OUTPUT.read_text() == result, 'generated opcode table differs; rerun the generator'
     else:
         OUTPUT.write_text(result)
-    print(f'{count} ABC 12.0.6.0 opcode encodings: {OUTPUT.relative_to(ROOT)}')
+    print(f'{count} dynamic ABC opcode encodings: {OUTPUT.relative_to(ROOT)}')
 
 
 if __name__ == '__main__':

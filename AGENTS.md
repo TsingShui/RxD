@@ -34,7 +34,7 @@ The current layout is:
   DEX preserves streaming and exit-code contracts.
 - `crates/rxd-core/`: content identity, output protocols, resource budgets,
   diagnostics, and phase timings (`src/perf.rs`).
-- `crates/rxd-ark/`: dynamic Ark ABC 12.0.6.0 parsing and navigation, semantic IR,
+- `crates/rxd-ark/`: dynamic Ark ABC parsing and navigation, semantic IR,
   value/control analyses and direct Oxc AST emission. Class/super, generator,
   spread and enumeration bridges mark approximations in source; no old-engine fallback.
 - `crates/rxd-asar/`: ASAR index and whole-archive file extraction.

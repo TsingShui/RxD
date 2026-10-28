@@ -93,6 +93,7 @@ pub(crate) fn lower(
     module: Option<&Module>,
     budget: Budget,
     main: Option<u32>,
+    unverified_version: bool,
 ) -> Result<(Vec<u8>, Vec<crate::ReconstructionWarning>)> {
     let arena = Allocator::new();
     let ast = Ast::new(&arena);
@@ -280,9 +281,23 @@ pub(crate) fn lower(
         ));
     }
     for unit in units {
+        let frame = &unit.function.frame;
+        let written_implicit = [frame.func, frame.new_target, frame.this_reg].map(|register| {
+            register.is_some_and(|register| {
+                unit.function.blocks.iter().enumerate().any(|(block, events)| {
+                    unit.body.owned[block]
+                        && events.events.iter().enumerate().any(|(index, event)| {
+                            unit.values.keep[block][index]
+                                && matches!(event, Event::Action { action: Action::Write(Slot::Register(target), _), .. } if *target == register)
+                        })
+                })
+            })
+        });
         let lower = Lower {
             ast: &ast,
             unit,
+            written_implicit,
+            unverified_version,
             module,
             budget,
             module_mode: main.is_some(),
@@ -425,6 +440,8 @@ fn imports<'a>(
 struct Lower<'f, 'a, 's> {
     ast: &'f Ast<'a>,
     unit: &'f Prepared<'s>,
+    written_implicit: [bool; 3],
+    unverified_version: bool,
     module: Option<&'f Module>,
     budget: Budget,
     module_mode: bool,
@@ -468,6 +485,27 @@ impl<'a> Lower<'_, 'a, '_> {
                 Some(self.ast.property(self.ast.id("__ark_context"), "receiver")),
                 false,
             ));
+        }
+        for (index, register) in [
+            function.frame.func,
+            function.frame.new_target,
+            function.frame.this_reg,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if self.written_implicit[index] {
+                let register = register.ok_or_else(|| invalid("missing Ark implicit register"))?;
+                let initial = match index {
+                    0 => self.current_function(),
+                    1 => self.initial_new_target(),
+                    _ => self.this(),
+                };
+                body.push(
+                    self.ast
+                        .var(&format!("__ark_reg_{register}"), Some(initial), false),
+                );
+            }
         }
         let uses_env = function.values.iter().any(|value| {
             matches!(
@@ -592,6 +630,12 @@ impl<'a> Lower<'_, 'a, '_> {
             vec!["__ark_context".into()],
             factory_body,
         );
+        if self.unverified_version {
+            self.warnings.borrow_mut().attach(
+                &mut declaration,
+                crate::ReconstructionWarning::VersionSemantics,
+            )?;
+        }
         if function.frame.constructor {
             self.warnings.borrow_mut().attach(
                 &mut declaration,
@@ -642,6 +686,16 @@ impl<'a> Lower<'_, 'a, '_> {
         match slot {
             Slot::Acc => self.ast.id("acc"),
             Slot::Resume => self.ast.id("__ark_resume"),
+            Slot::Register(reg)
+                if [frame.func, frame.new_target, frame.this_reg]
+                    .into_iter()
+                    .enumerate()
+                    .any(|(index, implicit)| {
+                        implicit == Some(reg) && self.written_implicit[index]
+                    }) =>
+            {
+                self.ast.id(&format!("__ark_reg_{reg}"))
+            }
             Slot::Register(reg) if Some(reg) == frame.func => self.current_function(),
             Slot::Register(reg) if Some(reg) == frame.this_reg => self.this(),
             Slot::Register(reg) if Some(reg) == frame.new_target => self.new_target(),
@@ -669,6 +723,14 @@ impl<'a> Lower<'_, 'a, '_> {
         }
     }
     fn new_target(&self) -> Expression<'a> {
+        if self.written_implicit[1]
+            && let Some(reg) = self.unit.function.frame.new_target
+        {
+            return self.ast.id(&format!("__ark_reg_{reg}"));
+        }
+        self.initial_new_target()
+    }
+    fn initial_new_target(&self) -> Expression<'a> {
         if self.unit.function.frame.arrow || self.unit.function.frame.constructor {
             self.ast.property(self.ast.id("__ark_context"), "newTarget")
         } else {
@@ -1035,7 +1097,9 @@ impl<'a> Lower<'_, 'a, '_> {
                         (self.ast.string("get"), self.ast.undefined()),
                         (self.ast.string("set"), self.ast.undefined()),
                     ]),
-                    Intrinsic::SendableImport | Intrinsic::LazyImport => args
+                    Intrinsic::SendableImport
+                    | Intrinsic::SendableLocal
+                    | Intrinsic::LazyImport => args
                         .into_iter()
                         .next()
                         .ok_or_else(|| invalid("missing import binding"))?,

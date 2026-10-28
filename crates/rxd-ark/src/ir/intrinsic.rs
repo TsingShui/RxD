@@ -3,6 +3,7 @@ use crate::ReconstructionWarning as W;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Intrinsic {
     Accessor,
+    NamedCall,
     ObjectLiteral,
     AsyncEnter,
     AsyncAwait,
@@ -17,6 +18,7 @@ pub(crate) enum Intrinsic {
     SendableSet,
     SendableLoadClass,
     SendableImport,
+    SendableLocal,
     LazyImport,
     ConcurrentResult,
     BigInt,
@@ -48,6 +50,7 @@ impl Intrinsic {
     pub fn name(self) -> &'static str {
         match self {
             Self::Accessor => "accessor",
+            Self::NamedCall => "named_call",
             Self::ObjectLiteral => "object_literal",
             Self::AsyncEnter => "async_enter",
             Self::AsyncAwait => "async_await",
@@ -62,6 +65,7 @@ impl Intrinsic {
             Self::SendableSet => "sendable_set",
             Self::SendableLoadClass => "sendable_load_class",
             Self::SendableImport => "sendable_import",
+            Self::SendableLocal => "sendable_local",
             Self::LazyImport => "lazy_import",
             Self::ConcurrentResult => "concurrent_result",
             Self::BigInt => "bigint",
@@ -105,6 +109,7 @@ impl Intrinsic {
             | Self::SendableLoadClass
             | Self::SendableImport
             | Self::ConcurrentResult => W::SendableSemantics,
+            Self::SendableLocal => W::SendableLocalModule,
             Self::LazyImport => W::LazyModuleTiming,
             Self::PrivateGet
             | Self::PrivateSet

@@ -192,6 +192,7 @@ pub(crate) fn register_range(instruction: &Instruction) -> Result<Option<std::op
         base,
         "callrange"
             | "callthisrange"
+            | "callthisrangewithname"
             | "supercallthisrange"
             | "supercallarrowrange"
             | "newobjrange"
@@ -216,6 +217,7 @@ pub(crate) fn register_range(instruction: &Instruction) -> Result<Option<std::op
     }
     let extra = u64::from(
         base == "callthisrange"
+            || base == "callthisrangewithname"
             || base == "callrange" && name.starts_with("deprecated.")
             || base == "createobjectwithexcludedkeys",
     );
@@ -237,6 +239,7 @@ fn range_registers(instruction: &Instruction, registers: u32) -> Result<()> {
 
 impl<'a> Abc<'a> {
     pub fn decode(&self, method: &Method) -> Result<Decoded<'a>> {
+        self.validate_method_debug(method)?;
         let code = self.code(method)?;
         let registers = code
             .vregs
@@ -454,6 +457,7 @@ impl<'a> Abc<'a> {
         output: &mut rxd_core::output::Output,
     ) -> Result<()> {
         if method.code_offset.is_none() {
+            self.validate_method_debug(method)?;
             writeln!(output, "// method:0x{:x} has no code", method.offset)
                 .map_err(output_error)?;
             return Ok(());

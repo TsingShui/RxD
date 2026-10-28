@@ -37,6 +37,8 @@ pub enum ReconstructionWarning {
     CoroutineAliasing,
     FrameConventions,
     IteratorOperations,
+    SendableLocalModule,
+    VersionSemantics,
 }
 
 impl ReconstructionWarning {
@@ -60,6 +62,8 @@ impl ReconstructionWarning {
             Self::CoroutineAliasing => "ARK_COROUTINE_ALIASING",
             Self::FrameConventions => "ARK_FRAME_CONVENTIONS",
             Self::IteratorOperations => "ARK_ITERATOR_OPERATIONS",
+            Self::SendableLocalModule => "ARK_SENDABLE_MODULE_TIMING",
+            Self::VersionSemantics => "ARK_VERSION_SEMANTICS",
         }
     }
 
@@ -118,6 +122,12 @@ impl ReconstructionWarning {
             }
             Self::IteratorOperations => {
                 "iterator operations use JavaScript protocols; pending-exception precedence, async-from-sync edge cases and modified globals may differ"
+            }
+            Self::SendableLocalModule => {
+                "sendable local module access uses the current JS context; Ark may initialize another module lazily or share it across realms"
+            }
+            Self::VersionSemantics => {
+                "ABC version is outside the reference runtime's declared dynamic ISA compatibility range; decoded operations may have different semantics"
             }
         }
     }
@@ -234,6 +244,9 @@ impl Abc<'_> {
             module.as_deref(),
             self.budget,
             record.then_some(method.offset),
+            self.version > [24, 0, 0, 0]
+                || self.version < [0, 0, 0, 2]
+                || matches!(self.version, [11, 0, 0, 0] | [11, 0, 1, 0]),
         )?;
         Ok(Reconstruction {
             source,

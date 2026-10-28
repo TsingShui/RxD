@@ -1062,16 +1062,16 @@ fn ark_refuses_corrupt_metadata_atomically_and_preserves_utf16_units() {
     let record_at = expected["record"]["at"].as_str().unwrap();
     let mut bad_checksum = ABC.to_vec();
     *bad_checksum.last_mut().unwrap() ^= 1;
-    let mut bad_version = ABC.to_vec();
-    bad_version[12] = 13;
-    checksum(&mut bad_version);
+    let mut bad_layout = ABC.to_vec();
+    bad_layout[12..16].copy_from_slice(&[13, 0, 1, 0]);
+    checksum(&mut bad_layout);
     let mut bad_offset = ABC.to_vec();
     bad_offset[60..64].copy_from_slice(&u32::MAX.to_le_bytes());
     checksum(&mut bad_offset);
     for (bytes, code) in [
         (ABC[..59].to_vec(), "INVALID_INPUT"),
         (bad_checksum, "INVALID_INPUT"),
-        (bad_version, "UNSUPPORTED_INPUT"),
+        (bad_layout, "INVALID_INPUT"),
         (bad_offset, "INVALID_INPUT"),
     ] {
         fs::write(&input, bytes).unwrap();

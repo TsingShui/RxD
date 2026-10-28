@@ -88,6 +88,53 @@ impl Builder<'_, '_> {
                     true,
                 );
             }
+            "callruntime.ldsendablelocalmodulevar" | "callruntime.wideldsendablelocalmodulevar" => {
+                let value = self.value(Op::Module(i.unsigned(0)?), Effects::READ);
+                self.intrinsic(Intrinsic::SendableLocal, vec![value], true);
+            }
+            "callruntime.supercallforwardallargs" => {
+                let function = self.reg(i, 0)?;
+                let args = self.value(Op::RestArgs(0), Effects::READ);
+                self.result(
+                    Op::SuperCall {
+                        function: Some(function),
+                        args: vec![],
+                        spread: Some(args),
+                    },
+                    Effects::CALL,
+                );
+            }
+            "callthis0withname"
+            | "callthis1withname"
+            | "callthis2withname"
+            | "callthis3withname"
+            | "callthisrangewithname"
+            | "wide.callthisrangewithname" => {
+                let callee = self.acc();
+                let wide = name.starts_with("wide.");
+                let range = name.contains("range");
+                let name_index = if range && !wide { 2 } else { 1 };
+                let display_name = self.string(i, name_index)?;
+                let receiver_index = name_index + 1;
+                let receiver = self.reg(i, receiver_index)?;
+                let args = if range {
+                    let start = i.register(receiver_index)?;
+                    let count = i.unsigned(usize::from(!wide))?;
+                    self.range(start + 1, count)?
+                } else {
+                    let mut args = Vec::new();
+                    for index in receiver_index + 1..i.operands.len() {
+                        args.push(self.reg(i, index)?);
+                    }
+                    args
+                };
+                let args = self.value(Op::Array(args), Effects::READ);
+                self.intrinsic(
+                    Intrinsic::NamedCall,
+                    vec![callee, receiver, display_name, args],
+                    true,
+                );
+            }
             "callruntime.notifyconcurrentresult" => {
                 let value = self.acc();
                 self.intrinsic(Intrinsic::ConcurrentResult, vec![value], false);

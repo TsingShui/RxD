@@ -5,7 +5,56 @@ below predates the production cutover. Approximations carry source-local warning
 input-safety failures remain explicit errors. All pinned dynamic opcode encodings
 now have reconstruction paths; this is not a universal runtime-equivalence claim.
 
-## Fixed input and observed coverage
+## Independent GitHub applications and version expansion
+
+Fourteen independently sourced releases contain 17 ABC entries: 12.0.2.0,
+12.0.6.0, 13.0.1.0 and 24.0.0.0. Exact release URLs, package/ABC hashes and
+selection details are in ignored `target/verification/ark/github-generalization/`.
+All 17 entries now admit and reconstruct **73,879/73,879 coded methods** and
+**2,024/2,024 source records**; 176 additional metadata records have no module
+initializer. Babel parsed all emitted methods and records, found no unbound
+`__ark_`/`_ark_capture_` names, and per-method source warning kinds matched typed
+warnings. 11,614 method queries and 1,693 source records contain warnings. These
+are full static coverage counts for this corpus, not runtime-equivalence evidence.
+
+The global class list no longer requires every record to also occur in its region's
+reference index. Header literal-array indexes can be present or reserved. The
+line-index table range is validated, and each method's referenced debug target is
+checked when its instructions are requested; unrelated methods and unused stale
+debug entries are not traversed for that query.
+The three apps with out-of-range *unreferenced* debug entries have no bad referenced
+entries. On a modified MeshArc file, a damaged debug target in method B leaves an
+unrelated method A in the same record byte-identical for source and raw queries;
+method listing succeeds, while requesting B fails atomically. Writable implicit
+registers now use initialized local shadows, while VM `ldthis` keeps its
+separate frame receiver and `ldnewtarget` reads its actual register. FinVideo's
+five formerly panicking records and all 4,486 methods now emit source.
+
+The newer reference ISA has 332 encodings: its 323 earlier encoding signatures
+and operand formats are unchanged, and nine were added. Named calls preserve the
+callee, receiver, arguments and diagnostic name with a warned JS bridge; forward-all
+super calls retain the actual argument list; sendable local module access carries a
+source-local timing/sharing warning. The 332 individual encoding paths generated
+and fetched raw/source successfully and parsed statically. Unknown or upstream-
+incompatible version labels are not refused merely for their version; they carry
+`ARK_VERSION_SEMANTICS` in source. Unknown operations, unsupported static formats,
+invalid references and resource exhaustion remain explicit errors.
+
+The original 12.0.6.0 ClashBox fixed sample remains 14,082/14,082 successful methods
+and 376/376 source records; every method source is byte-identical to the previous
+milestone. A second full sweep of all 17 new ABCs matched the first emitted sources
+byte-for-byte. Eighty-five selected list/source/raw cases matched in 340 debug/release
+CLI processes across original HAP and bare ABC; 34 real MCP source/raw results matched
+CLI, and multi-ABC selection remained explicit. Existing focused Ark CLI/MCP checks
+passed in debug and release (17 each); package tests (zero package/doc tests), strict
+package and product-bin Clippy, opcode generation, formatting and whitespace checks
+passed. Reduced-feature test builds retain existing unused-helper warnings.
+
+No analyzed or emitted code was executed. Performance measurements remain paused,
+and no new Rust tests were added. Detailed results and scripts are under ignored
+`target/verification/ark/version-broadening/`.
+
+## Fixed input and observed coverage (historical baseline)
 
 ClashBox v1.7.4 `ets/modules.abc`, 7,203,484 bytes, SHA-256
 `a2046b75ebd368e0599a50b2b5e5c6dab8070007364af5a09d67d267582c197c`.
@@ -50,7 +99,7 @@ comparisons do not prove general semantics. Performance measurement and new
 tests were intentionally not added; the operator requested real-sample
 implementation work instead.
 
-## Complete pinned opcode surface
+## Complete 12.0.6.0 opcode surface (historical)
 
 All **323 encodings / 259 names** in the retained dynamic 12.0.6.0 ISA now have
 lowering paths. BigInt/regex, rest/template/iterator operations, private fields,
@@ -97,9 +146,9 @@ unused `failure` import in `tests/dex/mod.rs` from the shared output-format chan
 That unrelated file was not changed here. Formatting and whitespace checks pass.
 
 Evidence and generators are retained under ignored
-`target/verification/ark/all-opcodes/`. Static typed-array/static ABC formats, other
-versions, invalid references, cyclic expansion and explicit resource failures remain
-outside successful reconstruction. Reflection, host lexical globals, VM sendability
+`target/verification/ark/all-opcodes/`. At that milestone static typed-array/static
+ABC formats, other versions, invalid references, cyclic expansion and explicit
+resource failures remained outside successful reconstruction. Reflection, host lexical globals, VM sendability
 and rare coroutine/iterator semantics remain warned approximations. Nothing here
 claims exact behavior for every valid program. Analyzed and reconstructed code was
 not executed, and performance measurement remains paused.
