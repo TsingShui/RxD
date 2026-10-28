@@ -27,7 +27,9 @@ capture factories rather than inventing an initializer.
 Whole-ABC listing and string search decode methods through the same parser. `Abc::fork()`
 clones only the immutable record/region indexes and input slice; name/member/literal
 caches and budget counters stay per fork, so parallel scans share input bytes instead
-of re-parsing. `list method` without `--at` walks every record. `strings` lists string
+of re-parsing. Worker initialization must stay O(indexes): rayon's `map_init` calls its
+initializer per split, not per thread, so export and scans fork once per chunk instead
+of parsing inside the initializer. `list method` without `--at` walks every record. `strings` lists string
 entities that a decoded instruction operand names; `xref` matches those operands by
 `str:0x...` coordinate or value substring, one row per method/string pair. Both are
 explicit-operand indexes: module requests and literal-array-only strings are excluded.

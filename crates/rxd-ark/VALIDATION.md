@@ -14,8 +14,8 @@ and method name/coordinate header. Batch export is a special workload, not an or
 150 ms query. Measured on Darwin arm64 release builds, 12 logical CPUs, warm caches,
 whole command including extraction, reconstruction, writes and manifest: ClashBox HAP
 (107,951,762 bytes, 152 archived files) produced 376 record files, 14,082 coded
-methods, 23,880,029 source bytes and a 303-record warning set in 0.46 s wall
-(0.75 s at `--threads 1`). The edgemusic HAP (2 ABCs, 322 records, 6,758 methods)
+methods, 23,880,029 source bytes and a 303-record warning set in 0.34–0.47 s wall
+(0.70–0.82 s at `--threads 1`). The edgemusic HAP (2 ABCs, 322 records, 6,758 methods)
 produced byte-identical trees at `--threads 1` and `--threads 8`. Copi's
 `record:0x8220` exported 36 coded methods, including methods that
 `decompile --at record:0x8220` does not reach, so export does not silently drop
@@ -33,7 +33,11 @@ column; ClashBox lists 14,082 rows and amcl 21,841 rows in 40–70 ms. `strings`
 `str:0x...` values named by decoded instruction operands, and `xref` returns one
 `context, match` row per method/string pair. Both decode all methods and scan in
 parallel with `Abc::fork()`: forks share the immutable indexes and input slice while
-caches stay per worker, so parallel scans do not re-parse or copy the ABC. ClashBox
+caches stay per worker, so parallel scans do not re-parse or copy the ABC. Worker
+setup must stay O(indexes): rayon's `map_init` invokes its initializer per split, not
+per thread. Before `fork`, the export initializer re-parsed the 7.2 MB ABC hundreds of
+times (6.0–6.6 CPU-seconds for ClashBox); explicit per-chunk forks reduced that to
+0.55–0.59 CPU-seconds, while serial cost (0.41 CPU-seconds) is unchanged. ClashBox
 (7.2 MB, 8,640 strings) took 52 ms for `strings` and 51–52 ms for `xref` at 12
 workers (96 ms and 92 ms at `--threads 1`). The largest measured input, amcl
 (7,028,500 bytes, 21,841 methods), took 77 ms for `strings` and 64–70 ms for `xref`
