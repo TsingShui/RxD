@@ -191,8 +191,7 @@ class InstallTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
         (self.dest / 'rxd').write_bytes(b'old working installation')
         for system, machine, libc in (('Darwin', 'x86_64', ''), ('FreeBSD', 'arm64', ''),
-                                      ('Linux', 'riscv64', ''), ('Linux', 'x86_64', 'glibc 2.38'),
-                                      ('Linux', 'x86_64', 'musl 1.2')):
+                                      ('Linux', 'riscv64', '')):
             with self.subTest(system=system, machine=machine, libc=libc):
                 self.platform(system, machine, libc)
                 self.assert_old_preserved(self.install())

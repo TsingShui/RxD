@@ -14,14 +14,15 @@ import time
 import xml.etree.ElementTree as ET
 
 from runtime_bundle import write_bundle
+from zig_toolchain import prepare, cargo_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'third_party/kuna'
 BUILD = ROOT / 'target/kuna'
 PROFILE = {'OPT_LEVEL': '3', 'LTO': 'thin', 'CODEGEN_UNITS': '1', 'STRIP': 'symbols'}
-HOST_RIDS = {
-    'x86_64-unknown-linux-gnu': 'linux-x64',
-    'aarch64-unknown-linux-gnu': 'linux-arm64',
+TARGET_RIDS = {
+    'x86_64-unknown-linux-musl': 'linux-musl-x64',
+    'aarch64-unknown-linux-musl': 'linux-musl-arm64',
     'x86_64-pc-windows-msvc': 'win-x64',
     'aarch64-apple-darwin': 'osx-arm64',
 }
@@ -77,6 +78,8 @@ def run(args, cwd=ROOT, env=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--jobs', type=int, default=1)
+    parser.add_argument('--target', choices=TARGET_RIDS, help='Rust target (Linux defaults to musl)')
+    parser.add_argument('--zig', help='Pinned Zig executable for musl targets')
     parser.add_argument('--offline', action='store_true')
     parser.add_argument('--bundle-only', action='store_true')
     parser.add_argument('--features', default='', help='Additional rxd Cargo features')
@@ -98,9 +101,13 @@ def main():
     version = major + '.' + capture(['git', 'rev-list', '--count', bump + '..HEAD'], SOURCE)
     rustc = capture(['rustc', '-vV'])
     host = next(line[6:] for line in rustc.splitlines() if line.startswith('host: '))
-    output = BUILD / host
+    target = args.target or os.environ.get('CARGO_BUILD_TARGET') or host.replace('-linux-gnu', '-linux-musl')
+    if target not in TARGET_RIDS:
+        raise RuntimeError('Unsupported distribution target: ' + target)
+    output = BUILD / target
     output.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
+    env.pop('CARGO_BUILD_TARGET', None)
     for key in list(env):
         if key.startswith('CARGO_PROFILE_RELEASE_') or key in ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS'):
             del env[key]
@@ -144,7 +151,7 @@ def main():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, dest)
         metadata = write_bundle(stage, output, {
-            'revision': revision, 'version': version, 'target': host,
+            'revision': revision, 'version': version, 'target': target, 'build_host': host,
             'rustc': rustc, 'profile': PROFILE, 'executable': None,
             'integration': 'linked-kuna-cli',
         })
@@ -158,11 +165,15 @@ def main():
     if not args.bundle_only:
         env['RXD_KUNA_EMBED_RS'] = str(embed)
         env['CARGO_TARGET_DIR'] = str(ROOT / 'target')
+        target_args = []
+        if target.endswith('-musl'):
+            env.update(cargo_environment(target, prepare(target, args.zig), env))
+            target_args = ['--target', target]
         features = ','.join(x for x in ('bundled-kuna', args.features) if x)
         if 'bundled-ilspy' in features.split(','):
             embed = env.get('RXD_ILSPY_EMBED_RS')
             if not embed:
-                rid = HOST_RIDS.get(host)
+                rid = TARGET_RIDS.get(target)
                 candidate = ROOT / 'target/dotnet-native' / rid / 'embed.rs' if rid else None
                 if candidate is not None and candidate.is_file():
                     env['RXD_ILSPY_EMBED_RS'] = str(candidate)
@@ -174,7 +185,7 @@ def main():
             elif not Path(embed).is_file():
                 raise RuntimeError('Explicit RXD_ILSPY_EMBED_RS does not exist')
         run(['cargo', 'build', '--release', '--locked', '--features', features, '-j', str(args.jobs)]
-            + (['--offline'] if args.offline else []), env=env)
+            + target_args + (['--offline'] if args.offline else []), env=env)
 
 
 if __name__ == '__main__':

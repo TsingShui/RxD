@@ -10,11 +10,16 @@ fn main() {
             || env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "aarch64",
         "csharp-decompiler: macOS supports ARM64 only"
     );
+    assert!(
+        env::var("CARGO_CFG_TARGET_OS").unwrap() != "linux"
+            || env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() == "musl",
+        "csharp-decompiler: Linux engines require a matching *-unknown-linux-musl Rust target"
+    );
     println!("cargo:rerun-if-env-changed=RXD_ILSPY_EMBED_RS");
     if env::var_os("CARGO_FEATURE_BUNDLED_ILSPY").is_some() {
         let embed = env::var_os("RXD_ILSPY_EMBED_RS").unwrap_or_else(|| {
             panic!(
-                "bundled-ilspy requires RXD_ILSPY_EMBED_RS pointing at the embed.rs produced by scripts/build-ilspy.py <rid>; desktop ILSpy runtimes are built natively and are not checked in"
+                "bundled-ilspy requires RXD_ILSPY_EMBED_RS pointing at the embed.rs produced by scripts/build-ilspy.py <rid>; ILSpy runtimes are produced per target and are not checked in"
             )
         });
         let embed = PathBuf::from(embed);
@@ -34,7 +39,7 @@ fn main() {
     };
     let (platform, filename) = match env::var("CARGO_CFG_TARGET_OS").unwrap().as_str() {
         "macos" => ("osx", "librxd_dotnet_native.dylib"),
-        "linux" => ("linux", "librxd_dotnet_native.so"),
+        "linux" => ("linux-musl", "librxd_dotnet_native.so"),
         "windows" => ("win", "rxd_dotnet_native.dll"),
         platform => panic!("csharp-decompiler: unsupported native platform {platform}"),
     };

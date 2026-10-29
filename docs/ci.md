@@ -42,7 +42,8 @@ Detail is in [docs/agents/testing.md](agents/testing.md).
 ## Complete build artifacts
 
 The four native targets are Linux x86_64, Linux arm64, macOS arm64 and Windows x86_64.
-Linux runs on Ubuntu 24.04 and targets glibc 2.39 or newer. Each native job builds the
+Linux runners use Ubuntu 24.04 with a musl runtime, targeting
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`. Each native job builds the
 pinned ILSpy native library and the unmodified Kuna submodule, then compiles rxd with
 `bundled-kuna,bundled-ilspy`. Release runtime needs one executable. Complete artifacts do
 not initialize ILSpy at startup. No Rust, Python, Kuna or .NET SDK/runtime is needed to
@@ -123,12 +124,16 @@ python3 scripts/test-release.py
 
 ## Build and verification details
 
-Build order: native ILSpy production, pinned Kuna specs, linked Kuna CLI, then
-complete rxd release. Every native runner installs the pinned .NET 10 SDK and builds
-the engine once on that OS; no ILSpy prebuilt is checked in or prepared.
-Android App engines are produced
-separately from source and are not part of the desktop CLI build. macOS is ARM64
-only. Submodule checkout includes full history for Kuna version calculation. Rust
+Build order: ILSpy production, pinned Kuna specs, linked Kuna CLI, then complete
+rxd release. All runners use the common `scripts/build-ilspy.py` producer and
+.NET SDK 10.0.401 / NativeAOT 10.0.12. Linux musl-only engines use Zig 0.17.0,
+including cross-builds from macOS; Windows/macOS engines retain their native
+linkers. The macOS job also builds `linux-musl-arm64`. Native runtime and package
+checks remain on each target OS; cross-compilation does not replace them.
+No ILSpy prebuilt is checked in. Android musl workers use this same producer;
+App sandbox/deployment validation remains separate from desktop publication.
+Existing Bionic JNI consumers retain a compatibility producer under
+`devtools/android-ilspy/`. macOS is ARM64 only. Submodule checkout includes full history for Kuna version calculation. Rust
 dependencies and Kuna compiler/spec outputs are cached per platform/toolchain. Newer
 PR runs cancel stale runs of that PR; main commits have separate concurrency groups
 so a later docs-only push cannot cancel an earlier required native build. Tags are
@@ -155,6 +160,10 @@ python3 scripts/package-release.py --target aarch64-apple-darwin \
   --rid osx-arm64 --name macos-arm64
 ```
 
-Other platforms use their native Rust host and RID. On Windows use `python` if `python3`
-is unavailable. Prerequisites: Xcode CLT on macOS; clang and zlib1g-dev on Ubuntu; Visual
-Studio C++ tools on Windows.
+Desktop packaging still uses its native Rust host and RID. The ILSpy producer can
+cross-build Linux RIDs on macOS, e.g. `python3 scripts/build-ilspy.py linux-musl-arm64`.
+Linux engines and Rust release targets are musl-only, built with the shared Zig
+C/C++/archive toolchain. GNU hosts may compile build-time helpers, never GNU
+release binaries. Linux execution checks install the matching system musl loader. On Windows use `python` if `python3` is unavailable. Producer
+prerequisites: pinned Zig for Linux targets, cargo-zigbuild 0.23.4 for musl Rust
+linking, Xcode CLT for macOS, Visual Studio C++ tools for Windows. See `benches/ilspy/README.md` and `devtools/android-ilspy/README.md`.

@@ -181,10 +181,9 @@ target/release/rxd skill
 cargo build --release --no-default-features --features backend-wasm
 # Backends and MCP, without a native C# engine:
 cargo build --release --no-default-features --features all-backends,mcp
-# C# reconstruction: produce the engine once on this OS, then embed it:
-python3 scripts/build-ilspy.py linux-x64
-RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/linux-x64/embed.rs" \
-  cargo build --release --features bundled-ilspy
+# Complete Linux x64 musl release (cross-buildable from macOS):
+python3 scripts/build-ilspy.py linux-musl-x64
+python3 scripts/build-bundled.py --target x86_64-unknown-linux-musl --features bundled-ilspy,mcp
 ```
 
 `backend-kuna` (the `rxd kuna` command namespace, alias `rxd bin`) is a default feature, but the

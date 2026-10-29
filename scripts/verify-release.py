@@ -13,8 +13,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PLATFORMS = {
-    'linux-x86_64': ('x86_64-unknown-linux-gnu', 'tar.gz'),
-    'linux-arm64': ('aarch64-unknown-linux-gnu', 'tar.gz'),
+    'linux-x86_64': ('x86_64-unknown-linux-musl', 'tar.gz'),
+    'linux-arm64': ('aarch64-unknown-linux-musl', 'tar.gz'),
     'macos-arm64': ('aarch64-apple-darwin', 'tar.gz'),
     'windows-x86_64': ('x86_64-pc-windows-msvc', 'zip'),
 }

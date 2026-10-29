@@ -19,14 +19,14 @@ def verify(binary, directory, env, expect_native=False):
             client.initialize()
             packet, _, _ = client.request('tools/list', {})
             names = {tool['name'] for tool in packet['result']['tools']}
-            assert {'rxd_open', 'rxd_close', 'wasm_functions', 'evm_analyze'} <= names
+            assert {'rxd_open', 'rxd_close', 'wasm_functions', 'evm_disassemble'} <= names, names
             assert ('kuna_functions' in names) == expect_native, names
             opened = structured(client.tool('rxd_open', {
                 'path': str(source), 'backend': 'wasm'})[0])
             assert opened['source_id'] == hashlib.sha256(original).hexdigest()
             selected = {'input': {'target_id': opened['target_id']}}
             first = structured(client.tool('wasm_functions', selected)[0])
-            assert first['records']
+            assert first['text'].startswith('# ') and len(first['text'].splitlines()) > 1
             source.write_bytes(b'changed module')
             again = structured(client.tool('wasm_functions', selected)[0])
             assert again == first

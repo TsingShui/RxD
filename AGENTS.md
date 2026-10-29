@@ -96,8 +96,9 @@ design or decision documents are not required.
 
 Build binaries, benchmark reports, demo outputs and native runtime bundles belong
 under ignored `target/`, not in source or documentation directories. No compiled
-ILSpy runtime is checked in; desktop engines are built per target and Android App
-engines are produced from source by `devtools/android-ilspy/`.
+ILSpy runtime is checked in; `scripts/build-ilspy.py` produces per-target engines,
+using Zig for Linux musl-only targets including macOS cross-builds. Android musl worker
+integration and legacy Bionic compatibility are described in `devtools/android-ilspy/`.
 
 ## Build, Test, and Development Commands
 

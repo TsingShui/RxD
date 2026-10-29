@@ -16,8 +16,8 @@ PACKAGE = (ROOT / 'Cargo.toml').read_text().split('[package]', 1)[1].split('\n['
 VERSION = next(line.split('=')[1].strip().strip('"')
                for line in PACKAGE.splitlines() if line.startswith('version ='))
 PLATFORMS = {
-    'linux-x86_64': ('x86_64-unknown-linux-gnu', 'tar.gz'),
-    'linux-arm64': ('aarch64-unknown-linux-gnu', 'tar.gz'),
+    'linux-x86_64': ('x86_64-unknown-linux-musl', 'tar.gz'),
+    'linux-arm64': ('aarch64-unknown-linux-musl', 'tar.gz'),
     'macos-arm64': ('aarch64-apple-darwin', 'tar.gz'),
     'windows-x86_64': ('x86_64-pc-windows-msvc', 'zip'),
 }

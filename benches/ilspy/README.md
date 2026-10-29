@@ -30,35 +30,43 @@ RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
 
 Cargo embeds only the explicit producer include and never downloads or invokes
 .NET. `bundled-ilspy` without `RXD_ILSPY_EMBED_RS` fails with the producer command.
-macOS is ARM64 only. No ILSpy runtime is checked in; Android App engines are
-produced separately from source.
+macOS is ARM64 only. No ILSpy runtime is checked in; Android musl workers use
+the same producer. Bionic JNI compatibility is described in `devtools/android-ilspy/`.
 
 ## Build the NativeAOT shared library
 
-Requires the .NET 10 SDK (CI pins 10.0.401), Python 3, and the native toolchain:
-Xcode Command Line Tools on macOS, clang + zlib1g-dev on Ubuntu, or Visual Studio
-C++ Build Tools on Windows. NativeAOT cross-OS compilation is unsupported.
-The CI matrix builds natively for Linux x64/arm64, Windows x64 and macOS arm64.
+Requires .NET SDK 10.0.401 / NativeAOT 10.0.12 and Python 3. Linux targets use
+Zig 0.17.0 and musl, including cross-builds from macOS. GNU engine targets are
+not produced. Linux Rust CLI and engine bundle identities must both be musl.
+macOS uses Xcode CLT and Windows uses Visual Studio C++ tools on their native OS.
+The CI validates each desktop target and also cross-builds ARM64 musl on macOS.
 
 ```sh
 python3 scripts/build-ilspy.py osx-arm64
-python3 scripts/build-ilspy.py linux-x64
-python3 scripts/build-ilspy.py linux-arm64
+python3 scripts/build-ilspy.py linux-musl-arm64
+python3 scripts/build-ilspy.py linux-musl-x64
 python scripts/build-ilspy.py win-x64
 # Existing macOS entry point remains available (ARM64 only):
 benches/ilspy/build-native.sh osx-arm64
 ```
 
-Use the command matching the current host OS. The script selects an explicit
-`--dotnet` path, `DOTNET_ROOT`, the existing isolated `~/.dotnet10` SDK, or `dotnet`
-on PATH, in that order. It never installs or overwrites an SDK. It verifies both
-the downloaded and restored ILSpy package SHA-256, then publishes the first-party
-`crates/rxd-dotnet/native/rxd-dotnet-native.csproj`. Downloads, the SDK CLI home,
-NuGet cache, intermediates and native products stay under `target/dotnet-native/`.
+Linux musl commands run on either macOS or Linux without a Linux build VM.
+The script selects an explicit `--dotnet` path, `DOTNET_ROOT`, the isolated
+`~/.dotnet10` SDK, or `dotnet` on PATH, in that order; `--zig` overrides Zig on PATH.
+It never installs an SDK or silently falls back to another linker. The downloaded
+and restored ILSpy package SHA-256 is verified before the common first-party
+`crates/rxd-dotnet/native/rxd-dotnet-native.csproj` is published. Linux uses target
+NativeAOT runtime packs, forwards all linker arguments, and strips only ELF debug
+sections with Zig. Intermediates are isolated per RID. Downloads, SDK CLI home,
+NuGet cache, compiler wrappers and products stay under `target/dotnet-native/`.
 
 Products under `<rid>/`: `librxd_dotnet_native.dylib` (macOS),
 `librxd_dotnet_native.so` (Linux), or `rxd_dotnet_native.dll` (Windows), plus
-`build-info.json` recording SDK, package identity and library size/hash.
+`build-info.json` recording SDK/runtime, Zig/linker target, package identity,
+source hashes and library size/hash. Linux builds use matching musl Rust targets;
+`build-bundled.py` selects musl by default on Linux and uses pinned
+cargo-zigbuild 0.23.4 for Rust linker compatibility. The shared engine requires
+dynamic musl linking, so Linux execution needs its architecture-matched musl loader.
 The library uses `net10.0`, `PublishAot=true`, `NativeLib=Shared` and invariant
 globalization. Expected upstream IL2026/IL3002 warnings remain visible.
 

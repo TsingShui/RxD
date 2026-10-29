@@ -40,16 +40,7 @@ machine=$(uname -m)
 case "$machine" in arm64|aarch64) arch=arm64 ;; x86_64|amd64) arch=x86_64 ;; *) fail "unsupported architecture: $machine" ;; esac
 case "$system-$arch" in
     Darwin-arm64) platform=macos-arm64 ;;
-    Linux-arm64|Linux-x86_64)
-        command -v getconf >/dev/null 2>&1 || fail 'Linux requires glibc 2.39 or newer (getconf unavailable)'
-        libc=$(getconf GNU_LIBC_VERSION 2>/dev/null) || fail 'Linux requires glibc 2.39 or newer; musl is unsupported'
-        case "$libc" in 'glibc '*) libc=${libc#glibc } ;; *) fail 'Linux requires glibc 2.39 or newer; musl is unsupported' ;; esac
-        major=${libc%%.*}; minor=${libc#*.}; minor=${minor%%.*}
-        case "$major:$minor" in *[!0-9:]*|:*|*:) fail 'cannot determine glibc version' ;; esac
-        if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 39 ]; }; then
-            fail "glibc $libc is unsupported; glibc 2.39 or newer is required"
-        fi
-        platform=linux-$arch ;;
+    Linux-arm64|Linux-x86_64) platform=linux-$arch ;;
     *) fail "unsupported platform: $system $machine" ;;
 esac
 base_url=https://github.com/TsingShui/RxD/releases
@@ -133,6 +124,9 @@ if wait "$child"; then
     child=
 else
     child=
+    if [ "$system" = Linux ]; then
+        fail 'staged executable failed --version (install /lib/ld-musl-x86_64.so.1 or /lib/ld-musl-aarch64.so.1 for this architecture)'
+    fi
     fail 'staged executable failed --version (check platform/runtime compatibility)'
 fi
 version=$(cat "$work/version")

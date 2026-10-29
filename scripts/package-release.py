@@ -42,9 +42,9 @@ def verify(stage, kuna):
         assert not (Path(temporary) / 'cache/rxd-ilspy').exists()
         evm_input = Path(temporary) / 'runtime.hex'
         evm_input.write_text('0x6003565b00\n', encoding='ascii')
-        evm_result = json.loads(run('evm', 'analyze', evm_input, '--encoding', 'hex'))
-        assert evm_result['detail']['engine'] == {'name': 'evmole', 'version': '0.9.4'}
-        assert evm_result['detail']['result']['disassembled'][-1] == [4, 'STOP']
+        evm_rows = run('evmole', 'disassemble', evm_input, '--encoding', 'hex').splitlines()
+        offset, opcode = evm_rows[-1].split(b'\t')
+        assert offset == b'4' and json.loads(opcode) == 'STOP'
         assert run('kuna', '--version').decode().strip() == 'kuna ' + kuna['version']
         assert json.loads(run('kuna', 'catalog', '--json', '--option', 'loweredswitch'))
         assert not (Path(temporary) / 'cache/rxd-kuna').exists()
@@ -57,19 +57,19 @@ def verify(stage, kuna):
         assert kuna_cache.name == kuna['bundle_sha256']
         run('wasm', 'functions', ROOT / 'tests/fixtures/wasm/fixture.wasm')
         sample = ROOT / 'tests/fixtures/dotnet/sugar/Sugar.dll'
-        rows = [json.loads(line) for line in run('dotnet', 'outline', sample,
-                '--type', 'Rxd.Sugar.Probe', '--method', 'AsyncAwait').splitlines()]
-        method = next(row['id'] for row in rows if row['record'] == 'method')
+        rows = run('ilspy', 'methods', sample, '--class', 'Rxd.Sugar.Probe',
+                   '--name', 'AsyncAwait').splitlines()[1:]
+        assert len(rows) == 1
+        method = rows[0].split(b'\t')[0].decode()
         assert not (Path(temporary) / 'cache/rxd-ilspy').exists()
-        result = json.loads(run('dotnet', 'get-method', sample, method))['detail']
-        assert result['decompiled'] and result['representation'] == 'csharp', result
-        assert 'await ' in result['code'], result
+        result = run('ilspy', 'get-method', sample, '--at', method).decode()
+        assert 'await ' in result, result
         sample = ROOT / 'tests/fixtures/dotnet/closure/Closure.dll'
-        rows = [json.loads(line) for line in run('dotnet', 'outline', sample,
-                '--type', 'Rxd.Closure.Root`1').splitlines()]
-        type_id = next(row['id'] for row in rows if row['record'] == 'type')
-        result = json.loads(run('dotnet', 'get-class', sample, type_id))['detail']
-        assert result['decompiled'] and 'Root<T>' in result['code'], result
+        rows = run('ilspy', 'classes', sample, '--class', 'Rxd.Closure.Root`1').splitlines()[1:]
+        assert len(rows) == 1
+        type_id = rows[0].split(b'\t')[0].decode()
+        result = run('ilspy', 'get-class', sample, '--at', type_id).decode()
+        assert 'Root<T>' in result, result
 
         # Both runtimes must come from the single executable, not the source tree.
         caches = list((Path(temporary) / 'cache/rxd-ilspy').iterdir())
@@ -80,8 +80,8 @@ def verify(stage, kuna):
         assert (runtime / 'dotnet-refs/System.Runtime.dll').is_file()
         library.write_bytes(b'corrupt')
         run('--help')
-        run('dotnet', 'get-class', sample, type_id, '--il')
-        result = subprocess.run([binary, 'dotnet', 'get-class', sample, type_id],
+        run('ilspy', 'get-class', sample, '--at', type_id, '--raw')
+        result = subprocess.run([binary, 'ilspy', 'get-class', sample, '--at', type_id],
                                 env=env, cwd=temporary, capture_output=True, timeout=120)
         assert result.returncode != 0 and not result.stdout, result
         assert b'integrity verification' in result.stderr, result.stderr
@@ -105,7 +105,8 @@ def main():
         stage = Path(temporary) / ('rxd-' + args.name)
         stage.mkdir()
         binary_name = 'rxd.exe' if os.name == 'nt' else 'rxd'
-        shutil.copy2(ROOT / 'target/release' / binary_name, stage / binary_name)
+        profile = ROOT / 'target' / args.target / 'release' if args.target.endswith('-musl') else ROOT / 'target/release'
+        shutil.copy2(profile / binary_name, stage / binary_name)
         shutil.copy2(native_dir / 'manifest.json', stage / 'ilspy-manifest.json')
         shutil.copy2(kuna_dir / 'manifest.json', stage / 'kuna-manifest.json')
         shutil.copy2(ROOT / 'README.md', stage / 'README.md')

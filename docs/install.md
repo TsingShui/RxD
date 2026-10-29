@@ -51,7 +51,10 @@ staging or replacement preserves the previous executable. No background update
 service is installed. Running Agent/MCP processes must reload to use a new binary.
 
 Supported platforms are Linux x86_64, Linux arm64 and macOS arm64. Linux requires
-glibc 2.39 or newer; musl/Alpine, older glibc and other platforms are unsupported.
+the architecture-matched musl loader: `/lib/ld-musl-x86_64.so.1` or
+`/lib/ld-musl-aarch64.so.1`. Alpine supplies it; other distributions can install
+their musl runtime package. The installer never installs system dependencies.
+Current Linux artifacts are musl, not GNU/glibc builds.
 The shell entry point does not install Windows distributions. Required tools are
 POSIX shell utilities, curl, tar, mktemp and either sha256sum or shasum. No Rust,
 Python, Node, GitHub CLI or .NET SDK/runtime is required by the installer.
@@ -96,7 +99,9 @@ An HTTP error can mean no stable Release exists, the version/assets are absent,
 or the release is not public. Check public availability and retry explicitly;
 the installer does not silently switch sources. A SHA-256 or version mismatch
 fails before replacement. Runtime errors require a supported native platform;
-Linux requires glibc 2.39 or newer. Use a user-writable directory with `--dir`
+Linux needs the architecture-matched musl loader at the path above. A missing
+loader can report "No such file or directory" even when `rxd` exists. Use a
+user-writable directory with `--dir`
 if destination creation or replacement fails. Existing bytes are preserved on
 failed updates, including latest resolution, download and checksum failures.
 
