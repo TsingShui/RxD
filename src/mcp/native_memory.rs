@@ -54,7 +54,7 @@ fn query_error(error: std::io::Error) -> QueryError {
     )
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 mod platform {
     use super::*;
     use std::io::Read;
@@ -359,7 +359,12 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "macos",
+    windows
+)))]
 mod platform {
     use super::*;
     pub struct OwnedProcess;

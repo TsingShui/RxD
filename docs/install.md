@@ -54,7 +54,9 @@ Supported platforms are Linux x86_64, Linux arm64 and macOS arm64. Linux require
 the architecture-matched musl loader: `/lib/ld-musl-x86_64.so.1` or
 `/lib/ld-musl-aarch64.so.1`. Alpine supplies it; other distributions can install
 their musl runtime package. The installer never installs system dependencies.
-Current Linux artifacts are musl, not GNU/glibc builds.
+Current Linux artifacts are musl, not GNU/glibc builds. Android App consumers
+instead use the [Bionic/NDK cross-build](ci.md#android-arm64-bionic-build);
+Linux artifacts are not Android executables.
 The shell entry point does not install Windows distributions. Required tools are
 POSIX shell utilities, curl, tar, mktemp and either sha256sum or shasum. No Rust,
 Python, Node, GitHub CLI or .NET SDK/runtime is required by the installer.

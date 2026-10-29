@@ -30,8 +30,9 @@ RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
 
 Cargo embeds only the explicit producer include and never downloads or invokes
 .NET. `bundled-ilspy` without `RXD_ILSPY_EMBED_RS` fails with the producer command.
-macOS is ARM64 only. No ILSpy runtime is checked in; Android consumers use the
-same `linux-musl-arm64` producer. No Android SDK/NDK build path is maintained here.
+macOS is ARM64 only. No ILSpy runtime is checked in. Android uses
+`python3 scripts/build-ilspy.py linux-bionic-arm64` with NDK 28.2.13676358 / API 24;
+its `aarch64-linux-android` engine cannot be interchanged with Linux musl libraries.
 
 ## Build the NativeAOT shared library
 
@@ -39,6 +40,8 @@ Requires .NET SDK 10.0.401 / NativeAOT 10.0.12 and Python 3. Linux targets use
 Zig 0.17.0 and musl, including cross-builds from macOS. GNU engine targets are
 not produced. Linux Rust CLI and engine bundle identities must both be musl.
 macOS uses Xcode CLT and Windows uses Visual Studio C++ tools on their native OS.
+Android cross-builds use the same C# bridge, with the pinned NDK linker and
+Bionic NativeAOT runtime pack. See [Android build commands](../../docs/ci.md#android-arm64-bionic-build).
 The CI validates each desktop target and also cross-builds ARM64 musl on macOS.
 
 ```sh

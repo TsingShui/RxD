@@ -12,7 +12,7 @@ BACKENDS = ("dotnet", "html", "jvm", "dex", "pyc", "evm", "wasm")
 FULL_FILES = {
     "Cargo.toml", "Cargo.lock", "build.rs", ".gitmodules", "install.sh",
     ".github/workflows/build.yml", "scripts/build-bundled.py", "scripts/build-ilspy.py",
-    "scripts/runtime_bundle.py", "scripts/zig_toolchain.py",
+    "scripts/runtime_bundle.py", "scripts/zig_toolchain.py", "scripts/android_toolchain.py",
     "scripts/package-release.py", "scripts/verify-release.py",
     "scripts/test-release.py", "scripts/test-install.py",
     "crates/rxd-dotnet/build.rs", "crates/rxd-dotnet/Cargo.toml",
@@ -32,7 +32,7 @@ def plan(paths):
             # Deleted archive paths still appear in comparisons across the removal.
             reasons[path] = "removed standalone Arxd archive; no product checks"
         elif path.startswith("devtools/android-ilspy/"):
-            reasons[path] = "removed Android producer; shared musl producer only"
+            reasons[path] = "removed duplicate Android project; shared engine producer"
         elif path.startswith("site/") or path == ".gitignore" or path.startswith(".vscode/"):
             reasons[path] = "static site or local development configuration"
         elif path in FULL_FILES or path.startswith((

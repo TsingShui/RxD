@@ -97,8 +97,8 @@ design or decision documents are not required.
 Build binaries, benchmark reports, demo outputs and native runtime bundles belong
 under ignored `target/`, not in source or documentation directories. No compiled
 ILSpy runtime is checked in; `scripts/build-ilspy.py` produces per-target engines,
-using Zig for Linux musl-only targets including macOS cross-builds. Android
-consumers reuse `linux-musl-arm64`; App packaging is maintained outside this repository.
+using Zig for Linux musl targets and the NDK for Android Bionic. Android uses
+`linux-bionic-arm64` with Rust target `aarch64-linux-android`; App packaging remains outside this repository.
 
 ## Build, Test, and Development Commands
 
@@ -107,8 +107,10 @@ consumers reuse `linux-musl-arm64`; App packaging is maintained outside this rep
   explicitly optional). Initialize `third_party/kuna` for Cargo path
   resolution. No ILSpy runtime is checked in: run
   `python3 scripts/build-ilspy.py <rid>` and set `RXD_ILSPY_EMBED_RS` to its
-  `embed.rs` when building `bundled-ilspy`. Android consumers use the same musl
-  producer; App packaging and device validation are outside this repository.
+  `embed.rs` when building `bundled-ilspy`. For Android use
+  `python3 scripts/build-ilspy.py linux-bionic-arm64`, then
+  `python3 scripts/build-bundled.py --target aarch64-linux-android --features bundled-ilspy,mcp`.
+  NDK 28.2.13676358 / API 24 is pinned; App packaging and device validation remain external.
   Use `--no-default-features` for reduced builds.
 - `cargo test --test cli`: run all-backend CLI E2E for shared product changes,
   not every commit. During backend development prefer the real focused CLI,

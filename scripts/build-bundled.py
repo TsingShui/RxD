@@ -15,6 +15,9 @@ import xml.etree.ElementTree as ET
 
 from runtime_bundle import write_bundle
 from zig_toolchain import prepare, cargo_environment
+from android_toolchain import (
+    VERSION as NDK_VERSION, prepare as prepare_android, cargo_environment as android_environment,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'third_party/kuna'
@@ -23,6 +26,7 @@ PROFILE = {'OPT_LEVEL': '3', 'LTO': 'thin', 'CODEGEN_UNITS': '1', 'STRIP': 'symb
 TARGET_RIDS = {
     'x86_64-unknown-linux-musl': 'linux-musl-x64',
     'aarch64-unknown-linux-musl': 'linux-musl-arm64',
+    'aarch64-linux-android': 'linux-bionic-arm64',
     'x86_64-pc-windows-msvc': 'win-x64',
     'aarch64-apple-darwin': 'osx-arm64',
 }
@@ -80,6 +84,7 @@ def main():
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--target', choices=TARGET_RIDS, help='Rust target (Linux defaults to musl)')
     parser.add_argument('--zig', help='Pinned Zig executable for musl targets')
+    parser.add_argument('--ndk', help='Android NDK ' + NDK_VERSION + ' directory')
     parser.add_argument('--offline', action='store_true')
     parser.add_argument('--bundle-only', action='store_true')
     parser.add_argument('--features', default='', help='Additional rxd Cargo features')
@@ -104,6 +109,11 @@ def main():
     target = args.target or os.environ.get('CARGO_BUILD_TARGET') or host.replace('-linux-gnu', '-linux-musl')
     if target not in TARGET_RIDS:
         raise RuntimeError('Unsupported distribution target: ' + target)
+    if args.ndk and target != 'aarch64-linux-android':
+        parser.error('--ndk applies only to aarch64-linux-android')
+    if args.zig and not target.endswith('-musl'):
+        parser.error('--zig applies only to Linux musl targets')
+    android_tools = prepare_android(args.ndk) if target == 'aarch64-linux-android' else None
     output = BUILD / target
     output.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
@@ -168,6 +178,9 @@ def main():
         target_args = []
         if target.endswith('-musl'):
             env.update(cargo_environment(target, prepare(target, args.zig), env))
+            target_args = ['--target', target]
+        elif android_tools:
+            env.update(android_environment(android_tools, env))
             target_args = ['--target', target]
         features = ','.join(x for x in ('bundled-kuna', args.features) if x)
         if 'bundled-ilspy' in features.split(','):

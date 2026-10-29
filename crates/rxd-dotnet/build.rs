@@ -15,6 +15,11 @@ fn main() {
             || env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() == "musl",
         "csharp-decompiler: Linux engines require a matching *-unknown-linux-musl Rust target"
     );
+    assert!(
+        env::var("CARGO_CFG_TARGET_OS").unwrap() != "android"
+            || env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "aarch64",
+        "csharp-decompiler: Android supports ARM64 Bionic only"
+    );
     println!("cargo:rerun-if-env-changed=RXD_ILSPY_EMBED_RS");
     if env::var_os("CARGO_FEATURE_BUNDLED_ILSPY").is_some() {
         let embed = env::var_os("RXD_ILSPY_EMBED_RS").unwrap_or_else(|| {
@@ -40,6 +45,7 @@ fn main() {
     let (platform, filename) = match env::var("CARGO_CFG_TARGET_OS").unwrap().as_str() {
         "macos" => ("osx", "librxd_dotnet_native.dylib"),
         "linux" => ("linux-musl", "librxd_dotnet_native.so"),
+        "android" => ("linux-bionic", "librxd_dotnet_native.so"),
         "windows" => ("win", "rxd_dotnet_native.dll"),
         platform => panic!("csharp-decompiler: unsupported native platform {platform}"),
     };

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the pinned ILSpy engine; Linux targets use musl and Zig cross-linking."""
+"""Build pinned ILSpy engines: native desktop, Linux musl/Zig, or Android Bionic/NDK."""
 import argparse
 import hashlib
 import json
@@ -14,6 +14,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from runtime_bundle import write_bundle
+from android_toolchain import VERSION as NDK_VERSION, prepare as prepare_android
 from zig_toolchain import VERSION as ZIG_VERSION, prepare
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,7 @@ TARGETS = {
     'osx-arm64': ('aarch64-apple-darwin', 'librxd_dotnet_native.dylib', None),
     'linux-musl-x64': ('x86_64-unknown-linux-musl', 'librxd_dotnet_native.so', 'x86_64-linux-musl'),
     'linux-musl-arm64': ('aarch64-unknown-linux-musl', 'librxd_dotnet_native.so', 'aarch64-linux-musl'),
+    'linux-bionic-arm64': ('aarch64-linux-android', 'librxd_dotnet_native.so', None),
     'win-x64': ('x86_64-pc-windows-msvc', 'rxd_dotnet_native.dll', None),
 }
 
@@ -75,17 +77,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rid', choices=TARGETS)
     parser.add_argument('--dotnet', help='Path to the pinned .NET SDK ' + SDK_VERSION)
-    parser.add_argument('--zig', help='Path to Zig ' + ZIG_VERSION + ' (Linux targets)')
+    parser.add_argument('--zig', help='Path to Zig ' + ZIG_VERSION + ' (Linux musl targets)')
+    parser.add_argument('--ndk', help='Android NDK ' + NDK_VERSION + ' directory (Bionic target)')
     args = parser.parse_args()
     target, filename, triple = TARGETS[args.rid]
+    android = args.rid == 'linux-bionic-arm64'
+    if args.zig and not triple:
+        parser.error('--zig applies only to Linux musl targets')
+    if args.ndk and not android:
+        parser.error('--ndk applies only to Android Bionic')
     host = {'darwin': 'osx', 'linux': 'linux', 'win32': 'win'}.get(sys.platform)
-    if triple:
+    if triple or android:
         if host not in ('osx', 'linux'):
-            parser.error('Zig Linux cross-builds currently require macOS or Linux')
+            parser.error('Linux/Android cross-builds require macOS or Linux')
     elif args.rid.split('-')[0] != host:
         parser.error('macOS and Windows NativeAOT engines require their native host OS')
-    elif args.zig:
-        parser.error('--zig applies only to Linux targets')
     name = 'dotnet.exe' if os.name == 'nt' else 'dotnet'
     dotnet = args.dotnet
     if not dotnet and os.environ.get('DOTNET_ROOT'):
@@ -104,6 +110,7 @@ def main():
     sdk = capture([dotnet, '--version'], env)
     if sdk != SDK_VERSION:
         parser.error('The producer requires .NET SDK ' + SDK_VERSION + '; found ' + sdk)
+    android_tools = prepare_android(args.ndk) if android else None
     zig = None
     if triple:
         tools = prepare(target, args.zig)
@@ -123,12 +130,21 @@ def main():
         linker = {'kind': 'zig', 'host': host, 'version': version, 'target': triple,
                   'wrapper_sha256': digest(wrapper), 'strip': 'linker --strip-debug'}
 
+    if android:
+        options += ['-p:DisableUnsupportedError=true', '-p:StripSymbols=false',
+                    '-p:NativeDebugSymbols=false', '-p:LinkerFlavor=lld',
+                    '-p:CppCompilerAndLinker=' + str(android_tools['cc'])]
+        linker = {'kind': 'ndk', 'host': host, 'version': android_tools['version'],
+                  'api': android_tools['api'], 'target': target,
+                  'compiler_sha256': digest(android_tools['cc']), 'strip': 'llvm-strip --strip-unneeded'}
+
     feed = BUILD / 'feed'
     feed.mkdir(parents=True, exist_ok=True)
     package_name = verified_package(feed)
     project = ROOT / 'crates/rxd-dotnet/native/rxd-dotnet-native.csproj'
     source_files = [project, project.with_name('NOTICE'), Path(__file__).resolve(),
                     ROOT / 'scripts/runtime_bundle.py', ROOT / 'scripts/zig_toolchain.py',
+                    ROOT / 'scripts/android_toolchain.py',
                     *sorted(project.parent.rglob('*.cs'))]
     source_inputs = {path.relative_to(ROOT).as_posix(): digest(path) for path in source_files}
     configuration = ET.Element('configuration')
@@ -146,6 +162,8 @@ def main():
     run([dotnet, 'publish', project, '--no-restore', '-c', 'Release',
          '-r', args.rid, '-m:1', *options], env)
     library = output / filename
+    if android:
+        run([android_tools['strip'], '--strip-unneeded', library], env)
     if any(digest(ROOT / path) != expected for path, expected in source_inputs.items()):
         raise RuntimeError('Native sources changed during the build; refusing to package')
     reference_source = dotnet.parent / 'packs/Microsoft.NETCore.App.Ref' / RUNTIME_VERSION / 'ref/net10.0'

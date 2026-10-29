@@ -130,9 +130,10 @@ rxd release. All runners use the common `scripts/build-ilspy.py` producer and
 including cross-builds from macOS; Windows/macOS engines retain their native
 linkers. The macOS job also builds `linux-musl-arm64`. Native runtime and package
 checks remain on each target OS; cross-compilation does not replace them.
-No ILSpy prebuilt is checked in. Android consumers use the same
-`linux-musl-arm64` producer; App packaging and device validation are outside this
-repository and are not CI gates. There is no separate Android SDK/NDK producer.
+No ILSpy prebuilt is checked in. Android uses the shared producer's
+`linux-bionic-arm64` target and NDK 28.2.13676358 / API 24, not the Linux musl
+artifact. Android cross-build commands are below; App packaging and device
+validation remain outside this repository and are not desktop CI gates.
 macOS is ARM64 only. Submodule checkout includes full history for Kuna version
 calculation. Rust
 dependencies and Kuna compiler/spec outputs are cached per platform/toolchain. Newer
@@ -140,7 +141,7 @@ PR runs cancel stale runs of that PR; main commits have separate concurrency gro
 so a later docs-only push cannot cancel an earlier required native build. Tags are
 never cancelled by newer runs.
 
-All platforms run release CLI and real stdio MCP E2E. Linux x86_64 also checks formatting,
+All published desktop platforms run release CLI and real stdio MCP E2E. Linux x86_64 also checks formatting,
 strict workspace Clippy, debug CLI/MCP tests and a no-MCP build. Packaging tests a
 relocated copy with no runtime path overrides: actual MCP initialization/discovery,
 immutable Unicode/CRLF snapshot and original FETCH, target closure, lazy engine caches,
@@ -169,3 +170,33 @@ release binaries. Linux execution checks install the matching system musl loader
 prerequisites: pinned Zig for Linux targets, cargo-zigbuild 0.23.4 for musl Rust
 linking, Xcode CLT for macOS, Visual Studio C++ tools for Windows. See
 `benches/ilspy/README.md`.
+
+## Android ARM64 Bionic build
+
+Use .NET SDK 10.0.401, Rust target `aarch64-linux-android` and Android NDK
+28.2.13676358 on macOS or Linux. `--ndk DIR` overrides `ANDROID_NDK_HOME` /
+`ANDROID_NDK_ROOT`; otherwise the producer finds the pinned NDK under the SDK.
+The native bridge and pinned ILSpy package are shared with desktop builds.
+
+```sh
+rustup target add aarch64-linux-android
+python3 scripts/build-ilspy.py linux-bionic-arm64
+python3 scripts/build-bundled.py --target aarch64-linux-android --jobs 2 \
+  --features bundled-ilspy,mcp
+python3 scripts/package-release.py --target aarch64-linux-android \
+  --rid linux-bionic-arm64 --name android-arm64 --no-exec
+```
+
+The release executable is `target/aarch64-linux-android/release/rxd`; the archive
+is `target/dist/rxd-android-arm64.tar.gz`, with a sibling SHA-256 file. It includes
+default backends, MCP, the linked Kuna CLI and compressed specs, and embedded
+Bionic ILSpy/reference metadata. Only host build tools run during cross-builds;
+`--no-exec` also prevents packaging from executing the target and records
+`execution_verified: false` in `build-info.json`. Normal desktop packaging keeps
+its execution checks by default.
+
+Both native outputs use 16 KiB ELF LOAD alignment and the CLI uses Android's
+system `/system/bin/linker64` and Bionic. No musl loader or private OpenSSL sidecar
+is packaged. ELF inspection/build success is not device or App-sandbox validation.
+The consuming App owns APK executable placement, permissions/SELinux policy and
+writable `TMPDIR` / `RXD_CACHE_DIR`. Never mix a musl ILSpy `.so` with this target.

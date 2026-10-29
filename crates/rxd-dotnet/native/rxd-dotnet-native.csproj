@@ -36,8 +36,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ICSharpCode.Decompiler" Version="[11.2.0.10050]" />
-    <LinkerArg Include="-Wl,-z,max-page-size=16384" Condition="$(RuntimeIdentifier.StartsWith('linux-musl-'))" />
-    <LinkerArg Include="-Wl,-z,common-page-size=16384" Condition="$(RuntimeIdentifier.StartsWith('linux-musl-'))" />
+    <LinkerArg Include="-Wl,-z,max-page-size=16384" Condition="$(RuntimeIdentifier.StartsWith('linux-musl-')) Or '$(RuntimeIdentifier)' == 'linux-bionic-arm64'" />
+    <LinkerArg Include="-Wl,-z,common-page-size=16384" Condition="$(RuntimeIdentifier.StartsWith('linux-musl-')) Or '$(RuntimeIdentifier)' == 'linux-bionic-arm64'" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

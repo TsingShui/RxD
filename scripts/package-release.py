@@ -93,6 +93,8 @@ def main():
     parser.add_argument('--rid', required=True)
     parser.add_argument('--name', required=True)
     parser.add_argument('--ilspy-dir', type=Path, help='Prepared ILSpy bundle directory override')
+    parser.add_argument('--no-exec', action='store_true',
+                        help='Package without executing the binary; record it as unverified (cross-builds)')
     args = parser.parse_args()
     kuna_dir = ROOT / 'target/kuna' / args.target
     kuna = json.loads((kuna_dir / 'manifest.json').read_text(encoding='utf-8'))
@@ -105,7 +107,8 @@ def main():
         stage = Path(temporary) / ('rxd-' + args.name)
         stage.mkdir()
         binary_name = 'rxd.exe' if os.name == 'nt' else 'rxd'
-        profile = ROOT / 'target' / args.target / 'release' if args.target.endswith('-musl') else ROOT / 'target/release'
+        cross_target = args.target.endswith(('-musl', '-linux-android'))
+        profile = ROOT / 'target' / args.target / 'release' if cross_target else ROOT / 'target/release'
         shutil.copy2(profile / binary_name, stage / binary_name)
         shutil.copy2(native_dir / 'manifest.json', stage / 'ilspy-manifest.json')
         shutil.copy2(kuna_dir / 'manifest.json', stage / 'kuna-manifest.json')
@@ -117,13 +120,17 @@ def main():
             shutil.copy2(ROOT / 'third_party/kuna' / name, licenses / 'kuna' / name)
         shutil.copy2(ROOT / 'crates/rxd-dotnet/native/NOTICE', licenses / 'ILSpy-NOTICE.txt')
         shutil.copy2(ROOT / 'crates/rxd-evm/EVMOLE-LICENSE', licenses / 'EVMole-LICENSE.txt')
-        verify(stage, kuna)
+        if not args.no_exec:
+            verify(stage, kuna)
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         package_version = re.search(r'^version = "([^"]+)"$',
                                     (ROOT / 'Cargo.toml').read_text().split('[package]', 1)[1]
                                     .split('\n[', 1)[0], re.MULTILINE).group(1)
         metadata = {'rxd_commit': commit, 'rxd_version': package_version, 'target': args.target,
                     'features': ['bundled-kuna', 'bundled-ilspy', 'mcp'],
+                    'execution_verified': not args.no_exec,
+                    'source_dirty': bool(subprocess.check_output(
+                        ['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
                     'files': [{'path': path.relative_to(stage).as_posix(),
                                'bytes': path.stat().st_size, 'sha256': digest(path)}
                               for path in sorted(stage.rglob('*')) if path.is_file()]}
