@@ -15,7 +15,6 @@ type Free = unsafe extern "C" fn(*mut u8);
 
 struct Engine {
     _library: libloading::Library,
-    _private_openssl: Option<libloading::Library>,
     method: DecompileMethod,
     class: Option<DecompileMethod>,
     free: Free,
@@ -74,15 +73,6 @@ impl Engine {
 
     fn open(path: PathBuf) -> Option<Self> {
         let path = path.canonicalize().ok()?;
-        // The Android bundle links its own OpenSSL. Android's linker does not
-        // search the extraction directory, so load the private library first.
-        let private_openssl = path.parent()?.join("librxdopenssl.so");
-        let private_openssl = if private_openssl.is_file() {
-            // SAFETY: the extracted library is part of the verified bundle.
-            Some(unsafe { libloading::Library::new(&private_openssl).ok()? })
-        } else {
-            None
-        };
         // SAFETY: the explicitly selected or installed library is trusted and
         // implements this C ABI. Retain its handle with the function pointers.
         unsafe {
@@ -109,7 +99,6 @@ impl Engine {
                 class,
                 free,
                 _library: library,
-                _private_openssl: private_openssl,
             })
         }
     }

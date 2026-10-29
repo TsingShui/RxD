@@ -8,21 +8,17 @@ APK, test key or consumer AAR is shipped. Public declarations: `rxd_dotnet.h`.
 ## Producer toolchains
 
 Measured producer: .NET SDK10.0.401 / NativeAOT10.0.12, NDK28.2.13676358,
-`aarch64-linux-android24-clang`; the device-tested baseline used ILSpy11.1.0.9782.
-The current producer pins ILSpy11.2.0.10050 and the NuGet SHA-256 in
-`crates/rxd-dotnet/native/NOTICE`; this refreshed engine has not been rerun on
-the device. Output ELF LOAD alignment is 16KiB; baseline execution proof is on a
-4KiB Android16/API36 device only, not a real 16KiB-runtime result. Record the
-exact refreshed library hashes and device results before consumer publication.
+`aarch64-linux-android24-clang`; fixed ILSpy11.2.0.10050 and the NuGet SHA-256 in
+`crates/rxd-dotnet/native/NOTICE`. Output ELF LOAD alignment is 16KiB; actual
+execution proof is on a Pixel10 Android16/API36 device with 4KiB pages, not a
+real 16KiB-runtime result. Record exact library hashes and device results before
+consumer publication.
 
 From the repository root (macOS host shown):
 
 ```sh
 export DOTNET_ROOT="$HOME/.dotnet10"
 export NDK_BIN="$HOME/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin"
-mkdir -p target/android-ilspy
-"$NDK_BIN/aarch64-linux-android24-clang" -c -fPIC -O2 -fvisibility=hidden \
-  devtools/android-ilspy/private_loader.c -o target/android-ilspy/private_loader.o
 "$DOTNET_ROOT/dotnet" publish devtools/android-ilspy/Engine.csproj -c Release \
   -r linux-bionic-arm64 -p:DisableUnsupportedError=true \
   -p:PublishAotUsingRuntimePack=true -p:StripSymbols=false \
@@ -36,29 +32,24 @@ cache (`NUGET_PACKAGES` or `~/.nuget/packages`); native build intermediates stay
 `target/`. No Android ILSpy runtime is checked in; each consumer produces its own
 engine and packages it with the App.
 
-## Private OpenSSL
+## Runtime contents
 
-The engine requires its private `librxdopenssl.so`, not Android's BoringSSL or
-Termux. This artifact uses official OpenSSL3.6.5 source archive SHA-256
-`a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98`.
-Build with NDK android-arm64/API24, `no-shared no-tests no-module -fPIC`, then
-combine `libssl.a` and `libcrypto.a` with `--whole-archive`, unique SONAME
-`librxdopenssl.so`, `-Bsymbolic`, 16KiB max/common-page alignment and libdl/libc.
-Retain the Apache-2.0 OpenSSL license and actual library hash in the runtime
-manifest. Updating OpenSSL requires rebuilding/revalidating this private library.
+Stage only the engine, the same 167 .NET10.0.12 reference DLLs, applicable licenses
+and this C ABI header as a bounded runtime bundle with source/package identities.
+Do not package or preload `librxdopenssl.so`; the producer has no private OpenSSL
+loader or link wrapper. No .NET runtime/ILSpy source fork or hash stub is used.
 
-`private_loader.c` is linked only into the NativeAOT engine with `--wrap=dlopen`.
-It redirects libssl basename probes to the private SONAME; other calls pass
-through. It does not mutate environment or hook the whole App. There is no
-.NET runtime/ILSpy source fork. NativeAOT static single-library OpenSSL linking
-is not asserted to work; two libraries are intentionally shipped.
+ILSpy11.2's metadata public-key hashes use managed SHA-1. With no OpenSSL sidecar,
+13 method/class targets and two invalid-token cases were checked in both ADB
+shell and a targetSdk36 App sandbox: async/iterator, LINQ, closures/generics and
+published Newtonsoft.Json. Source, warnings and mappings agreed; an audited
+engine made no OpenSSL `dlopen` attempt. This covers the renderer's tested paths,
+not arbitrary .NET cryptography. Revalidate after engine, runtime or scope changes.
 
-Stage engine, private OpenSSL, the same 167 .NET10.0.12 reference DLLs, applicable
-licenses and this C ABI header as a bounded runtime bundle with source/package
-identities. The archive's native build should record `source_inputs` for the
-production Exports/NOTICE and this Engine project/loader. No prebuilt archive is
-checked in; the produced `.so` and its adjacent OpenSSL/reference metadata are
-passed directly to the App build.
+The archive's native build should record `source_inputs` for the production
+Exports/NOTICE and this Engine project. No prebuilt archive is checked in; pass
+the produced `.so` and reference metadata directly to the App build. Consumers
+must also remove legacy OpenSSL preloads and package entries.
 
 The producer inputs and archive metadata are reviewed provenance, not proof that
 an arbitrary third-party binary was built from the declared source. Test the exact

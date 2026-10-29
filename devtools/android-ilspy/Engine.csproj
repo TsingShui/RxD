@@ -35,8 +35,6 @@
   <ItemGroup>
     <Compile Include="../../crates/rxd-dotnet/native/Exports.cs" Link="Exports.cs" />
     <PackageReference Include="ICSharpCode.Decompiler" Version="[11.2.0.10050]" />
-    <LinkerArg Include="$(NativeArtifactsRoot)private_loader.o" />
-    <LinkerArg Include="-Wl,--wrap=dlopen" />
     <LinkerArg Include="-Wl,-z,max-page-size=16384" />
     <LinkerArg Include="-Wl,-z,common-page-size=16384" />
   </ItemGroup>

@@ -4,8 +4,6 @@ use super::*;
 mod field_type_refs;
 mod metadata_budget;
 mod method_refs;
-#[cfg(feature = "bundled-ilspy")]
-mod native;
 mod strings;
 
 fn input() -> PathBuf {
