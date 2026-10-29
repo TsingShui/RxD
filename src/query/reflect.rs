@@ -28,11 +28,15 @@ fn label(backend: &str) -> &str {
     }
 }
 
-/// CLI commands with no typed MCP projection: artifact extractors and directory
-/// exports write caller paths or trees, which the one-artifact tool contract cannot express.
-const CLI_ONLY: &[&str] = &["rasc_extract", "abc_export"];
+/// CLI-only exports/extractors write trees, caller paths or arbitrary binary bytes.
+const CLI_ONLY: &[&str] = &[
+    "rasc_extract",
+    "abc_export",
+    "ilspy_extract_resource",
+    "ilspy_extract_entry",
+];
 
-/// Exclude output/process flags and CLI container selectors; MCP uses child targets.
+/// Exclude output/process flags; Ark/ILSpy re-expose their in-buffer entry selectors.
 const HIDDEN_LONGS: &[&str] = &["output", "perf", "debug", "json", "help", "entry"];
 
 /// Numeric flags keep `integer` in the schema; clap remains the authority on values.
@@ -177,10 +181,10 @@ fn tool(backend: &str, command: &Command, path: &[String]) -> ToolSpec {
     let label = label(backend);
     let name = format!("{}_{}", label, path.join("_").replace('-', "_"));
     let mut args = args(command);
-    if backend == "ark"
+    if matches!(backend, "ark" | "ilspy")
         && let Some(entry) = command
             .get_arguments()
-            .find(|arg| arg.get_long() == Some("entry"))
+            .find(|arg| arg.get_long() == Some("entry") && !arg.is_hide_set())
     {
         args.push(arg_spec(entry, command));
     }

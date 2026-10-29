@@ -3234,8 +3234,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cildec",
+ "flate2",
  "libc",
  "libloading",
+ "memchr",
  "rxd-core",
  "serde",
  "serde_json",

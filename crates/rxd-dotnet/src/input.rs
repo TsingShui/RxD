@@ -684,6 +684,9 @@ impl Work {
     pub(crate) fn used(&self) -> usize {
         self.used
     }
+    pub(crate) fn retained(&self) -> usize {
+        self.metadata_reserved
+    }
     pub(crate) fn retain(&mut self, bytes: usize) -> Result<()> {
         let reserved = self
             .metadata_reserved

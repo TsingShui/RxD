@@ -19,7 +19,7 @@ explicitly, then locate → associate
 | Dynamic Ark ABC or HAP | `rxd ark` | `export INPUT -o DIR` writes the whole HAP tree plus one JS file per record for `rg`; `decompile INPUT` reconstructs the selected whole ABC; multiple records or non-scalar module names use scoped, namespaced exports. `list record`, then `list method` (all records by default, `--at record:0x...` to scope); `strings`/`xref` scan decoded string operands. `decompile --at record:0x...` composes one original module, and `--at method:0x...` selects one function. Methods use capture factories with `{env, hole, receiver, newTarget, locals, home, function}`. Semantic approximations and unrecovered structure are marked in source; add `--raw` for original instructions. HAP with multiple ABC files requires `--entry PATH` |
 | Android APK or DEX | `rxd rasc` | `classes`, `methods`, `fields`, `entries`, `strings`, `manifest` / `xref --at` or `-m PATTERN --kind string\|type\|method\|field` / `get-class`/`get-method --at` |
 | JVM class or ordinary JAR | `rxd jar` | `classes`, `methods`, `fields`, `entries`, `strings` / `xref --at` or `-m … --kind` / `get-method`/`get-class --at`, `--raw` for original instructions |
-| Managed .NET assembly | `rxd ilspy` | `classes`, `fields`, `methods`, `strings` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL |
+| Managed .NET assembly or single-file bundle | `rxd ilspy` | `entries` lists bundle paths; all module queries use `--entry PATH` for bundles. `classes`, `fields`, `methods`, `strings`, `resources [--within ROOT_AT]` / `xref --at` (token) or `-m … --kind string` / `get-method`/`get-class --at`, `--raw` for original IL; CLI `extract-entry`/`extract-resource --at` emit original bytes |
 | Local EVM flat bytecode | `rxd evmole` | `interface`, `disassemble`, `strings`, `metadata` |
 | Binary WASM core module | `rxd wasm` | `types`, `imports`, `exports`, `functions`, `tables`, `memories`, `globals`, `data`, `elements`, `strings` / `xref --at func:N` or `-m … --kind function` / `get-function --at` |
 | CPython PYC, PyInstaller PYZ or versioned raw marshal | `rxd pyc` | `modules`, `codes --within MODULE`, `strings` / `xref --at` (a strings row), `xref --kind name --at NAME/-m TEXT` / `decompile` (a PYZ without `--at` writes one source file per code-bearing module with `-o DIR`) or `decompile --at` one module/code; standalone PYC defaults to its whole module |
@@ -142,6 +142,12 @@ rxd ilspy get-method library.dll --at "$METHOD_AT"
 rxd ilspy classes library.dll --class "$TYPE_NAME"
 rxd ilspy get-class library.dll --at "$TYPE_AT" --raw
 rxd ilspy xref library.dll --at "$TYPE_AT"
+rxd ilspy resources library.dll
+rxd ilspy resources library.dll --within "$RESOURCE_AT"
+rxd ilspy extract-resource library.dll --at "$RESOURCE_AT" -o resource.bin
+rxd ilspy entries app
+rxd ilspy methods app --entry "$ENTRY_PATH" -f Read
+rxd ilspy extract-entry app --at "$ENTRY_PATH" -o module.dll
 ```
 
 A `classes` row's first cell is its `at`; copy it to class FETCH or type XREF
@@ -156,6 +162,23 @@ fail it; a row that is itself unreadable fails when queried. C# reconstruction
 requires an available ILSpy NativeAOT engine (included in complete distributions;
 optional in source builds). Engine absence or failure retains original IL and
 explicit fallback information; do not report fallback IL as reconstructed C#.
+
+A single-file bundle requires an exact `--entry PATH` copied from `entries.at`
+for every module query; re-list tokens when changing the selected entry. Formats
+1.0/2.0/6.0, including compressed entries, are read directly from one fixed input.
+No main assembly or sibling dependency is chosen implicitly. NativeAOT machine
+code is not a managed bundle. `entries` never decompresses payloads.
+
+`resources` lists ManifestResource roots, including linked rows without opening
+external files. `--within` selects one `.resources` root and lists its members.
+Root coordinates are tokens (`0x28000001`); child coordinates add `/item:N`.
+`extract-resource` returns the root's entire original blob, or a member's original
+payload with type/length framing removed: strings are stored UTF-8, bytes/streams
+are raw payloads, primitives retain little-endian encoding, and serialized objects
+stay opaque. Extract a root to preserve its container framing. BAML is never
+converted to XAML. Binary `extract-entry`/`extract-resource` are CLI-only; `-o`
+writes atomically with no stdout, and cannot overwrite the input. MCP exposes
+`entries`, `resources` and `entry` selection on module queries.
 
 ## WASM: structure → explicit caller → selected function
 

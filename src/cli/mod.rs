@@ -125,7 +125,7 @@ enum Backend {
         args: Vec<std::ffi::OsString>,
     },
     #[cfg(feature = "backend-dotnet")]
-    /// Analyze DLL/EXE.
+    /// Analyze .NET assemblies and single-file bundles.
     #[command(
         name = "ilspy",
         after_long_help = "Examples:
@@ -133,11 +133,18 @@ enum Backend {
   rxd ilspy get-method app.dll --at '0x0600000b' --raw
   rxd ilspy strings app.dll -f Authorization
   rxd ilspy xref app.dll -m Authorization --kind string
+  rxd ilspy resources app.dll
+  rxd ilspy entries app
+  rxd ilspy methods app --entry App.dll
 Copy methods.at into get-method; copy xref.context to fetch its caller.
+Bundle analysis requires --entry PATH copied from entries.at; resource extraction preserves original bytes.
 Tokens such as 0x0600000b are module-scoped; use actual returned values.
 C# requires ILSpy; missing/failed reconstruction returns original IL with a reason."
     )]
-    #[command(display_order = 30, long_about = "Analyze DLL/EXE: metadata, IL, C#")]
+    #[command(
+        display_order = 30,
+        long_about = "Analyze .NET assemblies and single-file bundles: metadata, IL, C#, resources"
+    )]
     Dotnet {
         #[command(subcommand)]
         command: dotnet::Command,

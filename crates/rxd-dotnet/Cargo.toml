@@ -19,6 +19,8 @@ serde_json.workspace = true
 sha2 = "0.11"
 strum = "0.28"
 cildec = "0.1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+memchr = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

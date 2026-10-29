@@ -1,3 +1,5 @@
+mod files;
+
 use std::{collections::BTreeMap, io::Write, path::PathBuf};
 
 use super::filter::CaseArgs;
@@ -11,6 +13,65 @@ use serde_json::{Map, Value, json};
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// List single-file bundle entries without decompressing them.
+    #[command(
+        mut_arg("entry", |arg| arg.hide(true).conflicts_with("input")),
+        long_about = "Columns: at, kind, size, compressed_size\nList .NET single-file bundle entries in manifest order, without decompressing them.",
+        after_long_help = "Examples:\nrxd ilspy entries app -f App.dll\nrxd ilspy methods app --entry '<entries.at>'\nrxd ilspy extract-entry app --at '<entries.at>' -o module.dll\nat is the exact case-sensitive bundle path. kind is assembly, native, deps_json, runtime_config_json, symbols or unknown.\nsize is the original byte length; compressed_size is zero for stored entries. Formats 1.0, 2.0 and 6.0 are supported.\nAnalysis queries require --entry even if the bundle contains only one assembly. NativeAOT machine code is not managed IL."
+    )]
+    Entries {
+        input: PathBuf,
+        /// Substring over bundle paths; folded unless --case sensitive.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Extract one bundle entry as original bytes.
+    #[command(
+        mut_arg("entry", |arg| arg.hide(true).conflicts_with("input")),
+        long_about = "Extract one exact .NET single-file bundle entry. stdout contains only the original bytes; -o writes them atomically to FILE.",
+        after_long_help = "Examples:\nrxd ilspy entries app\nrxd ilspy extract-entry app --at '<entries.at>' -o App.dll\nCopy the exact entries.at path, not a metadata token. Compressed entries are decoded with exact length validation.\nNo entry path is used as an output filename; -o cannot overwrite the input. This binary extractor is CLI-only."
+    )]
+    ExtractEntry {
+        input: PathBuf,
+        #[arg(long, required = true, value_name = "ENTRY_PATH")]
+        at: String,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// List manifest resources or one .resources container's members.
+    #[command(
+        long_about = "Columns: at, name, type, size, parent_at\nList manifest resources, or members of one .resources container selected with --within.",
+        after_long_help = "Examples:\nrxd ilspy resources app.dll\nrxd ilspy resources app.dll --within '<resources.at>' -f settings\nrxd ilspy resources app --entry App.dll\nrxd ilspy extract-resource app.dll --at '<resources.at>' -o resource.bin\nRoot coordinates are ManifestResource tokens (0x28000001); members use TOKEN/item:N.\nRoot type is bytes, resources or linked; member type is the stored CLR type or null. Linked resources have no size and are not opened.\nsize is the extractable payload byte count. parent_at identifies a member's .resources container. No BAML conversion or object deserialization."
+    )]
+    Resources {
+        input: PathBuf,
+        /// Copy a root resources.at to enumerate that .resources container only.
+        #[arg(long, value_name = "RESOURCE_AT")]
+        within: Option<String>,
+        /// Substring over resource names; folded unless --case sensitive.
+        #[arg(short, long)]
+        filter: Option<String>,
+        #[command(flatten)]
+        case: CaseArgs,
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Extract one embedded resource or .resources member as bytes.
+    #[command(
+        long_about = "Extract one resource selected by resources.at. stdout contains only the bytes; -o writes them atomically to FILE.",
+        after_long_help = "Examples:\nrxd ilspy extract-resource app.dll --at 0x28000001 -o app.resources\nrxd ilspy extract-resource app.dll --at '0x28000001/item:0' -o item.bin\nrxd ilspy extract-resource app --entry App.dll --at 0x28000001 -o resource.bin\nRoot extraction preserves the entire original blob. Member strings emit their stored UTF-8 bytes; byte arrays/streams emit their original payload.\nPrimitives retain little-endian encoded bytes; user objects stay opaque serialized bytes. Type/length framing is removed, never deserialized.\nFor byte-exact container evidence extract the root. No implicit BAML-to-XAML conversion. This binary extractor is CLI-only."
+    )]
+    ExtractResource {
+        input: PathBuf,
+        #[arg(long, required = true, value_name = "RESOURCE_AT")]
+        at: String,
+        #[command(flatten)]
+        options: Options,
+    },
     /// List types (columns: at, full_name).
     #[command(
         long_about = "Columns: at, full_name\nList types. One # column header precedes the data rows.",
@@ -145,6 +206,9 @@ type Kind = crate::cli::xref::Kind;
 
 #[derive(Args)]
 pub struct Options {
+    /// Exact managed bundle path copied from entries.at; omit for a standalone assembly.
+    #[arg(long, value_name = "PATH")]
+    entry: Option<String>,
     /// Atomically write the result to FILE instead of stdout; never overwrite input.
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
@@ -169,7 +233,11 @@ impl Options {
 impl Command {
     fn options(&self) -> &Options {
         match self {
-            Self::Classes { options, .. }
+            Self::Entries { options, .. }
+            | Self::ExtractEntry { options, .. }
+            | Self::Resources { options, .. }
+            | Self::ExtractResource { options, .. }
+            | Self::Classes { options, .. }
             | Self::Fields { options, .. }
             | Self::Methods { options, .. }
             | Self::Get { options, .. }
@@ -181,6 +249,10 @@ impl Command {
 
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Entries { .. } => "entries",
+            Self::ExtractEntry { .. } => "extract-entry",
+            Self::Resources { .. } => "resources",
+            Self::ExtractResource { .. } => "extract-resource",
             Self::Classes { .. } => "classes",
             Self::Fields { .. } => "fields",
             Self::Methods { .. } => "methods",
@@ -214,7 +286,11 @@ fn execute_inner(
     sink: &mut super::Output<'_>,
 ) -> anyhow::Result<()> {
     let (path, options) = match &command {
-        Command::Classes { input, options, .. }
+        Command::Entries { input, options, .. }
+        | Command::ExtractEntry { input, options, .. }
+        | Command::Resources { input, options, .. }
+        | Command::ExtractResource { input, options, .. }
+        | Command::Classes { input, options, .. }
         | Command::Fields { input, options, .. }
         | Command::Methods { input, options, .. }
         | Command::Get { input, options, .. }
@@ -222,8 +298,9 @@ fn execute_inner(
         | Command::Strings { input, options, .. }
         | Command::Xref { input, options, .. } => (input, options),
     };
+    files::validate_output(path, options.output.as_deref())?;
     let budget = policy.for_file(path)?;
-    let limits = options.limits(budget);
+    let mut limits = options.limits(budget);
     perf.resource_limits = Some(std::collections::BTreeMap::from([
         ("input_bytes", budget.input_bytes),
         ("metadata_bytes", budget.metadata_bytes),
@@ -240,9 +317,39 @@ fn execute_inner(
             .insert("output_bytes", output_bytes);
     }
     let bytes = perf.measure("read", || rxd_dotnet::read_file(path, limits))?;
-    let mut input = perf.measure("read_parse", || Input::parse(&bytes, limits))?;
+    let bundle_query = matches!(
+        command,
+        Command::Entries { .. } | Command::ExtractEntry { .. }
+    );
+    let module = if bundle_query {
+        anyhow::ensure!(
+            options.entry.is_none(),
+            "INVALID_QUERY: entries/extract-entry do not accept --entry; use extract-entry --at PATH"
+        );
+        std::borrow::Cow::Borrowed(bytes.as_slice())
+    } else {
+        perf.measure("select", || {
+            rxd_dotnet::select_module(&bytes, options.entry.as_deref(), limits)
+        })?
+    };
+    if !bundle_query && matches!(policy, rxd_core::BudgetPolicy::InputScaled) {
+        limits = options.limits(Budget::for_input_bytes(module.len())?);
+        perf.resource_limits
+            .as_mut()
+            .unwrap()
+            .insert("metadata_bytes", limits.metadata_bytes);
+    }
+    anyhow::ensure!(
+        module.len() <= limits.input_bytes,
+        "RESOURCE_LIMIT: selected module bytes"
+    );
+    perf.counters.input_bytes = Some(bytes.len());
+    if files::execute(&command, &module, limits, perf, sink)? {
+        return Ok(());
+    }
+    let mut input = perf.measure("read_parse", || Input::parse(&module, limits))?;
     perf.source_id = Some(input.source_id.clone());
-    perf.counters.input_bytes = Some(input.file_bytes);
+    perf.counters.input_bytes = Some(bytes.len());
     perf.counters.entities = Some(input.types.len() + input.fields.len() + input.methods.len());
     let query_start = perf.start_stage();
     let mut output = rxd_core::output::Output::new(budget.output_bytes);
@@ -527,7 +634,12 @@ fn execute_inner(
                     }
                 }
             }
-            Command::Get { .. } | Command::GetClass { .. } => unreachable!(),
+            Command::Get { .. }
+            | Command::GetClass { .. }
+            | Command::Entries { .. }
+            | Command::ExtractEntry { .. }
+            | Command::Resources { .. }
+            | Command::ExtractResource { .. } => unreachable!(),
         }
     }
     perf.record("query", query_start);
