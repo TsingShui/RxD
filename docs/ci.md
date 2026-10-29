@@ -3,7 +3,7 @@
 [Build rxd](https://github.com/TsingShui/RxD/actions/workflows/build.yml) runs on main
 pushes, version tags (`v*`), pull requests, manual runs and weekly compatibility runs. A
 read-only changed-path plan selects checks; every commit does not require a full native
-distribution. Rust is pinned to 1.98.0, packaging uses .NET SDK 10.0.401, and Python 3.12
+distribution. Rust is pinned to 1.98.0, packaging installs .NET SDK 10.0.401 (any 10.x SDK is accepted), and Python 3.12
 drives CI scripts.
 
 ## Validation tiers
@@ -126,7 +126,7 @@ python3 scripts/test-release.py
 
 Build order: ILSpy production, pinned Kuna specs, linked Kuna CLI, then complete
 rxd release. All runners use the common `scripts/build-ilspy.py` producer and
-.NET SDK 10.0.401 / NativeAOT 10.0.12. Linux musl-only engines use Zig 0.17.0,
+.NET SDK 10.x with the 10.0.12 runtime pack. Linux musl-only engines use Zig 0.17.0,
 including cross-builds from macOS; Windows/macOS engines retain their native
 linkers. The macOS job also builds `linux-musl-arm64`. Native runtime and package
 checks remain on each target OS; cross-compilation does not replace them.
@@ -173,7 +173,7 @@ linking, Xcode CLT for macOS, Visual Studio C++ tools for Windows. See
 
 ## Android ARM64 Bionic build
 
-Use .NET SDK 10.0.401, Rust target `aarch64-linux-android` and Android NDK
+Use .NET SDK 10.x, Rust target `aarch64-linux-android` and Android NDK
 28.2.13676358 on macOS or Linux. `--ndk DIR` overrides `ANDROID_NDK_HOME` /
 `ANDROID_NDK_ROOT`; otherwise the producer finds the pinned NDK under the SDK.
 The native bridge and pinned ILSpy package are shared with desktop builds.

@@ -19,7 +19,7 @@ from zig_toolchain import VERSION as ZIG_VERSION, prepare
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'target/dotnet-native'
-SDK_VERSION = '10.0.401'
+SDK_MAJOR = '10'
 RUNTIME_VERSION = '10.0.12'
 VERSION = '11.2.0.10050'
 PACKAGE_SHA256 = 'e29000428db534f834bb074b795a178ef21dece652505f1d05d4310ca5f48b3b'
@@ -76,7 +76,7 @@ def verified_package(feed):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rid', choices=TARGETS)
-    parser.add_argument('--dotnet', help='Path to the pinned .NET SDK ' + SDK_VERSION)
+    parser.add_argument('--dotnet', help='Path to a .NET SDK ' + SDK_MAJOR + '.x executable')
     parser.add_argument('--zig', help='Path to Zig ' + ZIG_VERSION + ' (Linux musl targets)')
     parser.add_argument('--ndk', help='Android NDK ' + NDK_VERSION + ' directory (Bionic target)')
     args = parser.parse_args()
@@ -108,8 +108,8 @@ def main():
                 'DOTNET_PROCESSOR_COUNT': '2', 'NUGET_PACKAGES': str(BUILD / 'packages'),
                 'ZIG_GLOBAL_CACHE_DIR': str(BUILD / 'zig-cache')})
     sdk = capture([dotnet, '--version'], env)
-    if sdk != SDK_VERSION:
-        parser.error('The producer requires .NET SDK ' + SDK_VERSION + '; found ' + sdk)
+    if sdk.split('.', 1)[0] != SDK_MAJOR:
+        parser.error('The producer requires .NET SDK ' + SDK_MAJOR + '.x; found ' + sdk)
     android_tools = prepare_android(args.ndk) if android else None
     zig = None
     if triple:
@@ -166,14 +166,22 @@ def main():
         run([android_tools['strip'], '--strip-unneeded', library], env)
     if any(digest(ROOT / path) != expected for path, expected in source_inputs.items()):
         raise RuntimeError('Native sources changed during the build; refusing to package')
-    reference_source = dotnet.parent / 'packs/Microsoft.NETCore.App.Ref' / RUNTIME_VERSION / 'ref/net10.0'
+    reference_root = dotnet.parent / 'packs/Microsoft.NETCore.App.Ref'
+    reference_source = reference_root / RUNTIME_VERSION / 'ref/net10.0'
     if not reference_source.is_dir():
-        raise RuntimeError('The SDK reference assembly pack ' + RUNTIME_VERSION + ' is missing')
+        candidates = [path for path in reference_root.glob(SDK_MAJOR + '.*')
+                      if (path / 'ref/net10.0').is_dir()
+                      and all(part.isdigit() for part in path.name.split('-', 1)[0].split('.'))]
+        if not candidates:
+            raise RuntimeError('The SDK has no .NET ' + SDK_MAJOR + ' reference assembly pack')
+        pack = max(candidates, key=lambda path: (
+            tuple(map(int, path.name.split('-', 1)[0].split('.'))), '-' not in path.name))
+        reference_source = pack / 'ref/net10.0'
     reference_output = output / 'dotnet-refs'
     if reference_output.exists():
         shutil.rmtree(reference_output)
     shutil.copytree(reference_source, reference_output, ignore=shutil.ignore_patterns('*.xml'))
-    metadata = {'reference_pack': RUNTIME_VERSION, 'runtime': RUNTIME_VERSION,
+    metadata = {'reference_pack': reference_source.parent.parent.name, 'runtime': RUNTIME_VERSION,
                 'rid': args.rid, 'target': target, 'sdk': sdk, 'linker': linker,
                 'ilspy_version': VERSION, 'package_sha256': PACKAGE_SHA256,
                 'library': library.name, 'library_bytes': library.stat().st_size,

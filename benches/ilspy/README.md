@@ -36,7 +36,8 @@ its `aarch64-linux-android` engine cannot be interchanged with Linux musl librar
 
 ## Build the NativeAOT shared library
 
-Requires .NET SDK 10.0.401 / NativeAOT 10.0.12 and Python 3. Linux targets use
+Requires .NET SDK 10.x, the 10.0.12 runtime pack and Python 3. Actual SDK and
+reference-pack versions are recorded; newer SDK patches are accepted. Linux targets use
 Zig 0.17.0 and musl, including cross-builds from macOS. GNU engine targets are
 not produced. Linux Rust CLI and engine bundle identities must both be musl.
 macOS uses Xcode CLT and Windows uses Visual Studio C++ tools on their native OS.
