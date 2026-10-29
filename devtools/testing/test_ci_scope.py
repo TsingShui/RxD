@@ -96,7 +96,7 @@ class ScopeCli(unittest.TestCase):
         self.put("crates/rxd-dotnet/native/Exports.cs")
         report, _ = self.discover()
         self.assertTrue(report["full"])
-        self.put("devtools/android-ilspy/Engine.csproj")
+        self.put("scripts/zig_toolchain.py")
         report, _ = self.discover()
         self.assertTrue(report["full"])
         self.assertFalse(report["tools"])

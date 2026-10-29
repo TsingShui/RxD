@@ -192,9 +192,9 @@ and reports `KUNA_NOT_BUNDLED` when it runs; release bundles and
 `scripts/build-bundled.py` opt in, while `--no-default-features` removes the
 namespace entirely.
 
-No native engine is checked in. Desktop ILSpy is produced per target with
-`scripts/build-ilspy.py`; Android App engines are produced from source with the
-instructions in [`devtools/android-ilspy/`](devtools/android-ilspy/). The full
+No native engine is checked in. ILSpy is produced per target with
+`scripts/build-ilspy.py`; Android consumers reuse `linux-musl-arm64`.
+Android App packaging is maintained outside this repository. The full
 maintenance and release flow is in
 [Build and verification](docs/ci.md#build-and-verification-details).
 

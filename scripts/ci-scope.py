@@ -12,7 +12,8 @@ BACKENDS = ("dotnet", "html", "jvm", "dex", "pyc", "evm", "wasm")
 FULL_FILES = {
     "Cargo.toml", "Cargo.lock", "build.rs", ".gitmodules", "install.sh",
     ".github/workflows/build.yml", "scripts/build-bundled.py", "scripts/build-ilspy.py",
-    "scripts/runtime_bundle.py", "scripts/package-release.py", "scripts/verify-release.py",
+    "scripts/runtime_bundle.py", "scripts/zig_toolchain.py",
+    "scripts/package-release.py", "scripts/verify-release.py",
     "scripts/test-release.py", "scripts/test-install.py",
     "crates/rxd-dotnet/build.rs", "crates/rxd-dotnet/Cargo.toml",
 }
@@ -30,10 +31,12 @@ def plan(paths):
         if path.startswith(("apps/arxd/", "third_party/termux-exec/")):
             # Deleted archive paths still appear in comparisons across the removal.
             reasons[path] = "removed standalone Arxd archive; no product checks"
+        elif path.startswith("devtools/android-ilspy/"):
+            reasons[path] = "removed Android producer; shared musl producer only"
         elif path.startswith("site/") or path == ".gitignore" or path.startswith(".vscode/"):
             reasons[path] = "static site or local development configuration"
         elif path in FULL_FILES or path.startswith((
-            ".cargo/", ".github/workflows/", "crates/rxd-dotnet/native/", "devtools/android-ilspy/",
+            ".cargo/", ".github/workflows/", "crates/rxd-dotnet/native/",
             "crates/rxd-kuna-cli/", "third_party/kuna", "src/cli/kuna/",
             "src/query/kuna", "src/mcp/", "tests/mcp/", "tests/kuna/",
         )):

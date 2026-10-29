@@ -30,8 +30,8 @@ RXD_ILSPY_EMBED_RS="$PWD/target/dotnet-native/osx-arm64/embed.rs" \
 
 Cargo embeds only the explicit producer include and never downloads or invokes
 .NET. `bundled-ilspy` without `RXD_ILSPY_EMBED_RS` fails with the producer command.
-macOS is ARM64 only. No ILSpy runtime is checked in; Android musl workers use
-the same producer. Bionic JNI compatibility is described in `devtools/android-ilspy/`.
+macOS is ARM64 only. No ILSpy runtime is checked in; Android consumers use the
+same `linux-musl-arm64` producer. No Android SDK/NDK build path is maintained here.
 
 ## Build the NativeAOT shared library
 
@@ -69,6 +69,11 @@ cargo-zigbuild 0.23.4 for Rust linker compatibility. The shared engine requires
 dynamic musl linking, so Linux execution needs its architecture-matched musl loader.
 The library uses `net10.0`, `PublishAot=true`, `NativeLib=Shared` and invariant
 globalization. Expected upstream IL2026/IL3002 warnings remain visible.
+
+Android deployment supplies its musl loader, an accessible ELF interpreter path,
+and writable `TMPDIR`/`RXD_CACHE_DIR`. Explicit loader invocation changes
+`/proc/self/exe`, which matters to the self-spawning CLI worker. App packaging
+and device validation are consumer responsibilities, not repository build gates.
 
 ## Enable the Rust renderer
 

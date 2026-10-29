@@ -130,10 +130,11 @@ rxd release. All runners use the common `scripts/build-ilspy.py` producer and
 including cross-builds from macOS; Windows/macOS engines retain their native
 linkers. The macOS job also builds `linux-musl-arm64`. Native runtime and package
 checks remain on each target OS; cross-compilation does not replace them.
-No ILSpy prebuilt is checked in. Android musl workers use this same producer;
-App sandbox/deployment validation remains separate from desktop publication.
-Existing Bionic JNI consumers retain a compatibility producer under
-`devtools/android-ilspy/`. macOS is ARM64 only. Submodule checkout includes full history for Kuna version calculation. Rust
+No ILSpy prebuilt is checked in. Android consumers use the same
+`linux-musl-arm64` producer; App packaging and device validation are outside this
+repository and are not CI gates. There is no separate Android SDK/NDK producer.
+macOS is ARM64 only. Submodule checkout includes full history for Kuna version
+calculation. Rust
 dependencies and Kuna compiler/spec outputs are cached per platform/toolchain. Newer
 PR runs cancel stale runs of that PR; main commits have separate concurrency groups
 so a later docs-only push cannot cancel an earlier required native build. Tags are
@@ -166,4 +167,5 @@ Linux engines and Rust release targets are musl-only, built with the shared Zig
 C/C++/archive toolchain. GNU hosts may compile build-time helpers, never GNU
 release binaries. Linux execution checks install the matching system musl loader. On Windows use `python` if `python3` is unavailable. Producer
 prerequisites: pinned Zig for Linux targets, cargo-zigbuild 0.23.4 for musl Rust
-linking, Xcode CLT for macOS, Visual Studio C++ tools for Windows. See `benches/ilspy/README.md` and `devtools/android-ilspy/README.md`.
+linking, Xcode CLT for macOS, Visual Studio C++ tools for Windows. See
+`benches/ilspy/README.md`.
