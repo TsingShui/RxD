@@ -16,8 +16,8 @@ from runtime_bundle import write_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'target/dotnet-native'
-VERSION = '11.1.0.9782'
-PACKAGE_SHA256 = '1f76df4d35193ba4eeb50ffcd84eae381a2c48c67f95c1104dc406759448a811'
+VERSION = '11.2.0.10050'
+PACKAGE_SHA256 = 'e29000428db534f834bb074b795a178ef21dece652505f1d05d4310ca5f48b3b'
 LIBRARIES = {
     'osx-arm64': 'librxd_dotnet_native.dylib',
     'linux-x64': 'librxd_dotnet_native.so',

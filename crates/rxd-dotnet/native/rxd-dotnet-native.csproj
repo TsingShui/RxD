@@ -35,7 +35,7 @@
     <DebuggerSupport>false</DebuggerSupport>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ICSharpCode.Decompiler" Version="[11.1.0.9782]" />
+    <PackageReference Include="ICSharpCode.Decompiler" Version="[11.2.0.10050]" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

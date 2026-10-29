@@ -105,7 +105,7 @@
         "prefix": "v"
       },
       "pin": {
-        "revision": "a6909b2e1062d2404a52711926fa74030bd96119"
+        "revision": "c86190ef4e24f3137c13a9275316042842d2fada"
       },
       "local_paths": [
         "crates/rxd-dotnet/native",

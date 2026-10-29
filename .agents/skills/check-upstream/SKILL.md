@@ -49,7 +49,7 @@ Keep these distinctions explicit:
   Do not substitute the same-named C++ project. Report a provenance blocker.
 - **JADX → Rust JVM frontend**: changes matter only if their semantics apply to
   rxd's actual opcode/stack/constant-pool implementation, not all Java/UI changes.
-- **ILSpy**: production NativeAOT 11.1.0.9782. Evaluate applicable fixes in the
+- **ILSpy**: production NativeAOT 11.2.0.10050. Evaluate applicable fixes in the
   actual production engine.
 
 ## 3. Inspect only flagged deltas, then map to rxd

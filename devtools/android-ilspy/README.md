@@ -8,11 +8,12 @@ APK, test key or consumer AAR is shipped. Public declarations: `rxd_dotnet.h`.
 ## Producer toolchains
 
 Measured producer: .NET SDK10.0.401 / NativeAOT10.0.12, NDK28.2.13676358,
-`aarch64-linux-android24-clang`; fixed ILSpy11.1.0.9782 and its existing NuGet
-SHA-256. Output ELF LOAD alignment is 16KiB; actual execution proof is on a 4KiB
-Android16/API36 device only. Do not claim a real 16KiB-runtime result. A refreshed
-bundle that has not been rerun on that device must say so in its validation
-metadata and documentation.
+`aarch64-linux-android24-clang`; the device-tested baseline used ILSpy11.1.0.9782.
+The current producer pins ILSpy11.2.0.10050 and the NuGet SHA-256 in
+`crates/rxd-dotnet/native/NOTICE`; this refreshed engine has not been rerun on
+the device. Output ELF LOAD alignment is 16KiB; baseline execution proof is on a
+4KiB Android16/API36 device only, not a real 16KiB-runtime result. Record the
+exact refreshed library hashes and device results before consumer publication.
 
 From the repository root (macOS host shown):
 

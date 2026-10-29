@@ -49,7 +49,7 @@ MIT License components
   is documented as unknown in third_party/pycdc/NOTICE and is not inferred from
   the shared project name. That NOTICE is authoritative.
 
-- ICSharpCode.Decompiler (ILSpy) 11.1.0.9782 and the .NET runtime: optionally
+- ICSharpCode.Decompiler (ILSpy) 11.2.0.10050 and the .NET runtime: optionally
   bundled C# reconstruction engine (feature bundled-ilspy), downloaded from
   NuGet and built, not vendored (Copyright 2011-2026 AlphaSierraPapa, ILSpy
   Contributors; .NET runtime Copyright .NET Foundation and Contributors).

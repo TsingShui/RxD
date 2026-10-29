@@ -1,10 +1,10 @@
 This directory contains first-party NativeAOT C ABI marshalling glue for rxd.
 The engine is downloaded from NuGet and built, not vendored:
-https://www.nuget.org/packages/ICSharpCode.Decompiler/11.1.0.9782
-Package: ICSharpCode.Decompiler 11.1.0.9782
-Package SHA-256: 1f76df4d35193ba4eeb50ffcd84eae381a2c48c67f95c1104dc406759448a811
+https://www.nuget.org/packages/ICSharpCode.Decompiler/11.2.0.10050
+Package: ICSharpCode.Decompiler 11.2.0.10050
+Package SHA-256: e29000428db534f834bb074b795a178ef21dece652505f1d05d4310ca5f48b3b
 Upstream: https://github.com/icsharpcode/ILSpy
-Commit: a6909b2e1062d2404a52711926fa74030bd96119
+Commit: c86190ef4e24f3137c13a9275316042842d2fada
 License: MIT
 
 Upstream copyright (NuGet package metadata):

@@ -7,9 +7,9 @@ it never loads or executes the analyzed assembly, and the shared library is
 self-contained (no CoreCLR dependency on the target machine).
 
 The reference is the official `ICSharpCode.Decompiler` NuGet package
-`11.1.0.9782`, repository commit `a6909b2e1062d2404a52711926fa74030bd96119`.
+`11.2.0.10050`, repository commit `c86190ef4e24f3137c13a9275316042842d2fada`.
 Package SHA-256:
-`1f76df4d35193ba4eeb50ffcd84eae381a2c48c67f95c1104dc406759448a811`.
+`e29000428db534f834bb074b795a178ef21dece652505f1d05d4310ca5f48b3b`.
 ILSpy is MIT licensed; the library is downloaded and built, not vendored.
 
 The full CLI validates/hashes/decodes the input and writes its record; ABI-only
