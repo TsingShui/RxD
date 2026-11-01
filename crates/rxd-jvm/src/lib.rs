@@ -81,10 +81,15 @@ fn simple_name(class: &ClassFile) -> String {
         .to_owned()
 }
 
-fn method_spec(method: &Method) -> anyhow::Result<MethodSpec> {
+fn method_spec(class: &ClassFile, method: &Method) -> anyhow::Result<MethodSpec> {
     let proto = classfile::method_type(&method.descriptor)?;
+    let mut modifiers = method_modifiers(method.access);
+    if class.access & 0x0200 != 0 && method.code.is_some() && method.access & (0x0008 | 0x0002) == 0
+    {
+        modifiers.push("default".to_owned());
+    }
     Ok(MethodSpec {
-        modifiers: method_modifiers(method.access),
+        modifiers,
         is_constructor: method.name == "<init>",
         return_type: proto.return_type.java_name(),
         name: method.name.clone(),
@@ -162,7 +167,7 @@ pub fn render_method(input: &Input, coordinate: &str, limits: Limits) -> anyhow:
     let (selected, index) = input.method_by_at(coordinate)?;
     let class = &selected.class;
     let method = &class.methods[index];
-    let spec = method_spec(method)?;
+    let spec = method_spec(class, method)?;
     let body = method_body(class, method, limits)?;
     let output = render_method_spec(&descriptor_of(class), &simple_name(class), &spec, body);
     Ok(output.source)
@@ -176,7 +181,7 @@ pub fn render_class(input: &Input, name: &str, limits: Limits) -> anyhow::Result
     let mut methods = Vec::with_capacity(class.methods.len());
     for method in &class.methods {
         methods.push((
-            method_spec(method)?,
+            method_spec(class, method)?,
             class_method_body(class, method, limits)?,
         ));
     }

@@ -6,6 +6,7 @@ use std::{
 
 use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
+mod interfaces;
 mod multi_release;
 
 fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {

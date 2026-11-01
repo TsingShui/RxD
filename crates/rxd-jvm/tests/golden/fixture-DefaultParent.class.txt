@@ -2,16 +2,16 @@
 
 == class fixture/DefaultParent ==
 package fixture;
- DefaultParent {
+interface DefaultParent {
 
-    public int value()
+    public default int value()
     {
         return 7;
     }
 }
 
 == method 0 value ()I ==
-public int value()
+public default int value()
 {
     return 7;
 }

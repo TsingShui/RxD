@@ -122,15 +122,27 @@ impl ClassSpec {
 /// Renders a whole class, through the same passes and writer the DEX path uses.
 pub fn render_class(spec: ClassSpec) -> SourceOutput {
     let mut output = SourceOutput::default();
+    let mut modifiers = spec.modifiers.clone();
+    if spec.is_interface && !modifiers.iter().any(|modifier| modifier == "interface") {
+        modifiers.push("interface".to_owned());
+    }
+    let (super_class, interfaces) = if spec.is_interface {
+        (
+            (!spec.interfaces.is_empty()).then(|| spec.interfaces.join(", ")),
+            Vec::new(),
+        )
+    } else {
+        (spec.super_class.clone(), spec.interfaces.clone())
+    };
     render::write_class_header(
         &mut output,
         &ClassHeader {
             package: spec.package.clone(),
-            modifiers: spec.modifiers.clone(),
+            modifiers,
             is_interface: spec.is_interface,
             name: spec.name.clone(),
-            super_class: spec.super_class.clone(),
-            interfaces: spec.interfaces.clone(),
+            super_class,
+            interfaces,
         },
     );
     for field in &spec.fields {

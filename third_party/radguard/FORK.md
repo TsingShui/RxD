@@ -16,7 +16,8 @@ decompiler whose rendering backend the APK/DEX and JVM backends share.
 * **`backend` module.** Renders Java-like source for IR built by another front
   end (`rxd-jvm`): `ClassSpec`/`FieldSpec`/`MethodSpec`, `render_class`,
   `render_method` and the IR contract. Both front ends render through one
-  implementation (`src/render.rs`).
+  implementation (`src/render.rs`). The foreign adapter supplies interface
+  keywords and renders superinterfaces with `extends`, without changing DAD output.
 * **`SourceStyle`.** The DEX path keeps byte-exact Androguard DAD parity (the
   frozen gate `tests/quality_gate.py` upstream); a foreign front end may ask for
   `boolean` literals rendered from the declared type, which the JVM stack needs.
