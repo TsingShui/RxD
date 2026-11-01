@@ -3277,6 +3277,7 @@ dependencies = [
  "anyhow",
  "libc",
  "radguard",
+ "rayon",
  "rxd-core",
  "serde",
  "sha2 0.10.9",

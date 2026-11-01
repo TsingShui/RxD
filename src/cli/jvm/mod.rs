@@ -11,11 +11,11 @@ use super::xref::{Anchor, Kind as XrefKind, Selector, Target, TargetArgs};
 pub enum Command {
     /// List class metadata (columns: at).
     #[command(
-        long_about = "Columns: at\nList class metadata. One # column header precedes the data rows.",
+        long_about = "Columns: at\nList class metadata recursively across embedded JAR/ZIP/AAR archives. Nested coordinates prefix the class with archive paths separated by !. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nOutput: class coordinates after # at; copy one into get-class for Java.\n--class is an exact internal/dotted/descriptor name; -f is a substring."
     )]
     Classes {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         /// Exact internal, dotted or descriptor class name.
         #[arg(long)]
@@ -30,11 +30,11 @@ pub enum Command {
     },
     /// List JAR/ZIP entries (columns: name, uncompressed_size, compression).
     #[command(
-        long_about = "Columns: name, uncompressed_size, compression\nList JAR/ZIP entries. One # column header precedes the data rows.",
+        long_about = "Columns: name, uncompressed_size, compression\nList archive entries recursively, using ! between archive paths. One # column header precedes the data rows.",
         after_long_help = "Examples:\nrxd jar entries library.jar -f META-INF\nOutput: TAB-separated name, uncompressed_size, compression. Entries are archive metadata,\nnot member coordinates. --release N controls multi-release class selection."
     )]
     Entries {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         ///  substring over the entry name. Folded unless `--case sensitive`.
         #[arg(short, long)]
@@ -50,7 +50,7 @@ pub enum Command {
         after_long_help = "Examples:\nrxd jar fields library.jar --class x.y -f token\nOutput: field coordinates after # at; e.g. Lx/y;->name:type. --name is exact, -f a substring.\nNext: rxd jar xref library.jar --at '<field.at>'."
     )]
     Fields {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         /// Only list fields of this class: internal, dotted or descriptor name.
         #[arg(long)]
@@ -72,7 +72,7 @@ pub enum Command {
         after_long_help = "Examples:\nrxd jar methods library.jar --class x.y -f run\nOutput: method coordinates after # at; e.g. Lx/y;->name(parameters)return_type.\n--name retains exact-name overloads. Next: get-method --at '<method.at>'."
     )]
     Methods {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         /// Only list methods of this class: internal, dotted or descriptor name.
         #[arg(long)]
@@ -91,7 +91,7 @@ pub enum Command {
     /// Fetch one method as Java or JVM instructions.
     #[command(name = "get-method", after_long_help = "Examples:\nrxd jar methods library.jar -f run\nrxd jar get-method library.jar --at 'Lx/y;->run()V' --raw\nCopy methods.at or xref.context verbatim; include parameters AND return type.\nOutput: reconstructed Java text; --raw prints the original JVM instructions,\nbyte offsets and exception handlers as text.", mut_arg("at", |arg| arg.required(true).value_name("METHOD_AT").help("Copy methods.at or xref.context: JVM descriptor including return type, e.g. Lx/y;->run()V")))]
     Get {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
@@ -104,7 +104,7 @@ pub enum Command {
     /// Fetch one whole class as Java.
     #[command(name = "get-class", after_long_help = "Examples:\nrxd jar classes library.jar -f Client\nrxd jar get-class library.jar --at 'Lx/y;'\nCopy classes.at, not a method coordinate. Output: reconstructed Java text.\nWhole-class rendering may contain unsupported-method stubs; inspect method --raw separately.", mut_arg("at", |arg| arg.required(true).value_name("CLASS_AT").help("Copy classes.at from this input, e.g. Lx/y;; do not pass a method coordinate")))]
     GetClass {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         #[command(flatten)]
         selector: Selector,
@@ -117,7 +117,7 @@ pub enum Command {
         after_long_help = "Examples:\nrxd jar strings library.jar -f Authorization\nrxd jar xref library.jar -m Authorization --kind string\nOutput: TAB-separated at, value from CONSTANT_String literals, not every constant-pool Utf8 name.\nPool indices are not methods. xref.context routes to get-method for the caller."
     )]
     Strings {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         /// Exact internal, dotted or descriptor class name to scope the listing.
         #[arg(long)]
@@ -136,7 +136,7 @@ pub enum Command {
         after_long_help = "Examples:\nrxd jar xref library.jar --at 'Lx/y;->run()V'\nrxd jar xref library.jar -m Authorization --kind string\nrxd jar xref library.jar -m append --kind method --class java.lang.StringBuilder\nRequired: exactly one of --at/--match; --match requires --kind.\nCoordinates copy classes.at/methods.at/fields.at; literal --at needs --kind string.\n--class is one exact target owner, not caller filtering.\nOutput: TAB-separated entry, context, match. entry is the class archive path (\\N for standalone class); context is the referencing method; match is the actual target.\nNext: rxd jar get-method library.jar --at '<xref.context>' --raw."
     )]
     Xref {
-        /// One regular local .class or JAR/ZIP; nested archives are not scanned.
+        /// One local .class, JAR, ZIP or AAR; nested archives are scanned recursively.
         input: PathBuf,
         #[command(flatten)]
         target: TargetArgs,
@@ -181,12 +181,14 @@ struct Normalized {
 impl Normalized {
     /// The internal spelling the constant pool holds (`com/google/gson/Gson`).
     fn class(&mut self, class: &str) -> &str {
+        let class = class.rsplit_once('!').map_or(class, |(_, local)| local);
         self.owned.push(rxd_jvm::normalize_class_name(class));
         self.owned.last().expect("just pushed")
     }
 
     /// The descriptor spelling a type row prints (`Lcom/google/gson/Gson;`).
     fn descriptor(&mut self, class: &str) -> &str {
+        let class = class.rsplit_once('!').map_or(class, |(_, local)| local);
         if class.starts_with('[') {
             self.owned.push(class.to_owned());
         } else {
@@ -348,7 +350,7 @@ fn execute_inner(
     {
         let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
-        let wanted = class.as_deref().map(rxd_jvm::normalize_class_name);
+        let wanted = class.as_deref();
         let needle = filter
             .as_deref()
             .map(|needle| rxd_core::filter::Contains::new(needle, case.sensitive()));
@@ -356,7 +358,7 @@ fn execute_inner(
         for selected in &input.classes {
             if wanted
                 .as_ref()
-                .is_some_and(|name| *name != selected.class.name)
+                .is_some_and(|name| !Input::matches_class(selected, name))
             {
                 continue;
             }
@@ -390,6 +392,16 @@ fn execute_inner(
         let limits = options.limits(&input, policy)?;
         let input = Input::read(&input, limits, options.release)?;
         let target = target.resolve().map_err(super::classify)?;
+        let owner = match target.anchor.as_ref() {
+            Some(Anchor::Method { class, .. } | Anchor::Field { class, .. }) => {
+                Some(class.as_str())
+            }
+            Some(Anchor::Type(class)) => Some(class.as_str()),
+            _ => None,
+        };
+        if let Some(owner) = owner.filter(|owner| owner.contains('!')) {
+            input.class_by_name(owner)?;
+        }
         let mut names = Normalized { owned: Vec::new() };
         let query = ref_query(&target, &mut names);
         let hits = rxd_jvm::find_refs(&input, &query, limits)?;
@@ -522,7 +534,17 @@ fn execute_inner(
             Command::Xref { .. } => unreachable!("handled above"),
         };
     let limits = options.limits(&path, policy)?;
-    let input = Input::read(&path, limits, options.release)?;
+    let scoped = request
+        .as_ref()
+        .and_then(|(selector, _)| selector.at.as_deref())
+        .and_then(|at| at.split_once("->"))
+        .map(|(class, _)| class)
+        .or(class_filter.as_deref());
+    let input = match scoped {
+        Some(class) => Input::read_class_scoped(&path, limits, options.release, class)?,
+        None => None,
+    }
+    .map_or_else(|| Input::read(&path, limits, options.release), Ok)?;
     let mut output = Vec::new();
     let mut rows_first = true;
     if let Some((selector, raw)) = request {
@@ -575,14 +597,14 @@ fn execute_inner(
         }
     } else {
         output.extend_from_slice(super::table::header(&["at"]).as_bytes());
-        let class_name = class_filter.as_deref().map(rxd_jvm::normalize_class_name);
+        let class_name = class_filter.as_deref();
         let selected_classes: Vec<_> = input
             .classes
             .iter()
             .filter(|item| {
                 class_name
                     .as_ref()
-                    .is_none_or(|name| *name == item.class.name)
+                    .is_none_or(|name| Input::matches_class(item, name))
             })
             .collect();
         let exact_name = exact_name.as_deref();
@@ -606,7 +628,12 @@ fn execute_inner(
                     }) {
                         continue;
                     }
-                    let at = format!("L{};->{}:{}", class.name, field.name, field.descriptor);
+                    let at = format!(
+                        "{}->{}:{}",
+                        Input::class_at(selected),
+                        field.name,
+                        field.descriptor
+                    );
                     append_row(&mut output, &mut rows_first, &at)?;
                 }
                 continue;
@@ -627,7 +654,7 @@ fn execute_inner(
                 }
                 continue;
             }
-            append_row(&mut output, &mut rows_first, &format!("L{};", class.name))?;
+            append_row(&mut output, &mut rows_first, &Input::class_at(selected))?;
         }
     }
     super::write_output(&output, options.output.as_deref(), sink)?;

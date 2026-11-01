@@ -12,6 +12,7 @@ anyhow = "1.0"
 radguard = { path = "../../third_party/radguard" }
 serde = { workspace = true }
 sha2 = "0.10"
+rayon = "1.12"
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
 
 [target.'cfg(unix)'.dependencies]

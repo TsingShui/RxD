@@ -6,6 +6,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
+use rayon::prelude::*;
+
+#[derive(Default)]
+struct ArchiveBudget {
+    entries: usize,
+    expanded: usize,
+    metadata: usize,
+}
 
 use crate::{ClassFile, Limits};
 
@@ -94,6 +102,12 @@ impl Input {
                     uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
                 });
             }
+            let mut budget = ArchiveBudget {
+                entries: zip.len(),
+                ..ArchiveBudget::default()
+            };
+            let nested = nested_entries(&mut zip, limits, 0, &mut budget)?;
+            entries.extend(nested);
         }
         Ok((source_id, file_bytes, entries))
     }
@@ -130,8 +144,76 @@ impl Input {
             bytes.len() <= limits.input_bytes,
             "RESOURCE_LIMIT: input byte budget exceeded"
         );
+        Self::read_scoped_bytes(
+            bytes,
+            limits,
+            release,
+            coordinate,
+            0,
+            &mut ArchiveBudget::default(),
+        )
+    }
+
+    fn read_scoped_bytes(
+        mut bytes: Vec<u8>,
+        limits: Limits,
+        release: u16,
+        coordinate: &str,
+        depth: usize,
+        budget: &mut ArchiveBudget,
+    ) -> Result<Option<Self>> {
+        ensure!(depth <= 16, "RESOURCE_LIMIT: nested archive depth exceeded");
         let source_id = rxd_core::identity::input_id(&bytes);
         let file_bytes = bytes.len();
+        let (archive, coordinate) = coordinate
+            .rsplit_once('!')
+            .map_or((None, coordinate), |(archive, local)| {
+                (Some(archive), local)
+            });
+        if let Some(archive) = archive {
+            for (index, name) in archive.split('!').enumerate() {
+                ensure!(
+                    depth + index < 16,
+                    "RESOURCE_LIMIT: nested archive depth exceeded"
+                );
+                check_directory(&bytes, limits.entries)?;
+                let mut zip = zip::ZipArchive::new(Cursor::new(bytes))?;
+                budget.entries = budget
+                    .entries
+                    .checked_add(zip.len())
+                    .context("RESOURCE_LIMIT: entry count overflow")?;
+                ensure!(
+                    budget.entries <= limits.entries,
+                    "RESOURCE_LIMIT: archive entry budget exceeded"
+                );
+                let mut found = None;
+                for index in 0..zip.len() {
+                    if zip.by_index(index)?.name() == name {
+                        ensure!(
+                            found.replace(index).is_none(),
+                            "INVALID_INPUT: duplicate nested archive entry"
+                        );
+                    }
+                }
+                let index = found.context("NOT_FOUND: nested archive does not exist")?;
+                let entry = zip.by_index(index)?;
+                let size = usize::try_from(entry.size())?;
+                budget.expanded = budget
+                    .expanded
+                    .checked_add(size)
+                    .context("RESOURCE_LIMIT: expanded size overflow")?;
+                ensure!(
+                    budget.expanded <= limits.expanded_bytes,
+                    "RESOURCE_LIMIT: expanded byte budget exceeded"
+                );
+                bytes = Vec::new();
+                entry.take(size as u64 + 1).read_to_end(&mut bytes)?;
+                ensure!(
+                    bytes.len() == size,
+                    "INVALID_INPUT: inconsistent nested archive size"
+                );
+            }
+        }
         if bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
             return Ok(None);
         }
@@ -143,15 +225,42 @@ impl Input {
             "RESOURCE_LIMIT: archive entry budget exceeded"
         );
         let mut entries = Vec::new();
-        let mut candidate = None;
+        let mut manifest = String::new();
+        match zip.by_name("META-INF/MANIFEST.MF") {
+            Ok(entry) => {
+                ensure!(entry.size() <= 1024 * 1024, "RESOURCE_LIMIT: manifest size");
+                entry.take(1024 * 1024 + 1).read_to_string(&mut manifest)?;
+            }
+            Err(zip::result::ZipError::FileNotFound) => {}
+            Err(error) => return Err(error.into()),
+        }
+        let multi_release = is_multi_release(&manifest)?;
+        let mut candidate: Option<(u16, usize)> = None;
         let internal = normalize_class_name(coordinate);
         let wanted = format!("{internal}.class");
+        let mut nested = Vec::new();
+        let mut entry_names = std::collections::BTreeSet::new();
+        let mut manifests = 0;
         for index in 0..zip.len() {
             let entry = zip.by_index(index)?;
             let name = entry.name().to_owned();
-            if name.starts_with("META-INF/versions/") {
-                // Multi-release selection needs the complete candidate set.
-                return Ok(None);
+            ensure!(
+                entry_names.insert(name.clone()),
+                "INVALID_INPUT: duplicate archive entry"
+            );
+            ensure!(
+                !name.contains('!'),
+                "INVALID_INPUT: ambiguous archive entry name"
+            );
+            if name == "META-INF/MANIFEST.MF" {
+                manifests += 1;
+                ensure!(manifests == 1, "INVALID_INPUT: duplicate JAR manifest");
+            }
+            if name.to_ascii_lowercase().ends_with(".jar")
+                || name.to_ascii_lowercase().ends_with(".aar")
+                || name.to_ascii_lowercase().ends_with(".zip")
+            {
+                nested.push((index, name.clone()));
             }
             entries.push(InputEntry {
                 name: name.clone(),
@@ -163,22 +272,101 @@ impl Input {
                 compressed_size: usize::try_from(entry.compressed_size()).unwrap_or(usize::MAX),
                 uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
             });
-            if name == wanted && candidate.replace(index).is_some() {
-                // Duplicate candidate entries: the full reader owns the verdict.
-                return Ok(None);
+            let (version, logical) = if let Some(rest) = name.strip_prefix("META-INF/versions/") {
+                if !multi_release || !name.ends_with(".class") {
+                    continue;
+                }
+                let (version, logical) = rest
+                    .split_once('/')
+                    .context("INVALID_INPUT: multi-release entry")?;
+                let version: u16 = version
+                    .parse()
+                    .context("INVALID_INPUT: multi-release version")?;
+                ensure!(version >= 9, "INVALID_INPUT: multi-release version below 9");
+                if version > release {
+                    continue;
+                }
+                (version, logical)
+            } else {
+                (0, name.as_str())
+            };
+            if logical == wanted {
+                if let Some((old, _)) = candidate {
+                    ensure!(
+                        old != version,
+                        "INVALID_INPUT: duplicate class entry {name}"
+                    );
+                    if old > version {
+                        continue;
+                    }
+                }
+                candidate = Some((version, index));
             }
         }
-        let Some(index) = candidate else {
-            return Ok(None);
+        budget.entries = budget
+            .entries
+            .checked_add(zip.len())
+            .context("RESOURCE_LIMIT: entry count overflow")?;
+        ensure!(
+            budget.entries <= limits.entries,
+            "RESOURCE_LIMIT: archive entry budget exceeded"
+        );
+        let mut nested_classes = Vec::new();
+        for (index, name) in nested {
+            ensure!(
+                !name.contains('!'),
+                "INVALID_INPUT: ambiguous nested archive name"
+            );
+            let entry = zip.by_index(index)?;
+            let size = usize::try_from(entry.size())?;
+            budget.expanded = budget
+                .expanded
+                .checked_add(size)
+                .context("RESOURCE_LIMIT: expanded size overflow")?;
+            ensure!(
+                budget.expanded <= limits.expanded_bytes,
+                "RESOURCE_LIMIT: expanded byte budget exceeded"
+            );
+            let mut data = Vec::new();
+            entry.take(size as u64 + 1).read_to_end(&mut data)?;
+            ensure!(
+                data.len() == size,
+                "INVALID_INPUT: inconsistent nested archive size"
+            );
+            let Some(inner) = Self::read_scoped_bytes(
+                data,
+                limits,
+                release,
+                coordinate,
+                depth + archive.map_or(0, |archive| archive.split('!').count()) + 1,
+                budget,
+            )?
+            else {
+                return Ok(None);
+            };
+            let prefix = archive.map_or(name.clone(), |archive| format!("{archive}!{name}"));
+            for mut class in inner.classes {
+                class.entry = Some(format!("{prefix}!{}", class.entry.unwrap_or_default()));
+                nested_classes.push(class);
+            }
+        }
+        let Some((_, index)) = candidate else {
+            return Ok(Some(Self {
+                source_id,
+                file_bytes,
+                classes: nested_classes,
+                entries,
+            }));
         };
         let entry = zip.by_index(index)?;
+        let wanted = entry.name().to_owned();
         let size = usize::try_from(entry.size()).context("RESOURCE_LIMIT: class size overflow")?;
         ensure!(
             limits.class_bytes.is_none_or(|limit| size <= limit),
             "RESOURCE_LIMIT: class byte budget exceeded: {wanted}"
         );
         ensure!(
-            size <= limits.expanded_bytes,
+            size <= limits.expanded_bytes.saturating_sub(budget.expanded),
             "RESOURCE_LIMIT: expanded byte budget exceeded"
         );
         let mut data = Vec::new();
@@ -187,25 +375,39 @@ impl Input {
             data.len() == size,
             "INVALID_INPUT: inconsistent class size: {wanted}"
         );
+        budget.expanded = budget
+            .expanded
+            .checked_add(size)
+            .context("RESOURCE_LIMIT: expanded size overflow")?;
         let class_id = hash(&data);
         let class = ClassFile::parse_bounded(data, limits.expanded_bytes)
             .with_context(|| wanted.clone())?;
+        budget.metadata = budget
+            .metadata
+            .checked_add(class.metadata_bytes)
+            .context("RESOURCE_LIMIT: metadata allocation overflow")?;
         ensure!(
-            class.metadata_bytes <= limits.expanded_bytes,
+            budget.metadata <= limits.expanded_bytes,
             "RESOURCE_LIMIT: archive metadata budget exceeded"
         );
         if class.name != internal {
             // The entry path and the declared class name disagree; use the full reader.
             return Ok(None);
         }
+        nested_classes.insert(
+            0,
+            InputClass {
+                entry: Some(
+                    archive.map_or(wanted.clone(), |archive| format!("{archive}!{wanted}")),
+                ),
+                source_id: class_id,
+                class,
+            },
+        );
         Ok(Some(Self {
             source_id,
             file_bytes,
-            classes: vec![InputClass {
-                entry: Some(wanted),
-                source_id: class_id,
-                class,
-            }],
+            classes: nested_classes,
             entries,
         }))
     }
@@ -234,6 +436,25 @@ impl Input {
             bytes.len() <= limits.input_bytes,
             "RESOURCE_LIMIT: input byte budget exceeded"
         );
+        Self::read_bytes(
+            bytes,
+            path,
+            limits,
+            release,
+            0,
+            &mut ArchiveBudget::default(),
+        )
+    }
+
+    fn read_bytes(
+        bytes: Vec<u8>,
+        path: &Path,
+        limits: Limits,
+        release: u16,
+        depth: usize,
+        budget: &mut ArchiveBudget,
+    ) -> Result<Self> {
+        ensure!(depth <= 16, "RESOURCE_LIMIT: nested archive depth exceeded");
         let source_id = rxd_core::identity::input_id(&bytes);
         let file_bytes = bytes.len();
         let mut classes = Vec::new();
@@ -277,6 +498,31 @@ impl Input {
                     compressed_size: usize::try_from(entry.compressed_size()).unwrap_or(usize::MAX),
                     uncompressed_size: usize::try_from(entry.size()).unwrap_or(usize::MAX),
                 });
+            }
+            budget.entries = budget
+                .entries
+                .checked_add(zip.len())
+                .context("RESOURCE_LIMIT: archive entry count overflow")?;
+            ensure!(
+                budget.entries <= limits.entries,
+                "RESOURCE_LIMIT: archive entry budget exceeded"
+            );
+            let mut nested = Vec::new();
+            let mut names = std::collections::BTreeSet::new();
+            for index in 0..zip.len() {
+                let entry = zip.by_index(index)?;
+                ensure!(
+                    !entry.name().contains('!'),
+                    "INVALID_INPUT: ambiguous archive entry name"
+                );
+                ensure!(
+                    names.insert(entry.name().to_owned()),
+                    "INVALID_INPUT: duplicate archive entry"
+                );
+                let lower = entry.name().to_ascii_lowercase();
+                if lower.ends_with(".jar") || lower.ends_with(".aar") || lower.ends_with(".zip") {
+                    nested.push((index, entry.name().to_owned()));
+                }
             }
             let mut manifest = String::new();
             match zip.by_name("META-INF/MANIFEST.MF") {
@@ -333,11 +579,8 @@ impl Input {
                 }
                 selected.insert(logical.to_owned(), (version, index, name.to_owned()));
             }
-            ensure!(
-                !selected.is_empty(),
-                "INVALID_INPUT: archive contains no selected JVM class files"
-            );
-            let mut expanded = 0usize;
+            let mut expanded = budget.expanded;
+            let mut pending = Vec::new();
             let mut metadata_bytes = 0usize;
             let mut declared_names = BTreeMap::new();
             for (_, (_, index, name)) in selected {
@@ -361,9 +604,31 @@ impl Input {
                     data.len() == size,
                     "INVALID_INPUT: inconsistent class size: {name}"
                 );
-                let id = hash(&data);
-                let class = ClassFile::parse_bounded(data, limits.expanded_bytes)
-                    .with_context(|| name.clone())?;
+                pending.push((name, data));
+            }
+            budget.expanded = expanded;
+            let parsed: Vec<Result<InputClass>> = rayon::ThreadPoolBuilder::new()
+                .num_threads(2)
+                .build()?
+                .install(|| {
+                    pending
+                        .into_par_iter()
+                        .map(|(name, data)| {
+                            let id = hash(&data);
+                            let class = ClassFile::parse_bounded(data, limits.expanded_bytes)
+                                .with_context(|| name.clone())?;
+                            Ok(InputClass {
+                                entry: Some(name),
+                                source_id: id,
+                                class,
+                            })
+                        })
+                        .collect()
+                });
+            for result in parsed {
+                let item = result?;
+                let class = &item.class;
+                let name = item.entry.as_ref().unwrap();
                 metadata_bytes = metadata_bytes
                     .checked_add(class.metadata_bytes)
                     .context("RESOURCE_LIMIT: metadata allocation overflow")?;
@@ -378,12 +643,54 @@ impl Input {
                     "INVALID_INPUT: duplicate class definition {}",
                     class.name
                 );
-                classes.push(InputClass {
-                    entry: Some(name),
-                    source_id: id,
-                    class,
-                });
+                classes.push(item);
             }
+            budget.metadata = budget
+                .metadata
+                .checked_add(metadata_bytes)
+                .context("RESOURCE_LIMIT: metadata allocation overflow")?;
+            ensure!(
+                budget.metadata <= limits.expanded_bytes,
+                "RESOURCE_LIMIT: archive metadata budget exceeded"
+            );
+            for (index, name) in nested {
+                ensure!(
+                    !name.contains('!'),
+                    "INVALID_INPUT: ambiguous nested archive name"
+                );
+                let entry = zip.by_index(index)?;
+                let size = usize::try_from(entry.size())
+                    .context("RESOURCE_LIMIT: nested archive size overflow")?;
+                budget.expanded = budget
+                    .expanded
+                    .checked_add(size)
+                    .context("RESOURCE_LIMIT: expanded size overflow")?;
+                ensure!(
+                    budget.expanded <= limits.expanded_bytes,
+                    "RESOURCE_LIMIT: expanded byte budget exceeded"
+                );
+                let mut data = Vec::new();
+                entry.take(size as u64 + 1).read_to_end(&mut data)?;
+                ensure!(
+                    data.len() == size,
+                    "INVALID_INPUT: inconsistent nested archive size"
+                );
+                let inner =
+                    Self::read_bytes(data, Path::new(&name), limits, release, depth + 1, budget)
+                        .with_context(|| name.clone())?;
+                for mut item in inner.classes {
+                    item.entry = Some(format!("{name}!{}", item.entry.unwrap_or_default()));
+                    classes.push(item);
+                }
+                for mut entry in inner.entries {
+                    entry.name = format!("{name}!{}", entry.name);
+                    entries.push(entry);
+                }
+            }
+            ensure!(
+                depth != 0 || !classes.is_empty(),
+                "INVALID_INPUT: archive contains no selected JVM class files"
+            );
         }
         Ok(Self {
             source_id,
@@ -393,12 +700,38 @@ impl Input {
         })
     }
 
+    pub fn matches_class(class: &InputClass, name: &str) -> bool {
+        let (archive, local) = name
+            .rsplit_once('!')
+            .map_or((None, name), |(archive, local)| (Some(archive), local));
+        class.class.name == normalize_class_name(local)
+            && archive.is_none_or(|archive| {
+                class
+                    .entry
+                    .as_deref()
+                    .and_then(|entry| entry.rsplit_once('!'))
+                    .is_some_and(|(prefix, _)| prefix == archive)
+            })
+    }
+
+    pub fn class_at(class: &InputClass) -> String {
+        let prefix = class
+            .entry
+            .as_deref()
+            .and_then(|entry| entry.rsplit_once('!'))
+            .map(|(archive, _)| format!("{archive}!"))
+            .unwrap_or_default();
+        format!("{prefix}L{};", class.class.name)
+    }
+
     /// Method coordinate: Lclass;->name(proto), including return type.
     pub fn method_at(class: &InputClass, index: usize) -> String {
         let method = &class.class.methods[index];
         format!(
-            "L{};->{}{}",
-            class.class.name, method.name, method.descriptor
+            "{}->{}{}",
+            Self::class_at(class),
+            method.name,
+            method.descriptor
         )
     }
 
@@ -410,14 +743,8 @@ impl Input {
             bail!("INVALID_QUERY: {coordinate} has no method prototype");
         };
         let descriptor = format!("({proto}");
-        let class_name = class_name
-            .strip_prefix('L')
-            .and_then(|name| name.strip_suffix(';'))
-            .unwrap_or(class_name);
-        for class in &self.classes {
-            if class.class.name != class_name {
-                continue;
-            }
+        let selected = self.class_by_name(class_name)?;
+        for class in std::iter::once(selected) {
             for (index, method) in class.class.methods.iter().enumerate() {
                 if method.name == name && method.descriptor == descriptor {
                     return Ok((class, index));
@@ -434,18 +761,17 @@ impl Input {
 
     /// Select exactly one class by its internal, dotted or descriptor name.
     pub fn class_by_name(&self, name: &str) -> Result<&InputClass> {
-        let wanted = normalize_class_name(name);
         let mut hits = self
             .classes
             .iter()
-            .filter(|class| class.class.name == wanted);
+            .filter(|class| Self::matches_class(class, name));
         let selected = hits.next().ok_or_else(|| {
             rxd_core::Error::failure(
                 rxd_core::Failure::NotFound,
                 format!("no class {name} in this input"),
             )
         })?;
-        // Duplicate definitions were rejected during input parsing.
+        // Unqualified names must remain unambiguous across nested archives.
         ensure!(
             hits.next().is_none(),
             "INVALID_QUERY: class {name} is defined more than once"
@@ -460,6 +786,72 @@ pub fn normalize_class_name(name: &str) -> String {
         .and_then(|rest| rest.strip_suffix(';'))
         .unwrap_or(name)
         .replace('.', "/")
+}
+
+fn nested_entries(
+    zip: &mut zip::ZipArchive<Cursor<Vec<u8>>>,
+    limits: Limits,
+    depth: usize,
+    budget: &mut ArchiveBudget,
+) -> Result<Vec<InputEntry>> {
+    let mut result = Vec::new();
+    for index in 0..zip.len() {
+        let entry = zip.by_index(index)?;
+        let name = entry.name().to_owned();
+        let lower = name.to_ascii_lowercase();
+        if !(lower.ends_with(".jar") || lower.ends_with(".aar") || lower.ends_with(".zip")) {
+            continue;
+        }
+        ensure!(depth < 16, "RESOURCE_LIMIT: nested archive depth exceeded");
+        ensure!(
+            !name.contains('!'),
+            "INVALID_INPUT: ambiguous nested archive name"
+        );
+        let size = usize::try_from(entry.size())
+            .context("RESOURCE_LIMIT: nested archive size overflow")?;
+        budget.expanded = budget
+            .expanded
+            .checked_add(size)
+            .context("RESOURCE_LIMIT: expanded size overflow")?;
+        ensure!(
+            budget.expanded <= limits.expanded_bytes,
+            "RESOURCE_LIMIT: expanded byte budget exceeded"
+        );
+        let mut data = Vec::new();
+        entry.take(size as u64 + 1).read_to_end(&mut data)?;
+        ensure!(
+            data.len() == size,
+            "INVALID_INPUT: inconsistent nested archive size"
+        );
+        check_directory(&data, limits.entries)?;
+        let mut inner = zip::ZipArchive::new(Cursor::new(data))?;
+        budget.entries = budget
+            .entries
+            .checked_add(inner.len())
+            .context("RESOURCE_LIMIT: entry count overflow")?;
+        ensure!(
+            budget.entries <= limits.entries,
+            "RESOURCE_LIMIT: archive entry budget exceeded"
+        );
+        for i in 0..inner.len() {
+            let entry = inner.by_index(i)?;
+            result.push(InputEntry {
+                name: format!("{name}!{}", entry.name()),
+                compression: match entry.compression() {
+                    zip::CompressionMethod::Stored => 0,
+                    zip::CompressionMethod::Deflated => 8,
+                    _ => 255,
+                },
+                compressed_size: usize::try_from(entry.compressed_size())?,
+                uncompressed_size: usize::try_from(entry.size())?,
+            });
+        }
+        for mut entry in nested_entries(&mut inner, limits, depth + 1, budget)? {
+            entry.name = format!("{name}!{}", entry.name);
+            result.push(entry);
+        }
+    }
+    Ok(result)
 }
 
 fn hash(bytes: &[u8]) -> String {

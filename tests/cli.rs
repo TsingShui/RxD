@@ -6,6 +6,10 @@ mod resource_policy;
 #[path = "dex/mod.rs"]
 mod dex;
 
+#[cfg(feature = "backend-jvm")]
+#[path = "jvm/mod.rs"]
+mod jvm;
+
 #[cfg(feature = "backend-dotnet")]
 #[path = "dotnet/mod.rs"]
 mod dotnet;

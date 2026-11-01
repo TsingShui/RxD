@@ -43,7 +43,8 @@ wxapkg is unpacked from its index; encrypted `V1MMWX` PC/Mac packages need
 in-memory archive analysis. `rxd ark` can instead read the selected ABC directly
 from a HAP without unpacking unrelated resources or native libraries, or
 `rxd ark export` can extract the complete HAP tree and add reconstructed record files. AAR code normally lives in
-`classes.jar` or `libs/*.jar`: unpack, then use `rxd jar`. Encrypted ASAR/ZIP/PyInstaller entries, links and automatic nested extraction
+`classes.jar` or `libs/*.jar`: pass the AAR directly to `rxd jar` for recursive analysis.
+Encrypted ASAR/ZIP/PyInstaller entries, links and automatic nested extraction
 beyond PYZ are unsupported.
 
 ## Consume results and preserve identity
@@ -102,6 +103,14 @@ Examples below use local input placeholders and listing `at` / reference `contex
 coordinates or offsets obtained from the preceding response. Keep each input fixed and use its actual returned values.
 
 ## Android and JVM: string → caller → selected Java
+
+JVM queries recursively scan embedded JAR/ZIP/AAR archives without extracting files.
+Nested coordinates include the archive chain, e.g. `classes.jar!Lpkg/Client;`;
+copy the entire coordinate into fetch or `--class`. Unqualified fetches require
+one unambiguous class. `entries` includes nested paths separated by `!`.
+Each archive selects its own multi-release version using `--release`.
+Reference searches match symbolic bytecode targets across the input, not runtime
+classloader resolution between dependencies.
 
 ```sh
 rxd rasc strings app.apk -f Authorization --limit 20
