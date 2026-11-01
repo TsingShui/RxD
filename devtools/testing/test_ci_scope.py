@@ -59,7 +59,7 @@ class ScopeCli(unittest.TestCase):
         self.put("site/zh/examples.html")
         self.put("site/assets/main.js")
         self.put("site/README.md")
-        self.put("benches/README.md")
+        self.put("perf-tests/README.md")
         self.put(".gitignore")
         self.put(".vscode/launch.json")
         report, outputs = self.discover()

@@ -1,4 +1,4 @@
-# Benchmarks and performance instrumentation
+# Performance tests and instrumentation
 
 **Scope:** the 150 ms gate applies only to decompilation/analysis backend
 queries. Installation, configuration, skill printing, help/version, standalone
@@ -6,7 +6,7 @@ MCP discovery/lifecycle, maintenance and build/test/release orchestration are no
 gated. Functional, safety, completeness and resource-budget checks are never
 exempt. See `AGENTS.md` for the authoritative scope.
 
-Benchmarks start the real CLI; in-memory parser timings are not substitutes. They
+Performance tests start the real CLI; in-memory parser timings are not substitutes. They
 never execute analyzed input.
 
 ## MCP and CLI runners
@@ -17,10 +17,10 @@ before timing.
 
 ```sh
 cargo build --release
-python3 benches/mcp.py
+python3 perf-tests/mcp.py
 ```
 
-The runner writes under ignored `target/benchmarks/` by default and report each
+The runner writes under ignored `target/perf-tests/` by default and reports each
 workload separately: input size, samples, median, P95, maximum and the count over
 150 ms. Do not pool unrelated commands or average away large inputs.
 
@@ -31,11 +31,11 @@ release binary, cold process per sample, per workload:
 
 ```sh
 cargo build --release
-python3 benches/ark.py --abc tests/.../modules.abc --hap app.hap --entry ets/modules.abc
+python3 perf-tests/ark.py --abc tests/.../modules.abc --hap app.hap --entry ets/modules.abc
 ```
 
 It reports samples, median, P95, maximum, the count over 150 ms, and optional
-`--perf` phase records; output is written to `target/benchmarks/ark.json`.
+`--perf` phase records; output is written to `target/perf-tests/ark.json`.
 Small and large methods/records are separate workloads so large targets are not
 hidden by averaging.
 

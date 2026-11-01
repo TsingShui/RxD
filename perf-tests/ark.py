@@ -5,10 +5,10 @@ Measures the real CLI against a fixed ABC/HAP. It never executes analyzed code.
 Run with a release binary after performance-measurement approval:
 
     cargo build --release
-    python3 benches/ark.py --abc /path/modules.abc --hap /path/app.hap
+    python3 perf-tests/ark.py --abc /path/modules.abc --hap /path/app.hap
 
 Reports per-workload samples, median, P95, maximum, the count over 150 ms and
-optional `--perf` phase records. Writes JSON under target/benchmarks/.
+optional `--perf` phase records. Writes JSON under target/perf-tests/.
 """
 import argparse
 import json
@@ -116,7 +116,7 @@ def main():
     }
     for name, command, perf in workloads:
         report["workloads"][name] = run(binary, command, args.samples, perf)
-    output = Path("target/benchmarks")
+    output = Path("target/perf-tests")
     output.mkdir(parents=True, exist_ok=True)
     target = output / "ark.json"
     target.write_text(json.dumps(report, indent=2) + "\n")

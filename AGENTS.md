@@ -77,9 +77,9 @@ The current layout is:
   wxapkg fixtures, independent parser expectations, and the WABT wasm-decompile differential suite;
   provenance and generation instructions are in `tests/corpus/README.md` and
   per-backend corpus READMEs.
-- `benches/`: end-to-end benchmarks (`mcp.py`)
-  the pinned ILSpy build in `benches/ilspy/`, and measurement/perf contracts in
-  `benches/README.md`. The per-backend runners written for the earlier CLI
+- `perf-tests/`: end-to-end performance tests (`mcp.py`),
+  the pinned ILSpy build in `perf-tests/ilspy/`, and measurement/perf contracts in
+  `perf-tests/README.md`. The per-backend runners written for the earlier CLI
   generation were removed; a backend that needs one gets it written against the
   current surface (`entries`/`classes`/`codes`, `--at`, `-f`/`--case`,
   `--name`).
@@ -127,8 +127,8 @@ using Zig for Linux musl targets and the NDK for Android Bionic. Android uses
 - `python3 scripts/format-workspace.py --check`: check Rust formatting.
 - `cargo clippy --workspace --all-targets -- -D warnings`: check lint warnings.
 - `cargo build --release`: build for performance measurements.
-- `python3 benches/cli.py`: build release and benchmark the production/obfuscated
-  corpus.
+- `python3 perf-tests/mcp.py`: measure the configured CLI and MCP workloads
+  using an existing release binary.
 
 On the shared interactive workstation, default local agent runs to
 `CARGO_BUILD_JOBS=2` and `RUST_TEST_THREADS=2`, without overlapping build/test/lint/

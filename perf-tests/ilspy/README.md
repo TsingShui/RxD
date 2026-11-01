@@ -51,7 +51,7 @@ python3 scripts/build-ilspy.py linux-musl-arm64
 python3 scripts/build-ilspy.py linux-musl-x64
 python scripts/build-ilspy.py win-x64
 # Existing macOS entry point remains available (ARM64 only):
-benches/ilspy/build-native.sh osx-arm64
+perf-tests/ilspy/build-native.sh osx-arm64
 ```
 
 Linux musl commands run on either macOS or Linux without a Linux build VM.
@@ -225,5 +225,5 @@ instruction listing. The fixtures keep independently read byte-exact IL/EH
 records to diff that output against.
 
 For benchmark commands and measurement conditions, see
-[CLI benchmarks](../README.md). Keep release query measurements separate from
+[CLI performance tests](../README.md). Keep release query measurements separate from
 functional E2E; ordinary queries and raw IL retain the 150 ms target.

@@ -45,7 +45,7 @@ Regenerate the compact string oracle from an independently prepared full
 PEReader manifest:
 
 ```sh
-python3 benches/dotnet_strings_oracle.py \
+python3 perf-tests/dotnet_strings_oracle.py \
   --input tests/corpus/dotnet/newtonsoft-json-13.0.3/Newtonsoft.Json.dll \
   --metadata-oracle target/dotnet-closure-corpus/newtonsoft-json-13.0.3/independent-all.json \
   --output target/newtonsoft-string-expectations.json
@@ -73,10 +73,10 @@ git clone https://github.com/ATRAPSLLC/dotscope target/dotnet-research/reference
 git -C target/dotnet-research/references/dotscope checkout 3028b1ab92ec1b0ad15f046b3b70d5ee82336a00
 ```
 
-Build the native C# engine with [the ILSpy guide](../../../benches/ilspy/README.md).
+Build the native C# engine with [the ILSpy guide](../../../perf-tests/ilspy/README.md).
 Current queries are in `rxd ilspy --help` and the embedded skill;
 benchmark commands and fresh-process measurement rules are in
-[benches/README.md](../../../benches/README.md). Metadata regression success is
+[perf-tests/README.md](../../../perf-tests/README.md). Metadata regression success is
 not current C# reconstruction or latency evidence.
 
 The existing scoped large-input bound is recorded in

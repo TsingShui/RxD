@@ -48,7 +48,7 @@ def plan(paths):
             tools = True
             reasons[path] = "maintenance tooling contracts"
         elif path.endswith(".md") and (
-            path.startswith(("docs/", ".agents/", "benches/"))
+            path.startswith(("docs/", ".agents/", "perf-tests/"))
             or path in ("AGENTS.md", "README.md", "GLOSSARY.md", "tests/AGENTS.md")
         ):
             reasons[path] = "documentation/development reference only"

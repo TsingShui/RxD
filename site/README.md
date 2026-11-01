@@ -40,7 +40,7 @@ python3 -m http.server --directory site 8000
 
 Keep these aligned with the repository:
 
-- performance claims come from `benches/README.md` and the root README; do not
+- performance claims come from `perf-tests/README.md` and the root README; do not
   invent benchmark numbers on the site;
 - cross-platform claims match the release targets: macOS arm64, Linux
   x86_64/arm64 (glibc ≥ 2.39), Windows x86_64;

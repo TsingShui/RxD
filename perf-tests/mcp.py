@@ -634,7 +634,7 @@ def main():
     parser.add_argument('--cpu-model', required=True)
     parser.add_argument('--memory-bytes', type=int, required=True)
     parser.add_argument('--conditions', required=True, help='Cache, CPU load/isolation and measurement conditions')
-    parser.add_argument('--output', type=Path, default=ROOT / 'target/benchmarks/mcp')
+    parser.add_argument('--output', type=Path, default=ROOT / 'target/perf-tests/mcp')
     args = parser.parse_args()
     if args.samples < 20 or args.concurrency < 1 or args.timeout <= 0 or args.memory_bytes <= 0:
         parser.error('require at least 20 samples and positive concurrency/timeout/memory')

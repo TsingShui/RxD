@@ -123,4 +123,4 @@ python3 scripts/mcp-smoke.py --binary target/release/rxd --expect-native
 ```
 
 Correctness/CI configuration is not a latency result;
-measure frozen release binaries with [MCP runner](../benches/README.md#mcp).
+measure frozen release binaries with [MCP runner](../perf-tests/README.md#mcp).

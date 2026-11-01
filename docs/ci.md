@@ -169,7 +169,7 @@ C/C++/archive toolchain. GNU hosts may compile build-time helpers, never GNU
 release binaries. Linux execution checks install the matching system musl loader. On Windows use `python` if `python3` is unavailable. Producer
 prerequisites: pinned Zig for Linux targets, cargo-zigbuild 0.23.4 for musl Rust
 linking, Xcode CLT for macOS, Visual Studio C++ tools for Windows. See
-`benches/ilspy/README.md`.
+`perf-tests/ilspy/README.md`.
 
 ## Android ARM64 Bionic build
 
