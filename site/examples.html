@@ -40,39 +40,6 @@
     <h2>Coming soon.</h2>
     <p class="lede">RxD-based reverse-engineering analysis cannot be published directly yet. The RxD toolchain — even before integration — is already capable of uncovering zero-day vulnerabilities and recovering commercial algorithms. We are looking for a better showcase to demonstrate what RxD can do.</p>
   </section>
-
-  <section class="section">
-    <h2>What the CLI answers today</h2>
-    <p class="section-lede">Every backend but the Native engine follows one row contract: locate a unit, follow an explicit reference, then fetch only that unit. <code>&lt;at&gt;</code> is always a coordinate the previous command printed.</p>
-    <pre><code>rxd rasc strings app.apk -f Authorization --limit 20
-rxd rasc xref app.apk -m Authorization --kind string
-rxd rasc get-method app.apk --at '&lt;method_at&gt;'
-rxd jar xref library.jar --at '&lt;method_at&gt;'
-rxd jar get-class library.jar --at '&lt;class_at&gt;'
-rxd ilspy strings library.dll -f Authorization
-rxd ilspy get-method library.dll --at '&lt;method_at&gt;' --raw
-rxd ilspy get-class library.dll --at '&lt;type_at&gt;'
-rxd wasm get-function module.wasm --at 'func:1'
-rxd pyc modules PYZ.pyz -f networking
-rxd pyc decompile PYZ.pyz -o recovered/
-rxd unluac-rs xref module.luac --at 'proto:1:const:0'
-rxd dae xref libapp.so --at 'str:0x7f0123'
-rxd ark list method app.hap --entry ets/modules.abc
-rxd ark decompile modules.abc --at '&lt;method_at&gt;'
-rxd evmole interface runtime.hex --encoding hex
-rxd kuna functions ./binary
-rxd unpack app.hap -o app</code></pre>
-    <p class="section-lede">Every table starts with one <code>#</code> column header and then TAB-separated rows; text cells are JSON-quoted and <code>\N</code> marks an absent value. Diagnostics and <code>--perf</code> go to stderr. Kuna keeps its native output.</p>
-  </section>
-
-  <section class="section">
-    <h2>Hand the same queries to an Agent</h2>
-    <p class="section-lede">MCP accepts absolute paths only and permits all of them by default; <code>--allow-path</code> narrows to named files and directories. The client configuration is yours to write.</p>
-    <pre><code>rxd mcp
-rxd mcp --allow-path /absolute/path/to/inputs
-rxd skill</code></pre>
-    <p class="section-lede"><a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/mcp.md">MCP guide</a> · <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/install.md#agent-onboarding">Agent onboarding</a> · <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/src/skills/rxd/SKILL.md">Embedded skill</a></p>
-  </section>
 </main>
 <footer class="footer">
   <div class="wrap">

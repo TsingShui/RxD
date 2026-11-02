@@ -42,8 +42,7 @@
     <h1>What already changed.</h1>
   </section>
 
-  <div class="log">
-    <article class="log-entry">
+  <div class="log">    <article class="log-entry">
       <div class="log-meta"><time datetime="2026-11-02">2026-11-02</time><span class="log-state is-public">Public site</span></div>
       <div class="log-body">
         <h3>Site rewrite, single English tree</h3>
@@ -136,11 +135,23 @@
     </article>
 
     <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-15">2026-10-15</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>HTML lexical container</h3>
+        <ul>
+          <li><code>list</code> and <code>extract</code> for lexical HTML records and byte-exact node extraction.</li>
+          <li>That backend was removed on 2026-10-27 when archives collapsed into <code>rxd unpack</code>.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
       <div class="log-meta"><time datetime="2026-10-14">2026-10-14</time><span class="log-state">Internal acceptance</span></div>
       <div class="log-body">
         <h3>EVM static closure</h3>
         <ul>
-          <li>EVMole 0.9.4 native analysis; the surface later narrowed to the four commands whose facts the bytecode settles.</li>
+          <li>EVMole 0.9.4 native analysis: interface, storage, CFG and metadata, plus declared on-demand pseudocode reconstruction.</li>
+          <li>Static navigation closure accepted; inferred results are not presented as a complete ABI. The surface later narrowed to <code>interface</code>, <code>disassemble</code>, <code>strings</code> and <code>metadata</code>.</li>
           <li>No control-flow graph and no recovered source ABI are exposed.</li>
         </ul>
       </div>
@@ -164,6 +175,18 @@
         <ul>
           <li>Type, member, string and semantic XREF; single-method and whole-class IL or C# reconstruction through the pinned ILSpy native library.</li>
           <li>Performance exceptions record the exact input, selected type and measured bound; they do not transfer to other assemblies.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-11">2026-10-11</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>JS / ASAR / DEX initial closures</h3>
+        <ul>
+          <li>JS structures, decoded literals, lexical references and original source; ASAR entry enumeration and raw extraction.</li>
+          <li>DEX migrated from rasc, preserving <code>get-class</code>, Java output, Manifest and streaming contracts.</li>
+          <li>The JavaScript backend was removed on 2026-10-27; ASAR now goes through <code>rxd unpack</code>.</li>
         </ul>
       </div>
     </article>

@@ -6,10 +6,12 @@ Static, dependency-free pages served by GitHub Pages at
 ## Structure
 
 - `index.html` — RxD overview, the four "why" points and backend provenance.
-- `examples.html` — ShowCase placeholder plus the current query workflow and
-  Agent entry points; CLI usage lives in `src/skills/rxd/SKILL.md` and `rxd --help`.
-- `arxd.html` — notice that Arxd is maintained separately, plus the Android
-  cross-build target.
+- `examples.html` — ShowCase placeholder only. It stays a `<To Be Done>` page;
+  CLI usage lives in `src/skills/rxd/SKILL.md` and `rxd --help`, so do not grow
+  this page into a command catalogue.
+- `arxd.html` — short notice that Arxd is maintained separately. Arxd capabilities
+  and releases are not published from this repository, so this page states
+  availability, not feature claims.
 - `roadmap.html` — development status and future work.
 - `changelog.html` — dated public/site milestones and earlier internal acceptance.
 - `assets/style.css` — design tokens, layout, shared subpage styles, responsive rules.
@@ -60,8 +62,10 @@ Keep these aligned with the repository:
   provenance files;
 - RoadMap statuses move only after implementation and acceptance; no dates are
   promised;
-- ChangeLog records public/main changes; earlier internal acceptance dates stay
-  labeled and are never presented as releases.
+- ChangeLog records public/main changes in descending date order; earlier
+  internal acceptance dates stay labeled and are never presented as releases.
+  Entries are history: keep them when a backend or feature is later removed,
+  and note the removal in the entry instead of deleting it.
 
 ## Deployment
 
