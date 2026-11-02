@@ -185,20 +185,6 @@ ul, ol { padding: 0; list-style: none; }
   border-color: rgba(238, 232, 221, 0.4);
   background: rgba(238, 232, 221, 0.04);
 }
-.lang-switch {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 9px;
-  border: 1px solid var(--ink-line);
-  border-radius: 5px;
-  font: 500 10px/1 var(--mono);
-  letter-spacing: 0.06em;
-  color: #a8a299;
-  white-space: nowrap;
-  transition: color 0.18s, border-color 0.18s;
-}
-.lang-switch:hover { color: var(--bone); border-color: rgba(238, 232, 221, 0.4); }
 .nav-menu {
   display: none;
   width: 32px;
@@ -286,8 +272,6 @@ ul, ol { padding: 0; list-style: none; }
 }
 .eyebrow .sep { color: #4e4a44; margin: 0 2px; }
 
-html[lang="zh-CN"] .hero h1 { font-size: clamp(30px, 8.6vw, 56px); }
-html[lang="en"] .hero h1 { font-size: clamp(34px, 4.4vw, 58px); }
 h1 {
   margin-top: 26px;
   font-size: clamp(38px, 5vw, 62px);
@@ -1640,8 +1624,7 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
   }
   .nav-links a:last-child { border-bottom: 0; }
   .nav-links a[aria-current="page"] { text-decoration: none; color: var(--ember); }
-  .nav-menu { display: inline-flex; }
-  .lang-switch { margin-left: auto; }
+  .nav-menu { display: inline-flex; margin-left: auto; }
   .nav-gh { margin-left: 0; }
 
   .measure-head { gap: 32px; }
@@ -1862,6 +1845,8 @@ html.js [data-reveal].is-in { opacity: 1; transform: none; }
   padding: 22px 26px;
   background: var(--ink);
 }
+/* An odd card count leaves no half-width hole in the two-column grid. */
+.prov-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .prov-head {
   display: flex;
   flex-wrap: wrap;

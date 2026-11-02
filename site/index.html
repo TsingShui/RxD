@@ -4,20 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RxD — one binary for most agentic analysis</title>
-<meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats. One binary, file-scoped coordinates, deterministic records.">
+<meta name="description" content="RxD is an open-source, Agent-oriented analysis CLI for native, managed, container and bytecode formats — APK/DEX, JVM, .NET IL, WASM, CPython, Lua, Dart/Flutter, Ark ABC and EVM. One binary, file-scoped coordinates, deterministic rows.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/">
-<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/">
-<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/">
-<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
 <link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
-<script src="assets/lang.js"></script>
 <link rel="stylesheet" href="assets/style.css">
 <script>document.documentElement.classList.add('js');</script>
 </head>
-<body>
+<body id="top">
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="nav" data-nav>
@@ -34,7 +30,6 @@
       <a href="changelog.html">ChangeLog</a>
       <a href="roadmap.html">RoadMap</a>
     </nav>
-    <a class="lang-switch" href="zh/index.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
     <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
     </button>
@@ -55,6 +50,7 @@
         </div>
         <ul class="hero-meta">
           <li>Apache-2.0</li>
+          <li>11 formats</li>
         </ul>
       </div>
       <figure class="hero-mark" aria-label="RxD mark">
@@ -73,7 +69,7 @@
         <li><h3>Performance</h3><p>One binary, no warm-up. Most queries finish in milliseconds, so an Agent can probe and verify repeatedly instead of waiting on one heavy call.</p></li>
         <li><h3>Easy integration</h3><p>Stable TAB-separated rows and MCP over a single CLI. Add it to a shell, script or agent workflow without a daemon, database or rewrite.</p></li>
         <li><h3>Beginner-friendly</h3><p>No other tools to configure. One binary and one command are enough to start exploring; no SDKs, glue scripts or setup detours.</p></li>
-        <li><h3>Good tech taste</h3><p>RxD chooses battle-tested decompiler engines at the frontier — Kuna, ASC, ILSpy — and pins them. Modern tooling without a stack you have to babysit.</p></li>
+        <li><h3>Good tech taste</h3><p>RxD chooses battle-tested decompiler engines at the frontier — Kuna, radguard, ILSpy — and pins them. Modern tooling without a stack you have to babysit.</p></li>
       </ol>
     </div>
   </section>
@@ -87,15 +83,23 @@
       <div class="prov-grid">
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">01</span><h3>Native</h3><span class="prov-license">Apache-2.0 (Kuna)</span></div>
-          <p class="prov-source"><a href="https://github.com/Noelo-Lab/kuna">Kuna CLI</a> + RxD linked adapter</p>
+          <p class="prov-source"><a href="https://github.com/Noelo-Lab/kuna">Kuna CLI</a> 1.978 + RxD linked adapter</p>
         </article>
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">02</span><h3>Unpack</h3><span class="prov-license">Apache-2.0</span></div>
           <p class="prov-source">RxD ASAR/ZIP/HAP/PyInstaller/wxapkg extraction</p>
         </article>
         <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">03</span><h3>Lua bytecode</h3><span class="prov-license">MIT (unluac)</span></div>
+          <p class="prov-source">RxD chunk listings + <a href="https://github.com/x3zvawq/unluac-rs">unluac 1.4.4</a> reconstruction</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">04</span><h3>Dart / Flutter AOT</h3><span class="prov-license">MIT (dae)</span></div>
+          <p class="prov-source"><a href="https://github.com/ejfkdev/dae">dae-rs 0.1.14</a> snapshot analyzer + RxD listings</p>
+        </article>
+        <article class="prov-card">
           <div class="prov-head"><span class="prov-num">05</span><h3>Android APK/DEX</h3><span class="prov-license">Apache-2.0</span></div>
-          <p class="prov-source">RxD DEX frontend + <a href="https://github.com/MG1937/rust_ASC">rust_ASC</a></p>
+          <p class="prov-source">RxD DEX frontend + <a href="https://github.com/MG1937/radguard">radguard</a> fork</p>
         </article>
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">06</span><h3>JVM</h3><span class="prov-license">Apache-2.0</span></div>
@@ -103,19 +107,23 @@
         </article>
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">07</span><h3>.NET IL</h3><span class="prov-license">MIT (ILSpy)</span></div>
-          <p class="prov-source">RxD metadata/IL frontend + <a href="https://github.com/icsharpcode/ILSpy">ILSpy v11 NativeAOT</a></p>
+          <p class="prov-source">RxD metadata/IL frontend + <a href="https://github.com/icsharpcode/ILSpy">ILSpy 11.2 NativeAOT</a></p>
         </article>
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">08</span><h3>WebAssembly</h3><span class="prov-license">Apache-2.0 / MIT / LLVM-exception</span></div>
-          <p class="prov-source"><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser">wasmparser</a> + RxD decode/decompile</p>
+          <p class="prov-source"><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser">wasmparser</a> 0.221.3 + RxD decode/decompile</p>
         </article>
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">09</span><h3>CPython bytecode</h3><span class="prov-license">MIT (pycdc)</span></div>
-          <p class="prov-source">RxD bytecode frontend + pycdc fork</p>
+          <p class="prov-source">RxD bytecode/PYZ frontend + pycdc fork</p>
         </article>
         <article class="prov-card">
           <div class="prov-head"><span class="prov-num">10</span><h3>EVM bytecode</h3><span class="prov-license">MIT (EVMole)</span></div>
           <p class="prov-source"><a href="https://github.com/cdump/evmole">EVMole 0.9.4</a> + RxD query projection</p>
+        </article>
+        <article class="prov-card">
+          <div class="prov-head"><span class="prov-num">11</span><h3>Ark ABC/HAP</h3><span class="prov-license">Apache-2.0 / MIT (Oxc)</span></div>
+          <p class="prov-source">RxD dynamic ABC engine + <a href="https://github.com/oxc-project/oxc">Oxc</a> AST emission</p>
         </article>
       </div>
     </div>

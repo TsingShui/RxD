@@ -8,7 +8,7 @@ An open-source, high-performance analysis CLI built for Agents: one binary for m
 reverse-engineering workflows, easy to integrate and ready to use.
 
 
-Project site: [tsingshui.github.io/RxD](https://tsingshui.github.io/RxD/) · [Examples](https://tsingshui.github.io/RxD/examples.html) · [Arxd](https://tsingshui.github.io/RxD/arxd.html) · [RoadMap](https://tsingshui.github.io/RxD/roadmap.html) · [ChangeLog](https://tsingshui.github.io/RxD/changelog.html) · [中文](https://tsingshui.github.io/RxD/zh/)
+Project site: [tsingshui.github.io/RxD](https://tsingshui.github.io/RxD/) · [Examples](https://tsingshui.github.io/RxD/examples.html) · [Arxd](https://tsingshui.github.io/RxD/arxd.html) · [RoadMap](https://tsingshui.github.io/RxD/roadmap.html) · [ChangeLog](https://tsingshui.github.io/RxD/changelog.html)
 
 [![Build RxD](https://github.com/TsingShui/RxD/actions/workflows/build.yml/badge.svg)](https://github.com/TsingShui/RxD/actions/workflows/build.yml)
 [![Rust](https://img.shields.io/badge/rust-1.97%2B-orange?logo=rust)](https://www.rust-lang.org)

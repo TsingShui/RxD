@@ -95,10 +95,4 @@
       }
     });
   });
-  // Remember the manually selected site language.
-  Array.prototype.forEach.call(doc.querySelectorAll("[data-lang-switch]"), function (link) {
-    link.addEventListener("click", function () {
-      try { localStorage.setItem("rxd-lang", link.getAttribute("data-lang-switch")); } catch (error) {}
-    });
-  });
 })();

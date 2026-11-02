@@ -7,17 +7,13 @@
 <meta name="description" content="RxD status across done work, active work and future plans. No dates; status moves only after acceptance on main.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/roadmap.html">
-<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/roadmap.html">
-<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/roadmap.html">
-<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/roadmap.html">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
 <link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
-<script src="assets/lang.js"></script>
 <link rel="stylesheet" href="assets/style.css">
 <script>document.documentElement.classList.add('js');</script>
 </head>
-<body>
+<body id="top">
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="nav" data-nav>
@@ -33,7 +29,6 @@
       <a href="changelog.html">ChangeLog</a>
       <a href="roadmap.html" aria-current="page">RoadMap</a>
     </nav>
-    <a class="lang-switch" href="zh/roadmap.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
     <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
     </button>
@@ -65,30 +60,33 @@
       <div class="rm-item">
         <span class="rm-status">Core</span>
         <div class="rm-body">
-          <h3>Core CLI, identity and budgets</h3>
-          <p>One binary. Coordinates are scoped to the input. The same query on unchanged bytes returns the same records. Original extraction is byte-exact.</p>
+          <h3>Core CLI and row contract</h3>
+          <p>One binary. Coordinates are scoped to the input, and the same query on unchanged bytes returns the same rows. Every table starts with one <code># </code> header, text cells are JSON-quoted and <code>\N</code> marks absence.</p>
         </div>
       </div>
       <div class="rm-item">
         <span class="rm-status">Agent</span>
         <div class="rm-body">
           <h3>Agent surface</h3>
-          <p>Typed MCP over stdio, Unix-table rows and an embedded Agent skill.</p>
+          <p>Typed MCP over stdio with absolute-path admission, TAB-separated rows and an embedded Agent skill printed by <code>rxd skill</code>.</p>
         </div>
       </div>
       <div class="rm-item">
         <span class="rm-status">Backends</span>
         <div class="rm-body">
           <h3>Static-analysis backends</h3>
-          <p>Each format has its own queries and IDs. Extraction follows that format's rules, not a shared abstraction.</p>
+          <p>Each format has its own queries and coordinates. Extraction follows that format's rules, not a shared abstraction.</p>
           <div class="rm-backends">
-            <span>Native</span>
+            <span>Native (Kuna)</span>
             <span>Unpack</span>
             <span>Android APK/DEX</span>
             <span>JVM</span>
             <span>.NET IL</span>
             <span>WebAssembly</span>
             <span>CPython bytecode</span>
+            <span>Lua bytecode</span>
+            <span>Dart/Flutter AOT</span>
+            <span>Ark ABC/HAP</span>
             <span>EVM bytecode</span>
           </div>
         </div>
@@ -97,7 +95,7 @@
         <span class="rm-status">Desktop</span>
         <div class="rm-body">
           <h3>Desktop builds</h3>
-          <p>macOS arm64, Linux x86_64/arm64 and Windows x86_64.</p>
+          <p>Linux x86_64 and arm64 (musl), macOS arm64 and Windows x86_64, each with the pinned ILSpy engine and the linked Kuna CLI.</p>
         </div>
       </div>
     </div>
@@ -119,6 +117,13 @@
           <p>Merge and simplify the codebase, and reduce the build output size.</p>
         </div>
       </div>
+      <div class="rm-item">
+        <span class="rm-status">Active</span>
+        <div class="rm-body">
+          <h3>First public release</h3>
+          <p>The installer and release workflow exist, but no version tag has been published, so <code>releases/latest/download/install.sh</code> is not live yet.</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -138,7 +143,7 @@
           <p>Remove the .NET SDK dependency; <code>cargo build</code> should complete the whole backend.</p>
         </div>
       </div>
-<div class="rm-item">
+      <div class="rm-item">
         <span class="rm-status is-next">Planned</span>
         <div class="rm-body">
           <h3>More backends</h3>

@@ -86,8 +86,8 @@ The current layout is:
 - `docs/`: user-facing `install.md`, `ci.md` and `mcp.md`, plus `docs/agents/`
   working agreements. Backend usage lives in `rxd --help` and the embedded skill;
   there are no per-backend example documents to keep in sync.
-- `site/`: static GitHub Pages site (`index.html`, `examples.html`,
-  `arxd.html`, `roadmap.html`, `changelog.html`, and `zh/` counterparts) served
+- `site/`: static English-only GitHub Pages site (`index.html`, `examples.html`,
+  `arxd.html`, `roadmap.html`, `changelog.html`) served
   by `.github/workflows/pages.yml`; no build step.
 
 Use the implementation, CLI help and focused tests as the source of truth.

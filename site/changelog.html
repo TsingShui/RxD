@@ -4,20 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RxD ChangeLog — what already changed</title>
-<meta name="description" content="A dated public record of RxD site, backend and Arxd milestones, with earlier internal acceptance clearly separated from releases.">
+<meta name="description" content="A dated public record of RxD site, backend and release milestones, with earlier internal acceptance clearly separated from published releases.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/changelog.html">
-<link rel="alternate" hreflang="en" href="https://tsingshui.github.io/RxD/changelog.html">
-<link rel="alternate" hreflang="zh-CN" href="https://tsingshui.github.io/RxD/zh/changelog.html">
-<link rel="alternate" hreflang="x-default" href="https://tsingshui.github.io/RxD/changelog.html">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
 <link rel="icon" href="assets/favicon.png?v=3" sizes="64x64">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=2">
-<script src="assets/lang.js"></script>
 <link rel="stylesheet" href="assets/style.css">
 <script>document.documentElement.classList.add('js');</script>
 </head>
-<body>
+<body id="top">
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="nav" data-nav>
@@ -33,7 +29,6 @@
       <a href="changelog.html" aria-current="page">ChangeLog</a>
       <a href="roadmap.html">RoadMap</a>
     </nav>
-    <a class="lang-switch" href="zh/changelog.html?lang=zh" data-lang-switch="zh" aria-label="切换到中文">中文</a>
     <button class="nav-menu" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open navigation">
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 4h12M2 8h12M2 12h12"/></svg>
     </button>
@@ -49,12 +44,81 @@
 
   <div class="log">
     <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-11-02">2026-11-02</time><span class="log-state is-public">Public site</span></div>
+      <div class="log-body">
+        <h3>Site rewrite, single English tree</h3>
+        <ul>
+          <li>Content refreshed against the current CLI: eleven backends, the shared <code># </code> row contract, Ark ABC/HAP, Lua, Flutter and EVM in the provenance grid.</li>
+          <li>The Chinese <code>zh/</code> tree and the language switch are gone; English is the only site.</li>
+          <li>Pages deploy now runs: GitHub Pages is enabled with the GitHub Actions build type, so <code>Deploy site</code> publishes from <code>site/</code>.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-11-01">2026-11-01</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>JVM throughput and freshness</h3>
+        <ul>
+          <li>Nested JAR/ZIP/AAR archives are parsed in parallel, and multi-release coordinates keep their archive chain.</li>
+          <li>Interface declarations render as valid Java, and fresh-process JAR decompilation latency is measured against the gate.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-29">2026-10-29</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>ILSpy 11.2, .NET resources, musl-only Linux</h3>
+        <ul>
+          <li>The ILSpy native engine moves to 11.2; embedded resources and single-file bundles gain listing and byte-exact extraction.</li>
+          <li>Linux engines and release targets unify on musl, and the Android Bionic release path is restored.</li>
+          <li>Whole-PYZ Python reconstruction is parallelized, one source file per module, with measured phase timings.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-28">2026-10-28</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>Ark ABC reconstruction and the unified row contract</h3>
+        <ul>
+          <li>Dynamic Ark ABC parsing, semantic IR and direct Oxc AST emission reconstruct the whole pinned opcode surface; <code>ark export</code> writes the HAP tree plus one JS file per record.</li>
+          <li>Every backend listing became one <code># </code> header plus TAB-separated rows; references reduced to <code>entry, context, match</code> or <code>context, match</code>.</li>
+          <li>ZIP-family extraction runs in parallel, and PYZ navigation reads the archive index without inflating members.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-27">2026-10-27</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>Lua, Flutter and EVM backends; engine-credited commands</h3>
+        <ul>
+          <li><code>rxd unluac-rs</code> covers PUC Lua 5.1–5.5, LuaJIT 2.1 and Luau; <code>rxd dae</code> navigates Dart AOT snapshots; <code>rxd evmole</code> exposes interface, disassembly, strings and metadata.</li>
+          <li>Command names credit the engine, while crates, features and <code>backend</code> labels keep the format name.</li>
+          <li>Archives collapse into <code>rxd unpack</code>, which extracts ASAR/ZIP/HAP/PyInstaller/wxapkg byte-exactly; the HTML and JavaScript backends are removed.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
+      <div class="log-meta"><time datetime="2026-10-25">2026-10-25</time><span class="log-state">Implemented</span></div>
+      <div class="log-body">
+        <h3>MCP served directly, skill printing, honest budgets</h3>
+        <ul>
+          <li><code>rxd mcp</code> serves stdio directly with absolute-path admission; <code>rxd skill</code> prints the embedded skill and writes nothing.</li>
+          <li>Input-derived analysis and serialization quotas are gone; the remaining guards are format, recursion and expansion limits.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="log-entry">
       <div class="log-meta"><time datetime="2026-10-19">2026-10-19</time><span class="log-state is-public">Public preview</span></div>
       <div class="log-body">
         <h3>Public site and repository preview</h3>
         <ul>
-          <li>Public site and repository preview: RxD overview, ShowCase, Arxd, RoadMap and ChangeLog.</li>
-          <li>English and Chinese pages with browser-language selection and a manual language switch.</li>
+          <li>RxD overview, ShowCase, Arxd, RoadMap and ChangeLog pages.</li>
           <li>The light Arxd mark, rounded favicon, responsive navigation and mobile menu.</li>
         </ul>
       </div>
@@ -66,17 +130,7 @@
         <h3>Arxd Android host</h3>
         <ul>
           <li>Pi-durable workspace, independent file library, skills, MCP, context compaction and on-device GGUF models reached the product-improvement goal.</li>
-          <li>Pixel 10 evidence covers files, skills, activity and on-device models.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="log-entry">
-      <div class="log-meta"><time datetime="2026-10-15">2026-10-15</time><span class="log-state">Implemented</span></div>
-      <div class="log-body">
-        <h3>HTML lexical container</h3>
-        <ul>
-          <li><code>list</code> and <code>extract</code> for lexical HTML records and byte-exact node extraction.</li>
+          <li>Pixel 10 evidence covers files, skills, activity and on-device models. Arxd now lives in the separate private repository.</li>
         </ul>
       </div>
     </article>
@@ -86,8 +140,8 @@
       <div class="log-body">
         <h3>EVM static closure</h3>
         <ul>
-          <li>EVMole 0.9.4 native analysis: interface, storage, CFG and metadata, plus declared on-demand pseudocode reconstruction.</li>
-          <li>Static navigation closure accepted; inferred results are not presented as a complete ABI.</li>
+          <li>EVMole 0.9.4 native analysis; the surface later narrowed to the four commands whose facts the bytecode settles.</li>
+          <li>No control-flow graph and no recovered source ABI are exposed.</li>
         </ul>
       </div>
     </article>
@@ -108,19 +162,8 @@
       <div class="log-body">
         <h3>.NET IL / C#</h3>
         <ul>
-          <li>Type, member, string and semantic XREF; single-method and whole-class IL or C# reconstruction through the pinned ILSpy v11 native library.</li>
+          <li>Type, member, string and semantic XREF; single-method and whole-class IL or C# reconstruction through the pinned ILSpy native library.</li>
           <li>Performance exceptions record the exact input, selected type and measured bound; they do not transfer to other assemblies.</li>
-        </ul>
-      </div>
-    </article>
-
-    <article class="log-entry">
-      <div class="log-meta"><time datetime="2026-10-11">2026-10-11</time><span class="log-state">Implemented</span></div>
-      <div class="log-body">
-        <h3>JS / ASAR / DEX initial closures</h3>
-        <ul>
-          <li>JS structures, decoded literals, lexical references and original source; ASAR entry enumeration and raw extraction.</li>
-          <li>DEX migrated from rasc, preserving <code>get-class</code>, Java output, Manifest and streaming contracts.</li>
         </ul>
       </div>
     </article>

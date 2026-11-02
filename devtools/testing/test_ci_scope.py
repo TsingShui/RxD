@@ -56,7 +56,7 @@ class ScopeCli(unittest.TestCase):
     def test_docs_and_tooling_never_trigger_product_builds(self):
         self.put(".agents/skills/example/SKILL.md")
         self.put("AGENTS.md")
-        self.put("site/zh/examples.html")
+        self.put("site/examples.html")
         self.put("site/assets/main.js")
         self.put("site/README.md")
         self.put("perf-tests/README.md")
