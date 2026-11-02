@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arxd — RxD on Android</title>
-<meta name="description" content="Arxd is the Android App host for RxD, maintained in the separate private repository TsingShui/Arxd. RxD itself cross-builds for Android ARM64.">
+<meta name="description" content="Arxd is the Android App host for RxD, maintained in the separate private repository TsingShui/Arxd; its App source is not included here.">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://tsingshui.github.io/RxD/arxd.html">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=1">
@@ -43,10 +43,10 @@
       <div class="hero-copy">
         <p class="kicker">ARXD / ANDROID HOST</p>
         <h1>The same engine.<br>Now on the phone.</h1>
-        <p class="hero-platforms"><span>Android</span> ARM64 · Bionic · <a href="#cross-build">Cross-build</a></p>
+        <p class="hero-platforms"><span>Android</span> ARM64 · Bionic</p>
         <div class="actions">
-          <a class="btn btn-primary" href="https://github.com/TsingShui/RxD/blob/main/docs/ci.md#android-arm64-bionic-build">Android cross-build <span aria-hidden="true">→</span></a>
-          <a class="btn btn-ghost" href="https://github.com/TsingShui/RxD">GitHub repository <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-primary" href="https://github.com/TsingShui/RxD">GitHub repository <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-ghost" href="./">RxD <span aria-hidden="true">→</span></a>
         </div>
         <ul class="hero-meta">
           <li>Apache-2.0</li>
@@ -56,37 +56,6 @@
       <figure class="hero-mark" aria-label="Arxd mark">
         <img src="assets/arxd-light-1024.png" alt="" width="420" height="420">
       </figure>
-    </div>
-  </section>
-
-  <section class="section" id="where">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="kicker">WHERE IT LIVES</p>
-        <h2>Host and engine are separate.</h2>
-      </div>
-      <ol class="why-list">
-        <li><h3>Arxd owns the App</h3><p>The Android host owns the App interface, Agent orchestration and Android storage and execution adapters. It is maintained in the separate private repository <code>TsingShui/Arxd</code>; its App source is not included here.</p></li>
-        <li><h3>RxD owns the analysis</h3><p>The parsing and decompilation behind every query stay in the shared Rust backends, so an on-device host does not change coordinates, budgets or output rows.</p></li>
-        <li><h3>Local hosting is not local inference</h3><p>Hosting RxD on a device says nothing about where a model runs. An App can reach a hosted endpoint or run a local one; that choice belongs to the host, not to RxD.</p></li>
-      </ol>
-    </div>
-  </section>
-
-  <section class="section" id="cross-build">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="kicker">ANDROID ARTIFACT</p>
-        <h2>RxD still builds for Android.</h2>
-        <p class="section-lede">The desktop release targets are Linux x86_64/arm64 (musl), macOS arm64 and Windows x86_64. Android is a separate Bionic cross-build, not a desktop artifact and not an App package.</p>
-      </div>
-      <pre><code>rustup target add aarch64-linux-android
-python3 scripts/build-ilspy.py linux-bionic-arm64
-python3 scripts/build-bundled.py --target aarch64-linux-android --jobs 2 \
-  --features bundled-ilspy,mcp
-python3 scripts/package-release.py --target aarch64-linux-android \
-  --rid linux-bionic-arm64 --name android-arm64 --no-exec</code></pre>
-      <p class="section-lede">The output is <code>target/dist/rxd-android-arm64.tar.gz</code> with the default backends, MCP, the linked Kuna CLI and embedded Bionic ILSpy metadata. NDK 28.2.13676358 / API 24 is pinned.</p>
     </div>
   </section>
 
@@ -106,21 +75,7 @@ python3 scripts/package-release.py --target aarch64-linux-android \
           <p class="prov-source">Parsing, decompilation, coordinates, budgets and output contracts.</p>
         </article>
       </div>
-      <p class="section-lede">Cross-building and packaging stay outside this repository: App packaging, APK executable placement, SELinux policy and device validation are the consuming App's responsibility. An ELF inspection or a successful cross-build is not device validation.</p>
-    </div>
-  </section>
-
-  <section class="section" id="status">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="kicker">STATUS</p>
-        <h2>What is published today.</h2>
-      </div>
-      <ol class="why-list">
-        <li><h3>Arxd releases</h3><p>Not published from this repository. Current Arxd releases and capabilities live in the separate private repository, so this page states availability and boundaries rather than feature claims.</p></li>
-        <li><h3>RxD desktop builds</h3><p>Packaged per platform with the pinned ILSpy engine and the linked Kuna CLI; see <a class="text-link" href="https://github.com/TsingShui/RxD/blob/main/docs/ci.md">CI and builds</a>.</p></li>
-        <li><h3>RxD Android artifact</h3><p>Produced by the cross-build above. No version tag has been published yet, so <code>releases/latest/download/install.sh</code> is not live.</p></li>
-      </ol>
+      <p class="section-lede">App packaging, APK executable placement, SELinux policy and device validation are the consuming App's responsibility.</p>
     </div>
   </section>
 </main>
