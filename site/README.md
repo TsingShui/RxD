@@ -9,9 +9,11 @@ Static, dependency-free pages served by GitHub Pages at
 - `examples.html` — ShowCase placeholder only. It stays a `<To Be Done>` page;
   CLI usage lives in `src/skills/rxd/SKILL.md` and `rxd --help`, so do not grow
   this page into a command catalogue.
-- `arxd.html` — short notice that Arxd is maintained separately. Arxd capabilities
-  and releases are not published from this repository, so this page states
-  availability, not feature claims.
+- `arxd.html` — uses the same hero, 420px mark, kicker and section layout as
+  `index.html`. It states where the host and engine each live, the Android
+  Bionic cross-build artifact and the layer boundaries. Arxd App capabilities
+  and releases are not published from this repository, so the page describes
+  availability and boundaries, never Arxd feature claims.
 - `roadmap.html` — development status and future work.
 - `changelog.html` — dated public/site milestones and earlier internal acceptance.
 - `assets/style.css` — design tokens, layout, shared subpage styles, responsive rules.
